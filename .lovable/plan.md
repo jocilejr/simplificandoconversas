@@ -1,21 +1,41 @@
 
 
-## Handles de Conexão Invisíveis
+## Redesign Completo dos Blocos — Estilo ManyChat Profissional
 
-O problema é que os handles (pontos de conexão) existem no código, mas são praticamente invisíveis porque usam `!bg-card` — mesma cor do fundo do bloco. Além disso, são pequenos (12px) e difíceis de encontrar.
+O design atual tem problemas: header com gradiente excessivo, handles como circulos soltos, card sem refinamento. Vou refazer o BlockNode com um visual limpo e profissional inspirado no ManyChat.
 
-### Solução
+### Mudancas no BlockNode.tsx
 
-Redesenhar os handles para serem visíveis e intuitivos:
+**Header:**
+- Fundo solido com a cor do tipo (sem gradiente forte), opacidade sutil
+- Barra lateral colorida fina (4px) no lado esquerdo do card inteiro, nao no header
+- Header mais compacto com icone + titulo em uma linha limpa
+- Fundo do header em tom bem claro da cor (10% opacidade)
 
-**`src/components/chatbot/BlockNode.tsx`**:
-- **Handle de entrada (esquerdo):** Mudar para um círculo visível com borda colorida e fundo semi-transparente, posicionado no meio vertical do bloco
-- **Handle de saída (direito):** Mesmo estilo, posicionado no footer "Próximo Passo" — mover o handle para ficar alinhado com o texto/seta do footer
-- Aumentar tamanho dos handles para ~14-16px
-- Usar cores visíveis: borda `primary` ou cor do header, fundo semi-transparente
-- Adicionar efeito hover mais evidente (scale + cor mais forte)
+**Handles de conexao:**
+- Handle de entrada (esquerda): circulo 12px com borda de 2px, cor neutra, fundo solido branco/card, posicionado no meio do bloco. Efeito hover que aumenta e muda cor
+- Handle de saida (direita): mesmo estilo, posicionado no meio. Com um pequeno indicador visual de "arrastar daqui"
+- Remover o footer "Proximo Passo" — os handles ja indicam a conexao
 
-### Arquivo a alterar
+**Sub-itens (children):**
+- Cada child com fundo levemente colorido baseado no tipo
+- Separador sutil entre children
+- Icone pequeno + label do tipo + conteudo em layout limpo
+- Botoes de reordenacao mantidos no hover
 
-1. **`src/components/chatbot/BlockNode.tsx`** — Estilos dos dois handles (target left, source right)
+**Card geral:**
+- Borda lateral colorida (left border 4px) com a cor do primeiro child
+- Sombra sutil e limpa
+- Cantos arredondados suaves (12px)
+- Largura fixa ~280px
+
+### Mudancas no index.css
+
+- Estilos para handles com transicoes suaves
+- Estilo de hover nos nodes mais limpo (sem scale exagerado)
+
+### Arquivos a alterar
+
+1. **`src/components/chatbot/BlockNode.tsx`** — Redesign completo do componente visual
+2. **`src/index.css`** — Ajustes nos estilos dos handles e nodes do React Flow
 
