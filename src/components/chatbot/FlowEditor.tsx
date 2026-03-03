@@ -39,6 +39,7 @@ const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   condition: { conditionField: "mensagem", conditionOperator: "contains", conditionValue: "" },
   randomizer: { paths: 2 },
   waitDelay: { delaySeconds: 3, simulateTyping: true },
+  waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyFallback: "" },
   action: { actionType: "add_tag", actionValue: "" },
 };
 

@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { nodeTypeConfig, type FlowNodeData } from "@/types/chatbot";
+import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 function CustomNode({ data, selected }: { data: Record<string, unknown>; selected?: boolean }) {
   const nodeData = data as FlowNodeData;
@@ -17,8 +17,16 @@ function CustomNode({ data, selected }: { data: Record<string, unknown>; selecte
           : nodeData.triggerType === "any_message"
           ? "Qualquer mensagem"
           : "Evento específico";
-      case "sendText":
-        return nodeData.textContent || "Mensagem vazia...";
+      case "sendText": {
+        const text = nodeData.textContent || "Mensagem vazia...";
+        const formatted = parseWhatsAppFormatting(text);
+        return (
+          <span
+            dangerouslySetInnerHTML={{ __html: formatted }}
+            className="whitespace-pre-wrap"
+          />
+        );
+      }
       case "sendAudio":
         return (nodeData.audioUrl ? "🎵 Áudio" : "Sem áudio") +
           (nodeData.simulateRecording ? " · 🔴 Gravando" : "");
@@ -31,6 +39,9 @@ function CustomNode({ data, selected }: { data: Record<string, unknown>; selecte
         return `${nodeData.paths || 2} caminhos`;
       case "waitDelay":
         return `⏳ ${nodeData.delaySeconds || 0}s` + (nodeData.simulateTyping ? " · ✍️" : "");
+      case "waitForReply":
+        return `💭 → {{${nodeData.replyVariable || "resposta"}}}` +
+          (nodeData.replyTimeout ? ` · ⏱️ ${nodeData.replyTimeout}s` : "");
       case "action":
         return nodeData.actionType === "add_tag"
           ? `🏷️ ${nodeData.actionValue || "..."}`
@@ -68,9 +79,23 @@ function CustomNode({ data, selected }: { data: Record<string, unknown>; selecte
         <span>{config?.label}</span>
       </div>
 
-      <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2">
+      <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-3">
         {renderBody()}
       </div>
+
+      {/* Bottom snap indicator */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="snap-bottom"
+        className="!w-6 !h-1.5 !rounded-full !border-0 !bg-primary/30 hover:!bg-primary/60 !-bottom-1 !left-1/2 !-translate-x-1/2 transition-colors"
+      />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="snap-top"
+        className="!w-6 !h-1.5 !rounded-full !border-0 !bg-primary/30 hover:!bg-primary/60 !-top-1 !left-1/2 !-translate-x-1/2 transition-colors"
+      />
 
       {hasMultipleOutputs ? (
         Array.from({ length: pathCount }).map((_, i) => (

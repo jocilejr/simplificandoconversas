@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { X, Trash2 } from "lucide-react";
 import { type FlowNode, type FlowNodeData, nodeTypeConfig } from "@/types/chatbot";
+import { TextFormatToolbar } from "@/components/chatbot/TextFormatToolbar";
 
 interface PropertiesPanelProps {
   node: FlowNode | null;
@@ -15,6 +17,8 @@ interface PropertiesPanelProps {
 }
 
 export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: PropertiesPanelProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   if (!node) return null;
 
   const data = node.data as FlowNodeData;
@@ -26,7 +30,6 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
 
   return (
     <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
-      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
           <span>{config.icon}</span>
@@ -57,9 +60,7 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
                 value={data.triggerType || "keyword"}
                 onValueChange={(v) => update({ triggerType: v as any })}
               >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="keyword">Palavra-chave</SelectItem>
                   <SelectItem value="any_message">Qualquer mensagem</SelectItem>
@@ -81,18 +82,24 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
           </>
         )}
 
-        {/* Send Text */}
+        {/* Send Text with formatting toolbar */}
         {data.type === "sendText" && (
           <div className="space-y-1.5">
             <Label className="text-xs">Mensagem</Label>
+            <TextFormatToolbar
+              textareaRef={textareaRef}
+              value={data.textContent || ""}
+              onChange={(v) => update({ textContent: v })}
+            />
             <Textarea
+              ref={textareaRef}
               value={data.textContent || ""}
               onChange={(e) => update({ textContent: e.target.value })}
-              placeholder="Use {{nome}} para variáveis"
-              className="text-xs min-h-[100px] resize-none"
+              placeholder="Use *negrito*, _itálico_, ~riscado~ e {{nome}} para variáveis"
+              className="text-xs min-h-[100px] resize-none font-mono"
             />
             <p className="text-[10px] text-muted-foreground">
-              Variáveis: {"{{nome}}"}, {"{{telefone}}"}, {"{{email}}"}
+              Formatação: *negrito*, _itálico_, ~riscado~ · Variáveis: {"{{nome}}"}, {"{{telefone}}"}
             </p>
           </div>
         )}
@@ -161,9 +168,7 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
                 value={data.conditionOperator || "contains"}
                 onValueChange={(v) => update({ conditionOperator: v as any })}
               >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="equals">É igual a</SelectItem>
                   <SelectItem value="contains">Contém</SelectItem>
@@ -192,9 +197,7 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
               value={String(data.paths || 2)}
               onValueChange={(v) => update({ paths: parseInt(v) })}
             >
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="2">2 caminhos</SelectItem>
                 <SelectItem value="3">3 caminhos</SelectItem>
@@ -228,6 +231,43 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
           </>
         )}
 
+        {/* Wait for Reply */}
+        {data.type === "waitForReply" && (
+          <>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Salvar resposta na variável</Label>
+              <Input
+                value={data.replyVariable || ""}
+                onChange={(e) => update({ replyVariable: e.target.value })}
+                placeholder="Ex: resposta, nome, email"
+                className="h-8 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Acesse com {"{{resposta}}"} nos próximos nós
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Timeout (segundos, 0 = sem limite)</Label>
+              <Input
+                type="number"
+                value={data.replyTimeout || 0}
+                onChange={(e) => update({ replyTimeout: parseInt(e.target.value) || 0 })}
+                className="h-8 text-xs"
+                min={0}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mensagem de fallback (timeout)</Label>
+              <Textarea
+                value={data.replyFallback || ""}
+                onChange={(e) => update({ replyFallback: e.target.value })}
+                placeholder="Mensagem caso não responda a tempo"
+                className="text-xs min-h-[60px] resize-none"
+              />
+            </div>
+          </>
+        )}
+
         {/* Action */}
         {data.type === "action" && (
           <>
@@ -237,9 +277,7 @@ export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: Propertie
                 value={data.actionType || "add_tag"}
                 onValueChange={(v) => update({ actionType: v as any })}
               >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="add_tag">Adicionar Tag</SelectItem>
                   <SelectItem value="remove_tag">Remover Tag</SelectItem>
