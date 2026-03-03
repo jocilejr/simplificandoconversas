@@ -121,7 +121,6 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
       style={{ borderWidth: 1, borderStyle: "solid" }}
     >
       {/* Top accent bar */}
-      {/* Top accent bar */}
       <div
         className="h-[3px] w-full rounded-t-2xl"
         style={{ backgroundColor: accentColor }}
