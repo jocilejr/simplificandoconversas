@@ -17,17 +17,15 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Save, Play, Square, ArrowLeft, Group } from "lucide-react";
+import { Save, Play, Square, ArrowLeft } from "lucide-react";
 import { NodePalette } from "@/components/chatbot/NodePalette";
 import { PropertiesPanel } from "@/components/chatbot/PropertiesPanel";
-import CustomNode from "@/components/chatbot/CustomNode";
-import GroupNode from "@/components/chatbot/GroupNode";
+import BlockNode from "@/components/chatbot/BlockNode";
 import { type FlowNodeType, type FlowNodeData, type FlowNode, nodeTypeConfig } from "@/types/chatbot";
 import { toast } from "sonner";
 
 const nodeTypes: NodeTypes = {
-  custom: CustomNode,
-  group: GroupNode,
+  block: BlockNode,
 };
 
 const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
@@ -43,6 +41,18 @@ const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   action: { actionType: "add_tag", actionValue: "" },
 };
 
+let childIdCounter = 1;
+
+function createChildData(type: FlowNodeType): FlowNodeData {
+  const config = nodeTypeConfig[type];
+  return {
+    label: config.label,
+    type,
+    childId: `child_${childIdCounter++}`,
+    ...defaultNodeData[type],
+  } as FlowNodeData;
+}
+
 interface FlowEditorProps {
   flowName: string;
   onBack: () => void;
@@ -52,6 +62,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedChildIndex, setSelectedChildIndex] = useState<number | null>(null);
   const [name, setName] = useState(flowName);
   const [isActive, setIsActive] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -84,37 +95,102 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         y: event.clientY,
       });
 
-      const config = nodeTypeConfig[type];
-      const newNode: FlowNode = {
-        id: `node_${idCounter.current++}`,
-        type: "custom",
-        position,
-        data: {
-          label: config.label,
-          type,
-          ...defaultNodeData[type],
-        } as FlowNodeData,
-      };
+      // Check if dropped over an existing block node
+      const targetNode = nodes.find((n) => {
+        if (n.type !== "block") return false;
+        const el = document.querySelector(`[data-id="${n.id}"]`);
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return (
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        );
+      });
 
-      setNodes((nds) => nds.concat(newNode));
+      if (targetNode) {
+        // Add as child to existing block
+        const newChild = createChildData(type);
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== targetNode.id) return n;
+            const data = n.data as FlowNodeData;
+            const children = [...(data.children || []), newChild];
+            return { ...n, data: { ...data, children } };
+          })
+        );
+        toast.success(`${nodeTypeConfig[type].label} adicionado ao bloco`);
+      } else {
+        // Create new block with single child
+        const child = createChildData(type);
+        const config = nodeTypeConfig[type];
+        const newNode: FlowNode = {
+          id: `node_${idCounter.current++}`,
+          type: "block",
+          position,
+          data: {
+            label: config.label,
+            type,
+            children: [child],
+          } as FlowNodeData,
+        };
+        setNodes((nds) => nds.concat(newNode));
+      }
     },
-    [reactFlowInstance, setNodes]
+    [reactFlowInstance, setNodes, nodes]
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
-  }, []);
+    // Check if a specific child was clicked
+    const target = _.target as HTMLElement;
+    const childEl = target.closest("[data-child-index]");
+    if (childEl) {
+      const index = parseInt(childEl.getAttribute("data-child-index") || "0");
+      setSelectedChildIndex(index);
+    } else {
+      setSelectedChildIndex(0);
+    }
+
+    // Handle remove child button
+    const removeBtn = target.closest("[data-remove-child]");
+    if (removeBtn) {
+      const removeIndex = parseInt(removeBtn.getAttribute("data-remove-child") || "-1");
+      if (removeIndex >= 0) {
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== node.id) return n;
+            const data = n.data as FlowNodeData;
+            const children = (data.children || []).filter((_, i) => i !== removeIndex);
+            if (children.length === 0) return null as any;
+            return { ...n, data: { ...data, children } };
+          }).filter(Boolean)
+        );
+        setSelectedNodeId(null);
+        setSelectedChildIndex(null);
+        toast.success("Item removido do bloco");
+      }
+    }
+  }, [setNodes]);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setSelectedChildIndex(null);
   }, []);
 
-  const updateNodeData = useCallback(
-    (id: string, data: Partial<FlowNodeData>) => {
+  const updateChildData = useCallback(
+    (nodeId: string, childIndex: number, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === id ? { ...n, data: { ...n.data, ...data } } : n
-        )
+        nds.map((n) => {
+          if (n.id !== nodeId) return n;
+          const data = n.data as FlowNodeData;
+          const children = [...(data.children || [])];
+          if (children[childIndex]) {
+            children[childIndex] = { ...children[childIndex], ...changes };
+          }
+          return { ...n, data: { ...data, children } };
+        })
       );
     },
     [setNodes]
@@ -125,98 +201,13 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
       setNodes((nds) => nds.filter((n) => n.id !== id));
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
       setSelectedNodeId(null);
-      toast.success("Nó removido");
+      setSelectedChildIndex(null);
+      toast.success("Bloco removido");
     },
     [setNodes, setEdges]
   );
 
-  const handleGroupSelected = useCallback(() => {
-    const selectedNodes = nodes.filter((n) => n.selected && n.type !== "group");
-    if (selectedNodes.length < 2) {
-      toast.error("Selecione pelo menos 2 nós para agrupar");
-      return;
-    }
-
-    // Calculate bounding box
-    const padding = 20;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    selectedNodes.forEach((n) => {
-      minX = Math.min(minX, n.position.x);
-      minY = Math.min(minY, n.position.y);
-      maxX = Math.max(maxX, n.position.x + 280);
-      maxY = Math.max(maxY, n.position.y + 80);
-    });
-
-    const groupId = `group_${idCounter.current++}`;
-    const groupNode = {
-      id: groupId,
-      type: "group" as const,
-      position: { x: minX - padding, y: minY - padding - 24 },
-      style: {
-        width: maxX - minX + padding * 2,
-        height: maxY - minY + padding * 2 + 24,
-      },
-      data: { label: "Grupo" },
-    };
-
-    // Set parentId and adjust positions to be relative to group
-    setNodes((nds) => {
-      const updatedNodes = nds.map((n) => {
-        if (selectedNodes.find((s) => s.id === n.id)) {
-          return {
-            ...n,
-            parentId: groupId,
-            position: {
-              x: n.position.x - (minX - padding),
-              y: n.position.y - (minY - padding - 24),
-            },
-            extent: "parent" as const,
-          };
-        }
-        return n;
-      });
-      return [groupNode as any, ...updatedNodes];
-    });
-
-    toast.success(`${selectedNodes.length} nós agrupados`);
-  }, [nodes, setNodes]);
-
-  const handleUngroupSelected = useCallback(() => {
-    const selectedGroups = nodes.filter((n) => n.selected && n.type === "group");
-    if (selectedGroups.length === 0) {
-      toast.error("Selecione um grupo para desagrupar");
-      return;
-    }
-
-    selectedGroups.forEach((group) => {
-      setNodes((nds) => {
-        const updated = nds
-          .filter((n) => n.id !== group.id)
-          .map((n) => {
-            if (n.parentId === group.id) {
-              return {
-                ...n,
-                parentId: undefined,
-                extent: undefined,
-                position: {
-                  x: n.position.x + group.position.x,
-                  y: n.position.y + group.position.y,
-                },
-              };
-            }
-            return n;
-          });
-        return updated;
-      });
-    });
-
-    toast.success("Grupo desfeito");
-  }, [nodes, setNodes]);
-
-  const handleSave = () => {
-    toast.success("Fluxo salvo com sucesso!");
-  };
-
+  const handleSave = () => toast.success("Fluxo salvo com sucesso!");
   const handleToggleActive = () => {
     setIsActive(!isActive);
     toast.success(isActive ? "Fluxo desativado" : "Fluxo ativado!");
@@ -224,10 +215,8 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
 
   return (
     <div className="flex h-full">
-      {/* Left palette */}
       <NodePalette onDragStart={() => {}} />
 
-      {/* Canvas */}
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
@@ -251,63 +240,38 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-background" />
-          <Controls
-            className="!bg-card !border-border !rounded-lg !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-secondary"
-          />
+          <Controls className="!bg-card !border-border !rounded-lg !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-secondary" />
           <MiniMap
             className="!bg-card !border-border !rounded-lg"
-            nodeColor={(node) => {
-              const d = node.data as FlowNodeData;
-              return nodeTypeConfig[d.type]?.color || "#666";
-            }}
+            nodeColor={() => "#3b82f6"}
             maskColor="hsl(var(--background) / 0.8)"
           />
 
-          {/* Top toolbar */}
           <Panel position="top-left" className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-8 w-48 text-sm bg-card border-border"
-            />
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-48 text-sm bg-card border-border" />
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleGroupSelected} title="Agrupar nós selecionados (selecione com Shift+Drag)">
-              <Group className="h-3 w-3 mr-1" /> Agrupar
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleUngroupSelected} title="Desagrupar">
-              Desagrupar
-            </Button>
             <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleSave}>
               <Save className="h-3 w-3 mr-1" /> Salvar
             </Button>
-            <Button
-              size="sm"
-              className="h-8 text-xs"
-              variant={isActive ? "destructive" : "default"}
-              onClick={handleToggleActive}
-            >
-              {isActive ? (
-                <><Square className="h-3 w-3 mr-1" /> Desativar</>
-              ) : (
-                <><Play className="h-3 w-3 mr-1" /> Ativar</>
-              )}
+            <Button size="sm" className="h-8 text-xs" variant={isActive ? "destructive" : "default"} onClick={handleToggleActive}>
+              {isActive ? <><Square className="h-3 w-3 mr-1" /> Desativar</> : <><Play className="h-3 w-3 mr-1" /> Ativar</>}
             </Button>
           </Panel>
         </ReactFlow>
       </div>
 
-      {/* Right properties */}
-      {selectedNode && (
+      {selectedNode && selectedChildIndex !== null && (
         <PropertiesPanel
           node={selectedNode}
-          onUpdate={updateNodeData}
+          childIndex={selectedChildIndex}
+          onUpdateChild={updateChildData}
           onDelete={deleteNode}
-          onClose={() => setSelectedNodeId(null)}
+          onClose={() => { setSelectedNodeId(null); setSelectedChildIndex(null); }}
         />
       )}
     </div>
