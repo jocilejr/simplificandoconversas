@@ -1,3 +1,4 @@
+import { icons } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeType } from "@/types/chatbot";
 
 interface NodePaletteProps {
@@ -52,10 +53,13 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
                     className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-secondary active:cursor-grabbing transition-colors group"
                   >
                     <div
-                      className="flex items-center justify-center w-8 h-8 rounded-lg text-sm"
+                      className="flex items-center justify-center w-8 h-8 rounded-lg"
                       style={{ backgroundColor: config.color + "20", color: config.color }}
                     >
-                      {config.icon}
+                      {(() => {
+                        const LucideIcon = icons[config.icon as keyof typeof icons];
+                        return LucideIcon ? <LucideIcon className="w-4 h-4" /> : null;
+                      })()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium truncate">{config.label}</p>

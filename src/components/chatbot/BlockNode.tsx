@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { X, MessageCircle, Clock } from "lucide-react";
+import { X, Clock, icons } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 interface BlockNodeProps {
@@ -85,7 +85,10 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
         style={{ backgroundColor: headerConfig?.color || "#666" }}
       >
         <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
-          <MessageCircle className="w-3 h-3 text-white" />
+          {(() => {
+            const LucideIcon = icons[headerConfig?.icon as keyof typeof icons];
+            return LucideIcon ? <LucideIcon className="w-3 h-3 text-white" /> : null;
+          })()}
         </div>
         <div className="flex flex-col">
           <span className="text-white text-[10px] font-medium opacity-80">WhatsApp</span>
@@ -120,7 +123,6 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
                 <button
                   className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full bg-card border border-border text-muted-foreground hover:text-destructive"
                   data-remove-child={index}
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
@@ -138,7 +140,6 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
               <button
                 className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground/40 hover:text-destructive"
                 data-remove-child={index}
-                onClick={(e) => e.stopPropagation()}
               >
                 <X className="h-3 w-3" />
               </button>
