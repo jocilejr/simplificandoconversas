@@ -75,8 +75,8 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !rounded-full !border-2 !bg-card !border-muted-foreground/40 !-left-[6px] hover:!border-primary hover:!bg-primary/20 transition-colors"
-        style={{ top: 24 }}
+        className="!w-4 !h-4 !rounded-full !border-[2.5px] !border-primary !bg-primary/20 !-left-[8px] hover:!bg-primary hover:!scale-125 transition-all duration-150"
+        style={{ top: '50%' }}
       />
 
       {/* Header with gradient */}
@@ -211,7 +211,7 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !rounded-full !border-2 !bg-card !border-muted-foreground/40 !-right-[6px] hover:!border-primary hover:!bg-primary/20 transition-colors"
+        className="!w-4 !h-4 !rounded-full !border-[2.5px] !border-primary !bg-primary/20 !-right-[8px] hover:!bg-primary hover:!scale-125 transition-all duration-150"
         style={{ top: "auto", bottom: 16 }}
       />
     </div>
