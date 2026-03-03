@@ -18,8 +18,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Save, Play, Square, ArrowLeft } from "lucide-react";
-import { NodePalette } from "@/components/chatbot/NodePalette";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Save, Play, Square, ArrowLeft, Plus, icons } from "lucide-react";
 import { PropertiesPanel } from "@/components/chatbot/PropertiesPanel";
 import BlockNode from "@/components/chatbot/BlockNode";
 import { type FlowNodeType, type FlowNodeData, type FlowNode, nodeTypeConfig } from "@/types/chatbot";
@@ -252,8 +252,6 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
 
   return (
     <div className="flex h-full">
-      <NodePalette onDragStart={() => {}} />
-
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
@@ -290,13 +288,73 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
             <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-48 text-sm bg-card border-border" />
           </Panel>
 
-          <Panel position="top-right" className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => toast.success("Fluxo salvo!")}>
-              <Save className="h-3 w-3 mr-1" /> Salvar
-            </Button>
-            <Button size="sm" className="h-8 text-xs" variant={isActive ? "destructive" : "default"} onClick={() => { setIsActive(!isActive); toast.success(isActive ? "Desativado" : "Ativado!"); }}>
-              {isActive ? <><Square className="h-3 w-3 mr-1" /> Desativar</> : <><Play className="h-3 w-3 mr-1" /> Ativar</>}
-            </Button>
+          <Panel position="top-right" className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => toast.success("Fluxo salvo!")}>
+                <Save className="h-3 w-3 mr-1" /> Salvar
+              </Button>
+              <Button size="sm" className="h-8 text-xs" variant={isActive ? "destructive" : "default"} onClick={() => { setIsActive(!isActive); toast.success(isActive ? "Desativado" : "Ativado!"); }}>
+                {isActive ? <><Square className="h-3 w-3 mr-1" /> Desativar</> : <><Play className="h-3 w-3 mr-1" /> Ativar</>}
+              </Button>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" className="h-8 text-xs">
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Nó
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-2 space-y-3">
+                {[
+                  { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
+                  { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
+                  { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply"] as FlowNodeType[] },
+                  { label: "Ações", types: ["action"] as FlowNodeType[] },
+                ].map((cat) => (
+                  <div key={cat.label}>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">
+                      {cat.label}
+                    </p>
+                    <div className="space-y-0.5">
+                      {cat.types.map((type) => {
+                        const config = nodeTypeConfig[type];
+                        const LucideIcon = icons[config.icon as keyof typeof icons];
+                        return (
+                          <button
+                            key={type}
+                            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-secondary transition-colors text-left"
+                            onClick={() => {
+                              const center = reactFlowInstance.screenToFlowPosition({
+                                x: window.innerWidth / 2,
+                                y: window.innerHeight / 2,
+                              });
+                              const child = createChildData(type);
+                              const newNode: FlowNode = {
+                                id: `node_${idCounter.current++}`,
+                                type: "block",
+                                position: center,
+                                data: { label: config.label, type, children: [child] } as FlowNodeData,
+                              };
+                              setNodes((nds) => nds.concat(newNode));
+                            }}
+                          >
+                            <div
+                              className="flex items-center justify-center w-7 h-7 rounded-md"
+                              style={{ backgroundColor: config.color + "20", color: config.color }}
+                            >
+                              {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate">{config.label}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{config.description}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </PopoverContent>
+            </Popover>
           </Panel>
         </ReactFlow>
       </div>
