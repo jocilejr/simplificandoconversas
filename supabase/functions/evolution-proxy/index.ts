@@ -143,7 +143,11 @@ Deno.serve(async (req) => {
       case "fetch-chats": {
         const resp = await fetch(
           `${evolution_api_url}/chat/findChats/${evolution_instance_name}`,
-          { headers: { apikey: evolution_api_key } }
+          {
+            method: "POST",
+            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }
         );
         result = await resp.json();
         break;
@@ -158,7 +162,11 @@ Deno.serve(async (req) => {
         // Fetch chats from Evolution
         const chatsResp = await fetch(
           `${evolution_api_url}/chat/findChats/${evolution_instance_name}`,
-          { headers: { apikey: evolution_api_key } }
+          {
+            method: "POST",
+            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }
         );
         const chats = await chatsResp.json();
 
