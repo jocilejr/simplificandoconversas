@@ -151,16 +151,9 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
-    setSelectedNodeId(node.id);
     const target = _.target as HTMLElement;
-    const childEl = target.closest("[data-child-index]");
-    if (childEl) {
-      setSelectedChildIndex(parseInt(childEl.getAttribute("data-child-index") || "0"));
-    } else {
-      setSelectedChildIndex(0);
-    }
 
-    // Handle remove child button
+    // Handle remove child button FIRST
     const removeBtn = target.closest("[data-remove-child]");
     if (removeBtn) {
       const removeIndex = parseInt(removeBtn.getAttribute("data-remove-child") || "-1");
@@ -177,7 +170,16 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         setSelectedNodeId(null);
         setSelectedChildIndex(null);
         toast.success("Item removido");
+        return; // Don't select node after removing
       }
+    }
+
+    setSelectedNodeId(node.id);
+    const childEl = target.closest("[data-child-index]");
+    if (childEl) {
+      setSelectedChildIndex(parseInt(childEl.getAttribute("data-child-index") || "0"));
+    } else {
+      setSelectedChildIndex(0);
     }
   }, [setNodes]);
 
@@ -266,8 +268,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
-          panOnDrag={[1, 2]}
-          selectionOnDrag
+          panOnDrag
           selectionMode={SelectionMode.Partial}
           multiSelectionKeyCode="Shift"
           className="bg-background"
