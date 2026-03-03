@@ -265,6 +265,101 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "fetch-messages": {
+        const { remoteJid, count = 50 } = params;
+        if (!remoteJid) {
+          return new Response(JSON.stringify({ error: "remoteJid required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const baseUrl2 = evolution_api_url.replace(/\/$/, "");
+        const msgResp = await fetch(
+          `${baseUrl2}/chat/findMessages/${evolution_instance_name}`,
+          {
+            method: "POST",
+            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              where: { key: { remoteJid: remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net` } },
+              limit: count,
+            }),
+          }
+        );
+        const msgBody = await msgResp.text();
+        console.log("findMessages status:", msgResp.status, "body length:", msgBody.length);
+
+        let rawMessages: any[] = [];
+        try {
+          const parsed = JSON.parse(msgBody);
+          rawMessages = Array.isArray(parsed) ? parsed : (parsed.messages || parsed.records || []);
+        } catch (_) { /* ignore */ }
+
+        const serviceClient2 = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+
+        const jid2 = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+        const { data: conv2 } = await serviceClient2
+          .from("conversations")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("remote_jid", jid2)
+          .single();
+
+        if (!conv2) {
+          result = { imported: 0, error: "Conversation not found" };
+          break;
+        }
+
+        const msgRows: any[] = [];
+        for (const msg of rawMessages) {
+          const key = msg.key || {};
+          const messageContent = msg.message?.conversation
+            || msg.message?.extendedTextMessage?.text
+            || msg.message?.imageMessage?.caption
+            || msg.message?.videoMessage?.caption
+            || null;
+
+          const direction = key.fromMe ? "outbound" : "inbound";
+          let msgType = "text";
+          if (msg.message?.imageMessage) msgType = "image";
+          else if (msg.message?.audioMessage) msgType = "audio";
+          else if (msg.message?.videoMessage) msgType = "video";
+          else if (msg.message?.documentMessage) msgType = "document";
+
+          if (!key.id) continue;
+
+          msgRows.push({
+            conversation_id: conv2.id,
+            user_id: userId,
+            remote_jid: jid2,
+            content: messageContent,
+            message_type: msgType,
+            direction,
+            status: "delivered",
+            external_id: key.id,
+            media_url: null,
+            created_at: msg.messageTimestamp
+              ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
+              : new Date().toISOString(),
+          });
+        }
+
+        let imported = 0;
+        for (let i = 0; i < msgRows.length; i += 100) {
+          const chunk = msgRows.slice(i, i + 100);
+          const { error: insErr } = await serviceClient2
+            .from("messages")
+            .insert(chunk);
+          if (!insErr) imported += chunk.length;
+          else console.log("Message insert error:", insErr.message);
+        }
+
+        result = { imported, total: rawMessages.length };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),

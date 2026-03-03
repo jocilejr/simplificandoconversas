@@ -19,7 +19,7 @@ const Conversations = () => {
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
-  const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
+  const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null, selected?.remote_jid || null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
