@@ -1,41 +1,51 @@
 
 
-## Redesign Completo dos Blocos — Estilo ManyChat Profissional
+## Redesign Visual Completo — Inspirado no ManyChat Moderno
 
-O design atual tem problemas: header com gradiente excessivo, handles como circulos soltos, card sem refinamento. Vou refazer o BlockNode com um visual limpo e profissional inspirado no ManyChat.
+Analisando a screenshot, os problemas principais sao: blocos escuros demais sem contraste, handles invisíveis, header sem destaque, children sem hierarquia visual clara, e falta de "polish" geral.
 
-### Mudancas no BlockNode.tsx
+### Proposta de Design
 
-**Header:**
-- Fundo solido com a cor do tipo (sem gradiente forte), opacidade sutil
-- Barra lateral colorida fina (4px) no lado esquerdo do card inteiro, nao no header
-- Header mais compacto com icone + titulo em uma linha limpa
-- Fundo do header em tom bem claro da cor (10% opacidade)
+**1. Trigger Node (Gatilho)**
+- Card compacto com fundo gradiente verde suave (nao solido saturado)
+- Borda arredondada 16px, sombra com glow verde sutil
+- Icone em circulo branco, texto branco bold
+- Handle de saida: circulo branco com borda verde, 16px, com seta indicando direcao
 
-**Handles de conexao:**
-- Handle de entrada (esquerda): circulo 12px com borda de 2px, cor neutra, fundo solido branco/card, posicionado no meio do bloco. Efeito hover que aumenta e muda cor
-- Handle de saida (direita): mesmo estilo, posicionado no meio. Com um pequeno indicador visual de "arrastar daqui"
-- Remover o footer "Proximo Passo" — os handles ja indicam a conexao
+**2. Block Node (Blocos regulares)**
+- Fundo `bg-card` com bordas arredondadas 16px
+- Header com fundo da cor do tipo em opacidade 8%, com barra superior colorida de 3px (top border, nao left)
+- Icone em circulo com fundo colorido + label em bold
+- Sombra: `shadow-md` no default, `shadow-xl + ring` no selected
+- Largura: manter 280px
 
-**Sub-itens (children):**
-- Cada child com fundo levemente colorido baseado no tipo
-- Separador sutil entre children
-- Icone pequeno + label do tipo + conteudo em layout limpo
-- Botoes de reordenacao mantidos no hover
+**3. Children (sub-itens)**
+- Cada child como "mini-card" com padding maior, fundo `bg-muted/20` no hover
+- Icone colorido circular + label em uppercase 10px + conteudo abaixo
+- Separador: linha fina pontilhada entre children
+- Delay: pill centralizada mais estilizada
 
-**Card geral:**
-- Borda lateral colorida (left border 4px) com a cor do primeiro child
-- Sombra sutil e limpa
-- Cantos arredondados suaves (12px)
-- Largura fixa ~280px
+**4. Handles de Conexao — Visibilidade Total**
+- Tamanho: 16px com borda de 3px
+- Cor default: borda `border` + fundo branco (light) / fundo card (dark)
+- Hover: borda `primary`, fundo `primary/20`, scale 1.2, glow ring
+- Target (esquerda): centralizado verticalmente
+- Source (direita): centralizado verticalmente
+- Adicionar um pequeno circulo interno de 4px com cor primary para indicar que e clicavel
 
-### Mudancas no index.css
+**5. Edges (conexoes)**
+- Tipo `smoothstep`, cor `primary/60`, strokeWidth 2
+- Animated com dash pattern sutil
+- Hover: cor `primary` solida, strokeWidth 3
 
-- Estilos para handles com transicoes suaves
-- Estilo de hover nos nodes mais limpo (sem scale exagerado)
+**6. CSS Global (index.css)**
+- Handles com transitions, glow effect, inner dot
+- Nodes com hover shadow suave
+- Edge hover styles
+- Melhor contraste geral no dark mode
 
 ### Arquivos a alterar
 
-1. **`src/components/chatbot/BlockNode.tsx`** — Redesign completo do componente visual
-2. **`src/index.css`** — Ajustes nos estilos dos handles e nodes do React Flow
+1. **`src/components/chatbot/BlockNode.tsx`** — Redesign completo do visual dos blocos e handles
+2. **`src/index.css`** — Handles, edges, e node hover styles redesenhados
 
