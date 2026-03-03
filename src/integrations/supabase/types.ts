@@ -14,6 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
+      conversations: {
+        Row: {
+          contact_name: string | null
+          created_at: string
+          id: string
+          last_message: string | null
+          last_message_at: string | null
+          remote_jid: string
+          unread_count: number
+          user_id: string
+        }
+        Insert: {
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          remote_jid: string
+          unread_count?: number
+          user_id: string
+        }
+        Update: {
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          remote_jid?: string
+          unread_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          content: string | null
+          conversation_id: string
+          created_at: string
+          direction: string
+          external_id: string | null
+          id: string
+          media_url: string | null
+          message_type: string
+          remote_jid: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          conversation_id: string
+          created_at?: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          media_url?: string | null
+          message_type?: string
+          remote_jid: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          media_url?: string | null
+          message_type?: string
+          remote_jid?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
