@@ -1,39 +1,42 @@
 
 
-## Problemas identificados e correções
+## Melhorias no BlockNode: Reordenacao + Diferenciacao Visual + Design Profissional
 
-### 1. Pan/navegacao no canvas nao funciona
-O `panOnDrag={[1, 2]}` combinado com `selectionOnDrag` faz com que o botao esquerdo (0) inicie selecao em vez de pan. Preciso mudar para `panOnDrag` com botao esquerdo como padrao e `selectionOnDrag` desativado (ou apenas com Shift).
+### 1. Reordenacao de sub-itens (setas cima/baixo)
 
-### 2. Botao X para remover nao funciona
-O `onClick` do botao X chama `e.stopPropagation()`, mas a logica de remocao esta no `onNodeClick` que busca `data-remove-child` no target. O `stopPropagation` impede o evento de chegar ao `onNodeClick`. Preciso mover a logica de remocao para o proprio botao ou remover o stopPropagation.
+Adicionar botoes de seta (ChevronUp/ChevronDown) que aparecem no hover de cada child dentro do bloco. Ao clicar, trocam a posicao do child com o anterior/proximo no array `children`.
 
-### 3. Emojis na sidebar e no nodeTypeConfig
-Os icones em `nodeTypeConfig` sao emojis. Trocar por nomes de icones Lucide e renderizar componentes Lucide na `NodePalette` e no `BlockNode`.
+- **BlockNode.tsx**: Adicionar botoes de seta com `data-move-up={index}` e `data-move-down={index}`
+- **FlowEditor.tsx**: No `onNodeClick`, detectar `data-move-up` / `data-move-down` e fazer swap no array de children
 
-### Alteracoes
+### 2. Diferenciacao visual por tipo de child
 
-**`src/types/chatbot.ts`**
-- Mudar o campo `icon` de emoji string para nome de icone Lucide (ex: `"Zap"`, `"MessageSquare"`, etc.)
-- Ou melhor: mudar o tipo para React.ReactNode e importar icones Lucide diretamente
+Cada child dentro do bloco tera uma faixa lateral colorida (left border) usando a cor do `nodeTypeConfig` e um mini-icone Lucide, para diferenciar visualmente texto, audio, imagem, video, condicao, timer, etc.
 
-**`src/components/chatbot/NodePalette.tsx`**
-- Renderizar icones Lucide em vez de emojis
-- Usar os icones do `nodeTypeConfig` (agora Lucide)
+- **BlockNode.tsx**: No render de cada child (nao-delay), adicionar `borderLeft: 3px solid config.color` e renderizar o icone Lucide do tipo ao lado do conteudo. Para delays, manter o badge pill mas com a cor do config.
 
-**`src/components/chatbot/BlockNode.tsx`**
-- Usar icone Lucide do config no header em vez de `MessageCircle` fixo
+### 3. Redesign profissional estilo ManyChat
 
-**`src/components/chatbot/FlowEditor.tsx`**
-- Mudar `panOnDrag={[1, 2]}` para `panOnDrag` (true, botao esquerdo)
-- Remover `selectionOnDrag` ou usar apenas com tecla modificadora
-- Corrigir logica do botao X: mover a remocao do `onNodeClick` para um handler proprio passado via props/contexto ao `BlockNode`
+Mudancas visuais no BlockNode e no canvas para um look mais limpo e profissional:
 
-### Abordagem para o X
+**BlockNode.tsx**:
+- Header com gradiente sutil em vez de cor solida plana
+- Bordas mais suaves, sombras mais refinadas
+- Tipografia mais limpa, espacamentos melhores
+- Footer "Proximo Passo" com icone de seta
+- Handles com estilo mais polido (cor primaria quando conectado)
 
-Em vez de depender do `onNodeClick` para detectar cliques no botao X (fragil), vou passar uma callback `onRemoveChild` para o `BlockNode` via data, e chamar diretamente no onClick do botao. Isso requer que o BlockNode receba a funcao. Como React Flow passa `data` ao node, posso incluir a callback no data do node.
+**FlowEditor.tsx**:
+- Background com grid pattern mais sutil
+- Edges com curvas suaves (tipo `smoothstep` ou `bezier`) e cor mais elegante
+- Botoes do painel com design mais refinado
 
-Alternativa mais simples: remover o `e.stopPropagation()` do botao X e deixar o evento propagar ate o `onNodeClick`. Mas isso tambem seleciona o child. Melhor: no `onNodeClick`, processar o remove ANTES de setar selectedNodeId, e dar return apos remover.
+**index.css**:
+- Adicionar estilos CSS para os nodes do React Flow (sombras, transicoes)
 
-Na verdade, o problema e que `stopPropagation` impede que o evento chegue ao React Flow `onNodeClick`. A solucao mais limpa: remover stopPropagation do botao X. O `onNodeClick` ja detecta `data-remove-child` e faz a remocao.
+### Arquivos a alterar
+
+1. **`src/components/chatbot/BlockNode.tsx`** - Redesign completo do componente: faixa lateral colorida por tipo, icone por tipo, botoes de reordenacao, visual profissional
+2. **`src/components/chatbot/FlowEditor.tsx`** - Handler de reordenacao no `onNodeClick`, edge style default com smoothstep/bezier
+3. **`src/index.css`** - Estilos adicionais para nodes do React Flow
 
