@@ -18,25 +18,23 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <div className="dark">
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/contacts" element={<Contacts />} />
-              <Route path="/schedule" element={<Schedule />} />
-              <Route path="/chatbot" element={<ChatbotBuilder />} />
-              <Route path="/conversations" element={<Conversations />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </div>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route element={<AppLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/chatbot" element={<ChatbotBuilder />} />
+            <Route path="/conversations" element={<Conversations />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
