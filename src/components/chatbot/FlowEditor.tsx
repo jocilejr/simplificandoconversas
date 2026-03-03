@@ -11,6 +11,7 @@ import {
   addEdge,
   BackgroundVariant,
   SelectionMode,
+  useReactFlow,
   type Connection,
   type NodeTypes,
 } from "@xyflow/react";
@@ -66,7 +67,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
   const [name, setName] = useState(flowName);
   const [isActive, setIsActive] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const reactFlowInstance = useReactFlow();
   const idCounter = useRef(1);
 
   const selectedNode = useMemo(
@@ -84,33 +85,38 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
     event.dataTransfer.dropEffect = "move";
   }, []);
 
+  // Find block node under cursor by checking all .react-flow__node elements
+  const findBlockUnderCursor = useCallback((clientX: number, clientY: number) => {
+    const flowNodes = document.querySelectorAll(".react-flow__node");
+    for (const el of flowNodes) {
+      const rect = el.getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        // Extract node id from the element's data-id attribute
+        const nodeId = el.getAttribute("data-id");
+        if (nodeId) {
+          const node = nodes.find((n) => n.id === nodeId && n.type === "block");
+          if (node) return node;
+        }
+      }
+    }
+    return null;
+  }, [nodes]);
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
       const type = event.dataTransfer.getData("application/reactflow") as FlowNodeType;
-      if (!type || !reactFlowInstance) return;
+      if (!type) return;
 
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      // Check if dropped over an existing block node
-      const targetNode = nodes.find((n) => {
-        if (n.type !== "block") return false;
-        const el = document.querySelector(`[data-id="${n.id}"]`);
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return (
-          event.clientX >= rect.left &&
-          event.clientX <= rect.right &&
-          event.clientY >= rect.top &&
-          event.clientY <= rect.bottom
-        );
-      });
+      // Check if dropped over an existing block
+      const targetNode = findBlockUnderCursor(event.clientX, event.clientY);
 
       if (targetNode) {
-        // Add as child to existing block
         const newChild = createChildData(type);
         setNodes((nds) =>
           nds.map((n) => {
@@ -122,7 +128,10 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         );
         toast.success(`${nodeTypeConfig[type].label} adicionado ao bloco`);
       } else {
-        // Create new block with single child
+        const position = reactFlowInstance.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
         const child = createChildData(type);
         const config = nodeTypeConfig[type];
         const newNode: FlowNode = {
@@ -138,17 +147,15 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         setNodes((nds) => nds.concat(newNode));
       }
     },
-    [reactFlowInstance, setNodes, nodes]
+    [reactFlowInstance, setNodes, findBlockUnderCursor]
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
-    // Check if a specific child was clicked
     const target = _.target as HTMLElement;
     const childEl = target.closest("[data-child-index]");
     if (childEl) {
-      const index = parseInt(childEl.getAttribute("data-child-index") || "0");
-      setSelectedChildIndex(index);
+      setSelectedChildIndex(parseInt(childEl.getAttribute("data-child-index") || "0"));
     } else {
       setSelectedChildIndex(0);
     }
@@ -169,7 +176,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         );
         setSelectedNodeId(null);
         setSelectedChildIndex(null);
-        toast.success("Item removido do bloco");
+        toast.success("Item removido");
       }
     }
   }, [setNodes]);
@@ -207,12 +214,6 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
     [setNodes, setEdges]
   );
 
-  const handleSave = () => toast.success("Fluxo salvo com sucesso!");
-  const handleToggleActive = () => {
-    setIsActive(!isActive);
-    toast.success(isActive ? "Fluxo desativado" : "Fluxo ativado!");
-  };
-
   return (
     <div className="flex h-full">
       <NodePalette onDragStart={() => {}} />
@@ -224,7 +225,6 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onInit={setReactFlowInstance}
           onDrop={onDrop}
           onDragOver={onDragOver}
           onNodeClick={onNodeClick}
@@ -243,7 +243,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           <Controls className="!bg-card !border-border !rounded-lg !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-secondary" />
           <MiniMap
             className="!bg-card !border-border !rounded-lg"
-            nodeColor={() => "#3b82f6"}
+            nodeColor={() => "hsl(var(--primary))"}
             maskColor="hsl(var(--background) / 0.8)"
           />
 
@@ -255,10 +255,10 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleSave}>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => toast.success("Fluxo salvo!")}>
               <Save className="h-3 w-3 mr-1" /> Salvar
             </Button>
-            <Button size="sm" className="h-8 text-xs" variant={isActive ? "destructive" : "default"} onClick={handleToggleActive}>
+            <Button size="sm" className="h-8 text-xs" variant={isActive ? "destructive" : "default"} onClick={() => { setIsActive(!isActive); toast.success(isActive ? "Desativado" : "Ativado!"); }}>
               {isActive ? <><Square className="h-3 w-3 mr-1" /> Desativar</> : <><Play className="h-3 w-3 mr-1" /> Ativar</>}
             </Button>
           </Panel>

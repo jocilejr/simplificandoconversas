@@ -1,6 +1,6 @@
-import { memo, useCallback } from "react";
+import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { X, ArrowRight } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 interface BlockNodeProps {
@@ -9,7 +9,7 @@ interface BlockNodeProps {
   selected?: boolean;
 }
 
-function renderChildBody(child: FlowNodeData) {
+function renderChildContent(child: FlowNodeData) {
   switch (child.type) {
     case "trigger":
       return child.triggerType === "keyword"
@@ -19,10 +19,9 @@ function renderChildBody(child: FlowNodeData) {
         : "Evento específico";
     case "sendText": {
       const text = child.textContent || "Mensagem vazia...";
-      const formatted = parseWhatsAppFormatting(text);
       return (
         <span
-          dangerouslySetInnerHTML={{ __html: formatted }}
+          dangerouslySetInnerHTML={{ __html: parseWhatsAppFormatting(text) }}
           className="whitespace-pre-wrap"
         />
       );
@@ -38,15 +37,9 @@ function renderChildBody(child: FlowNodeData) {
     case "randomizer":
       return `${child.paths || 2} caminhos`;
     case "waitDelay":
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
-          ⏳ Aguardando por {child.delaySeconds || 0} segundos...
-          {child.simulateTyping && " · ✍️ digitando"}
-        </span>
-      );
+      return `⏳ Aguardando por ${child.delaySeconds || 0} segundos...${child.simulateTyping ? " · ✍️ digitando" : ""}`;
     case "waitForReply":
-      return `💭 → {{${child.replyVariable || "resposta"}}}` +
-        (child.replyTimeout ? ` · ⏱️ ${child.replyTimeout}s` : "");
+      return `💭 → {{${child.replyVariable || "resposta"}}}${child.replyTimeout ? ` · ⏱️ ${child.replyTimeout}s` : ""}`;
     case "action":
       return child.actionType === "add_tag"
         ? `🏷️ ${child.actionValue || "..."}`
@@ -63,8 +56,6 @@ function renderChildBody(child: FlowNodeData) {
 function BlockNode({ id, data, selected }: BlockNodeProps) {
   const nodeData = data as FlowNodeData;
   const children = nodeData.children || [];
-
-  // Use first child's type for the header color, fallback to sendText
   const firstChild = children[0];
   const headerType = firstChild?.type || "sendText";
   const headerConfig = nodeTypeConfig[headerType];
@@ -72,88 +63,95 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
   return (
     <div
       className={`
-        relative min-w-[260px] max-w-[300px] rounded-xl border bg-card shadow-lg transition-all
-        ${selected ? "ring-2 ring-primary shadow-xl" : "hover:shadow-xl"}
+        relative min-w-[240px] max-w-[280px] rounded-lg overflow-hidden transition-shadow
+        ${selected ? "shadow-[0_0_0_2px_hsl(var(--primary)),0_8px_24px_-4px_rgba(0,0,0,0.3)]" : "shadow-[0_2px_8px_-2px_rgba(0,0,0,0.15)]"}
       `}
-      style={{ borderColor: headerConfig?.color || "hsl(var(--border))" }}
+      style={{ 
+        background: "hsl(var(--card))",
+      }}
     >
-      {/* Single input handle on left top */}
+      {/* Input handle */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-left-1.5 !top-5"
+        className="!w-2.5 !h-2.5 !rounded-full !border-2 !bg-muted-foreground/60 !border-card !-left-[5px]"
+        style={{ top: 20 }}
       />
 
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-t-xl text-white text-xs font-semibold"
-        style={{ backgroundColor: headerConfig?.color || "#666" }}
+        className="flex items-center gap-2 px-3 py-[7px] text-[11px] font-semibold tracking-wide"
+        style={{ 
+          backgroundColor: headerConfig?.color || "#666",
+          color: "white",
+        }}
       >
-        <span className="text-sm">{headerConfig?.icon}</span>
+        <span className="text-xs leading-none">{headerConfig?.icon}</span>
         <span>WhatsApp - {headerConfig?.label}</span>
       </div>
 
-      {/* Stacked children */}
-      <div className="divide-y divide-border">
+      {/* Children */}
+      <div>
         {children.length === 0 && (
-          <div className="px-3 py-3 text-xs text-muted-foreground italic">
-            Arraste componentes aqui...
+          <div className="px-3 py-4 text-[11px] text-muted-foreground text-center italic">
+            Arraste componentes aqui
           </div>
         )}
         {children.map((child, index) => {
           const childConfig = nodeTypeConfig[child.type];
           const isDelay = child.type === "waitDelay";
+          const isLast = index === children.length - 1;
 
           return (
             <div
               key={child.childId || index}
               className={`
-                group relative px-3 py-2 cursor-pointer hover:bg-secondary/50 transition-colors
-                ${isDelay ? "bg-muted/30 py-1.5" : ""}
+                group relative px-3 cursor-pointer transition-colors hover:bg-accent/5
+                ${isDelay ? "py-1.5 bg-muted/20" : "py-2"}
+                ${!isLast ? "border-b border-border/50" : ""}
               `}
               data-child-id={child.childId}
               data-child-index={index}
             >
-              {/* Remove button */}
+              {/* Remove */}
               <button
-                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-sm text-muted-foreground/40 hover:text-destructive"
                 data-remove-child={index}
                 onClick={(e) => e.stopPropagation()}
               >
                 <X className="h-3 w-3" />
               </button>
 
+              {/* Child type label */}
               {!isDelay && (
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px]">{childConfig?.icon}</span>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <div className="flex items-center gap-1 mb-0.5">
+                  <span className="text-[9px] leading-none">{childConfig?.icon}</span>
+                  <span className="text-[9px] font-semibold text-muted-foreground/70 uppercase tracking-[0.08em]">
                     {childConfig?.label}
                   </span>
                 </div>
               )}
 
-              <div className={`text-xs text-foreground ${isDelay ? "" : "line-clamp-3"}`}>
-                {renderChildBody(child)}
+              <div className={`text-[12px] leading-relaxed text-foreground/80 ${isDelay ? "text-[10px] text-muted-foreground" : "line-clamp-3"}`}>
+                {renderChildContent(child)}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Footer: Próximo Passo with output handle */}
-      <div
-        className="flex items-center justify-between px-3 py-2 rounded-b-xl border-t border-border bg-muted/30"
-      >
-        <span className="text-[10px] text-muted-foreground font-medium">Próximo Passo</span>
-        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+      {/* Footer */}
+      <div className="flex items-center justify-between px-3 py-[6px] border-t border-border/40 bg-muted/15">
+        <span className="text-[10px] text-muted-foreground/60 font-medium">Próximo Passo</span>
+        <ArrowRight className="h-3 w-3 text-muted-foreground/40" />
       </div>
 
-      {/* Single output handle on right bottom */}
+      {/* Output handle */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
-        style={{ top: "auto", bottom: "14px" }}
+        className="!w-2.5 !h-2.5 !rounded-full !border-2 !bg-muted-foreground/60 !border-card !-right-[5px]"
+        style={{ top: "auto", bottom: 12 }}
       />
     </div>
   );
