@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { X, Clock, icons } from "lucide-react";
+import { X, Clock, ChevronUp, ChevronDown, ArrowRight, icons } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 interface BlockNodeProps {
@@ -37,7 +37,7 @@ function renderChildContent(child: FlowNodeData) {
     case "randomizer":
       return `${child.paths || 2} caminhos`;
     case "waitDelay":
-      return null; // rendered as inline badge
+      return null;
     case "waitForReply":
       return `Salvar em {{${child.replyVariable || "resposta"}}}${child.replyTimeout ? ` · ${child.replyTimeout}s` : ""}`;
     case "action":
@@ -63,11 +63,11 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
   return (
     <div
       className={`
-        relative min-w-[260px] max-w-[300px] rounded-xl overflow-hidden transition-all duration-200
-        bg-card border-2
-        ${selected 
-          ? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)),0_8px_32px_-8px_rgba(0,0,0,0.2)]" 
-          : "border-border/60 shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
+        relative min-w-[270px] max-w-[310px] rounded-2xl overflow-hidden transition-all duration-200
+        bg-card
+        ${selected
+          ? "shadow-[0_0_0_2px_hsl(var(--primary)),0_12px_40px_-12px_rgba(0,0,0,0.25)]"
+          : "shadow-[0_2px_12px_-4px_rgba(0,0,0,0.1),0_1px_3px_rgba(0,0,0,0.06)] border border-border/40"
         }
       `}
     >
@@ -75,57 +75,80 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-2.5 !h-2.5 !rounded-full !border-[1.5px] !bg-muted-foreground/50 !border-card !-left-[5px]"
-        style={{ top: 22 }}
+        className="!w-3 !h-3 !rounded-full !border-2 !bg-card !border-muted-foreground/40 !-left-[6px] hover:!border-primary hover:!bg-primary/20 transition-colors"
+        style={{ top: 24 }}
       />
 
-      {/* Header */}
+      {/* Header with gradient */}
       <div
-        className="flex items-center gap-2.5 px-3.5 py-2.5"
-        style={{ backgroundColor: headerConfig?.color || "#666" }}
+        className="flex items-center gap-2.5 px-4 py-3"
+        style={{
+          background: `linear-gradient(135deg, ${headerConfig?.color || "#666"}, ${headerConfig?.color || "#666"}dd)`,
+        }}
       >
-        <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+        <div className="w-6 h-6 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
           {(() => {
             const LucideIcon = icons[headerConfig?.icon as keyof typeof icons];
-            return LucideIcon ? <LucideIcon className="w-3 h-3 text-white" /> : null;
+            return LucideIcon ? <LucideIcon className="w-3.5 h-3.5 text-white" /> : null;
           })()}
         </div>
-        <div className="flex flex-col">
-          <span className="text-white text-[10px] font-medium opacity-80">WhatsApp</span>
-          <span className="text-white text-[12px] font-semibold leading-tight">{nodeData.label || headerConfig?.label}</span>
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-white/70 text-[9px] font-semibold uppercase tracking-wider">WhatsApp</span>
+          <span className="text-white text-[13px] font-semibold leading-tight truncate">{nodeData.label || headerConfig?.label}</span>
         </div>
       </div>
 
       {/* Children */}
-      <div className="px-3 py-2 space-y-2">
+      <div className="px-2.5 py-2 space-y-1.5">
         {children.length === 0 && (
-          <div className="py-3 text-[11px] text-muted-foreground text-center">
+          <div className="py-4 text-[11px] text-muted-foreground text-center border border-dashed border-border/60 rounded-lg">
             Arraste componentes aqui
           </div>
         )}
         {children.map((child, index) => {
           const isDelay = child.type === "waitDelay";
+          const childConfig = nodeTypeConfig[child.type];
+          const ChildIcon = icons[childConfig?.icon as keyof typeof icons];
+          const isFirst = index === 0;
+          const isLast = index === children.length - 1;
 
           if (isDelay) {
             return (
               <div
                 key={child.childId || index}
-                className="group relative flex items-center justify-center"
+                className="group relative flex items-center justify-center py-0.5"
                 data-child-id={child.childId}
                 data-child-index={index}
               >
-                <div className="flex items-center gap-1.5 bg-muted/60 rounded-full px-3 py-1">
-                  <Clock className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-[11px] text-muted-foreground font-medium">
-                    Aguardando por {child.delaySeconds || 0} segundos...
-                  </span>
-                </div>
-                <button
-                  className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full bg-card border border-border text-muted-foreground hover:text-destructive"
-                  data-remove-child={index}
+                <div
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 border"
+                  style={{
+                    borderColor: `${childConfig.color}40`,
+                    backgroundColor: `${childConfig.color}10`,
+                  }}
                 >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                  <Clock className="w-3 h-3" style={{ color: childConfig.color }} />
+                  <span className="text-[11px] font-medium" style={{ color: childConfig.color }}>
+                    {child.delaySeconds || 0}s
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">aguardando</span>
+                </div>
+                {/* Reorder + remove buttons */}
+                <div className="absolute -right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {!isFirst && (
+                    <button className="p-0.5 rounded bg-card border border-border text-muted-foreground hover:text-foreground" data-move-up={index}>
+                      <ChevronUp className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                  {!isLast && (
+                    <button className="p-0.5 rounded bg-card border border-border text-muted-foreground hover:text-foreground" data-move-down={index}>
+                      <ChevronDown className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                  <button className="p-0.5 rounded bg-card border border-border text-muted-foreground hover:text-destructive" data-remove-child={index}>
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
               </div>
             );
           }
@@ -133,19 +156,45 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
           return (
             <div
               key={child.childId || index}
-              className="group relative bg-muted/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+              className="group relative rounded-lg overflow-hidden cursor-pointer hover:bg-muted/40 transition-colors"
               data-child-id={child.childId}
               data-child-index={index}
+              style={{ borderLeft: `3px solid ${childConfig?.color || '#666'}` }}
             >
-              <button
-                className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground/40 hover:text-destructive"
-                data-remove-child={index}
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <div className="flex items-start gap-2 px-3 py-2.5">
+                {/* Type icon */}
+                <div
+                  className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center mt-0.5"
+                  style={{ backgroundColor: `${childConfig?.color}15`, color: childConfig?.color }}
+                >
+                  {ChildIcon && <ChildIcon className="w-3 h-3" />}
+                </div>
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: childConfig?.color }}>
+                    {childConfig?.label}
+                  </p>
+                  <div className="text-[12px] leading-[1.5] text-foreground/80">
+                    {renderChildContent(child)}
+                  </div>
+                </div>
+              </div>
 
-              <div className="text-[12px] leading-[1.6] text-foreground/85">
-                {renderChildContent(child)}
+              {/* Reorder + remove buttons */}
+              <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {!isFirst && (
+                  <button className="p-0.5 rounded bg-card/90 border border-border text-muted-foreground hover:text-foreground" data-move-up={index}>
+                    <ChevronUp className="h-3 w-3" />
+                  </button>
+                )}
+                {!isLast && (
+                  <button className="p-0.5 rounded bg-card/90 border border-border text-muted-foreground hover:text-foreground" data-move-down={index}>
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                )}
+                <button className="p-0.5 rounded bg-card/90 border border-border text-muted-foreground/40 hover:text-destructive" data-remove-child={index}>
+                  <X className="h-3 w-3" />
+                </button>
               </div>
             </div>
           );
@@ -153,16 +202,17 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-center px-3 py-2 border-t border-border/30">
-        <span className="text-[10px] text-muted-foreground/50 font-medium tracking-wide">Próximo Passo</span>
+      <div className="flex items-center justify-center gap-1.5 px-3 py-2 border-t border-border/30">
+        <span className="text-[10px] text-muted-foreground/60 font-medium tracking-wide">Próximo Passo</span>
+        <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
       </div>
 
       {/* Output handle */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-2.5 !h-2.5 !rounded-full !border-[1.5px] !bg-muted-foreground/50 !border-card !-right-[5px]"
-        style={{ top: "auto", bottom: 14 }}
+        className="!w-3 !h-3 !rounded-full !border-2 !bg-card !border-muted-foreground/40 !-right-[6px] hover:!border-primary hover:!bg-primary/20 transition-colors"
+        style={{ top: "auto", bottom: 16 }}
       />
     </div>
   );
