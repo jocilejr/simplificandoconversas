@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 export type Message = {
   id: string;
@@ -16,9 +16,8 @@ export type Message = {
   created_at: string;
 };
 
-export function useMessages(conversationId: string | null, remoteJid?: string | null) {
+export function useMessages(conversationId: string | null) {
   const queryClient = useQueryClient();
-  const fetchedRef = useRef<Set<string>>(new Set());
 
   const query = useQuery({
     queryKey: ["messages", conversationId],
@@ -34,26 +33,6 @@ export function useMessages(conversationId: string | null, remoteJid?: string | 
       return data as Message[];
     },
   });
-
-  // Auto-fetch messages from Evolution API when conversation is selected and has no local messages
-  useEffect(() => {
-    if (!conversationId || !remoteJid) return;
-    if (fetchedRef.current.has(conversationId)) return;
-
-    // Fetch messages from Evolution API when conversation is selected
-    // We do this once per conversation to populate the local DB
-    fetchedRef.current.add(conversationId);
-    supabase.functions
-      .invoke("evolution-proxy", {
-        body: { action: "fetch-messages", remoteJid, count: 100 },
-      })
-      .then(({ data, error }) => {
-        console.log("fetch-messages result:", data, error);
-        if (!error) {
-          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-        }
-      });
-  }, [conversationId, remoteJid, queryClient]);
 
   useEffect(() => {
     if (!conversationId) return;

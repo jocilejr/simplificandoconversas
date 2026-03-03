@@ -19,7 +19,7 @@ const Conversations = () => {
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
-  const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null, selected?.remote_jid || null);
+  const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -33,7 +33,11 @@ const Conversations = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      toast({ title: "Sincronizado", description: `${data?.synced || 0} conversas sincronizadas` });
+      if (data?.info) {
+        toast({ title: "Informação", description: data.info });
+      } else {
+        toast({ title: "Sincronizado", description: `${data?.synced || 0} conversas sincronizadas` });
+      }
     },
     onError: (err: any) => {
       toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
