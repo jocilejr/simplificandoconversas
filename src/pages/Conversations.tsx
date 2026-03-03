@@ -4,14 +4,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Send, Loader2, User } from "lucide-react";
+import { MessageSquare, Send, Loader2, User, RefreshCw } from "lucide-react";
 import { useConversations, Conversation } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const Conversations = () => {
+  const queryClient = useQueryClient();
   const { data: conversations, isLoading: loadingConvs, markAsRead } = useConversations();
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [search, setSearch] = useState("");
@@ -19,6 +22,23 @@ const Conversations = () => {
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  const syncChats = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+        body: { action: "sync-chats" },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast({ title: "Sincronizado", description: `${data?.synced || 0} conversas sincronizadas` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
+    },
+  });
 
   const filtered = conversations?.filter(
     (c) =>
@@ -66,13 +86,27 @@ const Conversations = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 h-[calc(100vh-12rem)]">
         {/* Left panel - conversation list */}
         <Card className="bg-card border-border rounded-r-none lg:border-r-0 flex flex-col">
-          <div className="p-3 border-b border-border">
+          <div className="p-3 border-b border-border flex gap-2">
             <Input
               placeholder="Buscar conversas..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-9"
             />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => syncChats.mutate()}
+              disabled={syncChats.isPending}
+              title="Sincronizar conversas do WhatsApp"
+            >
+              {syncChats.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
           </div>
           <ScrollArea className="flex-1">
             {loadingConvs ? (

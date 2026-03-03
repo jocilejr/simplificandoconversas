@@ -149,6 +149,56 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "sync-chats": {
+        const serviceClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+
+        // Fetch chats from Evolution
+        const chatsResp = await fetch(
+          `${evolution_api_url}/chat/findChats/${evolution_instance_name}`,
+          { headers: { apikey: evolution_api_key } }
+        );
+        const chats = await chatsResp.json();
+
+        if (!Array.isArray(chats)) {
+          result = { synced: 0, error: "Unexpected response from Evolution API" };
+          break;
+        }
+
+        let synced = 0;
+        for (const chat of chats) {
+          const jid = chat.id || chat.remoteJid;
+          if (!jid || jid.includes("@g.us") || jid === "status@broadcast") continue;
+
+          const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
+          const lastMsg = chat.lastMessage?.message?.conversation
+            || chat.lastMessage?.message?.extendedTextMessage?.text
+            || chat.lastMsgContent
+            || null;
+
+          await serviceClient
+            .from("conversations")
+            .upsert(
+              {
+                user_id: userId,
+                remote_jid: jid,
+                contact_name: contactName,
+                last_message: lastMsg,
+                last_message_at: chat.lastMessage?.messageTimestamp
+                  ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
+                  : new Date().toISOString(),
+              },
+              { onConflict: "user_id,remote_jid" }
+            );
+          synced++;
+        }
+
+        result = { synced };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),
