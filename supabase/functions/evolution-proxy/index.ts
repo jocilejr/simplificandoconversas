@@ -159,48 +159,106 @@ Deno.serve(async (req) => {
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
         );
 
-        // Fetch chats from Evolution
-        const chatsResp = await fetch(
-          `${evolution_api_url}/chat/findChats/${evolution_instance_name}`,
+        // Try multiple endpoints to find contacts/chats
+        let chats: any[] = [];
+        const baseUrl = evolution_api_url.replace(/\/$/, "");
+
+        // Try findContacts first (more reliable for getting contact list)
+        const contactsResp = await fetch(
+          `${baseUrl}/chat/findContacts/${evolution_instance_name}`,
           {
             method: "POST",
             headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
             body: JSON.stringify({}),
           }
         );
-        const chats = await chatsResp.json();
+        const contactsBody = await contactsResp.text();
+        console.log("findContacts status:", contactsResp.status, "body:", contactsBody.substring(0, 500));
 
-        if (!Array.isArray(chats)) {
-          result = { synced: 0, error: "Unexpected response from Evolution API" };
+        try {
+          const contactsData = JSON.parse(contactsBody);
+          if (Array.isArray(contactsData) && contactsData.length > 0) {
+            chats = contactsData;
+          }
+        } catch (_) { /* ignore parse errors */ }
+
+        // If findContacts returned nothing, try findChats
+        if (chats.length === 0) {
+          const chatsResp = await fetch(
+            `${baseUrl}/chat/findChats/${evolution_instance_name}`,
+            {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            }
+          );
+          const chatsBody = await chatsResp.text();
+          console.log("findChats status:", chatsResp.status, "body:", chatsBody.substring(0, 500));
+
+          try {
+            const chatsData = JSON.parse(chatsBody);
+            if (Array.isArray(chatsData)) {
+              chats = chatsData;
+            }
+          } catch (_) { /* ignore */ }
+        }
+
+        // If still nothing, try GET method as fallback
+        if (chats.length === 0) {
+          const getResp = await fetch(
+            `${baseUrl}/chat/findChats/${evolution_instance_name}`,
+            { headers: { apikey: evolution_api_key } }
+          );
+          const getBody = await getResp.text();
+          console.log("findChats GET status:", getResp.status, "body:", getBody.substring(0, 500));
+
+          try {
+            const getData = JSON.parse(getBody);
+            if (Array.isArray(getData)) {
+              chats = getData;
+            }
+          } catch (_) { /* ignore */ }
+        }
+
+        console.log("Total chats found:", chats.length);
+
+        if (chats.length === 0) {
+          result = { synced: 0, debug: "No chats returned from any endpoint" };
           break;
         }
 
-        let synced = 0;
+        // Build batch of conversations to upsert
+        const rows: any[] = [];
         for (const chat of chats) {
-          const jid = chat.id || chat.remoteJid;
-          if (!jid || jid.includes("@g.us") || jid === "status@broadcast") continue;
+          const jid = chat.remoteJid || chat.id;
+          if (!jid || !jid.includes("@s.whatsapp.net")) continue;
+          if (jid === "status@broadcast") continue;
 
-          const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
-          const lastMsg = chat.lastMessage?.message?.conversation
-            || chat.lastMessage?.message?.extendedTextMessage?.text
-            || chat.lastMsgContent
-            || null;
+          const contactName = chat.pushName || chat.name || chat.contact?.pushName || null;
 
-          await serviceClient
+          rows.push({
+            user_id: userId,
+            remote_jid: jid,
+            contact_name: contactName,
+            last_message: chat.lastMessage?.message?.conversation
+              || chat.lastMessage?.message?.extendedTextMessage?.text
+              || chat.lastMsgContent
+              || null,
+            last_message_at: chat.lastMessage?.messageTimestamp
+              ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
+              : new Date().toISOString(),
+          });
+        }
+
+        // Batch upsert in chunks of 100
+        let synced = 0;
+        for (let i = 0; i < rows.length; i += 100) {
+          const chunk = rows.slice(i, i + 100);
+          const { error: upsertErr } = await serviceClient
             .from("conversations")
-            .upsert(
-              {
-                user_id: userId,
-                remote_jid: jid,
-                contact_name: contactName,
-                last_message: lastMsg,
-                last_message_at: chat.lastMessage?.messageTimestamp
-                  ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
-                  : new Date().toISOString(),
-              },
-              { onConflict: "user_id,remote_jid" }
-            );
-          synced++;
+            .upsert(chunk, { onConflict: "user_id,remote_jid" });
+          if (!upsertErr) synced += chunk.length;
+          else console.log("Upsert error:", upsertErr.message);
         }
 
         result = { synced };
