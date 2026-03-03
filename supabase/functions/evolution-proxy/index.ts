@@ -159,109 +159,81 @@ Deno.serve(async (req) => {
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
         );
 
-        // Try multiple endpoints to find contacts/chats
-        let chats: any[] = [];
         const baseUrl = evolution_api_url.replace(/\/$/, "");
 
-        // Try findContacts first (more reliable for getting contact list)
-        const contactsResp = await fetch(
-          `${baseUrl}/chat/findContacts/${evolution_instance_name}`,
+        // Try findMessages first to get actual conversations with messages
+        const msgsResp = await fetch(
+          `${baseUrl}/chat/findMessages/${evolution_instance_name}`,
           {
             method: "POST",
             headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-            body: JSON.stringify({}),
+            body: JSON.stringify({ limit: 500 }),
           }
         );
-        const contactsBody = await contactsResp.text();
-        console.log("findContacts status:", contactsResp.status, "body:", contactsBody.substring(0, 500));
-
+        const msgsBody = await msgsResp.text();
+        let allMessages: any[] = [];
         try {
-          const contactsData = JSON.parse(contactsBody);
-          if (Array.isArray(contactsData) && contactsData.length > 0) {
-            chats = contactsData;
+          const parsed = JSON.parse(msgsBody);
+          if (Array.isArray(parsed)) allMessages = parsed;
+          else if (parsed.messages?.records) allMessages = parsed.messages.records;
+          else {
+            for (const key of Object.keys(parsed)) {
+              if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+                allMessages = parsed[key];
+                break;
+              }
+            }
           }
-        } catch (_) { /* ignore parse errors */ }
+        } catch (_) {}
 
-        // If findContacts returned nothing, try findChats
-        if (chats.length === 0) {
-          const chatsResp = await fetch(
-            `${baseUrl}/chat/findChats/${evolution_instance_name}`,
-            {
-              method: "POST",
-              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-              body: JSON.stringify({}),
+        if (allMessages.length > 0) {
+          // Group by remoteJid
+          const convMap = new Map<string, { name: string | null; lastMsg: string | null; lastAt: string; messages: any[] }>();
+          for (const msg of allMessages) {
+            const key = msg.key || {};
+            const jid = key.remoteJid;
+            if (!jid || !jid.includes("@s.whatsapp.net")) continue;
+            const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "[mídia]";
+            const ts = msg.messageTimestamp ? new Date(Number(msg.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
+            if (!convMap.has(jid)) convMap.set(jid, { name: msg.pushName || null, lastMsg: content, lastAt: ts, messages: [] });
+            const conv = convMap.get(jid)!;
+            conv.messages.push(msg);
+            if (ts > conv.lastAt) { conv.lastMsg = content; conv.lastAt = ts; if (msg.pushName) conv.name = msg.pushName; }
+          }
+
+          const convRows = Array.from(convMap).map(([jid, data]) => ({
+            user_id: userId, remote_jid: jid, contact_name: data.name, last_message: data.lastMsg, last_message_at: data.lastAt,
+          }));
+
+          let synced = 0;
+          for (let i = 0; i < convRows.length; i += 100) {
+            const chunk = convRows.slice(i, i + 100);
+            const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid" });
+            if (!err) synced += chunk.length;
+          }
+
+          // Save messages
+          for (const [jid, data] of convMap) {
+            const { data: convRecord } = await serviceClient.from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid).single();
+            if (!convRecord) continue;
+            const inserts = data.messages.filter((m: any) => m.key?.id).map((m: any) => {
+              const k = m.key;
+              const c = m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || null;
+              let t = "text";
+              if (m.message?.imageMessage) t = "image"; else if (m.message?.audioMessage) t = "audio"; else if (m.message?.videoMessage) t = "video";
+              return { conversation_id: convRecord.id, user_id: userId, remote_jid: jid, content: c, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: null, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() };
+            });
+            for (let i = 0; i < inserts.length; i += 100) {
+              await serviceClient.from("messages").insert(inserts.slice(i, i + 100));
             }
-          );
-          const chatsBody = await chatsResp.text();
-          console.log("findChats status:", chatsResp.status, "body:", chatsBody.substring(0, 500));
-
-          try {
-            const chatsData = JSON.parse(chatsBody);
-            if (Array.isArray(chatsData)) {
-              chats = chatsData;
-            }
-          } catch (_) { /* ignore */ }
-        }
-
-        // If still nothing, try GET method as fallback
-        if (chats.length === 0) {
-          const getResp = await fetch(
-            `${baseUrl}/chat/findChats/${evolution_instance_name}`,
-            { headers: { apikey: evolution_api_key } }
-          );
-          const getBody = await getResp.text();
-          console.log("findChats GET status:", getResp.status, "body:", getBody.substring(0, 500));
-
-          try {
-            const getData = JSON.parse(getBody);
-            if (Array.isArray(getData)) {
-              chats = getData;
-            }
-          } catch (_) { /* ignore */ }
-        }
-
-        console.log("Total chats found:", chats.length);
-
-        if (chats.length === 0) {
-          result = { synced: 0, debug: "No chats returned from any endpoint" };
+          }
+          result = { synced, source: "messages" };
           break;
         }
 
-        // Build batch of conversations to upsert
-        const rows: any[] = [];
-        for (const chat of chats) {
-          const jid = chat.remoteJid || chat.id;
-          if (!jid || !jid.includes("@s.whatsapp.net")) continue;
-          if (jid === "status@broadcast") continue;
-
-          const contactName = chat.pushName || chat.name || chat.contact?.pushName || null;
-
-          rows.push({
-            user_id: userId,
-            remote_jid: jid,
-            contact_name: contactName,
-            last_message: chat.lastMessage?.message?.conversation
-              || chat.lastMessage?.message?.extendedTextMessage?.text
-              || chat.lastMsgContent
-              || null,
-            last_message_at: chat.lastMessage?.messageTimestamp
-              ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
-              : new Date().toISOString(),
-          });
-        }
-
-        // Batch upsert in chunks of 100
-        let synced = 0;
-        for (let i = 0; i < rows.length; i += 100) {
-          const chunk = rows.slice(i, i + 100);
-          const { error: upsertErr } = await serviceClient
-            .from("conversations")
-            .upsert(chunk, { onConflict: "user_id,remote_jid" });
-          if (!upsertErr) synced += chunk.length;
-          else console.log("Upsert error:", upsertErr.message);
-        }
-
-        result = { synced };
+        // Fallback: No cached messages available yet. 
+        // Inform user that conversations will appear as messages arrive via webhook.
+        result = { synced: 0, info: "Nenhuma mensagem cacheada na instância. As conversas aparecerão automaticamente quando novas mensagens forem enviadas ou recebidas via WhatsApp." };
         break;
       }
 
@@ -286,13 +258,34 @@ Deno.serve(async (req) => {
           }
         );
         const msgBody = await msgResp.text();
-        console.log("findMessages status:", msgResp.status, "body length:", msgBody.length);
+        console.log("findMessages status:", msgResp.status, "body:", msgBody.substring(0, 1000));
 
         let rawMessages: any[] = [];
         try {
           const parsed = JSON.parse(msgBody);
-          rawMessages = Array.isArray(parsed) ? parsed : (parsed.messages || parsed.records || []);
-        } catch (_) { /* ignore */ }
+          if (Array.isArray(parsed)) {
+            rawMessages = parsed;
+          } else if (parsed.messages && Array.isArray(parsed.messages)) {
+            rawMessages = parsed.messages;
+          } else if (parsed.records && Array.isArray(parsed.records)) {
+            rawMessages = parsed.records;
+          } else {
+            // Maybe the response wraps in a different structure
+            console.log("findMessages keys:", Object.keys(parsed));
+            // Try to find any array in the response
+            for (const key of Object.keys(parsed)) {
+              if (Array.isArray(parsed[key])) {
+                rawMessages = parsed[key];
+                console.log("Found messages in key:", key, "count:", rawMessages.length);
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.log("findMessages parse error:", e.message);
+        }
+
+        console.log("rawMessages count:", rawMessages.length);
 
         const serviceClient2 = createClient(
           Deno.env.get("SUPABASE_URL")!,
