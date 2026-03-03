@@ -1,8 +1,8 @@
-import { memo, type FC } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { memo } from "react";
+import { Handle, Position } from "@xyflow/react";
 import { nodeTypeConfig, type FlowNodeData } from "@/types/chatbot";
 
-const CustomNode: FC<NodeProps> = ({ data, selected }) => {
+function CustomNode({ data, selected }: { data: Record<string, unknown>; selected?: boolean }) {
   const nodeData = data as FlowNodeData;
   const config = nodeTypeConfig[nodeData.type];
 
@@ -52,7 +52,6 @@ const CustomNode: FC<NodeProps> = ({ data, selected }) => {
       `}
       style={{ borderColor: config?.color || "#666" }}
     >
-      {/* Input handle - LEFT */}
       {nodeData.type !== "trigger" && (
         <Handle
           type="target"
@@ -61,7 +60,6 @@ const CustomNode: FC<NodeProps> = ({ data, selected }) => {
         />
       )}
 
-      {/* Header */}
       <div
         className="flex items-center gap-2 px-3 py-1.5 rounded-t-[6px] text-white text-xs font-semibold"
         style={{ backgroundColor: config?.color || "#666" }}
@@ -70,12 +68,10 @@ const CustomNode: FC<NodeProps> = ({ data, selected }) => {
         <span>{config?.label}</span>
       </div>
 
-      {/* Body */}
       <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2">
         {renderBody()}
       </div>
 
-      {/* Output handles - RIGHT */}
       {hasMultipleOutputs ? (
         Array.from({ length: pathCount }).map((_, i) => (
           <Handle
@@ -98,6 +94,6 @@ const CustomNode: FC<NodeProps> = ({ data, selected }) => {
       )}
     </div>
   );
-};
+}
 
 export default memo(CustomNode);
