@@ -13,18 +13,36 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    console.log("Webhook received:", JSON.stringify(body).slice(0, 500));
+    console.log("Webhook event:", body.event, "instance:", body.instance);
 
     const event = body.event;
     const data = body.data;
     const instance = body.instance;
 
-    // Only process incoming messages
-    if (event !== "messages.upsert" || !data) {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
+    // Process new messages (inbound and outbound)
+    if (!["messages.upsert", "send.message"].includes(event) || !data) {
+      return new Response(JSON.stringify({ ok: true, skipped: event }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Extract message data - format varies between events
+    const key = data.key || {};
+    const remoteJid = key.remoteJid || data.remoteJid;
+    const fromMe = key.fromMe ?? data.fromMe ?? false;
+    const messageContent =
+      data.message?.conversation ||
+      data.message?.extendedTextMessage?.text ||
+      data.message?.imageMessage?.caption ||
+      "";
+    const messageType = data.message?.imageMessage
+      ? "image"
+      : data.message?.audioMessage
+      ? "audio"
+      : data.message?.videoMessage
+      ? "video"
+      : "text";
+    const externalId = key.id || data.keyId || null;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -47,30 +65,37 @@ Deno.serve(async (req) => {
     }
 
     const userId = profile.user_id;
-    const remoteJid = data.key?.remoteJid;
-    const fromMe = data.key?.fromMe;
-    const messageContent =
-      data.message?.conversation ||
-      data.message?.extendedTextMessage?.text ||
-      data.message?.imageMessage?.caption ||
-      "";
-    const messageType = data.message?.imageMessage
-      ? "image"
-      : data.message?.audioMessage
-      ? "audio"
-      : data.message?.videoMessage
-      ? "video"
-      : "text";
 
     if (!remoteJid) {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
+      return new Response(JSON.stringify({ ok: true, skipped: "no remoteJid" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Skip status messages
-    if (remoteJid === "status@broadcast") {
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
+    // Skip status messages and LID format
+    if (remoteJid === "status@broadcast" || remoteJid.includes("@lid")) {
+      return new Response(JSON.stringify({ ok: true, skipped: "filtered" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Skip outbound messages sent via our proxy (already saved by proxy)
+    if (fromMe && event === "send.message") {
+      // Still update conversation metadata
+      const contactName = data.pushName || remoteJid.split("@")[0];
+      await supabase
+        .from("conversations")
+        .upsert(
+          {
+            user_id: userId,
+            remote_jid: remoteJid,
+            contact_name: contactName,
+            last_message: messageContent || `[${messageType}]`,
+            last_message_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,remote_jid" }
+        );
+      return new Response(JSON.stringify({ ok: true, updated: "conversation" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -111,6 +136,7 @@ Deno.serve(async (req) => {
     }
 
     // Insert message
+    console.log("Inserting message:", { remoteJid, direction: fromMe ? "outbound" : "inbound", content: messageContent?.substring(0, 50) });
     await supabase.from("messages").insert({
       conversation_id: conv.id,
       user_id: userId,
@@ -119,7 +145,7 @@ Deno.serve(async (req) => {
       message_type: messageType,
       direction: fromMe ? "outbound" : "inbound",
       status: "received",
-      external_id: data.key?.id || null,
+      external_id: externalId,
     });
 
     return new Response(JSON.stringify({ ok: true }), {
