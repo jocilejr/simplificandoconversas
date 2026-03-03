@@ -85,8 +85,8 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  // Find block node under cursor by checking all .react-flow__node elements
-  const findBlockUnderCursor = useCallback((clientX: number, clientY: number) => {
+  // Find block node ID under cursor using DOM only (no stale closure)
+  const findBlockIdUnderCursor = (clientX: number, clientY: number): string | null => {
     const flowNodes = document.querySelectorAll(".react-flow__node");
     for (const el of flowNodes) {
       const rect = el.getBoundingClientRect();
@@ -96,16 +96,11 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         clientY >= rect.top &&
         clientY <= rect.bottom
       ) {
-        // Extract node id from the element's data-id attribute
-        const nodeId = el.getAttribute("data-id");
-        if (nodeId) {
-          const node = nodes.find((n) => n.id === nodeId && n.type === "block");
-          if (node) return node;
-        }
+        return el.getAttribute("data-id");
       }
     }
     return null;
-  }, [nodes]);
+  };
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
@@ -113,20 +108,25 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
       const type = event.dataTransfer.getData("application/reactflow") as FlowNodeType;
       if (!type) return;
 
-      // Check if dropped over an existing block
-      const targetNode = findBlockUnderCursor(event.clientX, event.clientY);
+      const targetNodeId = findBlockIdUnderCursor(event.clientX, event.clientY);
 
-      if (targetNode) {
+      if (targetNodeId) {
+        // Add as child to existing block — use setNodes callback to get fresh state
         const newChild = createChildData(type);
+        let found = false;
         setNodes((nds) =>
           nds.map((n) => {
-            if (n.id !== targetNode.id) return n;
+            if (n.id !== targetNodeId || n.type !== "block") return n;
+            found = true;
             const data = n.data as FlowNodeData;
             const children = [...(data.children || []), newChild];
             return { ...n, data: { ...data, children } };
           })
         );
-        toast.success(`${nodeTypeConfig[type].label} adicionado ao bloco`);
+        // Toast after state update
+        setTimeout(() => {
+          toast.success(`${nodeTypeConfig[type].label} adicionado ao bloco`);
+        }, 0);
       } else {
         const position = reactFlowInstance.screenToFlowPosition({
           x: event.clientX,
@@ -147,7 +147,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         setNodes((nds) => nds.concat(newNode));
       }
     },
-    [reactFlowInstance, setNodes, findBlockUnderCursor]
+    [reactFlowInstance, setNodes]
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
