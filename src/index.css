@@ -85,17 +85,42 @@
 
 /* React Flow node styles */
 .react-flow__node {
-  transition: box-shadow 0.2s ease, transform 0.15s ease;
+  transition: box-shadow 0.2s ease;
 }
 .react-flow__node:hover {
   z-index: 10 !important;
 }
 .react-flow__edge-path {
+  stroke-width: 2px;
   transition: stroke 0.2s ease;
 }
-.react-flow__handle:hover {
+
+/* Block handles */
+.block-handle {
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  border: 2.5px solid hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  transition: all 0.15s ease !important;
+}
+.block-handle:hover {
+  border-color: hsl(var(--primary)) !important;
+  background: hsl(var(--primary) / 0.15) !important;
   transform: scale(1.3);
-  transition: transform 0.15s ease;
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+}
+.block-handle-target {
+  left: -7px !important;
+  top: 50% !important;
+}
+.block-handle-source {
+  right: -7px !important;
+  top: 50% !important;
+}
+.react-flow__handle.connecting {
+  border-color: hsl(var(--primary)) !important;
+  background: hsl(var(--primary) / 0.3) !important;
 }
 
 /* Custom scrollbar */
