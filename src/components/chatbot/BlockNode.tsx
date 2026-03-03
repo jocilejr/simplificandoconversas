@@ -57,9 +57,55 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
   const nodeData = data as FlowNodeData;
   const children = nodeData.children || [];
   const firstChild = children[0];
-  const headerType = firstChild?.type || "sendText";
+  const isTrigger = nodeData.type === "trigger";
+  const headerType = firstChild?.type || nodeData.type || "sendText";
   const headerConfig = nodeTypeConfig[headerType];
   const accentColor = headerConfig?.color || "#666";
+
+  // Trigger: render as a compact standalone node
+  if (isTrigger) {
+    const triggerConfig = nodeTypeConfig["trigger"];
+    const TriggerIcon = icons[triggerConfig.icon as keyof typeof icons];
+    const triggerChild = firstChild || nodeData;
+    const triggerLabel =
+      triggerChild.triggerType === "keyword"
+        ? `Palavra-chave: "${triggerChild.triggerKeyword || "..."}"`
+        : triggerChild.triggerType === "any_message"
+        ? "Qualquer mensagem"
+        : "Evento específico";
+
+    return (
+      <div
+        className={`
+          relative w-[240px] rounded-xl transition-all duration-200
+          bg-card border-2
+          ${selected
+            ? "shadow-lg ring-2 ring-primary/20"
+            : "shadow-sm hover:shadow-md"
+          }
+        `}
+        style={{ borderColor: triggerConfig.color }}
+      >
+        <div
+          className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-t-[10px]"
+          style={{ backgroundColor: triggerConfig.color, color: "#fff" }}
+        >
+          {TriggerIcon && <TriggerIcon className="w-4 h-4" />}
+          <span className="text-[13px] font-bold">
+            {nodeData.label || "Gatilho"}
+          </span>
+        </div>
+        <div className="px-3.5 py-3">
+          <p className="text-[12px] text-muted-foreground">{triggerLabel}</p>
+        </div>
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="block-handle block-handle-source"
+        />
+      </div>
+    );
+  }
 
   return (
     <div
