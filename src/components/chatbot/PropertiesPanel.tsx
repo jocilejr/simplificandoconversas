@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { X, Trash2 } from "lucide-react";
 import { type FlowNode, type FlowNodeData, nodeTypeConfig } from "@/types/chatbot";
 import { TextFormatToolbar } from "@/components/chatbot/TextFormatToolbar";
+import { MediaUpload } from "@/components/chatbot/MediaUpload";
 
 interface PropertiesPanelProps {
   node: FlowNode;
@@ -105,10 +106,12 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
         {/* Send Audio */}
         {child.type === "sendAudio" && (
           <>
-            <div className="space-y-1.5">
-              <Label className="text-xs">URL do Áudio</Label>
-              <Input value={child.audioUrl || ""} onChange={(e) => update({ audioUrl: e.target.value })} placeholder="https://..." className="h-8 text-xs" />
-            </div>
+            <MediaUpload
+              label="Áudio"
+              value={child.audioUrl || ""}
+              accept="audio/*"
+              onChange={(url) => update({ audioUrl: url })}
+            />
             <div className="flex items-center justify-between">
               <Label className="text-xs">Simular gravação</Label>
               <Switch checked={child.simulateRecording || false} onCheckedChange={(v) => update({ simulateRecording: v })} />
@@ -116,13 +119,31 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
           </>
         )}
 
-        {/* Send Video / Image */}
-        {(child.type === "sendVideo" || child.type === "sendImage") && (
+        {/* Send Image */}
+        {child.type === "sendImage" && (
           <>
+            <MediaUpload
+              label="Imagem"
+              value={child.mediaUrl || ""}
+              accept="image/*"
+              onChange={(url) => update({ mediaUrl: url })}
+            />
             <div className="space-y-1.5">
-              <Label className="text-xs">URL da Mídia</Label>
-              <Input value={child.mediaUrl || ""} onChange={(e) => update({ mediaUrl: e.target.value })} placeholder="https://..." className="h-8 text-xs" />
+              <Label className="text-xs">Legenda</Label>
+              <Input value={child.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
             </div>
+          </>
+        )}
+
+        {/* Send Video */}
+        {child.type === "sendVideo" && (
+          <>
+            <MediaUpload
+              label="Vídeo"
+              value={child.mediaUrl || ""}
+              accept="video/*"
+              onChange={(url) => update({ mediaUrl: url })}
+            />
             <div className="space-y-1.5">
               <Label className="text-xs">Legenda</Label>
               <Input value={child.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
