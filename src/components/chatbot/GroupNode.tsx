@@ -1,13 +1,7 @@
-import { memo, type FC } from "react";
-import { type NodeProps } from "@xyflow/react";
+import { memo } from "react";
 
-interface GroupNodeData {
-  label: string;
-  [key: string]: unknown;
-}
-
-const GroupNode: FC<NodeProps> = ({ data, selected }) => {
-  const nodeData = data as GroupNodeData;
+function GroupNode({ data, selected }: { data: Record<string, unknown>; selected?: boolean }) {
+  const label = (data.label as string) || "Grupo";
 
   return (
     <div
@@ -19,10 +13,10 @@ const GroupNode: FC<NodeProps> = ({ data, selected }) => {
       style={{ padding: 8 }}
     >
       <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-        📦 {nodeData.label || "Grupo"}
+        📦 {label}
       </div>
     </div>
   );
-};
+}
 
 export default memo(GroupNode);

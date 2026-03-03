@@ -10,6 +10,7 @@ import {
   useEdgesState,
   addEdge,
   BackgroundVariant,
+  SelectionMode,
   type Connection,
   type NodeTypes,
 } from "@xyflow/react";
@@ -240,8 +241,9 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
+          panOnDrag={[1, 2]}
           selectionOnDrag
-          selectNodesOnDrag
+          selectionMode={SelectionMode.Partial}
           multiSelectionKeyCode="Shift"
           className="bg-background"
           deleteKeyCode={["Backspace", "Delete"]}
