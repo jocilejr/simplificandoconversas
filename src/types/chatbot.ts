@@ -9,6 +9,7 @@ export type FlowNodeType =
   | "condition"
   | "randomizer"
   | "waitDelay"
+  | "waitForReply"
   | "action";
 
 export interface FlowNodeData {
@@ -34,14 +35,28 @@ export interface FlowNodeData {
   // Wait/Delay
   delaySeconds?: number;
   simulateTyping?: boolean;
+  // Wait for Reply
+  replyVariable?: string;
+  replyTimeout?: number;
+  replyFallback?: string;
   // Action
   actionType?: "add_tag" | "remove_tag" | "add_to_list" | "set_variable";
   actionValue?: string;
+  // Block attach
+  attachedTo?: string;
   [key: string]: unknown;
 }
 
 export type FlowNode = Node<FlowNodeData>;
 export type FlowEdge = Edge;
+
+// Helper: parse WhatsApp-style formatting to React elements
+export function parseWhatsAppFormatting(text: string): string {
+  return text
+    .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    .replace(/~(.*?)~/g, '<del>$1</del>');
+}
 
 export const nodeTypeConfig: Record<
   FlowNodeType,
@@ -94,6 +109,12 @@ export const nodeTypeConfig: Record<
     color: "#64748b",
     icon: "⏱️",
     description: "Pausa com simulação de digitando...",
+  },
+  waitForReply: {
+    label: "Capturar Resposta",
+    color: "#10b981",
+    icon: "💭",
+    description: "Aguarda e captura a mensagem do contato",
   },
   action: {
     label: "Ação",
