@@ -16,15 +16,17 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Save, Play, Square, ArrowLeft, Plus } from "lucide-react";
+import { Save, Play, Square, ArrowLeft, Group } from "lucide-react";
 import { NodePalette } from "@/components/chatbot/NodePalette";
 import { PropertiesPanel } from "@/components/chatbot/PropertiesPanel";
 import CustomNode from "@/components/chatbot/CustomNode";
+import GroupNode from "@/components/chatbot/GroupNode";
 import { type FlowNodeType, type FlowNodeData, type FlowNode, nodeTypeConfig } from "@/types/chatbot";
 import { toast } from "sonner";
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
+  group: GroupNode,
 };
 
 const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
@@ -126,6 +128,89 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
     [setNodes, setEdges]
   );
 
+  const handleGroupSelected = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected && n.type !== "group");
+    if (selectedNodes.length < 2) {
+      toast.error("Selecione pelo menos 2 nós para agrupar");
+      return;
+    }
+
+    // Calculate bounding box
+    const padding = 20;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    selectedNodes.forEach((n) => {
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + 280);
+      maxY = Math.max(maxY, n.position.y + 80);
+    });
+
+    const groupId = `group_${idCounter.current++}`;
+    const groupNode = {
+      id: groupId,
+      type: "group" as const,
+      position: { x: minX - padding, y: minY - padding - 24 },
+      style: {
+        width: maxX - minX + padding * 2,
+        height: maxY - minY + padding * 2 + 24,
+      },
+      data: { label: "Grupo" },
+    };
+
+    // Set parentId and adjust positions to be relative to group
+    setNodes((nds) => {
+      const updatedNodes = nds.map((n) => {
+        if (selectedNodes.find((s) => s.id === n.id)) {
+          return {
+            ...n,
+            parentId: groupId,
+            position: {
+              x: n.position.x - (minX - padding),
+              y: n.position.y - (minY - padding - 24),
+            },
+            extent: "parent" as const,
+          };
+        }
+        return n;
+      });
+      return [groupNode as any, ...updatedNodes];
+    });
+
+    toast.success(`${selectedNodes.length} nós agrupados`);
+  }, [nodes, setNodes]);
+
+  const handleUngroupSelected = useCallback(() => {
+    const selectedGroups = nodes.filter((n) => n.selected && n.type === "group");
+    if (selectedGroups.length === 0) {
+      toast.error("Selecione um grupo para desagrupar");
+      return;
+    }
+
+    selectedGroups.forEach((group) => {
+      setNodes((nds) => {
+        const updated = nds
+          .filter((n) => n.id !== group.id)
+          .map((n) => {
+            if (n.parentId === group.id) {
+              return {
+                ...n,
+                parentId: undefined,
+                extent: undefined,
+                position: {
+                  x: n.position.x + group.position.x,
+                  y: n.position.y + group.position.y,
+                },
+              };
+            }
+            return n;
+          });
+        return updated;
+      });
+    });
+
+    toast.success("Grupo desfeito");
+  }, [nodes, setNodes]);
+
   const handleSave = () => {
     toast.success("Fluxo salvo com sucesso!");
   };
@@ -155,6 +240,9 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
+          selectionOnDrag
+          selectNodesOnDrag
+          multiSelectionKeyCode="Shift"
           className="bg-background"
           deleteKeyCode={["Backspace", "Delete"]}
           proOptions={{ hideAttribution: true }}
@@ -185,6 +273,12 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleGroupSelected} title="Agrupar nós selecionados (selecione com Shift+Drag)">
+              <Group className="h-3 w-3 mr-1" /> Agrupar
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleUngroupSelected} title="Desagrupar">
+              Desagrupar
+            </Button>
             <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleSave}>
               <Save className="h-3 w-3 mr-1" /> Salvar
             </Button>

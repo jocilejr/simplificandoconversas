@@ -9,26 +9,61 @@ const CustomNode: FC<NodeProps> = ({ data, selected }) => {
   const hasMultipleOutputs = nodeData.type === "condition" || nodeData.type === "randomizer";
   const pathCount = nodeData.type === "randomizer" ? (nodeData.paths || 2) : 2;
 
+  const renderBody = () => {
+    switch (nodeData.type) {
+      case "trigger":
+        return nodeData.triggerType === "keyword"
+          ? `Palavra: "${nodeData.triggerKeyword || "..."}"`
+          : nodeData.triggerType === "any_message"
+          ? "Qualquer mensagem"
+          : "Evento específico";
+      case "sendText":
+        return nodeData.textContent || "Mensagem vazia...";
+      case "sendAudio":
+        return (nodeData.audioUrl ? "🎵 Áudio" : "Sem áudio") +
+          (nodeData.simulateRecording ? " · 🔴 Gravando" : "");
+      case "sendVideo":
+      case "sendImage":
+        return nodeData.mediaUrl ? "📎 Mídia carregada" : "Sem mídia";
+      case "condition":
+        return `Se ${nodeData.conditionField || "campo"} ${nodeData.conditionOperator || "contém"} "${nodeData.conditionValue || "..."}"`;
+      case "randomizer":
+        return `${nodeData.paths || 2} caminhos`;
+      case "waitDelay":
+        return `⏳ ${nodeData.delaySeconds || 0}s` + (nodeData.simulateTyping ? " · ✍️" : "");
+      case "action":
+        return nodeData.actionType === "add_tag"
+          ? `🏷️ ${nodeData.actionValue || "..."}`
+          : nodeData.actionType === "add_to_list"
+          ? `📋 ${nodeData.actionValue || "..."}`
+          : nodeData.actionType === "set_variable"
+          ? `📝 ${nodeData.actionValue || "..."}`
+          : "Sem ação";
+      default:
+        return "";
+    }
+  };
+
   return (
     <div
       className={`
-        relative min-w-[200px] max-w-[260px] rounded-xl border-2 bg-card shadow-lg transition-all
-        ${selected ? "ring-2 ring-primary shadow-xl scale-[1.02]" : "hover:shadow-xl"}
+        relative min-w-[220px] max-w-[280px] rounded-lg border-2 bg-card shadow-md transition-all
+        ${selected ? "ring-2 ring-primary shadow-xl scale-[1.02]" : "hover:shadow-lg"}
       `}
       style={{ borderColor: config?.color || "#666" }}
     >
-      {/* Input handle */}
+      {/* Input handle - LEFT */}
       {nodeData.type !== "trigger" && (
         <Handle
           type="target"
-          position={Position.Top}
-          className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground"
+          position={Position.Left}
+          className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-left-1.5"
         />
       )}
 
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-t-[10px] text-white text-xs font-semibold"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-t-[6px] text-white text-xs font-semibold"
         style={{ backgroundColor: config?.color || "#666" }}
       >
         <span className="text-sm">{config?.icon}</span>
@@ -36,101 +71,29 @@ const CustomNode: FC<NodeProps> = ({ data, selected }) => {
       </div>
 
       {/* Body */}
-      <div className="px-3 py-3 text-xs text-foreground space-y-1">
-        {nodeData.type === "trigger" && (
-          <p className="text-muted-foreground">
-            {nodeData.triggerType === "keyword"
-              ? `Palavra: "${nodeData.triggerKeyword || "..."}"`
-              : nodeData.triggerType === "any_message"
-              ? "Qualquer mensagem"
-              : "Evento específico"}
-          </p>
-        )}
-
-        {nodeData.type === "sendText" && (
-          <p className="text-muted-foreground line-clamp-3">
-            {nodeData.textContent || "Mensagem vazia..."}
-          </p>
-        )}
-
-        {nodeData.type === "sendAudio" && (
-          <div className="space-y-1">
-            <p className="text-muted-foreground">
-              {nodeData.audioUrl ? "🎵 Áudio carregado" : "Sem áudio"}
-            </p>
-            {nodeData.simulateRecording && (
-              <span className="inline-block px-1.5 py-0.5 rounded bg-secondary text-[10px]">
-                🔴 Simular gravação
-              </span>
-            )}
-          </div>
-        )}
-
-        {(nodeData.type === "sendVideo" || nodeData.type === "sendImage") && (
-          <p className="text-muted-foreground">
-            {nodeData.mediaUrl ? "📎 Mídia carregada" : "Sem mídia"}
-          </p>
-        )}
-
-        {nodeData.type === "condition" && (
-          <p className="text-muted-foreground">
-            Se {nodeData.conditionField || "campo"}{" "}
-            {nodeData.conditionOperator || "contém"}{" "}
-            "{nodeData.conditionValue || "..."}"
-          </p>
-        )}
-
-        {nodeData.type === "randomizer" && (
-          <p className="text-muted-foreground">
-            {nodeData.paths || 2} caminhos aleatórios
-          </p>
-        )}
-
-        {nodeData.type === "waitDelay" && (
-          <div className="space-y-1">
-            <p className="text-muted-foreground">
-              ⏳ {nodeData.delaySeconds || 0}s de espera
-            </p>
-            {nodeData.simulateTyping && (
-              <span className="inline-block px-1.5 py-0.5 rounded bg-secondary text-[10px]">
-                ✍️ Digitando...
-              </span>
-            )}
-          </div>
-        )}
-
-        {nodeData.type === "action" && (
-          <p className="text-muted-foreground">
-            {nodeData.actionType === "add_tag"
-              ? `🏷️ Tag: ${nodeData.actionValue || "..."}`
-              : nodeData.actionType === "add_to_list"
-              ? `📋 Lista: ${nodeData.actionValue || "..."}`
-              : nodeData.actionType === "set_variable"
-              ? `📝 Var: ${nodeData.actionValue || "..."}`
-              : "Nenhuma ação configurada"}
-          </p>
-        )}
+      <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2">
+        {renderBody()}
       </div>
 
-      {/* Output handles */}
+      {/* Output handles - RIGHT */}
       {hasMultipleOutputs ? (
         Array.from({ length: pathCount }).map((_, i) => (
           <Handle
             key={`output-${i}`}
             type="source"
-            position={Position.Bottom}
+            position={Position.Right}
             id={`output-${i}`}
-            className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground"
+            className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
             style={{
-              left: `${((i + 1) / (pathCount + 1)) * 100}%`,
+              top: `${((i + 1) / (pathCount + 1)) * 100}%`,
             }}
           />
         ))
       ) : (
         <Handle
           type="source"
-          position={Position.Bottom}
-          className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground"
+          position={Position.Right}
+          className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
         />
       )}
     </div>
