@@ -77,7 +77,7 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
     return (
       <div
         className={`
-          trigger-node relative w-[220px] rounded-2xl overflow-hidden transition-all duration-200
+          trigger-node relative w-[220px] rounded-2xl transition-all duration-200
           ${selected
             ? "shadow-xl ring-2 ring-primary/30"
             : "shadow-md hover:shadow-lg"
@@ -87,7 +87,7 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
           background: `linear-gradient(135deg, ${triggerConfig.color}, ${triggerConfig.color}dd)`,
         }}
       >
-        <div className="flex items-center gap-2.5 px-4 py-3">
+        <div className="flex items-center gap-2.5 px-4 py-3 rounded-t-2xl">
           <div className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
             {TriggerIcon && <TriggerIcon className="w-3.5 h-3.5 text-white" />}
           </div>
@@ -111,7 +111,7 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
   return (
     <div
       className={`
-        block-node relative w-[280px] rounded-2xl overflow-hidden transition-all duration-200
+        block-node relative w-[280px] rounded-2xl transition-all duration-200
         bg-card
         ${selected
           ? "shadow-xl ring-2 ring-primary/25 border-primary/40"
@@ -121,8 +121,9 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
       style={{ borderWidth: 1, borderStyle: "solid" }}
     >
       {/* Top accent bar */}
+      {/* Top accent bar */}
       <div
-        className="h-[3px] w-full"
+        className="h-[3px] w-full rounded-t-2xl"
         style={{ backgroundColor: accentColor }}
       />
 
