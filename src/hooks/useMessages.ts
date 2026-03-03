@@ -40,20 +40,20 @@ export function useMessages(conversationId: string | null, remoteJid?: string | 
     if (!conversationId || !remoteJid) return;
     if (fetchedRef.current.has(conversationId)) return;
 
-    // Only fetch if we have no local messages
-    if (query.data && query.data.length === 0 && !query.isLoading) {
-      fetchedRef.current.add(conversationId);
-      supabase.functions
-        .invoke("evolution-proxy", {
-          body: { action: "fetch-messages", remoteJid, count: 100 },
-        })
-        .then(({ error }) => {
-          if (!error) {
-            queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-          }
-        });
-    }
-  }, [conversationId, remoteJid, query.data, query.isLoading, queryClient]);
+    // Fetch messages from Evolution API when conversation is selected
+    // We do this once per conversation to populate the local DB
+    fetchedRef.current.add(conversationId);
+    supabase.functions
+      .invoke("evolution-proxy", {
+        body: { action: "fetch-messages", remoteJid, count: 100 },
+      })
+      .then(({ data, error }) => {
+        console.log("fetch-messages result:", data, error);
+        if (!error) {
+          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+        }
+      });
+  }, [conversationId, remoteJid, queryClient]);
 
   useEffect(() => {
     if (!conversationId) return;
