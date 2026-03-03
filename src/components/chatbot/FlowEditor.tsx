@@ -76,7 +76,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
   );
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge({ ...params, type: "smoothstep", animated: true, style: { stroke: "hsl(var(--primary))", strokeWidth: 2 } }, eds)),
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, type: "smoothstep", animated: false, style: { stroke: "hsl(142 70% 45% / 0.5)", strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
