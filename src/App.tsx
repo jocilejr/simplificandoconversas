@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Contacts from "./pages/Contacts";
@@ -24,13 +25,15 @@ const App = () => (
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/contacts" element={<Contacts />} />
-            <Route path="/schedule" element={<Schedule />} />
-            <Route path="/chatbot" element={<ChatbotBuilder />} />
-            <Route path="/conversations" element={<Conversations />} />
-            <Route path="/settings" element={<SettingsPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/contacts" element={<Contacts />} />
+              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/chatbot" element={<ChatbotBuilder />} />
+              <Route path="/conversations" element={<Conversations />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
