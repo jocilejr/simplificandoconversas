@@ -111,19 +111,27 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
       const targetNodeId = findBlockIdUnderCursor(event.clientX, event.clientY);
 
       if (targetNodeId) {
-        // Add as child to existing block — use setNodes callback to get fresh state
+        // Don't allow dropping children onto trigger blocks
+        const targetNode = nodes.find((n) => n.id === targetNodeId);
+        if (targetNode && (targetNode.data as FlowNodeData).type === "trigger") {
+          toast.error("O gatilho é um nó inicial e não aceita sub-itens");
+          return;
+        }
+        // Don't allow dropping triggers as children
+        if (type === "trigger") {
+          toast.error("Gatilhos não podem ser adicionados dentro de blocos");
+          return;
+        }
+        // Add as child to existing block
         const newChild = createChildData(type);
-        let found = false;
         setNodes((nds) =>
           nds.map((n) => {
             if (n.id !== targetNodeId || n.type !== "block") return n;
-            found = true;
             const data = n.data as FlowNodeData;
             const children = [...(data.children || []), newChild];
             return { ...n, data: { ...data, children } };
           })
         );
-        // Toast after state update
         setTimeout(() => {
           toast.success(`${nodeTypeConfig[type].label} adicionado ao bloco`);
         }, 0);
@@ -223,6 +231,12 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
     (_event: React.MouseEvent, draggedNode: any) => {
       const targetNodeId = findBlockIdUnderCursor(_event.clientX, _event.clientY);
       if (!targetNodeId || targetNodeId === draggedNode.id) return;
+
+      // Don't allow merging into or from trigger blocks
+      const targetNode = nodes.find((n) => n.id === targetNodeId);
+      if (targetNode && (targetNode.data as FlowNodeData).type === "trigger") return;
+      const draggedNodeData = nodes.find((n) => n.id === draggedNode.id);
+      if (draggedNodeData && (draggedNodeData.data as FlowNodeData).type === "trigger") return;
 
       setNodes((nds) => {
         const dragged = nds.find((n) => n.id === draggedNode.id);
