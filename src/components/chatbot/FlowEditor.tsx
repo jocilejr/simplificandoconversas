@@ -76,7 +76,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
   );
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: "hsl(var(--primary))", strokeWidth: 2 } }, eds)),
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, type: "smoothstep", animated: true, style: { stroke: "hsl(var(--primary))", strokeWidth: 2 } }, eds)),
     [setEdges]
   );
 
@@ -170,8 +170,44 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
         setSelectedNodeId(null);
         setSelectedChildIndex(null);
         toast.success("Item removido");
-        return; // Don't select node after removing
+        return;
       }
+    }
+
+    // Handle move up
+    const moveUpBtn = target.closest("[data-move-up]");
+    if (moveUpBtn) {
+      const idx = parseInt(moveUpBtn.getAttribute("data-move-up") || "-1");
+      if (idx > 0) {
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id !== node.id) return n;
+            const data = n.data as FlowNodeData;
+            const children = [...(data.children || [])];
+            [children[idx - 1], children[idx]] = [children[idx], children[idx - 1]];
+            return { ...n, data: { ...data, children } };
+          })
+        );
+      }
+      return;
+    }
+
+    // Handle move down
+    const moveDownBtn = target.closest("[data-move-down]");
+    if (moveDownBtn) {
+      const idx = parseInt(moveDownBtn.getAttribute("data-move-down") || "-1");
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== node.id) return n;
+          const data = n.data as FlowNodeData;
+          const children = [...(data.children || [])];
+          if (idx >= 0 && idx < children.length - 1) {
+            [children[idx], children[idx + 1]] = [children[idx + 1], children[idx]];
+          }
+          return { ...n, data: { ...data, children } };
+        })
+      );
+      return;
     }
 
     setSelectedNodeId(node.id);

@@ -83,6 +83,21 @@
   }
 }
 
+/* React Flow node styles */
+.react-flow__node {
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+.react-flow__node:hover {
+  z-index: 10 !important;
+}
+.react-flow__edge-path {
+  transition: stroke 0.2s ease;
+}
+.react-flow__handle:hover {
+  transform: scale(1.3);
+  transition: transform 0.15s ease;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
