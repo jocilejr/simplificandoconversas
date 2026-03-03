@@ -83,47 +83,95 @@
   }
 }
 
-/* React Flow node styles */
+/* ═══════════════════════════════════════
+   React Flow — Nodes
+   ═══════════════════════════════════════ */
 .react-flow__node {
-  transition: box-shadow 0.2s ease;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
 }
 .react-flow__node:hover {
   z-index: 10 !important;
 }
-.react-flow__edge-path {
-  stroke-width: 2px;
-  transition: stroke 0.2s ease;
+
+/* ═══════════════════════════════════════
+   React Flow — Handles (connection points)
+   ═══════════════════════════════════════ */
+.block-handle {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  border: 3px solid hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
 }
 
-/* Block handles */
-.block-handle {
-  width: 14px !important;
-  height: 14px !important;
-  border-radius: 50% !important;
-  border: 2.5px solid hsl(var(--border)) !important;
-  background: hsl(var(--card)) !important;
-  transition: all 0.15s ease !important;
+/* Inner dot indicator */
+.block-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  opacity: 0.5;
+  transition: all 0.2s ease;
 }
+
 .block-handle:hover {
   border-color: hsl(var(--primary)) !important;
-  background: hsl(var(--primary) / 0.15) !important;
-  transform: scale(1.3);
-  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+  background: hsl(var(--primary) / 0.12) !important;
+  transform: scale(1.25);
+  box-shadow: 0 0 0 5px hsl(var(--primary) / 0.1), 0 2px 8px rgba(0,0,0,0.1) !important;
 }
+.block-handle:hover::after {
+  opacity: 1;
+  width: 5px;
+  height: 5px;
+}
+
 .block-handle-target {
-  left: -7px !important;
+  left: -8px !important;
   top: 50% !important;
 }
 .block-handle-source {
-  right: -7px !important;
+  right: -8px !important;
   top: 50% !important;
 }
-.react-flow__handle.connecting {
+
+/* Connecting state */
+.react-flow__handle.connecting,
+.block-handle.connecting {
   border-color: hsl(var(--primary)) !important;
-  background: hsl(var(--primary) / 0.3) !important;
+  background: hsl(var(--primary) / 0.25) !important;
+  box-shadow: 0 0 0 6px hsl(var(--primary) / 0.15) !important;
+  animation: handle-pulse 1.2s ease-in-out infinite;
 }
 
-/* Custom scrollbar */
+@keyframes handle-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1); }
+  50% { box-shadow: 0 0 0 8px hsl(var(--primary) / 0.2); }
+}
+
+/* ═══════════════════════════════════════
+   React Flow — Edges (connection lines)
+   ═══════════════════════════════════════ */
+.react-flow__edge-path {
+  stroke: hsl(var(--primary) / 0.45);
+  stroke-width: 2px;
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: hsl(var(--primary));
+  stroke-width: 3px;
+}
+
+/* ═══════════════════════════════════════
+   Custom Scrollbar
+   ═══════════════════════════════════════ */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
