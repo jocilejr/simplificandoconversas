@@ -181,6 +181,40 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
     }
   }, [setNodes]);
 
+  const onNodeDragStop = useCallback(
+    (_event: React.MouseEvent, draggedNode: any) => {
+      const targetNodeId = findBlockIdUnderCursor(_event.clientX, _event.clientY);
+      if (!targetNodeId || targetNodeId === draggedNode.id) return;
+
+      setNodes((nds) => {
+        const dragged = nds.find((n) => n.id === draggedNode.id);
+        if (!dragged || dragged.type !== "block") return nds;
+        const draggedData = dragged.data as FlowNodeData;
+        const draggedChildren = draggedData.children || [];
+        if (draggedChildren.length === 0) return nds;
+
+        return nds
+          .map((n) => {
+            if (n.id === targetNodeId && n.type === "block") {
+              const data = n.data as FlowNodeData;
+              const children = [...(data.children || []), ...draggedChildren];
+              return { ...n, data: { ...data, children } };
+            }
+            return n;
+          })
+          .filter((n) => n.id !== draggedNode.id);
+      });
+
+      setEdges((eds) =>
+        eds.filter((e) => e.source !== draggedNode.id && e.target !== draggedNode.id)
+      );
+      setSelectedNodeId(null);
+      setSelectedChildIndex(null);
+      toast.success("Bloco mesclado com sucesso");
+    },
+    [setNodes, setEdges]
+  );
+
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedChildIndex(null);
@@ -228,6 +262,7 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
           onDrop={onDrop}
           onDragOver={onDragOver}
           onNodeClick={onNodeClick}
+          onNodeDragStop={onNodeDragStop}
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
