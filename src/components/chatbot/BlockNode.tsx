@@ -63,7 +63,7 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
   return (
     <div
       className={`
-        relative min-w-[270px] max-w-[310px] rounded-2xl overflow-hidden transition-all duration-200
+        relative min-w-[270px] max-w-[310px] rounded-2xl transition-all duration-200
         bg-card
         ${selected
           ? "shadow-[0_0_0_2px_hsl(var(--primary)),0_12px_40px_-12px_rgba(0,0,0,0.25)]"
@@ -81,7 +81,7 @@ function BlockNode({ id, data, selected }: BlockNodeProps) {
 
       {/* Header with gradient */}
       <div
-        className="flex items-center gap-2.5 px-4 py-3"
+        className="flex items-center gap-2.5 px-4 py-3 rounded-t-2xl"
         style={{
           background: `linear-gradient(135deg, ${headerConfig?.color || "#666"}, ${headerConfig?.color || "#666"}dd)`,
         }}
