@@ -15,6 +15,9 @@ export type FlowNodeType =
 export interface FlowNodeData {
   label: string;
   type: FlowNodeType;
+  // Block children (sub-items stacked inside a block)
+  children?: FlowNodeData[];
+  childId?: string; // unique id for each child item
   // Trigger
   triggerKeyword?: string;
   triggerType?: "keyword" | "any_message" | "event";
@@ -42,8 +45,6 @@ export interface FlowNodeData {
   // Action
   actionType?: "add_tag" | "remove_tag" | "add_to_list" | "set_variable";
   actionValue?: string;
-  // Block attach
-  attachedTo?: string;
   [key: string]: unknown;
 }
 
