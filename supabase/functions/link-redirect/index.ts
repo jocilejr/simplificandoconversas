@@ -11,6 +11,17 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Detect bot/preview user agents (WhatsApp link preview, Facebook crawler, etc.)
+  const userAgent = (req.headers.get("user-agent") || "").toLowerCase();
+  const botPatterns = [
+    "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
+    "twitterbot", "linkedinbot", "slackbot", "discordbot",
+    "googlebot", "bingbot", "yandexbot", "baiduspider",
+    "preview", "crawler", "spider", "bot", "curl", "wget",
+    "python-requests", "go-http-client", "java/", "apache-httpclient"
+  ];
+  const isBot = botPatterns.some((p) => userAgent.includes(p));
+
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
 
@@ -33,8 +44,8 @@ Deno.serve(async (req) => {
     return new Response("Link not found", { status: 404 });
   }
 
-  // If not yet clicked, mark as clicked and resume flow
-  if (!link.clicked) {
+  // Only process click if NOT a bot/preview request
+  if (!link.clicked && !isBot) {
     await serviceClient
       .from("tracked_links")
       .update({ clicked: true, clicked_at: new Date().toISOString() })
@@ -65,6 +76,8 @@ Deno.serve(async (req) => {
         console.error("[link-redirect] Failed to resume flow:", err);
       }
     }
+  } else if (isBot) {
+    console.log(`[link-redirect] Ignored bot/preview request. UA: ${userAgent}`);
   }
 
   // Always redirect to original URL
