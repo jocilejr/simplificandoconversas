@@ -90,7 +90,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const onConnect = useCallback(
     (params: Connection) =>
       setEdges((eds) =>
-        addEdge({ ...params, type: "smoothstep", animated: false, style: { stroke: "hsl(142 70% 45% / 0.5)", strokeWidth: 2 } }, eds)
+        addEdge({ ...params, type: "default", animated: true, style: { stroke: "hsl(142 70% 45% / 0.45)", strokeWidth: 2, strokeDasharray: "6 4" } }, eds)
       ),
     [setEdges]
   );
