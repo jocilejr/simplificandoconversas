@@ -2,7 +2,13 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, RefreshCw, Search, MessageSquare } from "lucide-react";
+import { Loader2, RefreshCw, Search, MessageSquare, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Conversation } from "@/hooks/useConversations";
 import { ContactAvatar } from "./ContactAvatar";
 import { cn } from "@/lib/utils";
@@ -63,45 +69,33 @@ export function ConversationList({
 
   return (
     <div className="flex flex-col h-full bg-card/50">
-      {/* Instance Tabs */}
-      {instances.length > 0 && (
-        <div className="px-3 pt-3 pb-1">
-          <div className="overflow-x-auto">
-            <div className="flex gap-1.5 min-w-max">
-              <button
-                onClick={() => onSelectInstance(null)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
-                  !selectedInstance
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                )}
-              >
-                Todas
-              </button>
-              {instances.map((inst) => (
-                <button
-                  key={inst.name}
-                  onClick={() => onSelectInstance(inst.name)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
-                    selectedInstance === inst.name
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  )}
-                >
-                  {inst.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <div className="px-4 pt-3 pb-3 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground tracking-tight">Conversas</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-foreground tracking-tight">Conversas</h2>
+            {instances.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs rounded-full gap-1 px-2.5">
+                    {selectedInstance || "Todas"}
+                    <ChevronDown className="h-3 w-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => onSelectInstance(null)} className={cn(!selectedInstance && "font-semibold")}>
+                    Todas
+                  </DropdownMenuItem>
+                  {instances.map((inst) => (
+                    <DropdownMenuItem key={inst.name} onClick={() => onSelectInstance(inst.name)} className={cn(selectedInstance === inst.name && "font-semibold")}>
+                      {inst.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
