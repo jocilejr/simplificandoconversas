@@ -206,15 +206,13 @@ Deno.serve(async (req) => {
     const baseUrl = evolution_api_url.replace(/\/$/, "");
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
-    // Auto-cleanup stuck executions older than 5 minutes
+    // Cancel any previous active executions for this contact before starting new one
     await serviceClient
       .from("flow_executions")
-      .update({ status: "completed" })
+      .update({ status: "cancelled" })
       .eq("user_id", userId)
-      .eq("flow_id", flowId)
       .eq("remote_jid", jid)
-      .eq("status", "running")
-      .lt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+      .in("status", ["running", "waiting_click"]);
 
     console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
 
