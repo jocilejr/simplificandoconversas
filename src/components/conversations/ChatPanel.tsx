@@ -158,10 +158,10 @@ export function ChatPanel({
                 <div className={cn("flex mb-1", isOutbound ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[70%] px-3.5 py-2.5 text-sm shadow-sm",
+                      "max-w-[65%] px-3 py-2 text-[13px] shadow-sm",
                       isOutbound
                         ? "bg-[hsl(142,50%,24%)] text-white rounded-2xl rounded-br-sm"
-                        : "bg-card text-card-foreground rounded-2xl rounded-bl-sm"
+                        : "bg-[hsl(225,30%,12%)] text-card-foreground rounded-2xl rounded-bl-sm"
                     )}
                   >
                     {msg.media_url && (
@@ -170,7 +170,7 @@ export function ChatPanel({
                           <img
                             src={msg.media_url}
                             alt=""
-                            className="rounded-xl max-w-full cursor-pointer hover:opacity-90 transition-opacity"
+                            className="rounded-xl max-w-[280px] max-h-[280px] w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
                             loading="lazy"
                             onClick={() => window.open(msg.media_url!, "_blank")}
                           />
@@ -180,7 +180,7 @@ export function ChatPanel({
                           <video
                             controls
                             src={msg.media_url}
-                            className="rounded-xl max-w-full"
+                            className="rounded-xl max-w-[280px] max-h-[280px]"
                             preload="metadata"
                           />
                         ) : msg.message_type === "document" ? (
