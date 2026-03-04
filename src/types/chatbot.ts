@@ -61,6 +61,10 @@ export interface FlowNodeData {
   aiTemperature?: number;
   aiMaxTokens?: number;
   aiHistoryCount?: number;
+  // Wait for Click
+  clickUrl?: string;
+  clickMessage?: string;
+  clickTimeout?: number;
   // Dock indicator
   isDockTarget?: boolean;
   [key: string]: unknown;
