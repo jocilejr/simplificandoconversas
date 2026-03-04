@@ -1,32 +1,41 @@
 
 
-## Plan: Rename to "Fluxos Automáticos" + Redesign Flow Cards
+## Problem
 
-### Changes
+The current dark theme uses a washed-out, low-saturation gray (`222 30% 8%` background, `222 25% 11%` cards) that looks flat and lifeless. The light theme is similarly bland. The overall effect is "dead gray" — no depth, no contrast hierarchy, no premium feel.
 
-**1. Rename everywhere**
-- `ChatbotBuilder.tsx`: Title "Chatbot Builder" → "Fluxos Automáticos", subtitle updated
-- `AppSidebar.tsx`: Menu item "Chatbot Builder" → "Fluxos"
-- Empty state text updated to match
+## Solution: Deeper, richer dark palette with better contrast layers
 
-**2. Redesign the flow listing page (`ChatbotBuilder.tsx`)**
+### Color System Overhaul (`src/index.css`)
 
-Current design is basic cards with small text. New design:
+**Dark mode** — shift to a deeper, blue-tinted near-black with more layered contrast:
 
-- **Header**: Clean layout with "Fluxos Automáticos" title (no subtitle paragraph — keep it minimal) and a refined "Novo Fluxo" button
-- **Flow cards**: Taller cards with better visual hierarchy:
-  - Top section: flow name in medium font, status dot with label ("Ativo" / "Inativo") as a subtle badge
-  - Middle: node count and last modified date with icons (not just raw text)
-  - Bottom: action buttons (Ativar/Parar) with better spacing, and the dropdown menu integrated more cleanly
-  - Subtle left border accent color (green for active, muted for inactive) instead of the tiny 2px dot
-- **Empty state**: Replace the Bot icon with a more relevant `Workflow` or `GitBranch` icon from Lucide, cleaner copy
-- **"New flow" card**: Refined dashed card with better hover state
+| Token | Current | New | Rationale |
+|---|---|---|---|
+| `--background` | `222 30% 8%` | `225 35% 5%` | Deeper, richer black with blue undertone |
+| `--foreground` | `210 20% 93%` | `210 15% 95%` | Slightly brighter text |
+| `--card` | `222 25% 11%` | `225 30% 8%` | Cards clearly lifted from bg |
+| `--popover` | `222 25% 11%` | `225 30% 10%` | Popover layer above cards |
+| `--secondary` | `222 20% 16%` | `225 25% 12%` | Better secondary surface |
+| `--muted` | `222 20% 16%` | `225 25% 12%` | Consistent with secondary |
+| `--muted-foreground` | `215 15% 55%` | `215 15% 50%` | Slightly dimmer for hierarchy |
+| `--border` | `222 20% 18%` | `225 20% 14%` | Subtler borders, less visible |
+| `--input` | `222 20% 18%` | `225 20% 14%` | Match border |
+| `--sidebar-background` | `222 30% 6%` | `225 40% 4%` | Darkest layer |
+| `--sidebar-accent` | `222 20% 14%` | `225 25% 10%` | Deeper accent |
+| `--sidebar-border` | `222 20% 14%` | `225 20% 8%` | Very subtle sidebar border |
 
-**3. Sidebar label**
-- Change icon from `Bot` to `Workflow` (or `GitBranch`) to match the new naming
-- Label: "Fluxos" (short, professional)
+**Light mode** — warmer, less "dead white":
+
+| Token | Current | New |
+|---|---|---|
+| `--background` | `220 20% 97%` | `220 15% 96%` |
+| `--card` | `0 0% 100%` | `0 0% 100%` (keep) |
+| `--secondary` | `220 14% 90%` | `220 14% 92%` |
+| `--muted` | `220 14% 93%` | `220 12% 94%` |
+| `--border` | `220 13% 87%` | `220 10% 89%` |
+| `--sidebar-background` | `0 0% 98%` | `220 15% 97%` |
 
 ### Files to edit
-- `src/pages/ChatbotBuilder.tsx` — rename + redesign cards
-- `src/components/AppSidebar.tsx` — rename menu item + change icon
+- `src/index.css` — update CSS custom properties for both light and dark themes
 
