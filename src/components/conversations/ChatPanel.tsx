@@ -38,9 +38,9 @@ function formatJid(jid: string) {
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "delivered" || status === "read") {
-    return <CheckCheck className={cn("h-3 w-3", status === "read" ? "text-info" : "text-primary-foreground/40")} />;
+    return <CheckCheck className={cn("h-3 w-3", status === "read" ? "text-info" : "text-white/40")} />;
   }
-  return <Check className="h-3 w-3 text-primary-foreground/40" />;
+  return <Check className="h-3 w-3 text-white/40" />;
 }
 
 export function ChatPanel({
@@ -160,7 +160,7 @@ export function ChatPanel({
                     className={cn(
                       "max-w-[70%] rounded-2xl px-3.5 py-2.5 text-sm",
                       isOutbound
-                        ? "bg-primary text-primary-foreground rounded-br-md shadow-sm"
+                        ? "bg-[hsl(142,50%,24%)] text-white rounded-br-md shadow-sm"
                         : "bg-card text-card-foreground border border-border/60 rounded-bl-md shadow-sm"
                     )}
                   >
@@ -178,7 +178,7 @@ export function ChatPanel({
                     {msg.content && <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>}
                     <div className={cn(
                       "flex items-center gap-1 justify-end mt-1",
-                      isOutbound ? "text-primary-foreground/50" : "text-muted-foreground/60"
+                      isOutbound ? "text-white/50" : "text-muted-foreground/60"
                     )}>
                       <span className="text-[10px]">{format(new Date(msg.created_at), "HH:mm")}</span>
                       {isOutbound && <StatusIcon status={msg.status} />}
