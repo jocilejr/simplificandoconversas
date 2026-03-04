@@ -284,6 +284,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          app_public_url: string | null
           avatar_url: string | null
           created_at: string
           evolution_api_key: string | null
@@ -296,6 +297,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          app_public_url?: string | null
           avatar_url?: string | null
           created_at?: string
           evolution_api_key?: string | null
@@ -308,6 +310,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          app_public_url?: string | null
           avatar_url?: string | null
           created_at?: string
           evolution_api_key?: string | null
@@ -356,6 +359,9 @@ export type Database = {
           id: string
           next_node_id: string | null
           original_url: string
+          preview_description: string | null
+          preview_image: string | null
+          preview_title: string | null
           remote_jid: string
           short_code: string
           user_id: string
@@ -370,6 +376,9 @@ export type Database = {
           id?: string
           next_node_id?: string | null
           original_url: string
+          preview_description?: string | null
+          preview_image?: string | null
+          preview_title?: string | null
           remote_jid: string
           short_code: string
           user_id: string
@@ -384,6 +393,9 @@ export type Database = {
           id?: string
           next_node_id?: string | null
           original_url?: string
+          preview_description?: string | null
+          preview_image?: string | null
+          preview_title?: string | null
           remote_jid?: string
           short_code?: string
           user_id?: string
