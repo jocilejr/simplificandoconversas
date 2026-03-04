@@ -137,23 +137,33 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     [reactFlowInstance, setNodes]
   );
 
+  const dropTargetRef = useRef<string | null>(null);
+
   // ─── Proximity docking logic ───
   const onNodeDrag = useCallback(
     (_: React.MouseEvent, draggedNode: Node) => {
       const draggedData = draggedNode.data as FlowNodeData;
-      // Triggers never dock
       if (draggedData.type === "trigger") {
-        setDropTarget(null);
+        if (dropTargetRef.current) {
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === dropTargetRef.current ? { ...n, data: { ...n.data, isDockTarget: false } } : n
+            )
+          );
+          dropTargetRef.current = null;
+          setDropTarget(null);
+        }
         return;
       }
 
+      // Use getNodes() to avoid stale closure
+      const currentNodes = reactFlowInstance.getNodes();
       let closestId: string | null = null;
       let closestDist = Infinity;
 
-      for (const node of nodes) {
+      for (const node of currentNodes) {
         if (node.id === draggedNode.id) continue;
         const nodeData = node.data as FlowNodeData;
-        // Can't dock to triggers
         if (nodeData.type === "trigger") continue;
 
         const dx = (node.position?.x || 0) - (draggedNode.position?.x || 0);
@@ -166,16 +176,15 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
         }
       }
 
-      if (closestId !== dropTarget) {
-        // Clear old target indicator
-        if (dropTarget) {
+      const prevTarget = dropTargetRef.current;
+      if (closestId !== prevTarget) {
+        if (prevTarget) {
           setNodes((nds) =>
             nds.map((n) =>
-              n.id === dropTarget ? { ...n, data: { ...n.data, isDockTarget: false } } : n
+              n.id === prevTarget ? { ...n, data: { ...n.data, isDockTarget: false } } : n
             )
           );
         }
-        // Set new target indicator
         if (closestId) {
           setNodes((nds) =>
             nds.map((n) =>
@@ -183,10 +192,11 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
             )
           );
         }
+        dropTargetRef.current = closestId;
         setDropTarget(closestId);
       }
     },
-    [nodes, dropTarget, setNodes]
+    [reactFlowInstance, setNodes]
   );
 
   const onNodeDragStop = useCallback(
@@ -196,19 +206,19 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
         nds.map((n) => (n.data as any).isDockTarget ? { ...n, data: { ...n.data, isDockTarget: false } } : n)
       );
 
-      if (!dropTarget) return;
+      const currentDropTarget = dropTargetRef.current;
+      dropTargetRef.current = null;
+      setDropTarget(null);
+
+      if (!currentDropTarget) return;
 
       const draggedData = draggedNode.data as FlowNodeData;
-      if (draggedData.type === "trigger") {
-        setDropTarget(null);
-        return;
-      }
+      if (draggedData.type === "trigger") return;
 
-      const targetNode = nodes.find((n) => n.id === dropTarget);
-      if (!targetNode) {
-        setDropTarget(null);
-        return;
-      }
+      // Use fresh nodes from ReactFlow instance
+      const currentNodes = reactFlowInstance.getNodes();
+      const targetNode = currentNodes.find((n) => n.id === currentDropTarget);
+      if (!targetNode) return;
 
       const targetData = targetNode.data as FlowNodeData;
 
@@ -216,14 +226,12 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
       let existingSteps: FlowStepData[] = [];
       let newSteps: FlowStepData[] = [];
 
-      // Target: extract steps
       if (targetNode.type === "groupBlock" && targetData.steps) {
         existingSteps = [...targetData.steps];
       } else {
         existingSteps = [{ id: targetNode.id, data: { ...targetData } }];
       }
 
-      // Dragged: extract steps
       if (draggedNode.type === "groupBlock" && draggedData.steps) {
         newSteps = [...draggedData.steps];
       } else {
@@ -233,33 +241,19 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
       const mergedSteps = [...existingSteps, ...newSteps];
 
       // Transfer edges from dragged node to target
-      setEdges((eds) =>
-        eds
-          .filter((e) => e.source !== draggedNode.id && e.target !== draggedNode.id)
-          .map((e) => {
-            // If target node was standalone and now becomes group, edges stay
-            if (e.source === targetNode.id || e.target === targetNode.id) return e;
-            return e;
-          })
-      );
-
-      // Also transfer edges that connected to dragged node
       setEdges((eds) => {
         const updated = eds.map((e) => {
-          if (e.source === draggedNode.id) return { ...e, source: dropTarget };
-          if (e.target === draggedNode.id) return { ...e, target: dropTarget };
+          if (e.source === draggedNode.id) return { ...e, source: currentDropTarget };
+          if (e.target === draggedNode.id) return { ...e, target: currentDropTarget };
           return e;
         });
-        // Remove self-referencing edges
         return updated.filter((e) => e.source !== e.target);
       });
 
       setNodes((nds) => {
-        // Remove dragged node
         const filtered = nds.filter((n) => n.id !== draggedNode.id);
-        // Update target to be group
         return filtered.map((n) => {
-          if (n.id !== dropTarget) return n;
+          if (n.id !== currentDropTarget) return n;
           return {
             ...n,
             type: "groupBlock",
@@ -274,10 +268,9 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
         });
       });
 
-      setDropTarget(null);
       toast.success("Nós agrupados!");
     },
-    [dropTarget, nodes, setNodes, setEdges]
+    [reactFlowInstance, setNodes, setEdges]
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
