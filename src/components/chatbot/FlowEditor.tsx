@@ -54,9 +54,10 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const migratedNodes = useMemo(() => {
     const raw = initialNodes || [];
     return raw.map((n: any) => {
-      if (n.type === "step" || n.type === "groupBlock") return n;
+      if (n.type === "step") return n;
+      if (n.type === "groupBlock") return { ...n, dragHandle: ".group-drag-handle" };
       // Migrate old "group" type to "groupBlock"
-      if (n.type === "group") return { ...n, type: "groupBlock" };
+      if (n.type === "group") return { ...n, type: "groupBlock", dragHandle: ".group-drag-handle" };
       if (n.type === "block") {
         const data = n.data || {};
         const children = data.children || [];
@@ -262,6 +263,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           return {
             ...n,
             type: "groupBlock",
+            dragHandle: ".group-drag-handle",
             data: {
               label: "Grupo",
               type: "groupBlock" as FlowNodeType,

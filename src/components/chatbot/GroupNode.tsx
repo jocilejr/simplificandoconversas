@@ -1,6 +1,6 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, MoveVertical } from "lucide-react";
+import { icons, CheckCircle2, Plus } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, type FlowStepData } from "@/types/chatbot";
 
 interface GroupNodeProps {
@@ -12,15 +12,19 @@ interface GroupNodeProps {
 function StepRow({
   step,
   index,
-  isPickedUp,
-  isSwapTarget,
-  onClickStep,
+  isDragging,
+  isDropTarget,
+  onDragStart,
+  onDragEnter,
+  onDragEnd,
 }: {
   step: FlowStepData;
   index: number;
-  isPickedUp: boolean;
-  isSwapTarget: boolean;
-  onClickStep: (index: number, e: React.MouseEvent) => void;
+  isDragging: boolean;
+  isDropTarget: boolean;
+  onDragStart: (i: number) => void;
+  onDragEnter: (i: number) => void;
+  onDragEnd: () => void;
 }) {
   const d = step.data;
   const config = nodeTypeConfig[d.type];
@@ -44,19 +48,30 @@ function StepRow({
   return (
     <div
       data-step-id={step.id}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClickStep(index, e);
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        // Set minimal drag image
+        const el = e.currentTarget;
+        e.dataTransfer.setDragImage(el, el.offsetWidth / 2, el.offsetHeight / 2);
+        onDragStart(index);
       }}
-      className={`flex items-center gap-2 px-2 py-2 mx-2 mb-1 rounded-lg transition-all cursor-pointer select-none ${
-        isPickedUp
-          ? "bg-primary/15 ring-2 ring-primary/40 scale-[1.02]"
-          : isSwapTarget
-          ? "bg-primary/8 ring-1 ring-primary/20"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        onDragEnter(index);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+      }}
+      onDragEnd={onDragEnd}
+      className={`flex items-center gap-3 px-3 py-2.5 mx-2 mb-1 rounded-lg transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+        isDragging
+          ? "opacity-30 scale-95"
+          : isDropTarget
+          ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
           : "bg-secondary/50 hover:bg-secondary"
       }`}
     >
-      <MoveVertical className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${isPickedUp ? "text-primary" : "text-muted-foreground/40"}`} />
       <div
         className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: `${config.color}18`, color: config.color }}
@@ -67,9 +82,6 @@ function StepRow({
         <p className="text-[12px] font-medium text-foreground truncate">{d.label || config.label}</p>
         <p className="text-[10px] text-muted-foreground truncate">{desc}</p>
       </div>
-      {isPickedUp && (
-        <span className="text-[9px] text-primary font-medium flex-shrink-0">Mover</span>
-      )}
     </div>
   );
 }
@@ -78,32 +90,32 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
   const d = data as FlowNodeData;
   const steps = (d.steps || []) as FlowStepData[];
   const isDockTarget = d.isDockTarget === true;
-  const [pickedIndex, setPickedIndex] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   const firstStep = steps[0];
   const headerConfig = firstStep ? nodeTypeConfig[firstStep.data.type] : null;
   const accentColor = headerConfig?.color || "hsl(142, 70%, 45%)";
 
-  const handleClickStep = useCallback(
-    (index: number, e: React.MouseEvent) => {
-      if (pickedIndex === null) {
-        // First click: pick up
-        setPickedIndex(index);
-      } else if (pickedIndex === index) {
-        // Click same: cancel
-        setPickedIndex(null);
-      } else {
-        // Click different: move to position
-        const event = new CustomEvent("group-reorder-step", {
-          detail: { nodeId: id, fromIndex: pickedIndex, toIndex: index },
-          bubbles: true,
-        });
-        document.dispatchEvent(event);
-        setPickedIndex(null);
-      }
-    },
-    [pickedIndex, id]
-  );
+  const handleDragStart = useCallback((i: number) => {
+    setDragIndex(i);
+  }, []);
+
+  const handleDragEnter = useCallback((i: number) => {
+    setOverIndex(i);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
+      const event = new CustomEvent("group-reorder-step", {
+        detail: { nodeId: id, fromIndex: dragIndex, toIndex: overIndex },
+        bubbles: true,
+      });
+      document.dispatchEvent(event);
+    }
+    setDragIndex(null);
+    setOverIndex(null);
+  }, [dragIndex, overIndex, id]);
 
   return (
     <div className="relative" style={{ background: "transparent" }}>
@@ -123,7 +135,8 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
             : "border-border shadow-md hover:shadow-lg"
         }`}
       >
-        <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50">
+        {/* Header — drag handle for moving the whole node */}
+        <div className="group-drag-handle flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50 cursor-grab active:cursor-grabbing">
           <div
             className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
@@ -133,21 +146,22 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           <p className="text-[13px] font-semibold text-foreground flex-1 truncate">
             {d.label || "Grupo"}
           </p>
-          {pickedIndex !== null && (
-            <span className="text-[9px] text-primary font-medium animate-pulse">Selecione destino</span>
-          )}
+          <CheckCircle2 className="w-4 h-4 text-muted-foreground/40 flex-shrink-0" />
         </div>
 
-        <div className="py-2">
+        {/* Steps — draggable cards for reordering */}
+        <div className="py-2 nopan nodrag">
           {steps.length > 0 ? (
             steps.map((step, i) => (
               <StepRow
                 key={step.id}
                 step={step}
                 index={i}
-                isPickedUp={pickedIndex === i}
-                isSwapTarget={pickedIndex !== null && pickedIndex !== i}
-                onClickStep={handleClickStep}
+                isDragging={dragIndex === i}
+                isDropTarget={overIndex === i && dragIndex !== null && dragIndex !== i}
+                onDragStart={handleDragStart}
+                onDragEnter={handleDragEnter}
+                onDragEnd={handleDragEnd}
               />
             ))
           ) : (
@@ -158,7 +172,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         </div>
 
         <div className="px-3 pb-2.5">
-          <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors">
+          <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors nopan nodrag">
             <Plus className="w-3.5 h-3.5" />
             <span className="text-[11px] font-medium">Adicionar ação</span>
           </button>
