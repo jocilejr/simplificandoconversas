@@ -100,12 +100,15 @@ export function useEvolutionInstances() {
         .update({ is_active: false } as any)
         .eq("user_id", user.id);
 
-      // Activate selected
+      // Upsert the instance (creates if not exists, updates if exists)
       await supabase
         .from("evolution_instances")
-        .update({ is_active: true } as any)
-        .eq("user_id", user.id)
-        .eq("instance_name", instanceName);
+        .upsert({
+          user_id: user.id,
+          instance_name: instanceName,
+          is_active: true,
+          status: "close",
+        } as any, { onConflict: "user_id,instance_name" });
 
       // Update profile for compatibility
       await supabase
