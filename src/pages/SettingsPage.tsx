@@ -13,6 +13,7 @@ const SettingsPage = () => {
   const [apiKey, setApiKey] = useState("");
   const [instanceName, setInstanceName] = useState("");
   const [fullName, setFullName] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
 
   useEffect(() => {
     if (profile) {
