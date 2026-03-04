@@ -425,15 +425,10 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
         };
 
         if (remainingSteps.length === 0) {
+          // Remove empty group
           return [...nds.filter((n) => n.id !== nodeId), newStepNode];
         }
-        if (remainingSteps.length === 1) {
-          const lastStep = remainingSteps[0];
-          return [
-            ...nds.map((n) => n.id === nodeId ? { ...n, type: "step", data: { ...lastStep.data } as FlowNodeData } : n),
-            newStepNode,
-          ];
-        }
+        // Keep group with remaining steps (even if only 1)
         return [
           ...nds.map((n) => n.id === nodeId ? { ...n, data: { ...data, steps: remainingSteps } } : n),
           newStepNode,
