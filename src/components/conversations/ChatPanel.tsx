@@ -187,25 +187,27 @@ export function ChatPanel({ conversation, messages, isLoading, onSend, isSending
 
       {/* Input */}
       <div className="px-4 py-3 border-t border-border bg-card flex items-center gap-2">
-        {savedFlows.length > 0 && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 rounded-full shrink-0"
-                disabled={executingFlow}
-              >
-                {executingFlow ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Bot className="h-4 w-4" />
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-56 p-1">
-              <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Disparar Fluxo</p>
-              {savedFlows.map((flow) => (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full shrink-0 bg-primary/10 hover:bg-primary/20 text-primary"
+              disabled={executingFlow}
+            >
+              {executingFlow ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Bot className="h-4 w-4" />
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-56 p-1">
+            <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Disparar Fluxo</p>
+            {savedFlows.length === 0 ? (
+              <p className="text-xs text-muted-foreground px-2 py-3 text-center">Nenhum fluxo salvo</p>
+            ) : (
+              savedFlows.map((flow) => (
                 <button
                   key={flow.id}
                   className="flex items-center gap-2 w-full px-2 py-2 rounded-md hover:bg-secondary transition-colors text-left text-sm"
@@ -214,10 +216,10 @@ export function ChatPanel({ conversation, messages, isLoading, onSend, isSending
                   <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span className="truncate">{flow.name}</span>
                 </button>
-              ))}
-            </PopoverContent>
-          </Popover>
-        )}
+              ))
+            )}
+          </PopoverContent>
+        </Popover>
         <Input
           placeholder="Digite uma mensagem..."
           value={text}
