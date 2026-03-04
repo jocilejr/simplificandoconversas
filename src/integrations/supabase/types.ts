@@ -119,6 +119,57 @@ export type Database = {
         }
         Relationships: []
       }
+      flow_executions: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          current_node_index: number
+          flow_id: string | null
+          id: string
+          remote_jid: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          current_node_index?: number
+          flow_id?: string | null
+          id?: string
+          remote_jid: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          current_node_index?: number
+          flow_id?: string | null
+          id?: string
+          remote_jid?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_executions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_executions_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           color: string
