@@ -13,6 +13,7 @@ interface GroupNodeProps {
 function StepRow({
   step,
   index,
+  nodeId,
   isDragging,
   isDropTarget,
   onDragStart,
@@ -21,11 +22,12 @@ function StepRow({
 }: {
   step: FlowStepData;
   index: number;
+  nodeId: string;
   isDragging: boolean;
   isDropTarget: boolean;
   onDragStart: (i: number) => void;
   onDragEnter: (i: number) => void;
-  onDragEnd: () => void;
+  onDragEnd: (e: React.DragEvent) => void;
 }) {
   const d = step.data;
   const config = nodeTypeConfig[d.type];
@@ -52,7 +54,8 @@ function StepRow({
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
-        // Set minimal drag image
+        e.dataTransfer.setData("application/step-id", step.id);
+        e.dataTransfer.setData("application/source-node-id", nodeId);
         const el = e.currentTarget;
         e.dataTransfer.setDragImage(el, el.offsetWidth / 2, el.offsetHeight / 2);
         onDragStart(index);
@@ -64,7 +67,7 @@ function StepRow({
       onDragOver={(e) => {
         e.preventDefault();
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={(e) => onDragEnd(e)}
       className={`flex items-center gap-3 px-3 py-2.5 mx-2 mb-1 rounded-lg transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
         isDragging
           ? "opacity-30 scale-95"
@@ -108,7 +111,27 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
     setOverIndex(i);
   }, []);
 
-  const handleDragEnd = useCallback(() => {
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    // Check if dropped outside the group bounds
+    const groupEl = document.querySelector(`[data-id="${id}"]`);
+    if (groupEl) {
+      const rect = groupEl.getBoundingClientRect();
+      const outside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
+      if (outside && dragIndex !== null) {
+        const step = steps[dragIndex];
+        if (step) {
+          const event = new CustomEvent("group-extract-step", {
+            detail: { nodeId: id, stepId: step.id, clientX: e.clientX, clientY: e.clientY },
+            bubbles: true,
+          });
+          document.dispatchEvent(event);
+          setDragIndex(null);
+          setOverIndex(null);
+          return;
+        }
+      }
+    }
+
     if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
       const event = new CustomEvent("group-reorder-step", {
         detail: { nodeId: id, fromIndex: dragIndex, toIndex: overIndex },
@@ -118,7 +141,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
     }
     setDragIndex(null);
     setOverIndex(null);
-  }, [dragIndex, overIndex, id]);
+  }, [dragIndex, overIndex, id, steps]);
 
   return (
     <div className="relative" style={{ background: "transparent" }}>
@@ -152,14 +175,36 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           <CheckCircle2 className="w-4 h-4 text-muted-foreground/40 flex-shrink-0" />
         </div>
 
-        {/* Steps — draggable cards for reordering */}
-        <div className="py-2 nopan nodrag">
+        <div
+          className="py-2 nopan nodrag"
+          onDragOver={(e) => {
+            // Accept drops from other groups
+            if (e.dataTransfer.types.includes("application/step-id")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDrop={(e) => {
+            const stepId = e.dataTransfer.getData("application/step-id");
+            const sourceNodeId = e.dataTransfer.getData("application/source-node-id");
+            if (stepId && sourceNodeId && sourceNodeId !== id) {
+              e.preventDefault();
+              e.stopPropagation();
+              const event = new CustomEvent("group-receive-step", {
+                detail: { targetNodeId: id, sourceNodeId, stepId },
+                bubbles: true,
+              });
+              document.dispatchEvent(event);
+            }
+          }}
+        >
           {steps.length > 0 ? (
             steps.map((step, i) => (
               <StepRow
                 key={step.id}
                 step={step}
                 index={i}
+                nodeId={id}
                 isDragging={dragIndex === i}
                 isDropTarget={overIndex === i && dragIndex !== null && dragIndex !== i}
                 onDragStart={handleDragStart}

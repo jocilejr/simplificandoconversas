@@ -350,6 +350,98 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => document.removeEventListener("group-add-step", handler);
   }, [setNodes]);
 
+  // Listen for extract-step events (drag step out of group)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId, stepId, clientX, clientY } = (e as CustomEvent).detail as {
+        nodeId: string; stepId: string; clientX: number; clientY: number;
+      };
+      const position = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
+      
+      setNodes((nds) => {
+        const node = nds.find((n) => n.id === nodeId);
+        if (!node) return nds;
+        const data = node.data as FlowNodeData;
+        if (!data.steps) return nds;
+
+        const removedStep = data.steps.find((s) => s.id === stepId);
+        if (!removedStep) return nds;
+        const remainingSteps = data.steps.filter((s) => s.id !== stepId);
+
+        const newStepNode: FlowNode = {
+          id: removedStep.id,
+          type: "step",
+          position,
+          data: { ...removedStep.data } as FlowNodeData,
+        };
+
+        if (remainingSteps.length === 0) {
+          return [...nds.filter((n) => n.id !== nodeId), newStepNode];
+        }
+        if (remainingSteps.length === 1) {
+          const lastStep = remainingSteps[0];
+          return [
+            ...nds.map((n) => n.id === nodeId ? { ...n, type: "step", data: { ...lastStep.data } as FlowNodeData } : n),
+            newStepNode,
+          ];
+        }
+        return [
+          ...nds.map((n) => n.id === nodeId ? { ...n, data: { ...data, steps: remainingSteps } } : n),
+          newStepNode,
+        ];
+      });
+      toast.success("Step extraído do grupo");
+    };
+    document.addEventListener("group-extract-step", handler);
+    return () => document.removeEventListener("group-extract-step", handler);
+  }, [setNodes, reactFlowInstance]);
+
+  // Listen for receive-step events (drop step into another group)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { targetNodeId, sourceNodeId, stepId } = (e as CustomEvent).detail as {
+        targetNodeId: string; sourceNodeId: string; stepId: string;
+      };
+
+      setNodes((nds) => {
+        // Find the step in source
+        const sourceNode = nds.find((n) => n.id === sourceNodeId);
+        if (!sourceNode) return nds;
+        const sourceData = sourceNode.data as FlowNodeData;
+        if (!sourceData.steps) return nds;
+
+        const movedStep = sourceData.steps.find((s) => s.id === stepId);
+        if (!movedStep) return nds;
+        const remainingSteps = sourceData.steps.filter((s) => s.id !== stepId);
+
+        let result = nds;
+
+        // Update source group
+        if (remainingSteps.length === 0) {
+          result = result.filter((n) => n.id !== sourceNodeId);
+        } else if (remainingSteps.length === 1) {
+          const lastStep = remainingSteps[0];
+          result = result.map((n) => n.id === sourceNodeId ? { ...n, type: "step", data: { ...lastStep.data } as FlowNodeData } : n);
+        } else {
+          result = result.map((n) => n.id === sourceNodeId ? { ...n, data: { ...sourceData, steps: remainingSteps } } : n);
+        }
+
+        // Add step to target group
+        result = result.map((n) => {
+          if (n.id !== targetNodeId) return n;
+          const targetData = n.data as FlowNodeData;
+          const targetSteps = targetData.steps || [];
+          return { ...n, data: { ...targetData, steps: [...targetSteps, movedStep] } };
+        });
+
+        return result;
+      });
+      toast.success("Step movido para o grupo");
+    };
+    document.addEventListener("group-receive-step", handler);
+    return () => document.removeEventListener("group-receive-step", handler);
+  }, [setNodes]);
+
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>
