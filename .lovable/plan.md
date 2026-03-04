@@ -1,21 +1,33 @@
 
 
-## Problema
+## Plan: Redesign Flow Cards — Professional & Refined
 
-O botão "Adicionar Nó" no `FlowEditor.tsx` (linha 657-661) usa uma lista de categorias **hardcoded** que não inclui a categoria "Inteligência Artificial" com o tipo `aiAgent`. O componente `NodePalette.tsx` tem essa categoria, mas não é utilizado — o FlowEditor renderiza seu próprio popover inline.
+### Problems with current design
+- Cards look flat and generic — just a plain `bg-card` box with no visual interest
+- The full-width "Ativar/Parar" button dominates the card and looks cheap
+- Status badge is tiny and disconnected from the flow identity
+- No visual distinction between cards — they all look identical
+- The left border accent (`border-l-2`) is too subtle to convey status
+- Overall layout feels like a basic admin template, not a polished product
 
-## Solução
+### New card design
 
-Adicionar a categoria "Inteligência Artificial" com o tipo `aiAgent` à lista inline no `FlowEditor.tsx`, na linha 661, logo após a categoria "Ações":
+**Structure per card:**
+1. **Top bar** — subtle gradient or colored top border (4px) based on status: green for active, muted for inactive
+2. **Icon + Name row** — small `Workflow` icon in a tinted circle + flow name (medium weight, truncated) + dropdown menu (3-dot) on hover
+3. **Status** — inline dot indicator (green/gray) with "Ativo"/"Inativo" text, no badge component — cleaner
+4. **Metadata row** — node count + last modified, same as now but with slightly better spacing
+5. **Footer** — small toggle-style button or subtle text button for activate/deactivate, not a full-width destructive button
 
-```typescript
-{ label: "Ações", types: ["action"] as FlowNodeType[] },
-{ label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] },
-```
+**Visual improvements:**
+- Cards get `hover:shadow-lg hover:shadow-primary/5` for a subtle glow on hover
+- Remove the heavy `border-l-2` in favor of a `border-t-2` colored accent at top
+- Better padding and internal spacing (p-6 instead of p-5)
+- The "New Flow" card gets a centered `+` icon with hover scale effect
 
-Isso é uma mudança de **1 linha** que torna o nó Agente IA acessível no menu "Adicionar Nó".
+**Header area:**
+- Keep title + button as-is (already clean)
 
-### Arquivos a editar
-
-1. **`src/components/chatbot/FlowEditor.tsx`** — Adicionar `{ label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] }` na lista de categorias do popover (após linha 661).
+### Files to edit
+- `src/pages/ChatbotBuilder.tsx` — redesign card markup and classes
 
