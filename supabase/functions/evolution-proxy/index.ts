@@ -303,6 +303,7 @@ Deno.serve(async (req) => {
                 remote_jid: jid,
                 last_message: message || `[${messageType}]`,
                 last_message_at: new Date().toISOString(),
+                instance_name: evolution_instance_name,
               },
               { onConflict: "user_id,remote_jid" }
             )
@@ -392,7 +393,7 @@ Deno.serve(async (req) => {
           }
 
           const convRows = Array.from(convMap).map(([jid, data]) => ({
-            user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt,
+            user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt, instance_name: evolution_instance_name,
           }));
 
           let synced = 0;
