@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
+import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
