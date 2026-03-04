@@ -190,20 +190,20 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
     <div className="relative">
       <Handle
         type="target"
-        position={Position.Left}
-        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-left-1.5"
-        style={{ top: 24 }}
+        position={Position.Top}
+        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-top-1.5"
+        style={{ left: 24 }}
       />
 
       <div
-        className={`w-[300px] rounded-2xl overflow-hidden transition-all duration-200 bg-card border-l-4 border border-border/40 ${
+        className={`w-[300px] rounded-2xl overflow-hidden transition-all duration-200 bg-card shadow-md ${
           isDockTarget
             ? "ring-2 ring-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
             : selected
             ? "shadow-xl ring-2 ring-primary/20"
-            : "shadow-md hover:shadow-lg"
+            : "hover:shadow-lg"
         }`}
-        style={{ borderLeftColor: accentColor }}
+        style={{ borderLeft: `4px solid ${accentColor}` }}
       >
         {/* Header — two lines */}
         <div className="flex items-center gap-2.5 px-4 py-3">
@@ -237,7 +237,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
 
         {/* Footer */}
         {steps.length > 0 && (
-          <div className="px-4 py-2.5 border-t border-border/30 flex items-center justify-center gap-2">
+          <div className="px-4 py-2.5 border-t border-border/30 flex items-center justify-center gap-2 relative">
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
               <span className="w-2 h-2 rounded-full bg-muted-foreground/20" />
@@ -262,7 +262,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         type="source"
         position={Position.Right}
         className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
-        style={{ bottom: 18, top: 'auto' }}
+        style={{ bottom: 16, top: 'auto' }}
       />
     </div>
   );
