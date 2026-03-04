@@ -263,15 +263,16 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
           body: JSON.stringify({
-            enabled: true,
-            url: webhookUrl,
-            webhook_by_events: false,
-            webhook_base64: true,
-            events: [
-              "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
-              "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
-              "QRCODE_UPDATED", "CONNECTION_UPDATE",
-            ],
+            webhook: {
+              url: webhookUrl,
+              byEvents: false,
+              base64: true,
+              events: [
+                "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+                "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+                "QRCODE_UPDATED", "CONNECTION_UPDATE",
+              ],
+            },
           }),
         });
         result = await resp.json();
@@ -300,15 +301,16 @@ Deno.serve(async (req) => {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
               body: JSON.stringify({
-                enabled: true,
-                url: webhookUrl,
-                webhook_by_events: false,
-                webhook_base64: true,
-                events: [
-                  "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
-                  "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
-                  "QRCODE_UPDATED", "CONNECTION_UPDATE",
-                ],
+                webhook: {
+                  url: webhookUrl,
+                  byEvents: false,
+                  base64: true,
+                  events: [
+                    "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+                    "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+                    "QRCODE_UPDATED", "CONNECTION_UPDATE",
+                  ],
+                },
               }),
             });
             const r = await resp.json();
