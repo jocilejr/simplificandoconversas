@@ -265,7 +265,110 @@ Deno.serve(async (req) => {
       console.log(`[execute-flow] Processing node ${node.id}, type: ${nodeType}`);
 
       try {
-        if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
+        if (nodeType === "aiAgent") {
+          // AI Agent: call OpenAI with conversation history
+          if (!profile.openai_api_key) {
+            results.push("aiAgent: error - OpenAI API Key não configurada");
+          } else {
+            const historyCount = data.aiHistoryCount || 10;
+            const { data: historyMsgs } = await serviceClient
+              .from("messages")
+              .select("content, direction, message_type, media_url")
+              .eq("remote_jid", jid)
+              .eq("user_id", userId)
+              .order("created_at", { ascending: false })
+              .limit(historyCount);
+
+            const openaiMessages: any[] = [];
+            if (data.aiSystemPrompt) {
+              openaiMessages.push({ role: "system", content: data.aiSystemPrompt });
+            }
+
+            const acceptedMedia = data.aiAcceptedMedia || ["text"];
+            for (const msg of (historyMsgs || []).reverse()) {
+              const role = msg.direction === "inbound" ? "user" : "assistant";
+              if (msg.message_type === "text" && msg.content) {
+                openaiMessages.push({ role, content: msg.content });
+              } else if (msg.message_type === "image" && msg.media_url && acceptedMedia.includes("image")) {
+                openaiMessages.push({
+                  role,
+                  content: [
+                    { type: "text", text: msg.content || "Imagem enviada" },
+                    { type: "image_url", image_url: { url: msg.media_url } },
+                  ],
+                });
+              } else if (msg.message_type === "audio" && msg.media_url && acceptedMedia.includes("audio")) {
+                openaiMessages.push({
+                  role,
+                  content: [
+                    { type: "text", text: msg.content || "[Áudio]" },
+                    { type: "input_audio", input_audio: { data: msg.media_url, format: "mp3" } },
+                  ],
+                });
+              } else if (msg.message_type === "document" && msg.media_url && acceptedMedia.includes("pdf")) {
+                openaiMessages.push({
+                  role,
+                  content: [
+                    { type: "text", text: msg.content || "[PDF]" },
+                    { type: "text", text: `[Documento: ${msg.media_url}]` },
+                  ],
+                });
+              } else if (msg.content) {
+                openaiMessages.push({ role, content: msg.content });
+              }
+            }
+
+            const aiModel = data.aiModel || "gpt-4o";
+            const aiResp = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${profile.openai_api_key}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: aiModel,
+                messages: openaiMessages,
+                temperature: data.aiTemperature ?? 0.7,
+                max_tokens: data.aiMaxTokens || 500,
+              }),
+            });
+
+            const aiData = await aiResp.json();
+            const aiResponse = aiData?.choices?.[0]?.message?.content || "";
+            console.log(`[execute-flow] AI response (${aiModel}):`, aiResponse.substring(0, 100));
+
+            if (data.aiAutoSend !== false && aiResponse) {
+              const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+                method: "POST",
+                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                body: JSON.stringify({ number: jid, text: aiResponse }),
+              });
+              const sendResult = await sendResp.json();
+
+              const { data: conv } = await serviceClient
+                .from("conversations")
+                .upsert(
+                  { user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString() },
+                  { onConflict: "user_id,remote_jid" }
+                )
+                .select("id")
+                .single();
+              if (conv) {
+                await serviceClient.from("messages").insert({
+                  conversation_id: conv.id,
+                  user_id: userId,
+                  remote_jid: jid,
+                  content: aiResponse,
+                  message_type: "text",
+                  direction: "outbound",
+                  status: "sent",
+                  external_id: sendResult?.key?.id || null,
+                });
+              }
+            }
+            results.push(`aiAgent: ok (${aiModel})`);
+          }
+        } else if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
           // Execute all steps in group sequentially
           for (const step of data.steps) {
             const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
