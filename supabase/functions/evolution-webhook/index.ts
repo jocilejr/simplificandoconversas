@@ -234,7 +234,8 @@ async function checkAndTriggerFlows(
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const resp = await fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
+    // Fire-and-forget: don't await the response to avoid webhook timeout
+    fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -244,11 +245,11 @@ async function checkAndTriggerFlows(
         flowId: flow.id,
         remoteJid,
         conversationId,
-        userId, // server-to-server: pass userId explicitly
+        userId,
       }),
-    });
-
-    const result = await resp.json();
-    console.log(`Flow ${flow.id} trigger result:`, result);
+    })
+      .then(r => r.json())
+      .then(r => console.log(`Flow ${flow.id} trigger result:`, r))
+      .catch(e => console.error(`Flow ${flow.id} call error:`, e));
   }
 }

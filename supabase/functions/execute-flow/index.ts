@@ -98,6 +98,18 @@ Deno.serve(async (req) => {
     const baseUrl = evolution_api_url.replace(/\/$/, "");
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
+    // Auto-cleanup: cancel stuck "running" executions older than 5 minutes
+    await serviceClient
+      .from("flow_executions")
+      .update({ status: "completed" })
+      .eq("user_id", userId)
+      .eq("flow_id", flowId)
+      .eq("remote_jid", jid)
+      .eq("status", "running")
+      .lt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+
+    console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
+
     // Create flow execution record
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
@@ -172,6 +184,7 @@ Deno.serve(async (req) => {
 
       for (const child of children) {
         const childType = child.type;
+        console.log(`[execute-flow] Processing child type: ${childType}, node: ${node.id}`);
         try {
           if (childType === "trigger") {
             results.push("trigger: skipped");
@@ -188,7 +201,7 @@ Deno.serve(async (req) => {
               }
             );
             const r = await resp.json();
-
+            console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
             const { data: conv } = await serviceClient
               .from("conversations")
               .upsert(
@@ -214,29 +227,35 @@ Deno.serve(async (req) => {
           }
 
           if (childType === "sendImage" && child.mediaUrl) {
-            await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+            const imgResp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
               body: JSON.stringify({ number: jid, mediatype: "image", media: child.mediaUrl, caption: child.caption || "" }),
             });
+            const imgR = await imgResp.json();
+            console.log(`[execute-flow] sendImage response:`, JSON.stringify(imgR));
             results.push("sendImage: ok");
           }
 
           if (childType === "sendAudio" && child.audioUrl) {
-            await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
+            const audResp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
               body: JSON.stringify({ number: jid, audio: child.audioUrl }),
             });
+            const audR = await audResp.json();
+            console.log(`[execute-flow] sendAudio response:`, JSON.stringify(audR));
             results.push("sendAudio: ok");
           }
 
           if (childType === "sendVideo" && child.mediaUrl) {
-            await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+            const vidResp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
               body: JSON.stringify({ number: jid, mediatype: "video", media: child.mediaUrl, caption: child.caption || "" }),
             });
+            const vidR = await vidResp.json();
+            console.log(`[execute-flow] sendVideo response:`, JSON.stringify(vidR));
             results.push("sendVideo: ok");
           }
 
@@ -259,6 +278,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log(`[execute-flow] Flow ${flowId} completed. Results:`, results);
     // Mark completed
     await serviceClient
       .from("flow_executions")
