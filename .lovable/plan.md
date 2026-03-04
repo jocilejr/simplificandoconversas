@@ -1,24 +1,28 @@
 
-## Redesign do GroupNode estilo ManyChat
 
-### Problema
-O GroupNode atual mostra steps como linhas compactas (ícone + label + preview em uma linha). O usuario quer o estilo ManyChat da segunda imagem: cada step renderizado como card completo dentro do grupo, com conteudo visivel, delays como pills inline, e o grupo como um container alto com borda arredondada.
+## Redesign GroupNode — Fidelidade ao ManyChat
 
-### Solucao
+### Diferenças identificadas (imagem ManyChat vs atual)
 
-Reescrever `GroupNode.tsx` para renderizar cada step internamente com o mesmo visual rico do `StepNode`:
+1. **Borda lateral esquerda azul/roxa** em vez de barra de cor no topo
+2. **Header**: ícone de chat + "WhatsApp" (label pequeno) + "Enviar Mensagem" (título) — layout em duas linhas
+3. **Texto**: balões de fala com "tail" (cauda) à esquerda, fundo cinza claro, alinhados à esquerda com padding generoso
+4. **Wait/Delay**: pill centralizada com ícone de relógio e texto "Aguardando por X segundos..." (texto completo, não abreviado)
+5. **Sem dividers** entre steps — fluxo contínuo com espaçamento natural
+6. **Footer**: "Próximo Passo" centralizado com ícones pequenos (círculos coloridos)
+7. **Sombra suave** e cantos mais arredondados
+8. **Largura maior** (~300px) para acomodar textos longos
 
-1. **Container do grupo**: Card branco/card com borda arredondada, sombra, header com titulo "WhatsApp · Enviar Mensagem"
-2. **Steps internos renderizados como cards completos**:
-   - `sendText`: Balao de mensagem com o texto completo visivel (estilo chat bubble cinza)
-   - `sendAudio`/`sendImage`/`sendVideo`: Preview de midia com icone
-   - `waitDelay`: Pill compacta inline "Aguardando por Xs..." centralizada com fundo claro
-   - `waitForReply`: Balao indicando captura de resposta
-   - `action`: Badge com icone da acao
-   - `condition`/`randomizer`: Card com info da condicao
-3. **Handle target** (esquerda) e **handle source** (direita) no container externo
-4. **Footer "Proximo Passo"** na parte inferior quando ha conexao de saida
-5. **Dock indicator** mantido (borda azul pulsante)
+### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-### Arquivos
-- **Reescrever**: `src/components/chatbot/GroupNode.tsx` — layout rico estilo ManyChat
+- Remover `h-[3px]` color bar do topo → adicionar `border-l-4` com cor do tipo
+- Header: duas linhas — "WhatsApp" em `text-[10px] text-muted-foreground` e título em `text-[13px] font-semibold`
+- `sendText`: balão com `rounded-2xl rounded-bl-sm` (tail inferior esquerdo), `bg-muted/60`, padding `px-4 py-2.5`, texto `text-[13px]`
+- `waitDelay`: pill com texto completo "Aguardando por {X} segundos...", clock icon, fundo sutil
+- Remover `divide-y` — usar `space-y-1` ou gap natural
+- Footer: "Próximo Passo" com círculos decorativos
+- Largura para `w-[300px]`
+
+### Arquivo
+- **Reescrever**: `src/components/chatbot/GroupNode.tsx`
+
