@@ -130,7 +130,7 @@ export function ChatPanel({
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-1 chat-bg-pattern">
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -150,7 +150,7 @@ export function ChatPanel({
               <div key={msg.id}>
                 {showTimeSeparator && (
                   <div className="flex justify-center my-4">
-                    <span className="text-[11px] text-muted-foreground/70 bg-secondary/60 px-4 py-1 rounded-full font-medium">
+                    <span className="text-[11px] text-foreground/80 bg-card/90 backdrop-blur-sm px-4 py-1.5 rounded-lg font-medium shadow-sm">
                       {format(new Date(msg.created_at), "dd/MM/yyyy")}
                     </span>
                   </div>
@@ -158,10 +158,10 @@ export function ChatPanel({
                 <div className={cn("flex mb-1", isOutbound ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[70%] rounded-2xl px-3.5 py-2.5 text-sm",
+                      "max-w-[70%] px-3.5 py-2.5 text-sm shadow-sm",
                       isOutbound
-                        ? "bg-[hsl(142,50%,24%)] text-white rounded-br-md shadow-sm"
-                        : "bg-card text-card-foreground border border-border/60 rounded-bl-md shadow-sm"
+                        ? "bg-[hsl(142,50%,24%)] text-white rounded-2xl rounded-br-sm"
+                        : "bg-card text-card-foreground rounded-2xl rounded-bl-sm"
                     )}
                   >
                     {msg.media_url && (
