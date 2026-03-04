@@ -447,30 +447,46 @@ Deno.serve(async (req) => {
           // Try findMessages for this instance
           let allMessages: any[] = [];
           
-          const msgsResp = await fetch(
-            `${baseUrl}/chat/findMessages/${encodeURIComponent(currentInstanceName)}`,
-            {
-              method: "POST",
-              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-              body: JSON.stringify({ limit: 500 }),
-            }
-          );
-          const msgsBody = await msgsResp.text();
-          console.log(`[sync-chats] findMessages ${currentInstanceName} status: ${msgsResp.status}, body length: ${msgsBody.length}, preview: ${msgsBody.substring(0, 200)}`);
-          
-          try {
-            const parsed = JSON.parse(msgsBody);
-            if (Array.isArray(parsed)) allMessages = parsed;
-            else if (parsed.messages?.records) allMessages = parsed.messages.records;
-            else {
-              for (const key of Object.keys(parsed)) {
-                if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
-                  allMessages = parsed[key];
-                  break;
+          // Paginate through findMessages (API returns 50 per page)
+          const MAX_PAGES = 10; // up to 500 messages
+          for (let page = 1; page <= MAX_PAGES; page++) {
+            try {
+              const msgsResp = await fetch(
+                `${baseUrl}/chat/findMessages/${encodeURIComponent(currentInstanceName)}`,
+                {
+                  method: "POST",
+                  headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                  body: JSON.stringify({ page }),
+                }
+              );
+              const msgsBody = await msgsResp.text();
+              if (page === 1) {
+                console.log(`[sync-chats] findMessages ${currentInstanceName} status: ${msgsResp.status}, body length: ${msgsBody.length}, preview: ${msgsBody.substring(0, 200)}`);
+              }
+              
+              const parsed = JSON.parse(msgsBody);
+              let pageRecords: any[] = [];
+              if (Array.isArray(parsed)) pageRecords = parsed;
+              else if (parsed.messages?.records) pageRecords = parsed.messages.records;
+              else {
+                for (const key of Object.keys(parsed)) {
+                  if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+                    pageRecords = parsed[key];
+                    break;
+                  }
                 }
               }
+              
+              if (pageRecords.length === 0) break;
+              allMessages.push(...pageRecords);
+              
+              // If fewer than 50 records, we've reached the last page
+              if (pageRecords.length < 50) break;
+            } catch (_) {
+              break;
             }
-          } catch (_) {}
+          }
+          console.log(`[sync-chats] Total messages fetched across pages: ${allMessages.length} for ${currentInstanceName}`);
 
           // Fallback: try findChats if no messages found
           if (allMessages.length === 0) {
@@ -573,7 +589,7 @@ Deno.serve(async (req) => {
               inserts.push({ conversation_id: convRecord.id, user_id: userId, remote_jid: jid, content: c, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: mediaUrl, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() });
             }
             for (let i = 0; i < inserts.length; i += 100) {
-              await serviceClient.from("messages").insert(inserts.slice(i, i + 100));
+              await serviceClient.from("messages").upsert(inserts.slice(i, i + 100), { onConflict: "external_id" });
             }
           }
           totalSynced += synced;
