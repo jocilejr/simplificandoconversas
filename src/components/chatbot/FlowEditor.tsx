@@ -20,7 +20,7 @@ import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Save, ArrowLeft, Plus, icons } from "lucide-react";
+import { ArrowLeft, Plus, History, Check, Loader2, icons } from "lucide-react";
 import { PropertiesPanel } from "@/components/chatbot/PropertiesPanel";
 import StepNode from "@/components/chatbot/StepNode";
 import GroupNode from "@/components/chatbot/GroupNode";
@@ -33,6 +33,8 @@ import {
   defaultNodeData,
 } from "@/types/chatbot";
 import { toast } from "sonner";
+import { useFlowHistory, type FlowHistoryEntry } from "@/hooks/useFlowHistory";
+import { FlowHistoryPanel } from "@/components/chatbot/FlowHistoryPanel";
 
 const DOCK_THRESHOLD = 80;
 
@@ -76,11 +78,58 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [name, setName] = useState(flowName);
-  const [isSaving, setIsSaving] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialMount = useRef(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useReactFlow();
+  const { saveSnapshot } = useFlowHistory(flowId);
+
+  // Autosave with debounce
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (!onSave) return;
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    setSaveStatus("saving");
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await onSave(name, nodes, edges);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2000);
+      } catch {
+        toast.error("Erro ao salvar");
+        setSaveStatus("idle");
+      }
+    }, 1500);
+
+    // Save history snapshot every 30s max
+    if (!historyTimeoutRef.current) {
+      historyTimeoutRef.current = setTimeout(() => {
+        saveSnapshot.mutate({ name, nodes, edges });
+        historyTimeoutRef.current = null;
+      }, 30000);
+    }
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [nodes, edges, name]);
+
+  const handleRestore = useCallback((entry: FlowHistoryEntry) => {
+    setNodes(entry.nodes as any[]);
+    setEdges(entry.edges as any[]);
+    setName(entry.name);
+    toast.success("Versão restaurada!");
+  }, [setNodes, setEdges]);
 
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedNodeId) as FlowNode | null,
@@ -584,73 +633,70 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
             <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-48 text-sm bg-card border-border" />
           </Panel>
 
-          <Panel position="top-right" className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs"
-                disabled={isSaving}
-                onClick={async () => {
-                  if (onSave) {
-                    setIsSaving(true);
-                    try {
-                      await onSave(name, nodes, edges);
-                      toast.success("Fluxo salvo!");
-                    } catch {
-                      toast.error("Erro ao salvar");
-                    } finally {
-                      setIsSaving(false);
-                    }
-                  }
-                }}
-              >
-                <Save className="h-3 w-3 mr-1" /> {isSaving ? "Salvando..." : "Salvar"}
+          <Panel position="top-right" className="flex items-center gap-2">
+              {saveStatus === "saving" && (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Salvando...
+                </span>
+              )}
+              {saveStatus === "saved" && (
+                <span className="flex items-center gap-1 text-[11px] text-primary">
+                  <Check className="h-3 w-3" /> Salvo
+                </span>
+              )}
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setHistoryOpen(true)}>
+                <History className="h-3 w-3 mr-1" /> Histórico
               </Button>
-            </div>
-            <Popover open={addMenuOpen} onOpenChange={setAddMenuOpen}>
-              <PopoverTrigger asChild>
-                <Button size="sm" className="h-8 text-xs">
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Nó
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 p-2 space-y-3">
-                {[
-                  { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
-                  { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
-                  { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply"] as FlowNodeType[] },
-                  { label: "Ações", types: ["action"] as FlowNodeType[] },
-                ].map((cat) => (
-                  <div key={cat.label}>
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">{cat.label}</p>
-                    <div className="space-y-0.5">
-                      {cat.types.map((type) => {
-                        const config = nodeTypeConfig[type];
-                        const LucideIcon = icons[config.icon as keyof typeof icons];
-                        return (
-                          <button
-                            key={type}
-                            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-secondary transition-colors text-left"
-                            onClick={() => addNode(type)}
-                          >
-                            <div className="flex items-center justify-center w-7 h-7 rounded-md" style={{ backgroundColor: config.color + "20", color: config.color }}>
-                              {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium truncate">{config.label}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{config.description}</p>
-                            </div>
-                          </button>
-                        );
-                      })}
+              <Popover open={addMenuOpen} onOpenChange={setAddMenuOpen}>
+                <PopoverTrigger asChild>
+                  <Button size="sm" className="h-8 text-xs">
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Nó
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-64 p-2 space-y-3">
+                  {[
+                    { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
+                    { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
+                    { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply"] as FlowNodeType[] },
+                    { label: "Ações", types: ["action"] as FlowNodeType[] },
+                  ].map((cat) => (
+                    <div key={cat.label}>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">{cat.label}</p>
+                      <div className="space-y-0.5">
+                        {cat.types.map((type) => {
+                          const config = nodeTypeConfig[type];
+                          const LucideIcon = icons[config.icon as keyof typeof icons];
+                          return (
+                            <button
+                              key={type}
+                              className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-secondary transition-colors text-left"
+                              onClick={() => addNode(type)}
+                            >
+                              <div className="flex items-center justify-center w-7 h-7 rounded-md" style={{ backgroundColor: config.color + "20", color: config.color }}>
+                                {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium truncate">{config.label}</p>
+                                <p className="text-[10px] text-muted-foreground truncate">{config.description}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </PopoverContent>
-            </Popover>
+                  ))}
+                </PopoverContent>
+              </Popover>
           </Panel>
         </ReactFlow>
       </div>
+
+      <FlowHistoryPanel
+        flowId={flowId}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        onRestore={handleRestore}
+      />
 
       {selectedNode && (
         <PropertiesPanel

@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      chatbot_flow_history: {
+        Row: {
+          created_at: string
+          edges: Json
+          flow_id: string
+          id: string
+          name: string
+          nodes: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          edges?: Json
+          flow_id: string
+          id?: string
+          name: string
+          nodes?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          edges?: Json
+          flow_id?: string
+          id?: string
+          name?: string
+          nodes?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_flow_history_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chatbot_flows: {
         Row: {
           active: boolean
