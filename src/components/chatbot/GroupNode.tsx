@@ -196,7 +196,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
       />
 
       <div
-        className={`w-[300px] rounded-2xl overflow-hidden transition-all duration-200 bg-card shadow-md ${
+        className={`relative w-[300px] rounded-2xl overflow-hidden transition-all duration-200 bg-card shadow-md ${
           isDockTarget
             ? "ring-2 ring-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
             : selected
@@ -205,7 +205,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         }`}
       >
         {/* Accent bar */}
-        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ backgroundColor: accentColor }} />
+        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl z-10" style={{ backgroundColor: accentColor }} />
         {/* Header — two lines */}
         <div className="flex items-center gap-2.5 px-4 py-3">
           <div
@@ -262,7 +262,8 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5 !top-auto !bottom-4"
+        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
+        style={{ top: 'auto', bottom: 16 }}
       />
     </div>
   );
