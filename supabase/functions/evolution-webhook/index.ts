@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
             last_message_at: new Date().toISOString(),
             instance_name: instance,
           },
-          { onConflict: "user_id,remote_jid" }
+          { onConflict: "user_id,remote_jid,instance_name" }
         );
       return new Response(JSON.stringify({ ok: true, updated: "conversation" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -226,7 +226,7 @@ Deno.serve(async (req) => {
 
     const { data: conv } = await supabase
       .from("conversations")
-      .upsert(upsertData, { onConflict: "user_id,remote_jid" })
+      .upsert(upsertData, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id")
       .single();
 

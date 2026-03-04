@@ -61,8 +61,8 @@ async function executeStep(
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString() },
-        { onConflict: "user_id,remote_jid" }
+        { user_id: userId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
       .single();
@@ -381,8 +381,8 @@ Deno.serve(async (req) => {
               const { data: conv } = await serviceClient
                 .from("conversations")
                 .upsert(
-                  { user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString() },
-                  { onConflict: "user_id,remote_jid" }
+                  { user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+                  { onConflict: "user_id,remote_jid,instance_name" }
                 )
                 .select("id")
                 .single();
@@ -441,8 +441,8 @@ Deno.serve(async (req) => {
             const { data: conv } = await serviceClient
               .from("conversations")
               .upsert(
-                { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString() },
-                { onConflict: "user_id,remote_jid" }
+                { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+                { onConflict: "user_id,remote_jid,instance_name" }
               )
               .select("id")
               .single();
@@ -522,8 +522,8 @@ Deno.serve(async (req) => {
               const { data: conv } = await serviceClient
                 .from("conversations")
                 .upsert(
-                  { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString() },
-                  { onConflict: "user_id,remote_jid" }
+                  { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+                  { onConflict: "user_id,remote_jid,instance_name" }
                 )
                 .select("id")
                 .single();
