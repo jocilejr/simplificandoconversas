@@ -15,9 +15,6 @@ export type FlowNodeType =
 export interface FlowNodeData {
   label: string;
   type: FlowNodeType;
-  // Block children (sub-items stacked inside a block)
-  children?: FlowNodeData[];
-  childId?: string; // unique id for each child item
   // Trigger
   triggerKeyword?: string;
   triggerType?: "keyword" | "any_message" | "event";
@@ -123,4 +120,17 @@ export const nodeTypeConfig: Record<
     icon: "Settings",
     description: "Executa uma ação (tag, lista, variável)",
   },
+};
+
+export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
+  trigger: { triggerType: "keyword", triggerKeyword: "" },
+  sendText: { textContent: "" },
+  sendAudio: { audioUrl: "", simulateRecording: false },
+  sendVideo: { mediaUrl: "", caption: "" },
+  sendImage: { mediaUrl: "", caption: "" },
+  condition: { conditionField: "mensagem", conditionOperator: "contains", conditionValue: "" },
+  randomizer: { paths: 2 },
+  waitDelay: { delaySeconds: 3, simulateTyping: true },
+  waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyFallback: "" },
+  action: { actionType: "add_tag", actionValue: "" },
 };
