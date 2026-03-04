@@ -63,7 +63,7 @@ export function ConversationList({
       (c.contact_name || "").toLowerCase().includes(search.toLowerCase()) ||
       c.remote_jid.includes(search);
     const matchInstance =
-      !selectedInstance || c.instance_name === selectedInstance || !c.instance_name;
+      !selectedInstance || c.instance_name === selectedInstance;
     return matchSearch && matchInstance;
   });
 

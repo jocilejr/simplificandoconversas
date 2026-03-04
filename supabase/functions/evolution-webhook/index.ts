@@ -131,22 +131,44 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Find user by instance name
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("user_id, evolution_api_url, evolution_api_key, evolution_instance_name")
-      .eq("evolution_instance_name", instance)
+    // Find user by instance name (check evolution_instances first, then profiles)
+    let userId: string | null = null;
+    let profile: any = null;
+
+    const { data: instanceRecord } = await supabase
+      .from("evolution_instances")
+      .select("user_id")
+      .eq("instance_name", instance)
+      .limit(1)
       .single();
 
-    if (profileError || !profile) {
-      console.error("No profile found for instance:", instance);
+    if (instanceRecord) {
+      userId = instanceRecord.user_id;
+    } else {
+      // Fallback: check profiles table
+      const { data: profileRecord } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("evolution_instance_name", instance)
+        .single();
+      if (profileRecord) userId = profileRecord.user_id;
+    }
+
+    if (!userId) {
+      console.error("No user found for instance:", instance);
       return new Response(JSON.stringify({ error: "Instance not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const userId = profile.user_id;
+    // Get profile for API credentials (needed for media download)
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("evolution_api_url, evolution_api_key, evolution_instance_name")
+      .eq("user_id", userId)
+      .single();
+    profile = profileData;
 
     if (!remoteJid) {
       return new Response(JSON.stringify({ ok: true, skipped: "no remoteJid" }), {
@@ -154,8 +176,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Skip status messages and LID format
-    if (remoteJid === "status@broadcast" || remoteJid.includes("@lid")) {
+    // Skip status messages and group messages
+    if (remoteJid === "status@broadcast" || remoteJid.includes("@g.us")) {
       return new Response(JSON.stringify({ ok: true, skipped: "filtered" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -182,7 +204,7 @@ Deno.serve(async (req) => {
 
     // Download and upload media if applicable
     let mediaUrl: string | null = null;
-    if (messageType !== "text" && profile.evolution_api_url && profile.evolution_api_key) {
+    if (messageType !== "text" && profile?.evolution_api_url && profile?.evolution_api_key) {
       mediaUrl = await downloadAndUploadMedia(supabase, profile as any, data, messageType, userId);
       console.log("Media uploaded:", mediaUrl ? "success" : "failed/skipped");
     }
