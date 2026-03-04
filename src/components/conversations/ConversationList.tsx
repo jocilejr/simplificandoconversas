@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+
 import { MessageSquare, Loader2, RefreshCw, Search } from "lucide-react";
 import { Conversation } from "@/hooks/useConversations";
 import { ContactAvatar } from "./ContactAvatar";
