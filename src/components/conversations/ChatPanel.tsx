@@ -52,7 +52,9 @@ export function ChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const { data: flows } = useChatbotFlows();
   const { data: quickReplies } = useQuickReplies();
+  const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation?.id);
   const savedFlows = flows?.filter(f => (f.nodes as any[])?.length > 0) || [];
+  const hasActiveFlow = (activeExecutions?.length || 0) > 0;
 
   const handleExecuteFlow = async (flowId: string) => {
     if (!conversation) return;
