@@ -1,37 +1,44 @@
 
 
-## Problem Analysis
+## Plan: Autosave with History + Fix Add Node Button
 
-The step cards inside `GroupNode` use native HTML drag-and-drop with `nopan nodrag` classes, which only handles reordering within the same group. There is no mechanism to:
-1. Drag a step **out** of a group to make it standalone
-2. Drag a step from one group **into** another group
+### 1. Autosave with Debounce
+- Remove the "Salvar" button and `isSaving` state from `FlowEditor.tsx`
+- Add a `useEffect` that watches `nodes`, `edges`, and `name` changes
+- Debounce saves with a 1.5s delay using `setTimeout`/`useRef` pattern
+- Show a subtle status indicator (e.g., "Salvando..." / "Salvo ✓") in the top panel instead of the save button
+- Call `onSave(name, nodes, edges)` automatically on each debounced change
 
-The `onDragEnd` in `StepRow` only dispatches `group-reorder-step` — it never checks if the drop happened outside the group bounds.
+### 2. Modification History
+- Create a new database table `chatbot_flow_history` with columns: `id`, `flow_id` (FK), `user_id`, `name`, `nodes` (jsonb), `edges` (jsonb), `created_at`
+- Add RLS policies for user access
+- Before each autosave, insert a snapshot into `chatbot_flow_history`
+- Limit stored snapshots (keep last 50 per flow, or debounce history saves to every ~30s to avoid excessive records)
+- Add a "Histórico" button in the top panel that opens a sheet/dialog listing past versions with timestamps
+- Each history entry shows a timestamp and allows "Restaurar" to load that version back into the editor
 
-## Solution
+### 3. Fix Add Node Button
+- The current "Adicionar Nó" popover button works but may have positioning/interaction issues. Ensure it functions correctly by reviewing its placement and ensuring it doesn't conflict with the canvas. Move it to a more accessible position if needed.
 
-### 1. Detect drag-out in `GroupNode.tsx`
+### Technical Details
 
-In `StepRow`'s `onDragEnd`, check if the mouse position is outside the parent group element's bounding rect. If so, dispatch a new `group-extract-step` CustomEvent with `{ nodeId, stepId, clientX, clientY }` instead of `group-reorder-step`.
+**New migration:**
+```sql
+CREATE TABLE public.chatbot_flow_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  name text NOT NULL,
+  nodes jsonb NOT NULL DEFAULT '[]',
+  edges jsonb NOT NULL DEFAULT '[]',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.chatbot_flow_history ENABLE ROW LEVEL SECURITY;
+-- RLS: users can view/insert/delete own history
+```
 
-Also set a `dataTransfer` type identifier so other groups can accept the drop via `onDragOver`/`onDrop`.
-
-### 2. Handle extraction in `FlowEditor.tsx`
-
-Add a `useEffect` listener for `group-extract-step`:
-- Remove the step from its source group (using existing `removeStepFromGroup` logic but without the offset — use the mouse position converted via `screenToFlowPosition`)
-- After creating the standalone node, run proximity docking check against all other nodes to see if it should immediately dock into another group
-
-### 3. Enable cross-group docking via drop zones
-
-In `GroupNode.tsx`, add `onDragOver` and `onDrop` handlers on the steps container so it can accept steps dragged from other groups. When a foreign step is dropped, dispatch a `group-receive-step` event with `{ targetNodeId, stepData }`.
-
-In `FlowEditor.tsx`, listen for `group-receive-step` to add the step to the target group and remove it from the source.
-
-### Technical details
-
-- **GroupNode StepRow `onDragEnd`**: Compare `e.clientX/clientY` against `e.currentTarget.closest('.group-drag-handle')?.parentElement?.getBoundingClientRect()`. If outside → extract event.
-- **GroupNode container**: Add `onDrop` handler that reads `stepId` and `sourceNodeId` from `dataTransfer`, dispatches `group-receive-step`.
-- **FlowEditor**: New event listeners for `group-extract-step` and `group-receive-step` that manipulate `setNodes`.
-- Store `sourceNodeId` and `stepId` in `dataTransfer.setData()` during `onDragStart` so cross-group drops work.
+**Files to edit:**
+- `src/components/chatbot/FlowEditor.tsx` — remove save button, add autosave effect, add history panel trigger, add save status indicator
+- New hook `src/hooks/useFlowHistory.ts` — fetch/insert history snapshots
+- New component `src/components/chatbot/FlowHistoryPanel.tsx` — sheet listing versions with restore action
 
