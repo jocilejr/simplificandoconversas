@@ -441,8 +441,76 @@ Deno.serve(async (req) => {
 
         let totalSynced = 0;
 
+        const instanceStatuses: any[] = [];
+
         for (const currentInstanceName of instancesToSync) {
           console.log(`[sync-chats] Syncing instance: ${currentInstanceName}`);
+
+          // --- Pre-sync health checks ---
+
+          // 1. Check connection state
+          let connectionState = "unknown";
+          try {
+            const stateResp = await fetch(
+              `${baseUrl}/instance/connectionState/${encodeURIComponent(currentInstanceName)}`,
+              { headers: { apikey: evolution_api_key } }
+            );
+            const stateData = await stateResp.json();
+            connectionState = stateData?.instance?.state || stateData?.state || "unknown";
+            console.log(`[sync-chats] Connection state for ${currentInstanceName}: ${connectionState}`);
+          } catch (e) {
+            console.error(`[sync-chats] Failed to check connection for ${currentInstanceName}:`, e.message);
+          }
+
+          // Update instance status in DB
+          await serviceClient
+            .from("evolution_instances")
+            .update({ status: connectionState })
+            .eq("user_id", userId)
+            .eq("instance_name", currentInstanceName);
+
+          // 2. Configure webhook (ensure messages arrive in real-time)
+          const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evolution-webhook`;
+          try {
+            const whResp = await fetch(`${baseUrl}/webhook/set/${encodeURIComponent(currentInstanceName)}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                webhook: {
+                  enabled: true,
+                  url: webhookUrl,
+                  byEvents: false,
+                  base64: true,
+                  events: [
+                    "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+                    "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+                    "QRCODE_UPDATED", "CONNECTION_UPDATE",
+                  ],
+                },
+              }),
+            });
+            const whResult = await whResp.json();
+            console.log(`[sync-chats] Webhook configured for ${currentInstanceName}:`, JSON.stringify(whResult).substring(0, 200));
+          } catch (e) {
+            console.error(`[sync-chats] Failed to set webhook for ${currentInstanceName}:`, e.message);
+          }
+
+          // 3. Enable message store (ensure messages are persisted by Evolution API)
+          try {
+            const storeResp = await fetch(`${baseUrl}/chat/updateSettings/${encodeURIComponent(currentInstanceName)}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ storeMessages: true, storeLids: true }),
+            });
+            const storeResult = await storeResp.text();
+            console.log(`[sync-chats] Store settings for ${currentInstanceName}: status=${storeResp.status}, result=${storeResult.substring(0, 200)}`);
+          } catch (e) {
+            console.error(`[sync-chats] Failed to enable store for ${currentInstanceName}:`, e.message);
+          }
+
+          instanceStatuses.push({ instance: currentInstanceName, connectionState });
+
+          // --- End pre-sync health checks ---
           
           // Try findMessages for this instance
           let allMessages: any[] = [];
@@ -605,9 +673,13 @@ Deno.serve(async (req) => {
         }
 
         if (totalSynced > 0) {
-          result = { synced: totalSynced, source: "messages" };
+          result = { synced: totalSynced, source: "messages", instanceStatuses };
         } else {
-          result = { synced: 0, info: "Nenhuma mensagem cacheada nas instâncias. As conversas aparecerão automaticamente quando novas mensagens forem enviadas ou recebidas via WhatsApp." };
+          const disconnected = instanceStatuses.filter((s: any) => s.connectionState !== "open").map((s: any) => s.instance);
+          const info = disconnected.length > 0
+            ? `Instância(s) desconectada(s): ${disconnected.join(", ")}. Webhook e store foram reconfigurados. Reconecte a instância e sincronize novamente.`
+            : "Nenhuma mensagem cacheada nas instâncias. As conversas aparecerão automaticamente quando novas mensagens forem enviadas ou recebidas via WhatsApp.";
+          result = { synced: 0, info, instanceStatuses };
         }
         break;
       }
