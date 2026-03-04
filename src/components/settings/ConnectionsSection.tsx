@@ -99,7 +99,7 @@ export function ConnectionsSection() {
   const mergedInstances = remoteInstances.length > 0
     ? remoteInstances.map((ri: any) => {
         const name = ri.instance?.instanceName || ri.instanceName || ri.name;
-        const status = ri.instance?.state || ri.state || ri.status || "close";
+        const status = ri.connectionStatus || ri.instance?.state || ri.state || ri.status || "close";
         const local = instances.find(i => i.instance_name === name);
         return { name, status, is_active: local?.is_active || false, proxy_url: local?.proxy_url || null };
       })
