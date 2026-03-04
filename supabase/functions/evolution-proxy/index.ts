@@ -237,6 +237,70 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "fetch-profile-picture": {
+        const { remoteJid: picJid } = params;
+        if (!picJid) {
+          return new Response(JSON.stringify({ error: "remoteJid required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const number = picJid.split("@")[0];
+        const baseUrlPic = evolution_api_url.replace(/\/$/, "");
+        try {
+          const picResp = await fetch(
+            `${baseUrlPic}/chat/fetchProfilePictureUrl/${evolution_instance_name}`,
+            {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ number }),
+            }
+          );
+          const picData = await picResp.json();
+          result = { profilePictureUrl: picData?.profilePictureUrl || picData?.picture || picData?.url || null };
+        } catch {
+          result = { profilePictureUrl: null };
+        }
+        break;
+      }
+
+      case "fetch-profile-pictures": {
+        const { remoteJids: jids } = params;
+        if (!jids || !Array.isArray(jids)) {
+          return new Response(JSON.stringify({ error: "remoteJids required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const baseUrlPics = evolution_api_url.replace(/\/$/, "");
+        const photos: Record<string, string> = {};
+        // Fetch in parallel, max 10 at a time
+        const batches = [];
+        for (let i = 0; i < jids.length; i += 10) {
+          batches.push(jids.slice(i, i + 10));
+        }
+        for (const batch of batches) {
+          await Promise.allSettled(
+            batch.map(async (jid: string) => {
+              try {
+                const num = jid.split("@")[0];
+                const resp = await fetch(
+                  `${baseUrlPics}/chat/fetchProfilePictureUrl/${evolution_instance_name}`,
+                  {
+                    method: "POST",
+                    headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                    body: JSON.stringify({ number: num }),
+                  }
+                );
+                const d = await resp.json();
+                const url = d?.profilePictureUrl || d?.picture || d?.url;
+                if (url) photos[jid] = url;
+              } catch {}
+            })
+          );
+        }
+        result = photos;
+        break;
+      }
+
       case "fetch-messages": {
         const { remoteJid, count = 50 } = params;
         if (!remoteJid) {
