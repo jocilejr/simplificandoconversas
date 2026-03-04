@@ -7,11 +7,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import { ChatPanel } from "@/components/conversations/ChatPanel";
+import { RightPanel } from "@/components/conversations/RightPanel";
 
 const Conversations = () => {
   const queryClient = useQueryClient();
   const { data: conversations, isLoading: loadingConvs, markAsRead } = useConversations();
   const [selected, setSelected] = useState<Conversation | null>(null);
+  const [showRightPanel, setShowRightPanel] = useState(false);
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
 
@@ -27,7 +29,6 @@ const Conversations = () => {
         body: { action: "sync-chats" },
       });
       if (error) throw error;
-      // Also fetch real contact names
       await supabase.functions.invoke("evolution-proxy", {
         body: { action: "fetch-contact-names" },
       });
@@ -65,22 +66,22 @@ const Conversations = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex rounded-xl overflow-hidden border border-border shadow-sm">
-      {/* Left panel */}
-      <div className="w-80 lg:w-96 shrink-0">
+    <div className="h-full flex">
+      {/* Left - Conversation List */}
+      <div className="w-80 lg:w-96 shrink-0 border-r border-border">
         <ConversationList
           conversations={conversations}
           isLoading={loadingConvs}
           selected={selected}
-          onSelect={setSelected}
+          onSelect={(conv) => { setSelected(conv); }}
           onSync={() => syncChats.mutate()}
           isSyncing={syncChats.isPending}
           contactPhotos={contactPhotos || {}}
         />
       </div>
 
-      {/* Right panel */}
-      <div className="flex-1 flex flex-col">
+      {/* Center - Chat */}
+      <div className="flex-1 flex flex-col min-w-0">
         <ChatPanel
           conversation={selected}
           messages={messages}
@@ -88,8 +89,19 @@ const Conversations = () => {
           onSend={handleSend}
           isSending={sendMessage.isPending}
           contactPhoto={selected ? (contactPhotos || {})[selected.remote_jid] : null}
+          onToggleRightPanel={() => setShowRightPanel(p => !p)}
+          showRightPanel={showRightPanel}
         />
       </div>
+
+      {/* Right - Details Panel */}
+      {showRightPanel && selected && (
+        <RightPanel
+          conversation={selected}
+          contactPhoto={(contactPhotos || {})[selected.remote_jid]}
+          onClose={() => setShowRightPanel(false)}
+        />
+      )}
     </div>
   );
 };

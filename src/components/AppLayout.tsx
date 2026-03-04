@@ -1,9 +1,13 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 export function AppLayout() {
+  const location = useLocation();
+  const isFullscreen = location.pathname === "/conversations";
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -13,7 +17,10 @@ export function AppLayout() {
             <SidebarTrigger />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto p-6">
+          <main className={cn(
+            "flex-1 overflow-hidden",
+            isFullscreen ? "p-0" : "overflow-auto p-6"
+          )}>
             <Outlet />
           </main>
         </div>
