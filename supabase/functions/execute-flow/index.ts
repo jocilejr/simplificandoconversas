@@ -489,6 +489,10 @@ Deno.serve(async (req) => {
                 nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
               }
 
+              const appPublicUrl = profile.app_public_url
+                ? profile.app_public_url.replace(/\/$/, "")
+                : null;
+
               await serviceClient.from("tracked_links").insert({
                 user_id: userId,
                 flow_id: flowId,
@@ -498,10 +502,14 @@ Deno.serve(async (req) => {
                 short_code: shortCode,
                 next_node_id: nextNodeId,
                 conversation_id: conversationId || null,
+                preview_title: step.data.clickPreviewTitle || null,
+                preview_description: step.data.clickPreviewDescription || null,
+                preview_image: step.data.clickPreviewImage || null,
               });
 
-              const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-              const trackingUrl = `${supabaseUrl}/functions/v1/link-redirect?code=${shortCode}`;
+              const trackingUrl = appPublicUrl
+                ? `${appPublicUrl}/r/${shortCode}`
+                : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
