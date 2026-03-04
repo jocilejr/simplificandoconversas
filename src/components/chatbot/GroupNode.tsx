@@ -1,7 +1,8 @@
-import { memo, useState, useCallback, useRef } from "react";
+import { memo, useState, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { icons, CheckCircle2, Plus } from "lucide-react";
-import { nodeTypeConfig, type FlowNodeData, type FlowStepData } from "@/types/chatbot";
+import { nodeTypeConfig, type FlowNodeData, type FlowNodeType, type FlowStepData } from "@/types/chatbot";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface GroupNodeProps {
   id: string;
@@ -85,6 +86,8 @@ function StepRow({
     </div>
   );
 }
+
+const addableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "action"];
 
 function GroupNode({ id, data, selected }: GroupNodeProps) {
   const d = data as FlowNodeData;
@@ -171,11 +174,44 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           )}
         </div>
 
-        <div className="px-3 pb-2.5">
-          <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors nopan nodrag">
-            <Plus className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-medium">Adicionar ação</span>
-          </button>
+        <div className="px-3 pb-2.5 nopan nodrag">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors">
+                <Plus className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium">Adicionar ação</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-52 p-1.5" side="bottom" align="center">
+              <div className="space-y-0.5 max-h-60 overflow-y-auto">
+                {addableTypes.map((type) => {
+                  const config = nodeTypeConfig[type];
+                  const LucideIcon = icons[config.icon as keyof typeof icons];
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        const event = new CustomEvent("group-add-step", {
+                          detail: { nodeId: id, stepType: type },
+                          bubbles: true,
+                        });
+                        document.dispatchEvent(event);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md hover:bg-secondary transition-colors text-left"
+                    >
+                      <div
+                        className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${config.color}18`, color: config.color }}
+                      >
+                        {LucideIcon && <LucideIcon className="w-3 h-3" />}
+                      </div>
+                      <span className="text-[12px] font-medium text-foreground">{config.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         {isDockTarget && (

@@ -335,6 +335,28 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => document.removeEventListener("group-reorder-step", handler);
   }, [reorderStepByIndex]);
 
+  // Listen for add-step events from GroupNode
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId, stepType } = (e as CustomEvent).detail as { nodeId: string; stepType: FlowNodeType };
+      const config = nodeTypeConfig[stepType];
+      const newStep: FlowStepData = {
+        id: crypto.randomUUID(),
+        data: { label: config.label, type: stepType, ...defaultNodeData[stepType] } as FlowNodeData,
+      };
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== nodeId) return n;
+          const data = n.data as FlowNodeData;
+          return { ...n, data: { ...data, steps: [...(data.steps || []), newStep] } };
+        })
+      );
+      toast.success(`${config.label} adicionado ao grupo`);
+    };
+    document.addEventListener("group-add-step", handler);
+    return () => document.removeEventListener("group-add-step", handler);
+  }, [setNodes]);
+
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>
