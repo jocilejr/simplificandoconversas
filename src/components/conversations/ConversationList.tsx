@@ -105,17 +105,17 @@ export function ConversationList({
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-sm truncate">
-                    {conv.contact_name || formatJid(conv.remote_jid)}
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     {conv.unread_count > 0 && (
-                      <span className="h-2 w-2 rounded-full bg-primary" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      {formatTime(conv.last_message_at)}
+                    <span className="font-semibold text-sm truncate">
+                      {conv.contact_name || formatJid(conv.remote_jid)}
                     </span>
                   </div>
+                  <span className="text-[11px] text-muted-foreground shrink-0 whitespace-nowrap">
+                    {formatTime(conv.last_message_at)}
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
                   {conv.last_message || "..."}
