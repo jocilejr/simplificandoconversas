@@ -415,8 +415,11 @@ Deno.serve(async (req) => {
               preview_image: data.clickPreviewImage || null,
             });
 
-            // Always use edge function URL — SPA routes can't serve dynamic OG meta tags for crawlers
-            const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
+            // Use app_public_url if configured, otherwise fall back to edge function URL
+            const publicUrl = profile.app_public_url?.replace(/\/$/, "");
+            const trackingUrl = publicUrl
+              ? `${publicUrl}/r/${shortCode}`
+              : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
 
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
