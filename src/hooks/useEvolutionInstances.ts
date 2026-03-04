@@ -110,6 +110,11 @@ export function useEvolutionInstances() {
           status: "close",
         } as any, { onConflict: "user_id,instance_name" });
 
+      // Configure webhook for this instance
+      await supabase.functions.invoke("evolution-proxy", {
+        body: { action: "set-webhook", instanceName },
+      });
+
       // Update profile for compatibility
       await supabase
         .from("profiles")
