@@ -152,6 +152,15 @@ Deno.serve(async (req) => {
       external_id: externalId,
     });
 
+    // === AUTO-TRIGGER: Check keyword matching for inbound messages ===
+    if (!fromMe && messageContent) {
+      try {
+        await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id);
+      } catch (triggerErr) {
+        console.error("Flow trigger error (non-fatal):", triggerErr);
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -163,3 +172,83 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+async function checkAndTriggerFlows(
+  supabase: any,
+  userId: string,
+  remoteJid: string,
+  messageContent: string,
+  conversationId: string
+) {
+  // 1. Fetch all active flows for this user
+  const { data: flows, error: flowsErr } = await supabase
+    .from("chatbot_flows")
+    .select("id, nodes")
+    .eq("user_id", userId)
+    .eq("active", true);
+
+  if (flowsErr || !flows || flows.length === 0) {
+    return;
+  }
+
+  const contentLower = messageContent.trim().toLowerCase();
+
+  for (const flow of flows) {
+    const nodes = (flow.nodes || []) as any[];
+    let matched = false;
+
+    // 2. Look for trigger nodes with triggerKeyword
+    for (const node of nodes) {
+      const children = node.data?.children || [node.data || {}];
+      for (const child of children) {
+        if (child.type === "trigger" && child.triggerKeyword) {
+          const keyword = child.triggerKeyword.trim().toLowerCase();
+          if (keyword && contentLower === keyword) {
+            matched = true;
+            break;
+          }
+        }
+      }
+      if (matched) break;
+    }
+
+    if (!matched) continue;
+
+    // 3. Check if there's already a running execution for this jid + flow
+    const { data: existing } = await supabase
+      .from("flow_executions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("flow_id", flow.id)
+      .eq("remote_jid", remoteJid)
+      .eq("status", "running")
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      console.log(`Flow ${flow.id} already running for ${remoteJid}, skipping`);
+      continue;
+    }
+
+    // 4. Call execute-flow via HTTP with service role key
+    console.log(`Triggering flow ${flow.id} for ${remoteJid} (keyword match)`);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const resp = await fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        flowId: flow.id,
+        remoteJid,
+        conversationId,
+        userId, // server-to-server: pass userId explicitly
+      }),
+    });
+
+    const result = await resp.json();
+    console.log(`Flow ${flow.id} trigger result:`, result);
+  }
+}
