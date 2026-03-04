@@ -23,7 +23,7 @@ async function downloadAndUploadMedia(
     if (!base64 && mediaMessage) {
       try {
         const resp = await fetch(
-          `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
+          `${baseUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
           {
             method: "POST",
             headers: { apikey: apiKey, "Content-Type": "application/json" },
@@ -162,6 +162,7 @@ Deno.serve(async (req) => {
             qrcode: true,
             integration: "WHATSAPP-BAILEYS",
             webhook: {
+              enabled: true,
               url: webhookUrl,
               byEvents: false,
               base64: true,
@@ -203,7 +204,7 @@ Deno.serve(async (req) => {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        const resp = await fetch(`${baseUrl}/instance/connect/${connInstName}`, {
+        const resp = await fetch(`${baseUrl}/instance/connect/${encodeURIComponent(connInstName)}`, {
           headers: { apikey: evolution_api_key },
         });
         result = await resp.json();
@@ -217,7 +218,7 @@ Deno.serve(async (req) => {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        const resp = await fetch(`${baseUrl}/instance/delete/${delInstName}`, {
+        const resp = await fetch(`${baseUrl}/instance/delete/${encodeURIComponent(delInstName)}`, {
           method: "DELETE",
           headers: { apikey: evolution_api_key },
         });
@@ -242,7 +243,7 @@ Deno.serve(async (req) => {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        const resp = await fetch(`${baseUrl}/instance/proxy/${proxyInstName}`, {
+        const resp = await fetch(`${baseUrl}/instance/proxy/${encodeURIComponent(proxyInstName)}`, {
           method: "POST",
           headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
           body: JSON.stringify({ enabled: !!proxyUrl, proxy: proxyUrl || "" }),
@@ -259,7 +260,7 @@ Deno.serve(async (req) => {
         }
         const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evolution-webhook`;
         console.log(`[set-webhook] Setting webhook for ${whInstName} -> ${webhookUrl}`);
-        const resp = await fetch(`${baseUrl}/webhook/set/${whInstName}`, {
+        const resp = await fetch(`${baseUrl}/webhook/set/${encodeURIComponent(whInstName)}`, {
           method: "POST",
           headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -298,7 +299,7 @@ Deno.serve(async (req) => {
         for (const instName of instancesToSync) {
           console.log(`[sync-webhooks] Configuring webhook for ${instName}`);
           try {
-            const resp = await fetch(`${baseUrl}/webhook/set/${instName}`, {
+            const resp = await fetch(`${baseUrl}/webhook/set/${encodeURIComponent(instName)}`, {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -330,7 +331,7 @@ Deno.serve(async (req) => {
 
       case "test-connection": {
         const resp = await fetch(
-          `${evolution_api_url}/instance/connectionState/${evolution_instance_name}`,
+          `${evolution_api_url}/instance/connectionState/${encodeURIComponent(evolution_instance_name)}`,
           { headers: { apikey: evolution_api_key } }
         );
         result = await resp.json();
@@ -354,7 +355,7 @@ Deno.serve(async (req) => {
         }
 
         const resp = await fetch(
-          `${evolution_api_url}/message/${endpoint}/${evolution_instance_name}`,
+          `${evolution_api_url}/message/${endpoint}/${encodeURIComponent(evolution_instance_name)}`,
           {
             method: "POST",
             headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -407,7 +408,7 @@ Deno.serve(async (req) => {
 
       case "fetch-chats": {
         const resp = await fetch(
-          `${evolution_api_url}/chat/findChats/${evolution_instance_name}`,
+          `${evolution_api_url}/chat/findChats/${encodeURIComponent(evolution_instance_name)}`,
           {
             method: "POST",
             headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -447,7 +448,7 @@ Deno.serve(async (req) => {
           let allMessages: any[] = [];
           
           const msgsResp = await fetch(
-            `${baseUrl}/chat/findMessages/${currentInstanceName}`,
+            `${baseUrl}/chat/findMessages/${encodeURIComponent(currentInstanceName)}`,
             {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -476,7 +477,7 @@ Deno.serve(async (req) => {
             console.log(`[sync-chats] No messages for ${currentInstanceName}, trying findChats...`);
             try {
               const chatsResp = await fetch(
-                `${baseUrl}/chat/findChats/${currentInstanceName}`,
+                `${baseUrl}/chat/findChats/${encodeURIComponent(currentInstanceName)}`,
                 {
                   method: "POST",
                   headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -597,7 +598,7 @@ Deno.serve(async (req) => {
         const baseUrlPic = evolution_api_url.replace(/\/$/, "");
         try {
           const picResp = await fetch(
-            `${baseUrlPic}/chat/fetchProfilePictureUrl/${evolution_instance_name}`,
+            `${baseUrlPic}/chat/fetchProfilePictureUrl/${encodeURIComponent(evolution_instance_name)}`,
             {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -632,7 +633,7 @@ Deno.serve(async (req) => {
               try {
                 const num = jid.split("@")[0];
                 const resp = await fetch(
-                  `${baseUrlPics}/chat/fetchProfilePictureUrl/${evolution_instance_name}`,
+                  `${baseUrlPics}/chat/fetchProfilePictureUrl/${encodeURIComponent(evolution_instance_name)}`,
                   {
                     method: "POST",
                     headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -660,7 +661,7 @@ Deno.serve(async (req) => {
 
         try {
           const contactsResp = await fetch(
-            `${baseUrlContacts}/chat/findContacts/${evolution_instance_name}`,
+            `${baseUrlContacts}/chat/findContacts/${encodeURIComponent(evolution_instance_name)}`,
             {
               method: "POST",
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -726,7 +727,7 @@ Deno.serve(async (req) => {
             for (const conv of stillNoName) {
               try {
                 const msgResp = await fetch(
-                  `${baseUrlMsg}/chat/findMessages/${evolution_instance_name}`,
+                  `${baseUrlMsg}/chat/findMessages/${encodeURIComponent(evolution_instance_name)}`,
                   {
                     method: "POST",
                     headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
@@ -765,7 +766,7 @@ Deno.serve(async (req) => {
 
         const baseUrl2 = evolution_api_url.replace(/\/$/, "");
         const msgResp = await fetch(
-          `${baseUrl2}/chat/findMessages/${evolution_instance_name}`,
+          `${baseUrl2}/chat/findMessages/${encodeURIComponent(evolution_instance_name)}`,
           {
             method: "POST",
             headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
