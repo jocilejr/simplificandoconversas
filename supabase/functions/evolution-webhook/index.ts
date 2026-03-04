@@ -49,9 +49,9 @@ Deno.serve(async (req) => {
       : "text";
     const externalId = key.id || data.keyId || null;
 
-    // Truncate last_message preview to 100 chars
+    // Truncate last_message preview to 50 chars
     const messageContent = rawContent;
-    const lastMessagePreview = truncate(rawContent, 100) || `[${messageType}]`;
+    const lastMessagePreview = truncate(rawContent, 50) || `[${messageType}]`;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
