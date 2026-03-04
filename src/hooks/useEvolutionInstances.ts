@@ -94,13 +94,7 @@ export function useEvolutionInstances() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Deactivate all
-      await supabase
-        .from("evolution_instances")
-        .update({ is_active: false } as any)
-        .eq("user_id", user.id);
-
-      // Upsert the instance (creates if not exists, updates if exists)
+      // Upsert the instance as active (no longer deactivates others)
       await supabase
         .from("evolution_instances")
         .upsert({
@@ -115,7 +109,7 @@ export function useEvolutionInstances() {
         body: { action: "set-webhook", instanceName },
       });
 
-      // Update profile for compatibility
+      // Update profile for compatibility (keep last activated)
       await supabase
         .from("profiles")
         .update({ evolution_instance_name: instanceName })
