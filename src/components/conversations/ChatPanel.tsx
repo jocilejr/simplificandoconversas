@@ -104,7 +104,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full min-h-0 bg-background">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-card">
         <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="md" />
