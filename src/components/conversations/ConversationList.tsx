@@ -95,7 +95,7 @@ export function ConversationList({
               onClick={() => onSelect(conv)}
               className={cn(
                 "w-full text-left px-4 py-3 transition-colors hover:bg-accent/50 flex items-center gap-3 border-b border-border/50",
-                selected?.id === conv.id && "bg-accent"
+                selected?.id === conv.id && "bg-primary/15"
               )}
             >
               <ContactAvatar
