@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await serviceClient
       .from("profiles")
-      .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url")
+      .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key")
       .eq("user_id", userId)
       .single();
 
@@ -401,11 +401,6 @@ Deno.serve(async (req) => {
             const nextIds = outgoingMap.get(node.id) || [];
             const nextNodeId = nextIds.length > 0 ? nextIds[0] : null;
 
-            // Get app public URL for nicer links
-            const appPublicUrl = profile.app_public_url
-              ? profile.app_public_url.replace(/\/$/, "")
-              : null;
-
             await serviceClient.from("tracked_links").insert({
               user_id: userId,
               flow_id: flowId,
@@ -420,10 +415,8 @@ Deno.serve(async (req) => {
               preview_image: data.clickPreviewImage || null,
             });
 
-            // Use app URL if configured, otherwise fall back to edge function URL
-            const trackingUrl = appPublicUrl
-              ? `${appPublicUrl}/r/${shortCode}`
-              : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
+            // Always use edge function URL (serves OG tags for bots, redirects for humans)
+            const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
 
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));

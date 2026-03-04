@@ -11,16 +11,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Detect bot/preview user agents (WhatsApp link preview, Facebook crawler, etc.)
   const userAgent = (req.headers.get("user-agent") || "").toLowerCase();
   const botPatterns = [
     "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
     "twitterbot", "linkedinbot", "slackbot", "discordbot",
     "googlebot", "bingbot", "yandexbot", "baiduspider",
     "preview", "crawler", "spider", "bot", "curl", "wget",
-    "python-requests", "go-http-client", "java/", "apache-httpclient"
+    "python-requests", "go-http-client", "java/", "apache-httpclient",
+    "headless", "phantom", "selenium", "puppeteer", "applebot",
+    "pinterestbot", "redditbot", "embedly", "quora", "outbrain",
+    "vkshare", "w3c_validator", "skypeuripreview", "nuzzel",
+    "flipboard", "tumblr", "bitlybot", "mediapartners-google",
   ];
-  const isBot = botPatterns.some((p) => userAgent.includes(p));
+  const isBotUA = botPatterns.some((p) => userAgent.includes(p));
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
@@ -44,14 +47,54 @@ Deno.serve(async (req) => {
     return new Response("Link not found", { status: 404 });
   }
 
-  // Only process click if NOT a bot/preview request
-  if (!link.clicked && !isBot) {
+  // Temporal protection: any access within 15 seconds of creation is treated as bot/preview
+  const createdAt = new Date(link.created_at).getTime();
+  const now = Date.now();
+  const tooFast = (now - createdAt) < 15000;
+
+  const isBot = isBotUA || tooFast;
+
+  // Serve OG HTML for bots/previews
+  if (isBot) {
+    console.log(`[link-redirect] Bot detected (UA: ${isBotUA}, tooFast: ${tooFast}). UA: ${userAgent}`);
+
+    if (link.preview_title || link.preview_description || link.preview_image) {
+      const title = link.preview_title || "Link";
+      const description = link.preview_description || "";
+      const image = link.preview_image || "";
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta property="og:title" content="${title.replace(/"/g, '&quot;')}">
+  <meta property="og:description" content="${description.replace(/"/g, '&quot;')}">
+  ${image ? `<meta property="og:image" content="${image.replace(/"/g, '&quot;')}">` : ""}
+  <meta property="og:url" content="${link.original_url}">
+  <meta property="og:type" content="website">
+  <title>${title.replace(/</g, '&lt;')}</title>
+</head>
+<body></body>
+</html>`;
+      return new Response(html, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders },
+      });
+    }
+
+    // If no preview data, just redirect without marking as clicked
+    return new Response(null, {
+      status: 302,
+      headers: { Location: link.original_url, ...corsHeaders },
+    });
+  }
+
+  // Real human click — mark as clicked and resume flow
+  if (!link.clicked) {
     await serviceClient
       .from("tracked_links")
       .update({ clicked: true, clicked_at: new Date().toISOString() })
       .eq("id", link.id);
 
-    // Resume the flow from the next node
     if (link.next_node_id && link.flow_id && link.execution_id) {
       try {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -76,40 +119,10 @@ Deno.serve(async (req) => {
         console.error("[link-redirect] Failed to resume flow:", err);
       }
     }
-  } else if (isBot) {
-    console.log(`[link-redirect] Ignored bot/preview request. UA: ${userAgent}`);
-    
-    // Serve OG HTML for link preview if preview data exists
-    if (link.preview_title || link.preview_description || link.preview_image) {
-      const title = link.preview_title || "Link";
-      const description = link.preview_description || "";
-      const image = link.preview_image || "";
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta property="og:title" content="${title.replace(/"/g, '&quot;')}">
-  <meta property="og:description" content="${description.replace(/"/g, '&quot;')}">
-  ${image ? `<meta property="og:image" content="${image.replace(/"/g, '&quot;')}">` : ""}
-  <meta property="og:url" content="${link.original_url}">
-  <meta property="og:type" content="website">
-  <title>${title.replace(/</g, '&lt;')}</title>
-</head>
-<body></body>
-</html>`;
-      return new Response(html, {
-        status: 200,
-        headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders },
-      });
-    }
   }
 
-  // Always redirect to original URL
   return new Response(null, {
     status: 302,
-    headers: {
-      Location: link.original_url,
-      ...corsHeaders,
-    },
+    headers: { Location: link.original_url, ...corsHeaders },
   });
 });

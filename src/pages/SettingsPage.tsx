@@ -14,7 +14,6 @@ const SettingsPage = () => {
   const [instanceName, setInstanceName] = useState("");
   const [fullName, setFullName] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
-  const [appPublicUrl, setAppPublicUrl] = useState("");
 
   useEffect(() => {
     if (profile) {
@@ -23,7 +22,6 @@ const SettingsPage = () => {
       setInstanceName(profile.evolution_instance_name || "");
       setFullName(profile.full_name || "");
       setOpenaiKey(profile.openai_api_key || "");
-      setAppPublicUrl((profile as any).app_public_url || "");
     }
   }, [profile]);
 
@@ -152,33 +150,6 @@ const SettingsPage = () => {
           </div>
           <Button
             onClick={() => updateProfile.mutate({ openai_api_key: openaiKey })}
-            disabled={updateProfile.isPending}
-          >
-            {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Salvar
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg">URL Pública do App</CardTitle>
-          <CardDescription>URL do seu app publicado para gerar links rastreáveis com domínio próprio</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>URL do App</Label>
-            <Input
-              placeholder="https://simplificandoconversas.lovable.app"
-              value={appPublicUrl}
-              onChange={(e) => setAppPublicUrl(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Os links rastreáveis usarão este domínio. Ex: <strong>seuapp.lovable.app/r/abc123</strong>
-            </p>
-          </div>
-          <Button
-            onClick={() => updateProfile.mutate({ app_public_url: appPublicUrl } as any)}
             disabled={updateProfile.isPending}
           >
             {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
