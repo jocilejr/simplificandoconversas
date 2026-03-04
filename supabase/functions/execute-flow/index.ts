@@ -100,6 +100,11 @@ async function executeStep(
     return `waitDelay: ${stepData.delaySeconds}s`;
   }
 
+  if (nodeType === "aiAgent") {
+    // Handled separately in the main loop (needs serviceClient context for history)
+    return "aiAgent: handled-externally";
+  }
+
   return `${nodeType}: no-op`;
 }
 
