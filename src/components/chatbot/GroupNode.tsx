@@ -115,14 +115,63 @@ function StepRow({
     }
   };
 
-  // Compact description for types without rich preview
-  let desc = config.description;
-  if (d.type === "action") {
-    desc = d.actionValue || config.description;
-  } else if (d.type === "condition") {
-    desc = `${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
-  } else if (d.type === "waitForReply") {
-    desc = `Salvar em {{${d.replyVariable || "resposta"}}}`;
+  // For waitDelay, render a compact centered pill
+  if (d.type === "waitDelay") {
+    return (
+      <div
+        data-step-id={step.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("application/step-id", step.id);
+          e.dataTransfer.setData("application/source-node-id", nodeId);
+          onDragStart(index);
+        }}
+        onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+        onDragOver={(e) => { e.preventDefault(); }}
+        onDragEnd={(e) => onDragEnd(e)}
+        className={`mx-1 mb-1 px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+          isDragging ? "opacity-30 scale-95"
+            : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
+            : "bg-muted/50 hover:bg-muted/70"
+        }`}
+      >
+        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-[11px] font-medium text-muted-foreground">
+          Aguardando por {d.delaySeconds || 0} segundos...
+        </span>
+      </div>
+    );
+  }
+
+  // For sendText with content, render as a chat bubble without header
+  if (d.type === "sendText" && d.textContent) {
+    const html = parseWhatsAppFormatting(d.textContent);
+    return (
+      <div
+        data-step-id={step.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("application/step-id", step.id);
+          e.dataTransfer.setData("application/source-node-id", nodeId);
+          onDragStart(index);
+        }}
+        onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+        onDragOver={(e) => { e.preventDefault(); }}
+        onDragEnd={(e) => onDragEnd(e)}
+        className={`mx-1 mb-1 px-3 py-2.5 rounded-xl transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+          isDragging ? "opacity-30 scale-95"
+            : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
+            : "bg-secondary/50 hover:bg-secondary/70"
+        }`}
+      >
+        <p
+          className="text-[12px] text-foreground/85 whitespace-pre-wrap line-clamp-5 leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
+    );
   }
 
   const hasRichPreview = ["sendText", "sendImage", "sendVideo", "sendAudio"].includes(d.type);
@@ -165,20 +214,10 @@ function StepRow({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold text-foreground truncate">{d.label || config.label}</p>
-          {!hasRichPreview && d.type !== "waitDelay" && (
+          {!hasRichPreview && (
             <p className="text-[10px] text-muted-foreground truncate">{desc}</p>
           )}
         </div>
-        {d.type === "waitDelay" && (
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-[11px] font-semibold text-foreground/70">{d.delaySeconds || 0}s</span>
-            {d.simulateTyping && (
-              <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                digitando...
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Rich preview */}
