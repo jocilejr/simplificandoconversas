@@ -263,14 +263,16 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
           body: JSON.stringify({
-            url: webhookUrl,
-            webhook_by_events: false,
-            webhook_base64: true,
-            events: [
-              "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
-              "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
-              "QRCODE_UPDATED", "CONNECTION_UPDATE",
-            ],
+            webhook: {
+              url: webhookUrl,
+              byEvents: false,
+              base64: true,
+              events: [
+                "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+                "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+                "QRCODE_UPDATED", "CONNECTION_UPDATE",
+              ],
+            },
           }),
         });
         result = await resp.json();
@@ -440,7 +442,10 @@ Deno.serve(async (req) => {
               if (Array.isArray(chats) && chats.length > 0) {
                 // Convert chats to conversation rows directly
                 const chatRows = chats
-                  .filter((ch: any) => ch.id?.includes("@s.whatsapp.net") || ch.remoteJid?.includes("@s.whatsapp.net"))
+                  .filter((ch: any) => {
+                    const rid = ch.id || ch.remoteJid || "";
+                    return !rid.includes("@g.us") && rid !== "status@broadcast";
+                  })
                   .map((ch: any) => ({
                     user_id: userId,
                     remote_jid: ch.id || ch.remoteJid,
@@ -472,7 +477,7 @@ Deno.serve(async (req) => {
           for (const msg of allMessages) {
             const key = msg.key || {};
             const jid = key.remoteJid;
-            if (!jid || !jid.includes("@s.whatsapp.net")) continue;
+            if (!jid || jid.includes("@g.us") || jid === "status@broadcast") continue;
             const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "[mídia]";
             const ts = msg.messageTimestamp ? new Date(Number(msg.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
             const isInbound = !key.fromMe;
