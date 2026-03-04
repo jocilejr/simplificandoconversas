@@ -153,6 +153,7 @@ export type Database = {
           contact_name: string | null
           created_at: string
           id: string
+          instance_name: string | null
           last_message: string | null
           last_message_at: string | null
           remote_jid: string
@@ -163,6 +164,7 @@ export type Database = {
           contact_name?: string | null
           created_at?: string
           id?: string
+          instance_name?: string | null
           last_message?: string | null
           last_message_at?: string | null
           remote_jid: string
@@ -173,6 +175,7 @@ export type Database = {
           contact_name?: string | null
           created_at?: string
           id?: string
+          instance_name?: string | null
           last_message?: string | null
           last_message_at?: string | null
           remote_jid?: string

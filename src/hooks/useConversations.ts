@@ -11,6 +11,7 @@ export type Conversation = {
   last_message_at: string | null;
   unread_count: number;
   created_at: string;
+  instance_name: string | null;
 };
 
 export function useConversations() {
