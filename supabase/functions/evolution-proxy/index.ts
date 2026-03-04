@@ -264,6 +264,7 @@ Deno.serve(async (req) => {
           headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
           body: JSON.stringify({
             webhook: {
+              enabled: true,
               url: webhookUrl,
               byEvents: false,
               base64: true,
@@ -302,6 +303,7 @@ Deno.serve(async (req) => {
               headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
               body: JSON.stringify({
                 webhook: {
+                  enabled: true,
                   url: webhookUrl,
                   byEvents: false,
                   base64: true,
