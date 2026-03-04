@@ -55,17 +55,22 @@ function createChildData(type: FlowNodeType): FlowNodeData {
 }
 
 interface FlowEditorProps {
+  flowId: string;
   flowName: string;
+  initialNodes?: any[];
+  initialEdges?: any[];
   onBack: () => void;
+  onSave?: (name: string, nodes: any[], edges: any[]) => Promise<void>;
 }
 
-function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack, onSave }: FlowEditorProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes || []);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges || []);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedChildIndex, setSelectedChildIndex] = useState<number | null>(null);
   const [name, setName] = useState(flowName);
   const [isActive, setIsActive] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useReactFlow();
   const idCounter = useRef(1);
@@ -340,8 +345,15 @@ function FlowEditorInner({ flowName, onBack }: FlowEditorProps) {
 
           <Panel position="top-right" className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => toast.success("Fluxo salvo!")}>
-                <Save className="h-3 w-3 mr-1" /> Salvar
+              <Button variant="outline" size="sm" className="h-8 text-xs" disabled={isSaving} onClick={async () => {
+                if (onSave) {
+                  setIsSaving(true);
+                  try { await onSave(name, nodes, edges); toast.success("Fluxo salvo!"); }
+                  catch { toast.error("Erro ao salvar"); }
+                  finally { setIsSaving(false); }
+                } else { toast.success("Fluxo salvo!"); }
+              }}>
+                <Save className="h-3 w-3 mr-1" /> {isSaving ? "Salvando..." : "Salvar"}
               </Button>
               <Button size="sm" className="h-8 text-xs" variant={isActive ? "destructive" : "default"} onClick={() => { setIsActive(!isActive); toast.success(isActive ? "Desativado" : "Ativado!"); }}>
                 {isActive ? <><Square className="h-3 w-3 mr-1" /> Desativar</> : <><Play className="h-3 w-3 mr-1" /> Ativar</>}
