@@ -1,72 +1,76 @@
+## Agrupamento de Nos estilo ManyChat
 
+### Conceito
 
-## Reformulacao Completa do Chatbot Builder
-
-### Problemas Atuais
-
-1. **IDs duplicados**: `childIdCounter` global e `idCounter` via useRef(1) causam conflitos ao reabrir fluxos salvos — resulta no erro de "two children with same key"
-2. **Modelo de "children dentro de blocos"** e extremamente fragil: deteccao DOM para merge, closure stale no onDrop, reordenacao bugada
-3. **Painel de propriedades**: tabs de children nao funcionam (onClick vazio)
-4. **Codigo morto**: `CustomNode.tsx` e `GroupNode.tsx` nao sao usados
-5. **Sem persistencia de IDs**: ao salvar/reabrir, o counter reinicia e gera conflitos
-
-### Nova Arquitetura (inspirada no ManyChat)
-
-Cada step e um no independente no canvas (1 no = 1 acao). Sem sub-itens/children. Conexoes via edges entre nos. Simples, previsivel, sem bugs de merge/reorder.
+No ManyChat, multiplos steps (enviar texto, enviar imagem, delay, etc.) se empilham verticalmente dentro de um unico "bloco". O bloco tem um handle de entrada (esquerda) e um de saida (direita). O Gatilho se conecta ao bloco via edge, e blocos se conectam entre si.
 
 ```text
-[Gatilho] --> [Enviar Texto] --> [Aguardar] --> [Enviar Imagem]
-                                     |
-                                     v
-                              [Capturar Resposta] --> [Acao]
+┌─────────────┐          ┌─────────────────┐          
+│   Gatilho   │────────▶ │  Enviar Texto   │
+└─────────────┘          │  Aguardar 3s    │           ┌─────────────┐       
+                         │  Enviar Imagem  │────────▶  │  Enviar IMG │
+                         └─────────────────┘           └─────────────┘
 ```
+
+### Como funciona
+
+- Ao arrastar um no proximo de outro (ou de um grupo existente), um **indicador visual azul** aparece mostrando que o no sera acoplado
+- Ao soltar, o no e adicionado ao grupo (empilhado abaixo)
+- O grupo e um unico no ReactFlow do tipo `"group"` cujo `data.steps` contem um array dos steps internos
+- Cada step dentro do grupo tem seu proprio UUID e dados
+- Gatilhos nunca se agrupam — sao sempre nos independentes
+- Dentro do grupo, os steps podem ser reordenados via drag interno
+- Para desagrupar, basta arrastar o step para fora do grupo
 
 ### Plano de Implementacao
 
-**1. Novo tipo `FlowNodeData` simplificado**
+**1. Tipo `group` em `types/chatbot.ts**`
 
-Remover o conceito de `children` e `childId`. Cada no tem seus proprios dados diretamente (sem aninhamento). IDs gerados com `crypto.randomUUID()` para garantir unicidade.
+- Adicionar tipo `"group"` ao `FlowNodeType`
+- Adicionar campo `steps?: { id: string; data: FlowNodeData }[]` ao `FlowNodeData`
+- O grupo tem label, cor neutra, e renderiza seus steps empilhados
 
-**2. Reescrever `BlockNode.tsx` → `StepNode.tsx`**
+**2. Novo componente `GroupNode.tsx**`
 
-Um unico componente de no que renderiza de acordo com `data.type`:
-- Header colorido com icone + label do tipo
-- Body com preview do conteudo (texto, midia, delay, etc)
-- Handle esquerdo (target) + Handle direito (source)
-- Sem sub-itens, sem reorder, sem merge
+- Renderiza uma card com borda arredondada contendo os steps empilhados
+- Cada step mostra: barra de cor + icone + label + preview do conteudo
+- Handle target na esquerda, handle source na direita
+- Largura fixa de 280px
+- Ao clicar em um step, abre o PropertiesPanel para aquele step
 
-**3. Reescrever `FlowEditor.tsx`**
+**3. Logica de proximidade no `FlowEditor.tsx**`
 
-- Remover toda logica de children, merge, findBlockIdUnderCursor
-- Drag from palette ou popover cria um novo no independente no canvas
-- Clique em um no abre o PropertiesPanel para aquele no diretamente
-- Edges conectam nos sequencialmente (smoothstep)
-- IDs com `crypto.randomUUID()`
-- Ao carregar fluxo salvo, usar os IDs persistidos (sem counter)
+- `onNodeDrag`: calcular distancia entre o no sendo arrastado e outros nos/grupos
+- Se distancia < 50px (e o no arrastado nao e trigger): mostrar highlight no alvo
+- `onNodeDragStop`: se dentro da zona de proximidade:
+  - Se alvo e um no standalone: criar grupo com ambos
+  - Se alvo e um grupo: adicionar step ao grupo
+- Estado `dropTarget` para controlar o highlight visual
 
-**4. Reescrever `PropertiesPanel.tsx`**
+**4. Atualizar `StepNode.tsx**`
 
-- Recebe o no selecionado diretamente (sem childIndex)
-- Edita `node.data` ao inves de `children[index]`
-- Remove tabs de children (nao existem mais)
-- Mesmos campos de edicao por tipo (trigger, sendText, etc)
+- Adicionar prop visual para indicar quando e alvo de dock (borda azul pulsante)
 
-**5. Limpar codigo morto**
+**5. Atualizar `PropertiesPanel.tsx**`
 
-- Deletar `CustomNode.tsx` e `GroupNode.tsx`
+- Quando no selecionado e grupo: mostrar lista de steps, permitir selecionar um step para editar
+- Edicao de step individual dentro do grupo
 
 **6. Atualizar `execute-flow` edge function**
 
-Adaptar o loop de execucao para o novo formato: em vez de iterar children dentro de nodes, seguir os edges entre nos sequencialmente (topological sort baseado em edges).
+- Ao encontrar um no do tipo `group`: iterar `steps[]` sequencialmente (mesma logica atual por tipo de step)
+- Manter compatibilidade com nos standalone
 
-**7. Atualizar `evolution-webhook`**
+**7. Atualizar `evolution-webhook**`
 
-Ajustar a busca de triggers: em vez de procurar `children[].triggerKeyword`, procurar diretamente `nodes[].data.triggerKeyword` onde `data.type === 'trigger'`.
+- Ao buscar triggers: verificar tanto nos standalone com `type=trigger` quanto steps dentro de grupos
 
 ### Arquivos impactados
 
-- **Criar**: `src/components/chatbot/StepNode.tsx`
-- **Reescrever**: `src/components/chatbot/FlowEditor.tsx`, `src/components/chatbot/PropertiesPanel.tsx`
-- **Deletar**: `src/components/chatbot/CustomNode.tsx`, `src/components/chatbot/GroupNode.tsx`
-- **Editar**: `src/types/chatbot.ts` (remover children), `supabase/functions/execute-flow/index.ts`, `supabase/functions/evolution-webhook/index.ts`
-
+- **Editar**: `src/types/chatbot.ts` (tipo group, campo steps)
+- **Criar**: `src/components/chatbot/GroupNode.tsx`
+- **Editar**: `src/components/chatbot/FlowEditor.tsx` (logica de proximidade + merge)
+- **Editar**: `src/components/chatbot/StepNode.tsx` (indicador de dock)
+- **Editar**: `src/components/chatbot/PropertiesPanel.tsx` (edicao de steps em grupo)
+- **Editar**: `supabase/functions/execute-flow/index.ts` (processar tipo group)
+- **Editar**: `supabase/functions/evolution-webhook/index.ts` (buscar triggers em grupos)
