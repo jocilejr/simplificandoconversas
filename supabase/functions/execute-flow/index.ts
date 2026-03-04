@@ -31,23 +31,33 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const userId = claimsData.claims.sub;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const isServiceRole = token === serviceRoleKey;
 
-    const { flowId, remoteJid, conversationId } = await req.json();
+    const { flowId, remoteJid, conversationId, userId: bodyUserId } = await req.json();
+
+    let userId: string;
+
+    if (isServiceRole && bodyUserId) {
+      // Server-to-server call (e.g. from webhook): trust the userId in the body
+      userId = bodyUserId;
+    } else {
+      // Normal user call: validate JWT
+      const supabaseAuth = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
+      if (claimsError || !claimsData?.claims) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      userId = claimsData.claims.sub;
+    }
     if (!flowId || !remoteJid) {
       return new Response(JSON.stringify({ error: "flowId and remoteJid required" }), {
         status: 400,
@@ -55,11 +65,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Load flow
-    const { data: flow, error: flowErr } = await supabase
+    // Load flow (use serviceClient to bypass RLS for server-to-server calls)
+    const { data: flow, error: flowErr } = await serviceClient
       .from("chatbot_flows")
       .select("*")
       .eq("id", flowId)
+      .eq("user_id", userId)
       .single();
 
     if (flowErr || !flow) {
@@ -70,7 +81,7 @@ Deno.serve(async (req) => {
     }
 
     // Get Evolution API credentials
-    const { data: profile } = await supabase
+    const { data: profile } = await serviceClient
       .from("profiles")
       .select("evolution_api_url, evolution_api_key, evolution_instance_name")
       .eq("user_id", userId)

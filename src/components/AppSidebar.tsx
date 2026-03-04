@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
   SidebarContent,
@@ -23,14 +25,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const mainItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Contatos", url: "/contacts", icon: Users },
-  { title: "Agendamentos", url: "/schedule", icon: CalendarClock },
-  { title: "Chatbot Builder", url: "/chatbot", icon: Bot },
-  { title: "Conversas", url: "/conversations", icon: MessageSquare },
-];
-
 const settingsItems = [
   { title: "Configurações", url: "/settings", icon: Settings },
 ];
@@ -40,6 +34,40 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      const { count } = await supabase
+        .from("conversations")
+        .select("id", { count: "exact", head: true })
+        .gt("unread_count", 0);
+      setUnreadCount(count || 0);
+    };
+
+    fetchUnread();
+
+    const channel = supabase
+      .channel("sidebar-unread")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversations" },
+        () => fetchUnread()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const mainItems = [
+    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    { title: "Contatos", url: "/contacts", icon: Users },
+    { title: "Agendamentos", url: "/schedule", icon: CalendarClock },
+    { title: "Chatbot Builder", url: "/chatbot", icon: Bot },
+    { title: "Conversas", url: "/conversations", icon: MessageSquare, badge: unreadCount > 0 },
+  ];
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -73,8 +101,18 @@ export function AppSidebar() {
                       className="hover:bg-sidebar-accent"
                       activeClassName="bg-sidebar-accent text-primary font-medium"
                     >
-                      <item.icon className="h-4 w-4" />
+                      <div className="relative">
+                        <item.icon className="h-4 w-4" />
+                        {item.badge && (
+                          <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-sidebar-background" />
+                        )}
+                      </div>
                       {!collapsed && <span>{item.title}</span>}
+                      {!collapsed && item.badge && (
+                        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1.5 text-[10px] font-bold text-white">
+                          {unreadCount}
+                        </span>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
