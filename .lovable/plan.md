@@ -1,36 +1,33 @@
 
 
-## Diagnóstico real
+## Plano: Refazer GroupNode profissional + corrigir tipo reservado
 
-Olhando o código atual e a screenshot, os problemas são:
+### Problema raiz
+O tipo de nó `"group"` é **reservado pelo React Flow** — ele aplica automaticamente estilos de container (fundo branco, padding, z-index especial) que sobrescrevem qualquer CSS. Por isso todas as tentativas anteriores falharam. Nenhuma quantidade de `!important` resolve isso porque o React Flow trata `group` como um tipo interno especial.
 
-1. **Parte branca/cinza atrás do bloco**: O wrapper externo (`div.relative`) não tem `bg-transparent`, então o fundo padrão do React Flow node aparece por trás do card com `rounded-2xl`. O React Flow aplica um fundo ao `.react-flow__node` que vaza nos cantos arredondados.
+### Solução
 
-2. **Handles presos no meio**: React Flow internamente aplica `top: 50%` como inline style nos `Handle` components. Nosso `style={{ top: 'auto', bottom: 16 }}` é passado como prop, mas o React Flow pode sobrescrever com seu próprio cálculo de posição. A solução confiável é usar CSS com `!important` via classes customizadas.
+#### 1. Renomear tipo `"group"` → `"groupBlock"` em todo o projeto
+Isso elimina o conflito com o tipo reservado do React Flow.
 
-### Alterações
+**Arquivos afetados:**
+- `src/types/chatbot.ts` — union type e configs
+- `src/components/chatbot/FlowEditor.tsx` — nodeTypes, comparações, atribuições + migração de dados salvos
+- `src/components/chatbot/PropertiesPanel.tsx` — comparação
+- `supabase/functions/execute-flow/index.ts` — comparação
+- `supabase/functions/evolution-webhook/index.ts` — comparação
+- `src/index.css` — seletor CSS `.react-flow__node-group` → `.react-flow__node-groupBlock`
 
-**`src/index.css`** — Adicionar classes CSS específicas para os handles do GroupNode:
-```css
-.group-handle-target {
-  top: 24px !important;
-}
-.group-handle-source {
-  top: auto !important;
-  bottom: 16px !important;
-}
-```
+#### 2. Redesenhar GroupNode para ficar igual à referência
 
-**`src/components/chatbot/GroupNode.tsx`**:
-- Handle target: adicionar className `group-handle-target` e remover `style={{ top: 24 }}`
-- Handle source: adicionar className `group-handle-source` e remover `style={{ top: 'auto', bottom: 16 }}`
-- Adicionar `!bg-transparent` no wrapper externo para eliminar qualquer fundo que vaze pelos cantos do card
-- Adicionar estilo no `.react-flow__node-group` via CSS para garantir `background: transparent`
+Baseado na imagem de referência, o design será:
+- Card escuro arredondado (`rounded-xl`) sem overflow artifacts
+- Header: ícone verde circular + título do grupo + ícone de check
+- Handle de entrada (verde) no topo esquerdo, handle de saída no topo direito
+- Steps como linhas compactas com ícone colorido + nome + descrição curta, cada uma num mini-card escuro
+- Footer: botão "+ Adicionar ação" centralizado
+- Sem barra lateral de cor, sem footer com "Próximo Passo"
 
-**`src/index.css`** — Adicionar regra para nó group:
-```css
-.react-flow__node-group {
-  background: transparent !important;
-}
-```
+#### 3. Migração automática de dados salvos
+No `FlowEditor.tsx`, adicionar conversão de nós com `type: "group"` para `type: "groupBlock"` ao carregar.
 
