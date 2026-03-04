@@ -1,48 +1,51 @@
 
 
-## Diagnóstico: FunilPrincipal sem mensagens
+## Problem
 
-### Causa raiz identificada nos logs
+The unread count badge IS in the code and the data shows `unread_count: 4` for the first conversation. The badge is likely being clipped or hidden due to layout overflow. The parent container uses `flex items-center justify-between` but the instance name badge and the time+count badge compete for the limited horizontal space, potentially pushing the count badge off-screen or truncating it.
 
-Os logs mostram claramente que a **Evolution API não retorna nenhuma mensagem** para a instância FunilPrincipal:
+## Solution
 
-```text
-findMessages FunilPrincipal status: 200, body length: 63
-→ {"messages":{"total":0,"pages":0,"currentPage":1,"records":[]}}
+1. **Restructure the card layout** to place the unread badge and timestamp in a dedicated right column that won't be squeezed:
+   - Move the time and unread count to a **separate right-aligned column** outside the main content flex, ensuring they always have space to render
+   - Use a 3-column layout: avatar | content | time+badge
 
-findChats FunilPrincipal status: 200, body length: 2
-→ []
+2. **Make the unread badge more prominent**:
+   - Place it below the timestamp in a vertical stack on the right side
+   - Use `min-w-fit` to prevent shrinking
+
+## Changes
+
+**`src/components/conversations/ConversationList.tsx`** — Restructure the card layout:
+- Change from `avatar + content(name+time row)` to `avatar + content(name+instance) + right-column(time+badge)`
+- The right column will be a flex-col with shrink-0, ensuring it never gets clipped
+- Instance badge stays next to the name
+- Time and unread count stack vertically on the right side, always visible
+
+```tsx
+<button className={cn("w-full text-left px-3 py-3 ... flex items-center gap-3 ...")}>
+  <ContactAvatar ... />
+  
+  {/* Center: name + last message */}
+  <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="truncate ...">{name}</span>
+      {instance badge}
+    </div>
+    <p className="truncate ...">{last_message}</p>
+  </div>
+  
+  {/* Right column: time + unread badge - ALWAYS visible */}
+  <div className="flex flex-col items-end gap-1 shrink-0">
+    <span className="text-[10px] ...">{time}</span>
+    {hasUnread && (
+      <span className="h-[18px] min-w-[18px] rounded-full bg-primary ...">
+        {count}
+      </span>
+    )}
+  </div>
+</button>
 ```
 
-A API responde com sucesso (status 200), mas retorna **0 mensagens e 0 chats**. Isso não é um bug no código — a Evolution API simplesmente não tem dados armazenados para essa instância.
-
-### Possíveis causas
-
-1. **Webhook não configurado** para FunilPrincipal — sem webhook, mensagens em tempo real não chegam E o histórico pode não ser armazenado pela API
-2. **Instância desconectada** — se o status não é "open", a API não recebe/armazena mensagens
-3. **Store desabilitado** na instância — a Evolution API pode estar configurada para não persistir mensagens
-
-### Correções propostas
-
-#### 1. Forçar reconfiguração do webhook para FunilPrincipal
-Ao sincronizar, verificar se o webhook está ativo para cada instância e reconfigurá-lo automaticamente se necessário. O código de `sync-webhooks` já faz isso, mas não é chamado durante o `sync-chats`.
-
-**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
-- No início do `sync-chats`, antes de buscar mensagens, chamar o endpoint `webhook/set` para cada instância (garantindo que mensagens futuras cheguem via webhook)
-
-#### 2. Verificar e exibir status de conexão por instância
-Adicionar uma verificação de `connectionState` durante o sync para informar ao usuário se a instância está realmente conectada.
-
-**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
-- Chamar `/instance/connectionState/{instanceName}` para cada instância durante o sync
-- Retornar o status no resultado para que o usuário saiba se FunilPrincipal está "open" ou "close"
-
-#### 3. Tentar habilitar o store da instância
-Chamar o endpoint de configuração do store (`/chat/updateSettings`) para garantir que as mensagens são persistidas pela Evolution API.
-
-**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
-
-### Resumo das alterações
-- Modificar o `sync-chats` para: (1) verificar conexão, (2) configurar webhook, (3) habilitar store de mensagens — tudo antes de buscar dados
-- Retornar informações de status por instância no resultado do sync para feedback ao usuário
+This ensures the badge is in its own non-shrinkable column and will always be visible regardless of content width.
 
