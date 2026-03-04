@@ -415,12 +415,8 @@ Deno.serve(async (req) => {
               preview_image: data.clickPreviewImage || null,
             });
 
-            // Always use edge function URL (serves OG tags for bots, redirects for humans)
-            // Use app_public_url for cleaner tracking URLs, fallback to edge function
-            const appPublicUrl = profile.app_public_url?.replace(/\/$/, "");
-            const trackingUrl = appPublicUrl
-              ? `${appPublicUrl}/r/${shortCode}`
-              : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
+            // Always use edge function URL — SPA routes can't serve dynamic OG meta tags for crawlers
+            const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
 
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
@@ -486,9 +482,7 @@ Deno.serve(async (req) => {
                 nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
               }
 
-              const appPublicUrl = profile.app_public_url
-                ? profile.app_public_url.replace(/\/$/, "")
-                : null;
+              // Always use edge function URL — SPA can't serve OG tags for crawlers
 
               await serviceClient.from("tracked_links").insert({
                 user_id: userId,
@@ -504,9 +498,7 @@ Deno.serve(async (req) => {
                 preview_image: step.data.clickPreviewImage || null,
               });
 
-              const trackingUrl = appPublicUrl
-                ? `${appPublicUrl}/r/${shortCode}`
-                : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
+              const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
