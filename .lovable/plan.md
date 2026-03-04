@@ -1,28 +1,16 @@
 
 
-## Redesign GroupNode — Fidelidade ao ManyChat
+## Correções do GroupNode
 
-### Diferenças identificadas (imagem ManyChat vs atual)
+### Problemas identificados
 
-1. **Borda lateral esquerda azul/roxa** em vez de barra de cor no topo
-2. **Header**: ícone de chat + "WhatsApp" (label pequeno) + "Enviar Mensagem" (título) — layout em duas linhas
-3. **Texto**: balões de fala com "tail" (cauda) à esquerda, fundo cinza claro, alinhados à esquerda com padding generoso
-4. **Wait/Delay**: pill centralizada com ícone de relógio e texto "Aguardando por X segundos..." (texto completo, não abreviado)
-5. **Sem dividers** entre steps — fluxo contínuo com espaçamento natural
-6. **Footer**: "Próximo Passo" centralizado com ícones pequenos (círculos coloridos)
-7. **Sombra suave** e cantos mais arredondados
-8. **Largura maior** (~300px) para acomodar textos longos
+1. **Parte branca atrás**: O `borderLeft: 4px solid` cria uma borda que, combinada com `overflow-hidden` e `rounded-2xl`, gera artefato visual branco. Solucao: usar uma div interna como barra de cor absoluta posicionada.
+2. **Handle de entrada no topo**: Deve ser `Position.Left` com `top: 24` para ficar no canto superior esquerdo.
+3. **Handle de saída no meio**: O xyflow aplica `top: 50%` por padrao e o `style={{ bottom: 16, top: 'auto' }}` nao sobrescreve corretamente. Solucao: calcular a posicao absoluta ou usar classes CSS com `!important` para forcar `top: auto` e `bottom`.
 
-### Alterações em `src/components/chatbot/GroupNode.tsx`
+### Alteracoes em `GroupNode.tsx`
 
-- Remover `h-[3px]` color bar do topo → adicionar `border-l-4` com cor do tipo
-- Header: duas linhas — "WhatsApp" em `text-[10px] text-muted-foreground` e título em `text-[13px] font-semibold`
-- `sendText`: balão com `rounded-2xl rounded-bl-sm` (tail inferior esquerdo), `bg-muted/60`, padding `px-4 py-2.5`, texto `text-[13px]`
-- `waitDelay`: pill com texto completo "Aguardando por {X} segundos...", clock icon, fundo sutil
-- Remover `divide-y` — usar `space-y-1` ou gap natural
-- Footer: "Próximo Passo" com círculos decorativos
-- Largura para `w-[300px]`
-
-### Arquivo
-- **Reescrever**: `src/components/chatbot/GroupNode.tsx`
+- **Handle target**: `Position.Left` com `style={{ top: 24 }}` e classe `!-left-1.5`
+- **Handle source**: `Position.Right` com classes `!-right-1.5` e usar estilo inline `top` calculado ou usar `Position.Bottom` com `style={{ right: ... }}`
+- **Borda esquerda**: Remover `borderLeft` do style e usar uma div absoluta `absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl` com a cor de destaque, evitando o artefato branco
 
