@@ -165,10 +165,20 @@ function StepRow({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold text-foreground truncate">{d.label || config.label}</p>
-          {!hasRichPreview && (
+          {!hasRichPreview && d.type !== "waitDelay" && (
             <p className="text-[10px] text-muted-foreground truncate">{desc}</p>
           )}
         </div>
+        {d.type === "waitDelay" && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[11px] font-semibold text-foreground/70">{d.delaySeconds || 0}s</span>
+            {d.simulateTyping && (
+              <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                digitando...
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Rich preview */}
