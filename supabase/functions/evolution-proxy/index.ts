@@ -6,6 +6,72 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function downloadAndUploadMedia(
+  storageClient: any,
+  apiUrl: string,
+  apiKey: string,
+  instanceName: string,
+  messageData: any,
+  messageType: string,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const baseUrl = apiUrl.replace(/\/$/, "");
+    let base64 = messageData.message?.base64;
+    const mediaMessage = messageData.message?.imageMessage || messageData.message?.videoMessage || messageData.message?.audioMessage || messageData.message?.documentMessage;
+
+    if (!base64 && mediaMessage) {
+      try {
+        const resp = await fetch(
+          `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
+          {
+            method: "POST",
+            headers: { apikey: apiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({ message: messageData, convertToMp4: messageType === "audio" }),
+          }
+        );
+        if (resp.ok) {
+          const result = await resp.json();
+          base64 = result?.base64;
+        }
+      } catch (e) {
+        console.error("getBase64 error:", e.message);
+      }
+    }
+
+    if (!base64) return null;
+
+    const mimetype = mediaMessage?.mimetype || (messageType === "image" ? "image/jpeg" : messageType === "video" ? "video/mp4" : "audio/ogg");
+    const extMap: Record<string, string> = {
+      "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+      "video/mp4": "mp4", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a",
+    };
+    const ext = extMap[mimetype] || mimetype.split("/")[1] || "bin";
+    const fileName = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    const { error: uploadError } = await storageClient.storage
+      .from("chatbot-media")
+      .upload(fileName, bytes, { contentType: mimetype, upsert: false });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError.message);
+      return null;
+    }
+
+    const { data: publicUrl } = storageClient.storage.from("chatbot-media").getPublicUrl(fileName);
+    return publicUrl?.publicUrl || null;
+  } catch (e) {
+    console.error("Media download/upload error:", e.message);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -216,17 +282,29 @@ Deno.serve(async (req) => {
             if (!err) synced += chunk.length;
           }
 
-          // Save messages
+          // Save messages (with media download for media types)
+          const serviceClientMedia = createClient(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+          );
           for (const [jid, data] of convMap) {
             const { data: convRecord } = await serviceClient.from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid).single();
             if (!convRecord) continue;
-            const inserts = data.messages.filter((m: any) => m.key?.id).map((m: any) => {
+            const inserts = [];
+            for (const m of data.messages) {
+              if (!m.key?.id) continue;
               const k = m.key;
-              const c = m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || null;
+              const c = m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || null;
               let t = "text";
               if (m.message?.imageMessage) t = "image"; else if (m.message?.audioMessage) t = "audio"; else if (m.message?.videoMessage) t = "video";
-              return { conversation_id: convRecord.id, user_id: userId, remote_jid: jid, content: c, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: null, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() };
-            });
+              
+              let mediaUrl: string | null = null;
+              if (t !== "text") {
+                mediaUrl = await downloadAndUploadMedia(serviceClientMedia, evolution_api_url, evolution_api_key, evolution_instance_name, m, t, userId);
+              }
+              
+              inserts.push({ conversation_id: convRecord.id, user_id: userId, remote_jid: jid, content: c, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: mediaUrl, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() });
+            }
             for (let i = 0; i < inserts.length; i += 100) {
               await serviceClient.from("messages").insert(inserts.slice(i, i + 100));
             }
@@ -496,6 +574,11 @@ Deno.serve(async (req) => {
 
           if (!key.id) continue;
 
+          let mediaUrl: string | null = null;
+          if (msgType !== "text") {
+            mediaUrl = await downloadAndUploadMedia(serviceClient2, evolution_api_url, evolution_api_key, evolution_instance_name, msg, msgType, userId);
+          }
+
           msgRows.push({
             conversation_id: conv2.id,
             user_id: userId,
@@ -505,7 +588,7 @@ Deno.serve(async (req) => {
             direction,
             status: "delivered",
             external_id: key.id,
-            media_url: null,
+            media_url: mediaUrl,
             created_at: msg.messageTimestamp
               ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
               : new Date().toISOString(),

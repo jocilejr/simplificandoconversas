@@ -165,13 +165,33 @@ export function ChatPanel({
                     )}
                   >
                     {msg.media_url && (
-                      <div className="mb-2">
+                      <div className={cn("mb-2", !msg.content && "-mx-1 -mt-1")}>
                         {msg.message_type === "image" ? (
-                          <img src={msg.media_url} alt="" className="rounded-xl max-w-full" />
+                          <img
+                            src={msg.media_url}
+                            alt=""
+                            className="rounded-xl max-w-full cursor-pointer hover:opacity-90 transition-opacity"
+                            loading="lazy"
+                            onClick={() => window.open(msg.media_url!, "_blank")}
+                          />
                         ) : msg.message_type === "audio" ? (
-                          <audio controls src={msg.media_url} className="max-w-full" />
+                          <audio controls src={msg.media_url} className="max-w-full min-w-[220px]" />
                         ) : msg.message_type === "video" ? (
-                          <video controls src={msg.media_url} className="rounded-xl max-w-full" />
+                          <video
+                            controls
+                            src={msg.media_url}
+                            className="rounded-xl max-w-full"
+                            preload="metadata"
+                          />
+                        ) : msg.message_type === "document" ? (
+                          <a
+                            href={msg.media_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-xs"
+                          >
+                            Documento anexado
+                          </a>
                         ) : null}
                       </div>
                     )}

@@ -78,7 +78,7 @@ export function AppSidebar() {
           </div>
           {!collapsed && (
             <span className="text-lg font-bold text-sidebar-foreground">
-              AutoMsg
+              Simplificando Conversas
             </span>
           )}
         </div>
