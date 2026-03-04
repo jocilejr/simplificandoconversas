@@ -1,79 +1,31 @@
 
 
-## Plano: Conexao Evolution API + Chat de Conversas Funcional
+## Analise do Problema
 
-### Visao Geral
+Analisei o print e os dados do banco. O problema tem **duas causas raiz**:
 
-Tornar funcional o salvamento das credenciais da Evolution API nas configuracoes e construir o chat de conversas em tempo real com envio/recebimento de mensagens via Evolution API.
+### 1. Bolinha de não lidas nunca aparece
+Todas as conversas no banco têm `unread_count = 0`. O webhook tem um bug: ele faz `upsert` com `unread_count: 1` (que sobrescreve em vez de incrementar), e logo depois tenta incrementar, mas o valor já foi resetado pelo upsert. Resultado: o contador nunca acumula corretamente.
 
----
-
-### 1. Banco de Dados — Novas Tabelas
-
-**`conversations`** — armazena cada conversa (1 por contato)
-- `id`, `user_id` (dono), `remote_jid` (numero WhatsApp), `contact_name`, `last_message`, `last_message_at`, `unread_count`, `created_at`
-
-**`messages`** — armazena mensagens enviadas e recebidas
-- `id`, `conversation_id` (FK), `user_id`, `remote_jid`, `content`, `message_type` (text/image/audio/video), `direction` (inbound/outbound), `status` (sent/delivered/read), `external_id`, `media_url`, `created_at`
-
-RLS: usuario so ve suas proprias conversas e mensagens. Realtime habilitado em ambas as tabelas.
+### 2. Mensagens muito longas na prévia
+O `last_message` de várias conversas contém textos enormes (parágrafos inteiros com links). O `truncate` do CSS funciona, mas o texto no banco não está sendo cortado, então a prévia pode parecer pesada.
 
 ---
 
-### 2. Edge Functions
+## Plano de Correção
 
-**`evolution-proxy`** — proxy seguro para a Evolution API
-- Recebe requests do frontend, busca credenciais do usuario na tabela `profiles`, e faz o request para a Evolution API
-- Endpoints: `test-connection`, `send-message`, `fetch-chats`
-- Evita expor credenciais no frontend
+### A. Corrigir contagem de não lidas no webhook (`evolution-webhook/index.ts`)
+- Remover `unread_count` do `upsert` (evitar sobrescrita)
+- Usar SQL `UPDATE ... SET unread_count = unread_count + 1` após o upsert para mensagens inbound, garantindo incremento atômico
+- Isso faz com que novas mensagens recebidas acumulem corretamente o contador
 
-**`evolution-webhook`** — recebe mensagens do WhatsApp
-- Endpoint publico (sem JWT) que a Evolution API chama quando chega mensagem
-- Salva a mensagem na tabela `messages` e atualiza `conversations`
-- Requer `verify_jwt = false` no config.toml
+### B. Limitar prévia da mensagem no webhook
+- Truncar `last_message` a no máximo 100 caracteres antes de salvar no banco, para manter os dados limpos
 
----
+### C. Garantir layout correto no `ConversationList.tsx`
+- O código atual já está estruturado corretamente (nome + horário na linha 1, mensagem na linha 2, bolinha condicional)
+- Uma vez que o `unread_count` estiver > 0 no banco, a bolinha verde vai aparecer automaticamente
 
-### 3. Settings Page — Funcional
-
-- Carregar credenciais do perfil ao montar (query `profiles` com `useQuery`)
-- Salvar credenciais no perfil (mutation `update profiles`)
-- Botao "Testar Conexao" chama `evolution-proxy` com action `test-connection`
-- Feedback visual: loading states, toast de sucesso/erro
-- Carregar e salvar nome do perfil tambem
-
----
-
-### 4. Conversations Page — Chat Funcional
-
-**Painel esquerdo (lista de conversas):**
-- Query `conversations` ordenado por `last_message_at` desc
-- Busca por nome/numero
-- Badge de unread count
-- Realtime subscription para atualizar lista automaticamente
-
-**Painel direito (chat ativo):**
-- Query `messages` da conversa selecionada, ordenado por `created_at`
-- Layout estilo WhatsApp: bolhas verdes (outbound) e brancas (inbound)
-- Input de texto + botao enviar
-- Enviar chama `evolution-proxy` com action `send-message`
-- Realtime subscription para novas mensagens
-- Scroll automatico para ultima mensagem
-- Marcar como lido ao abrir conversa
-
----
-
-### Arquivos a Criar/Editar
-
-| Arquivo | Acao |
-|---|---|
-| Migration SQL | Criar tabelas `conversations` e `messages` + RLS + realtime |
-| `supabase/functions/evolution-proxy/index.ts` | Criar edge function proxy |
-| `supabase/functions/evolution-webhook/index.ts` | Criar edge function webhook |
-| `supabase/config.toml` | NAO editar (auto-gerenciado) |
-| `src/pages/SettingsPage.tsx` | Refatorar com load/save/test funcional |
-| `src/pages/Conversations.tsx` | Reescrever com chat completo |
-| `src/hooks/useProfile.ts` | Hook para carregar/atualizar perfil |
-| `src/hooks/useConversations.ts` | Hook para conversas + realtime |
-| `src/hooks/useMessages.ts` | Hook para mensagens + realtime + envio |
+### D. Atualizar unread_count das conversas existentes
+- Executar SQL para recalcular `unread_count` com base nas mensagens inbound que ainda não foram "lidas"
 
