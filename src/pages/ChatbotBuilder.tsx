@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, GitBranch, Calendar, Layers } from "lucide-react";
+import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers } from "lucide-react";
 import { FlowEditor } from "@/components/chatbot/FlowEditor";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
 import { toast } from "sonner";
@@ -73,26 +72,34 @@ const ChatbotBuilder = () => {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {flows.map((flow) => (
             <Card
               key={flow.id}
-              className={`bg-card border-border hover:border-primary/40 transition-all cursor-pointer group overflow-hidden ${
-                flow.active ? "border-l-2 border-l-primary" : "border-l-2 border-l-muted"
-              }`}
+              className="bg-card border-border overflow-hidden cursor-pointer group hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
               onClick={() => setEditingFlowId(flow.id)}
             >
-              <CardContent className="p-5 flex flex-col gap-4">
-                {/* Header */}
-                <div className="flex items-start justify-between">
-                  <div className="flex flex-col gap-1.5 min-w-0">
-                    <h3 className="font-medium text-sm truncate">{flow.name}</h3>
-                    <Badge
-                      variant={flow.active ? "default" : "secondary"}
-                      className="w-fit text-[10px] px-2 py-0"
-                    >
-                      {flow.active ? "Ativo" : "Inativo"}
-                    </Badge>
+              {/* Top accent bar */}
+              <div className={`h-1 w-full ${flow.active ? "bg-primary" : "bg-muted"}`} />
+
+              <CardContent className="p-6 flex flex-col gap-5">
+                {/* Icon + Name + Menu */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
+                      flow.active ? "bg-primary/10" : "bg-muted"
+                    }`}>
+                      <Workflow className={`h-4 w-4 ${flow.active ? "text-primary" : "text-muted-foreground"}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-sm truncate">{flow.name}</h3>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`h-1.5 w-1.5 rounded-full ${flow.active ? "bg-primary" : "bg-muted-foreground/40"}`} />
+                        <span className="text-[11px] text-muted-foreground">
+                          {flow.active ? "Ativo" : "Inativo"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -116,23 +123,27 @@ const ChatbotBuilder = () => {
                   </DropdownMenu>
                 </div>
 
-                {/* Meta */}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
+                {/* Metadata */}
+                <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
                     <Layers className="h-3 w-3" />
                     {(flow.nodes as any[])?.length || 0} nós
                   </span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1.5">
                     <Calendar className="h-3 w-3" />
                     {new Date(flow.updated_at).toLocaleDateString("pt-BR")}
                   </span>
                 </div>
 
-                {/* Action */}
+                {/* Toggle action */}
                 <Button
-                  variant={flow.active ? "destructive" : "outline"}
+                  variant="ghost"
                   size="sm"
-                  className="h-8 text-xs w-full"
+                  className={`h-8 text-xs w-full border transition-colors ${
+                    flow.active
+                      ? "border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      : "border-border text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                  }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     updateFlow.mutate({ id: flow.id, active: !flow.active });
@@ -150,14 +161,14 @@ const ChatbotBuilder = () => {
 
           {/* New flow card */}
           <Card
-            className="bg-card border-border border-dashed hover:border-primary/40 transition-all cursor-pointer flex items-center justify-center min-h-[180px]"
+            className="border-dashed border-border hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer flex items-center justify-center min-h-[220px] group"
             onClick={handleCreateFlow}
           >
-            <CardContent className="flex flex-col items-center gap-2 p-4 text-muted-foreground">
-              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center">
-                <Plus className="h-5 w-5" />
+            <CardContent className="flex flex-col items-center gap-3 p-6 text-muted-foreground">
+              <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 group-hover:scale-110 transition-all duration-300">
+                <Plus className="h-5 w-5 group-hover:text-primary transition-colors" />
               </div>
-              <span className="text-xs font-medium">Novo Fluxo</span>
+              <span className="text-xs font-medium group-hover:text-foreground transition-colors">Novo Fluxo</span>
             </CardContent>
           </Card>
         </div>
