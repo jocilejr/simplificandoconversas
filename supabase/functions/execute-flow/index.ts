@@ -10,6 +10,99 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+interface StepData {
+  type: string;
+  textContent?: string;
+  mediaUrl?: string;
+  caption?: string;
+  audioUrl?: string;
+  delaySeconds?: number;
+  steps?: { id: string; data: StepData }[];
+  [key: string]: unknown;
+}
+
+async function executeStep(
+  stepData: StepData,
+  baseUrl: string,
+  evolution_api_key: string,
+  evolution_instance_name: string,
+  jid: string,
+  serviceClient: any,
+  userId: string
+): Promise<string> {
+  const nodeType = stepData.type;
+
+  if (nodeType === "trigger") {
+    return "trigger: skipped";
+  }
+
+  if (nodeType === "sendText" && stepData.textContent) {
+    const resp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+      method: "POST",
+      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      body: JSON.stringify({ number: jid, text: stepData.textContent }),
+    });
+    const r = await resp.json();
+    console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
+    const { data: conv } = await serviceClient
+      .from("conversations")
+      .upsert(
+        { user_id: userId, remote_jid: jid, last_message: stepData.textContent.substring(0, 50), last_message_at: new Date().toISOString() },
+        { onConflict: "user_id,remote_jid" }
+      )
+      .select("id")
+      .single();
+    if (conv) {
+      await serviceClient.from("messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        remote_jid: jid,
+        content: stepData.textContent,
+        message_type: "text",
+        direction: "outbound",
+        status: "sent",
+        external_id: r?.key?.id || null,
+      });
+    }
+    return "sendText: ok";
+  }
+
+  if (nodeType === "sendImage" && stepData.mediaUrl) {
+    await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+      method: "POST",
+      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      body: JSON.stringify({ number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }),
+    });
+    return "sendImage: ok";
+  }
+
+  if (nodeType === "sendAudio" && stepData.audioUrl) {
+    await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
+      method: "POST",
+      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      body: JSON.stringify({ number: jid, audio: stepData.audioUrl }),
+    });
+    return "sendAudio: ok";
+  }
+
+  if (nodeType === "sendVideo" && stepData.mediaUrl) {
+    await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+      method: "POST",
+      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      body: JSON.stringify({ number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
+    });
+    return "sendVideo: ok";
+  }
+
+  if (nodeType === "waitDelay") {
+    const delay = (stepData.delaySeconds || 3) * 1000;
+    await sleep(Math.min(delay, 30000));
+    return `waitDelay: ${stepData.delaySeconds}s`;
+  }
+
+  return `${nodeType}: no-op`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -38,7 +131,6 @@ Deno.serve(async (req) => {
     const { flowId, remoteJid, conversationId, userId: bodyUserId } = await req.json();
 
     let userId: string;
-
     if (isServiceRole && bodyUserId) {
       userId = bodyUserId;
     } else {
@@ -109,13 +201,7 @@ Deno.serve(async (req) => {
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({
-        user_id: userId,
-        conversation_id: conversationId || null,
-        flow_id: flowId,
-        remote_jid: jid,
-        status: "running",
-      })
+      .insert({ user_id: userId, conversation_id: conversationId || null, flow_id: flowId, remote_jid: jid, status: "running" })
       .select("id")
       .single();
 
@@ -128,25 +214,21 @@ Deno.serve(async (req) => {
     }
     executionId = execution.id;
 
-    // Parse flow — new flat architecture: each node = 1 step, follow edges
     const nodes = (flow.nodes || []) as any[];
     const edges = (flow.edges || []) as any[];
 
-    // Build adjacency from edges
     const outgoingMap = new Map<string, string[]>();
     for (const edge of edges) {
       if (!outgoingMap.has(edge.source)) outgoingMap.set(edge.source, []);
       outgoingMap.get(edge.source)!.push(edge.target);
     }
 
-    // Find start nodes (no incoming edges)
     const targetsSet = new Set(edges.map((e: any) => e.target));
     const startNodes = nodes.filter((n: any) => !targetsSet.has(n.id));
     if (startNodes.length === 0 && nodes.length > 0) {
       startNodes.push(nodes[0]);
     }
 
-    // BFS execution
     const visited = new Set<string>();
     const queue = [...startNodes];
     const results: string[] = [];
@@ -157,7 +239,6 @@ Deno.serve(async (req) => {
       if (visited.has(node.id)) continue;
       visited.add(node.id);
 
-      // Check cancellation
       const { data: statusCheck } = await serviceClient
         .from("flow_executions")
         .select("status")
@@ -174,85 +255,26 @@ Deno.serve(async (req) => {
         .update({ current_node_index: nodeIndex })
         .eq("id", executionId);
 
-      // New flat format: data is directly on node.data (no children)
       const data = node.data || {};
       const nodeType = data.type;
       console.log(`[execute-flow] Processing node ${node.id}, type: ${nodeType}`);
 
       try {
-        if (nodeType === "trigger") {
-          results.push("trigger: skipped");
-        } else if (nodeType === "sendText" && data.textContent) {
-          const resp = await fetch(
-            `${baseUrl}/message/sendText/${evolution_instance_name}`,
-            {
-              method: "POST",
-              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-              body: JSON.stringify({ number: jid, text: data.textContent }),
-            }
-          );
-          const r = await resp.json();
-          console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
-          const { data: conv } = await serviceClient
-            .from("conversations")
-            .upsert(
-              { user_id: userId, remote_jid: jid, last_message: data.textContent.substring(0, 50), last_message_at: new Date().toISOString() },
-              { onConflict: "user_id,remote_jid" }
-            )
-            .select("id")
-            .single();
-
-          if (conv) {
-            await serviceClient.from("messages").insert({
-              conversation_id: conv.id,
-              user_id: userId,
-              remote_jid: jid,
-              content: data.textContent,
-              message_type: "text",
-              direction: "outbound",
-              status: "sent",
-              external_id: r?.key?.id || null,
-            });
+        if (nodeType === "group" && data.steps) {
+          // Execute all steps in group sequentially
+          for (const step of data.steps) {
+            const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+            results.push(`group.${step.id}: ${stepResult}`);
           }
-          results.push("sendText: ok");
-        } else if (nodeType === "sendImage" && data.mediaUrl) {
-          const imgResp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
-            method: "POST",
-            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-            body: JSON.stringify({ number: jid, mediatype: "image", media: data.mediaUrl, caption: data.caption || "" }),
-          });
-          const imgR = await imgResp.json();
-          console.log(`[execute-flow] sendImage response:`, JSON.stringify(imgR));
-          results.push("sendImage: ok");
-        } else if (nodeType === "sendAudio" && data.audioUrl) {
-          const audResp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
-            method: "POST",
-            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-            body: JSON.stringify({ number: jid, audio: data.audioUrl }),
-          });
-          const audR = await audResp.json();
-          console.log(`[execute-flow] sendAudio response:`, JSON.stringify(audR));
-          results.push("sendAudio: ok");
-        } else if (nodeType === "sendVideo" && data.mediaUrl) {
-          const vidResp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
-            method: "POST",
-            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-            body: JSON.stringify({ number: jid, mediatype: "video", media: data.mediaUrl, caption: data.caption || "" }),
-          });
-          const vidR = await vidResp.json();
-          console.log(`[execute-flow] sendVideo response:`, JSON.stringify(vidR));
-          results.push("sendVideo: ok");
-        } else if (nodeType === "waitDelay") {
-          const delay = (data.delaySeconds || 3) * 1000;
-          await sleep(Math.min(delay, 30000));
-          results.push(`waitDelay: ${data.delaySeconds}s`);
+        } else {
+          const result = await executeStep(data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+          results.push(result);
         }
       } catch (err: any) {
         results.push(`${nodeType}: error - ${err.message}`);
       }
 
       nodeIndex++;
-
       const nextIds = outgoingMap.get(node.id) || [];
       for (const nextId of nextIds) {
         const nextNode = nodes.find((n: any) => n.id === nextId);
