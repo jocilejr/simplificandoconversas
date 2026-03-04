@@ -44,8 +44,8 @@ Deno.serve(async (req) => {
     return new Response("Link not found", { status: 404 });
   }
 
-  // If not yet clicked, mark as clicked and resume flow
-  if (!link.clicked) {
+  // Only process click if NOT a bot/preview request
+  if (!link.clicked && !isBot) {
     await serviceClient
       .from("tracked_links")
       .update({ clicked: true, clicked_at: new Date().toISOString() })
@@ -76,6 +76,8 @@ Deno.serve(async (req) => {
         console.error("[link-redirect] Failed to resume flow:", err);
       }
     }
+  } else if (isBot) {
+    console.log(`[link-redirect] Ignored bot/preview request. UA: ${userAgent}`);
   }
 
   // Always redirect to original URL
