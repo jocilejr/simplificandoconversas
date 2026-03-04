@@ -243,9 +243,18 @@ Deno.serve(async (req) => {
     }
 
     const targetsSet = new Set(edges.map((e: any) => e.target));
-    const startNodes = nodes.filter((n: any) => !targetsSet.has(n.id));
-    if (startNodes.length === 0 && nodes.length > 0) {
-      startNodes.push(nodes[0]);
+    let startNodes: any[];
+
+    if (resumeFromNodeId) {
+      // Resume from a specific node (e.g. after waitForClick)
+      const resumeNode = nodes.find((n: any) => n.id === resumeFromNodeId);
+      startNodes = resumeNode ? [resumeNode] : [];
+      console.log(`[execute-flow] Resuming from node ${resumeFromNodeId}`);
+    } else {
+      startNodes = nodes.filter((n: any) => !targetsSet.has(n.id));
+      if (startNodes.length === 0 && nodes.length > 0) {
+        startNodes.push(nodes[0]);
+      }
     }
 
     const visited = new Set<string>();
