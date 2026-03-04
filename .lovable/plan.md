@@ -1,43 +1,36 @@
 
 
-## Diagnóstico
+## Problemas Identificados
 
-O problema é que a tabela `conversations` tem um constraint de unicidade em `(user_id, remote_jid)`, sem incluir `instance_name`. Isso significa que se o mesmo contato (mesmo número de telefone) aparecer em duas instâncias diferentes, o upsert sobrescreve o `instance_name` com a última instância sincronizada.
+1. **onConflict desatualizado em vários arquivos**: A migração alterou o constraint para `(user_id, remote_jid, instance_name)`, mas 5 locais ainda usam o antigo `"user_id,remote_jid"`:
+   - `evolution-proxy/index.ts` linhas 387, 527
+   - `evolution-webhook/index.ts` linhas 198, 229
+   - `execute-flow/index.ts` linhas 65, 385, 445, 526
 
-Além disso, a API da Evolution pode estar retornando mensagens que pertencem ao mesmo servidor/número mas que o usuário considera de outra conta. Como não temos controle sobre o que a API retorna, precisamos:
+   Isso faz os upserts falharem silenciosamente ou não encontrarem o registro correto, causando conversas de outras instâncias "vazarem".
 
-1. Permitir que o usuário exclua conversas indesejadas manualmente
-2. Corrigir o constraint de unicidade para incluir `instance_name`, evitando colisões entre instâncias
+2. **Falta indicador de instância na lista de conversas**: O usuário quer ver a qual instância cada conversa pertence.
+
+3. **Conversas de "FunilPrincipal" não aparecem**: Provavelmente porque os upserts com o onConflict errado falham ao inserir/atualizar essas conversas.
 
 ## Correções
 
-### 1. Alterar o constraint de unicidade da tabela `conversations`
+### 1. Atualizar todos os onConflict para incluir instance_name
 
-Atualmente: `UNIQUE (user_id, remote_jid)`
-Novo: `UNIQUE (user_id, remote_jid, instance_name)`
+Em todos os arquivos que fazem upsert na tabela `conversations`, trocar `"user_id,remote_jid"` por `"user_id,remote_jid,instance_name"` e garantir que `instance_name` é passado no objeto de upsert.
 
-Isso permite que o mesmo contato exista em instâncias diferentes sem sobrescrever dados.
+**Arquivos:**
+- `supabase/functions/evolution-proxy/index.ts` (linhas 387, 527)
+- `supabase/functions/evolution-webhook/index.ts` (linhas 198, 229)
+- `supabase/functions/execute-flow/index.ts` (linhas 65, 385, 445, 526)
 
-**Migração SQL:**
-- Dropar constraint antigo e criar o novo com `instance_name`
-- Atualizar o `onConflict` no upsert de `"user_id,remote_jid"` para `"user_id,remote_jid,instance_name"`
+### 2. Adicionar badge de instância na ConversationList
 
-### 2. Adicionar funcionalidade de excluir conversa
+Abaixo do nome/número do contato, mostrar um pequeno badge/tag com o `instance_name` da conversa (ex: "Meire Rosana - Entregas" ou "FunilPrincipal") em texto discreto.
 
-Permitir que o usuário delete conversas indesejadas via swipe ou botão de contexto na lista de conversas, para limpar dados incorretos vindos da API.
+**Arquivo:** `src/components/conversations/ConversationList.tsx`
 
-**Alterações:**
-- Adicionar RLS policy para DELETE em `messages` (atualmente faltando)
-- Adicionar botão/menu de contexto na `ConversationList` para excluir conversa
-- Implementar função que deleta mensagens + conversa
+### 3. Re-sincronizar após deploy
 
-### 3. Limpar conversas fantasma existentes
-
-Executar migração para deletar as conversas que têm apenas mensagens de broadcast (a mesma mensagem "Oii meu bem...") sem interação real significativa.
-
-### Arquivos a editar
-- **Migração SQL**: alterar constraint + adicionar DELETE policy em messages
-- `supabase/functions/evolution-proxy/index.ts`: atualizar `onConflict` para incluir `instance_name`
-- `src/components/conversations/ConversationList.tsx`: adicionar opção de excluir conversa
-- `src/hooks/useConversations.ts`: adicionar função `deleteConversation`
+Após as correções, o usuário deve sincronizar novamente para que as conversas de todas as instâncias sejam salvas corretamente com isolamento.
 
