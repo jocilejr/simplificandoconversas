@@ -6,6 +6,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+function truncate(text: string, max: number): string {
+  if (!text || text.length <= max) return text;
+  return text.substring(0, max) + "…";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,7 +35,7 @@ Deno.serve(async (req) => {
     const key = data.key || {};
     const remoteJid = key.remoteJid || data.remoteJid;
     const fromMe = key.fromMe ?? data.fromMe ?? false;
-    const messageContent =
+    const rawContent =
       data.message?.conversation ||
       data.message?.extendedTextMessage?.text ||
       data.message?.imageMessage?.caption ||
@@ -43,6 +48,10 @@ Deno.serve(async (req) => {
       ? "video"
       : "text";
     const externalId = key.id || data.keyId || null;
+
+    // Truncate last_message preview to 100 chars
+    const messageContent = rawContent;
+    const lastMessagePreview = truncate(rawContent, 100) || `[${messageType}]`;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -81,14 +90,13 @@ Deno.serve(async (req) => {
 
     // Skip outbound messages sent via our proxy (already saved by proxy)
     if (fromMe && event === "send.message") {
-      // Update conversation metadata but DON'T overwrite contact_name with sender's pushName
       await supabase
         .from("conversations")
         .upsert(
           {
             user_id: userId,
             remote_jid: remoteJid,
-            last_message: messageContent || `[${messageType}]`,
+            last_message: lastMessagePreview,
             last_message_at: new Date().toISOString(),
           },
           { onConflict: "user_id,remote_jid" }
@@ -101,13 +109,12 @@ Deno.serve(async (req) => {
     // Only use pushName for contact name on INBOUND messages (not fromMe)
     const contactName = !fromMe ? (data.pushName || null) : null;
 
-    // Upsert conversation - only set contact_name if we have a real name from inbound
+    // Upsert conversation WITHOUT unread_count (avoid overwrite)
     const upsertData: Record<string, unknown> = {
       user_id: userId,
       remote_jid: remoteJid,
-      last_message: messageContent || `[${messageType}]`,
+      last_message: lastMessagePreview,
       last_message_at: new Date().toISOString(),
-      ...(!fromMe ? { unread_count: 1 } : {}),
     };
     if (contactName) {
       upsertData.contact_name = contactName;
@@ -116,7 +123,7 @@ Deno.serve(async (req) => {
     const { data: conv } = await supabase
       .from("conversations")
       .upsert(upsertData, { onConflict: "user_id,remote_jid" })
-      .select("id, unread_count")
+      .select("id")
       .single();
 
     if (!conv) {
@@ -127,12 +134,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Increment unread if inbound
+    // Atomically increment unread_count for inbound messages using RPC-like raw update
     if (!fromMe) {
-      await supabase
-        .from("conversations")
-        .update({ unread_count: (conv.unread_count || 0) + 1 })
-        .eq("id", conv.id);
+      await supabase.rpc("increment_unread", { conv_id: conv.id });
     }
 
     // Insert message
