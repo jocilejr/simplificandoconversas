@@ -206,21 +206,24 @@ Deno.serve(async (req) => {
     const baseUrl = evolution_api_url.replace(/\/$/, "");
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
-    // Block execution if there's already an active flow for this contact
-    const { data: activeExecs } = await serviceClient
-      .from("flow_executions")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("remote_jid", jid)
-      .in("status", ["running", "waiting_click"])
-      .limit(1);
+    // Block new executions if there's already an active flow for this contact
+    // (but allow resuming from waitForClick)
+    if (!resumeFromNodeId) {
+      const { data: activeExecs } = await serviceClient
+        .from("flow_executions")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("remote_jid", jid)
+        .in("status", ["running", "waiting_click"])
+        .limit(1);
 
-    if (activeExecs && activeExecs.length > 0) {
-      console.log(`[execute-flow] Blocked: active execution ${activeExecs[0].id} already exists for ${jid}`);
-      return new Response(JSON.stringify({ ok: false, error: "active_flow_exists", message: "Já existe um fluxo ativo para este contato." }), {
-        status: 409,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (activeExecs && activeExecs.length > 0) {
+        console.log(`[execute-flow] Blocked: active execution ${activeExecs[0].id} already exists for ${jid}`);
+        return new Response(JSON.stringify({ ok: false, error: "active_flow_exists", message: "Já existe um fluxo ativo para este contato." }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
