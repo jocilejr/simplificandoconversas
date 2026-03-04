@@ -11,6 +11,17 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Detect bot/preview user agents (WhatsApp link preview, Facebook crawler, etc.)
+  const userAgent = (req.headers.get("user-agent") || "").toLowerCase();
+  const botPatterns = [
+    "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
+    "twitterbot", "linkedinbot", "slackbot", "discordbot",
+    "googlebot", "bingbot", "yandexbot", "baiduspider",
+    "preview", "crawler", "spider", "bot", "curl", "wget",
+    "python-requests", "go-http-client", "java/", "apache-httpclient"
+  ];
+  const isBot = botPatterns.some((p) => userAgent.includes(p));
+
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
 
