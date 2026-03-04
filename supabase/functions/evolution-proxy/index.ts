@@ -117,19 +117,139 @@ Deno.serve(async (req) => {
     }
 
     const { evolution_api_url, evolution_api_key, evolution_instance_name } = profile;
-    if (!evolution_api_url || !evolution_api_key || !evolution_instance_name) {
+
+    const body = await req.json();
+    const { action, ...params } = body;
+
+    // Actions that only need URL + API Key (no instance required)
+    const noInstanceActions = ["fetch-instances", "create-instance", "connect-instance", "delete-instance", "set-proxy"];
+
+    if (!evolution_api_url || !evolution_api_key) {
       return new Response(
         JSON.stringify({ error: "Evolution API credentials not configured" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const body = await req.json();
-    const { action, ...params } = body;
+    if (!noInstanceActions.includes(action) && !evolution_instance_name) {
+      return new Response(
+        JSON.stringify({ error: "Nenhuma instância ativa selecionada" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
+    const baseUrl = evolution_api_url.replace(/\/$/, "");
     let result;
 
     switch (action) {
+      // ─── Instance Management ───
+      case "fetch-instances": {
+        const resp = await fetch(`${baseUrl}/instance/fetchInstances`, {
+          headers: { apikey: evolution_api_key },
+        });
+        result = await resp.json();
+        break;
+      }
+
+      case "create-instance": {
+        const instanceName = `sc-${Date.now().toString(36)}`;
+        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evolution-webhook`;
+        const resp = await fetch(`${baseUrl}/instance/create`, {
+          method: "POST",
+          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instanceName,
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS",
+            webhook: {
+              url: webhookUrl,
+              byEvents: false,
+              base64: true,
+              events: [
+                "MESSAGES_UPSERT",
+                "MESSAGES_UPDATE",
+                "SEND_MESSAGE",
+                "CONTACTS_SET",
+                "CONTACTS_UPSERT",
+                "CONTACTS_UPDATE",
+                "QRCODE_UPDATED",
+                "CONNECTION_UPDATE",
+              ],
+            },
+          }),
+        });
+        const createResult = await resp.json();
+
+        // Save to DB
+        const serviceClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        await serviceClient.from("evolution_instances").upsert({
+          user_id: userId,
+          instance_name: instanceName,
+          status: "close",
+          is_active: false,
+        }, { onConflict: "user_id,instance_name" });
+
+        result = { ...createResult, instanceName };
+        break;
+      }
+
+      case "connect-instance": {
+        const { instanceName: connInstName } = params;
+        if (!connInstName) {
+          return new Response(JSON.stringify({ error: "instanceName required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const resp = await fetch(`${baseUrl}/instance/connect/${connInstName}`, {
+          headers: { apikey: evolution_api_key },
+        });
+        result = await resp.json();
+        break;
+      }
+
+      case "delete-instance": {
+        const { instanceName: delInstName } = params;
+        if (!delInstName) {
+          return new Response(JSON.stringify({ error: "instanceName required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const resp = await fetch(`${baseUrl}/instance/delete/${delInstName}`, {
+          method: "DELETE",
+          headers: { apikey: evolution_api_key },
+        });
+        result = await resp.json();
+
+        // Remove from DB
+        const serviceClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        await serviceClient.from("evolution_instances")
+          .delete()
+          .eq("user_id", userId)
+          .eq("instance_name", delInstName);
+        break;
+      }
+
+      case "set-proxy": {
+        const { instanceName: proxyInstName, proxyUrl } = params;
+        if (!proxyInstName) {
+          return new Response(JSON.stringify({ error: "instanceName required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const resp = await fetch(`${baseUrl}/instance/proxy/${proxyInstName}`, {
+          method: "POST",
+          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: !!proxyUrl, proxy: proxyUrl || "" }),
+        });
+        result = await resp.json();
+        break;
+      }
       case "test-connection": {
         const resp = await fetch(
           `${evolution_api_url}/instance/connectionState/${evolution_instance_name}`,
