@@ -1,79 +1,89 @@
+## Plano: Sidebar Profissional + Configuracoes Reestruturadas com Gerenciamento de Instancias
 
+### 1. Redesign da Sidebar
 
-## Reformulacao Completa da Tela de Conversas
+**Problemas atuais**: Visual generico, sem personalidade, footer com "API Conectada" estatico sem valor real.
 
-### Problema 1: Design antiprofissional
-A interface atual tem visual generico, sem hierarquia visual clara, sem polimento nos detalhes. Os baloes de mensagem sao verdes solidos sem sofisticacao, a lista de conversas nao tem destaque visual adequado, e o painel direito esta desorganizado.
+**Solucao**:
 
-### Problema 2: Fotos de contato nao persistem
-O hook `useContactPhotos` faz requisicoes a Evolution API toda vez e nao salva os resultados. Se a API falha ou demora, os avatares ficam vazios.
+- Logo mais sofisticado com tipografia refinada
+- Items de menu com icones maiores (h-5 w-5), padding mais generoso, border-radius mais suave
+- Badge de unread com estilo mais polido
+- Footer com avatar do usuario logado + nome + botao de logout
+- Remover o indicador "API Conectada" estatico
+- Separador visual sutil entre grupos de menu
+- Hover states mais refinados com transicao suave
 
----
+### 2. Reestruturar Configuracoes com Tabs/Secoes
 
-## Solucao
+A pagina de configuracoes sera dividida em abas navegaveis:
 
-### 1. Criar tabela `contact_photos` no banco de dados
-Nova tabela para persistir as fotos de perfil dos contatos:
+- **Perfil**: Nome, avatar
+- **Conexoes**: Gerenciamento de instancias Evolution API (principal mudanca)
+- **Inteligencia Artificial**: API Key da OpenAI
+- **Aplicacao**: URL publica, webhook
+
+### 3. Gerenciamento de Instancias Evolution API (Secao Conexoes)
+
+**Fluxo completo sem campo "nome da instancia" manual**:
+
+a) O usuario informa apenas **URL Base** e **API Key Global** da Evolution API
+
+b) A aplicacao busca as instancias ativas via `GET /instance/fetchInstances`
+
+c) Lista as instancias com status (open/close/connecting) em cards visuais
+
+d) Botao **"Criar Nova Instancia"** que:
+
+- Chama `POST /instance/create` com nome auto-gerado
+- Configura webhook automaticamente no body do create com URL do webhook da app e todos os eventos (MESSAGES_UPSERT, SEND_MESSAGE, CONTACTS_SET, CONTACTS_UPSERT, QRCODE_UPDATED, etc.)
+- Exibe QR Code retornado para o usuario escanear
+
+e) Botao **"Conectar"** em instancias desconectadas que chama `GET /instance/connect/{instance}` e exibe o QR Code
+
+f) Campo opcional de **Proxy** por instancia
+
+g) A instancia selecionada/ativa sera salva no perfil como `evolution_instance_name` (mantendo compatibilidade com o resto do sistema)
+
+### 4. Mudancas no Banco de Dados
+
+Nova tabela `evolution_instances` para suportar multiplas instancias:
 
 ```sql
-CREATE TABLE public.contact_photos (
+CREATE TABLE public.evolution_instances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  remote_jid text NOT NULL,
-  photo_url text NOT NULL,
+  instance_name text NOT NULL,
+  status text DEFAULT 'close',
+  is_active boolean DEFAULT false,
+  proxy_url text,
+  created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  UNIQUE(user_id, remote_jid)
+  UNIQUE(user_id, instance_name)
 );
-ALTER TABLE public.contact_photos ENABLE ROW LEVEL SECURITY;
--- RLS: usuario so ve/edita suas proprias fotos
-CREATE POLICY "Users manage own contact photos" ON public.contact_photos
-  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 ```
 
-### 2. Refatorar `useContactPhotos` hook
-- Primeiro carregar fotos do banco de dados (instantaneo)
-- Em background, fazer fetch da Evolution API para atualizar
-- Ao receber fotos novas da API, salvar/atualizar no banco via upsert
-- Contatos que ja tiveram foto carregada mantem a imagem mesmo se a API falhar
+Manter campos `evolution_api_url` e `evolution_api_key` na tabela `profiles` (credenciais globais do servidor). O campo `evolution_instance_name` continua existindo para compatibilidade, mas sera preenchido automaticamente pela instancia ativa.
 
-### 3. Redesign completo do `ConversationList`
-- Header mais sofisticado com titulo maior e botao de sync mais discreto
-- Campo de busca com visual mais polido (rounded-full, icone integrado)
-- Items da lista com hover suave, indicador de unread como badge numerico (nao ponto)
-- Separacao visual mais clara entre item selecionado e os demais
-- Preview de mensagem com 2 linhas e tipografia mais refinada
-- Timestamp com formatacao mais elegante
+### 5. Novas Actions no Edge Function `evolution-proxy`
 
-### 4. Redesign do `ChatPanel`
-- Header do chat mais robusto com status online/offline visual
-- Baloes de mensagem com gradientes sutis em vez de cores solidas
-- Outbound: gradiente de primary com sombra suave
-- Inbound: background card com borda sutil
-- Separadores de data mais discretos e elegantes
-- Area de input redesenhada com visual mais moderno (borda sutil, sombra interna)
-- Botoes de acao (bot, quick reply, send) com visual mais coeso
-- Tela vazia (sem conversa selecionada) com ilustracao mais atraente
+- `fetch-instances`: GET /instance/fetchInstances
+- `create-instance`: POST /instance/create (com webhook auto-configurado)
+- `connect-instance`: GET /instance/connect/{instance} (retorna QR code)
+- `delete-instance`: DELETE /instance/delete/{instance}
+- `set-proxy`: configura proxy na instancia
 
-### 5. Redesign do `RightPanel`
-- Avatar do contato maior com ring decorativo
-- Secoes com cards separados em vez de separadores simples
-- Labels com visual mais polido
-- Quick replies com cards mais distintos
-- Fluxo ativo com card destacado
+### Arquivos a criar/editar
 
-### 6. Redesign do `ContactAvatar`
-- Ring/borda sutil ao redor do avatar
-- Fallback com gradiente de cores baseado no nome (em vez de bg-muted cinza)
-- Transicao suave ao carregar imagem
-
----
-
-### Arquivos a editar
-- **Nova migration SQL**: tabela `contact_photos`
-- `src/hooks/useContactPhoto.ts`: logica de cache persistente
-- `src/components/conversations/ConversationList.tsx`: redesign completo
-- `src/components/conversations/ChatPanel.tsx`: redesign completo
-- `src/components/conversations/RightPanel.tsx`: redesign completo
-- `src/components/conversations/ContactAvatar.tsx`: visual melhorado
-- `src/pages/Conversations.tsx`: ajustes de layout se necessario
-
+- **Migration SQL**: tabela `evolution_instances` + RLS
+- `src/components/AppSidebar.tsx`: redesign completo
+- `src/pages/SettingsPage.tsx`: reestruturar com tabs
+- `src/components/settings/ProfileSection.tsx`: secao de perfil
+- `src/components/settings/ConnectionsSection.tsx`: gerenciamento de instancias
+- `src/components/settings/AISection.tsx`: secao OpenAI
+- `src/components/settings/AppSection.tsx`: URL publica + webhook
+- `src/hooks/useEvolutionInstances.ts`: hook para CRUD de instancias
+- `supabase/functions/evolution-proxy/index.ts`: novas actions
+- `src/hooks/useProfile.ts`: ajustes para instancia ativa  
+  
+O chat deve conter as mensagens de TODAS as instancias conectadas, podendo selecionar individualmente
