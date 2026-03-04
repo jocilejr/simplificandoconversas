@@ -450,7 +450,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     };
     document.addEventListener("group-extract-step", handler);
     return () => document.removeEventListener("group-extract-step", handler);
-  }, [setNodes, reactFlowInstance]);
+  }, [setNodes, setEdges, reactFlowInstance]);
 
   // Listen for receive-step events (drop step into another group)
   useEffect(() => {
