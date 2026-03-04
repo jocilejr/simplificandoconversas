@@ -2,7 +2,7 @@ import {
   LayoutDashboard,
   Users,
   CalendarClock,
-  Bot,
+  Workflow,
   MessageSquare,
   Settings,
   Zap,
@@ -65,7 +65,7 @@ export function AppSidebar() {
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Contatos", url: "/contacts", icon: Users },
     { title: "Agendamentos", url: "/schedule", icon: CalendarClock },
-    { title: "Chatbot Builder", url: "/chatbot", icon: Bot },
+    { title: "Fluxos", url: "/chatbot", icon: Workflow },
     { title: "Conversas", url: "/conversations", icon: MessageSquare, badge: unreadCount > 0 },
   ];
 
