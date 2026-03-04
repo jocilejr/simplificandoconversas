@@ -1,33 +1,24 @@
 
 
-## Problema: URLs públicas SPA não podem servir OG tags dinâmicas
+## Problema
 
-### Causa raiz
+O layout da tela de conversas não respeita a altura da viewport. O container principal usa `min-h-screen` no `AppLayout` e `h-full` na página, mas `h-full` só funciona se todos os ancestrais tiverem altura definida. O `<main>` usa `flex-1` sem altura explícita, fazendo o chat crescer indefinidamente em vez de ficar contido na viewport.
 
-A URL `simplificandoconversas.lovable.app/r/CODE` serve o `index.html` estático da SPA. Crawlers do WhatsApp **não executam JavaScript**, então eles leem apenas as meta tags estáticas do `index.html` (genéricas do app) — nunca chegam à edge function que tem os dados de preview por link.
+## Solução
 
-A edge function `link-redirect` já serve OG tags dinâmicas corretamente (título, descrição, imagem por link). O componente `LinkRedirect.tsx` faz `window.location.href = edgeFunctionUrl`, mas isso só funciona para humanos com JS ativado.
+Corrigir a cadeia de alturas para que o chat fique fixo na viewport com scroll apenas na area de mensagens:
 
-### Conflito fundamental
+### 1. `src/components/AppLayout.tsx`
+- Trocar `min-h-screen` por `h-screen` no container raiz para fixar a altura total
+- Adicionar `overflow-hidden` ao container raiz para impedir scroll da pagina inteira
 
-- **URL pública SPA** → hosting estático, impossível servir HTML dinâmico por rota
-- **Edge function** → serve OG tags dinâmicas corretamente, mas URL é do Supabase
+### 2. `src/pages/Conversations.tsx`
+- Manter `h-full flex` no container (ja esta correto, vai funcionar com o fix do parent)
 
-### Solução: Sempre usar a edge function como URL de tracking
+### 3. `src/components/conversations/ChatPanel.tsx`
+- Adicionar `min-h-0` ao container principal (`flex flex-col h-full`) para permitir que o flex item encolha corretamente
+- A area de mensagens (`flex-1 overflow-y-auto`) ja esta correta
 
-Reverter ambas as ocorrências em `execute-flow/index.ts` para usar a URL da edge function. Essa é a **única forma** de garantir previews com título, descrição e imagem personalizados no WhatsApp, porque o crawler precisa receber HTML server-side.
-
-```typescript
-const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
-```
-
-A rota SPA `/r/:code` continua funcionando como fallback para humanos que acessem a URL de outra forma, redirecionando para a edge function.
-
-### Alterações
-
-**`supabase/functions/execute-flow/index.ts`** — reverter as duas ocorrências de `trackingUrl` (linhas ~420 e ~504) para sempre usar a URL da edge function, removendo a lógica condicional de `app_public_url`.
-
-### Alternativa futura
-
-Para ter URLs bonitas COM OG previews, seria necessário um domínio customizado com proxy reverso (ex: Cloudflare Worker) que intercepte `/r/*` e encaminhe para a edge function. Isso está fora do escopo atual.
+### Resultado
+A cadeia `h-screen` > `flex-1` > `h-full` > `flex-1 overflow-y-auto` vai conter tudo na viewport. Apenas a area de mensagens tera scroll. Header, input e banner ficam fixos.
 
