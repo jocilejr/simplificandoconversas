@@ -17,7 +17,7 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
     },
     {
       label: "Lógica",
-      types: ["condition", "randomizer", "waitDelay", "waitForReply"] as FlowNodeType[],
+      types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[],
     },
     {
       label: "Ações",

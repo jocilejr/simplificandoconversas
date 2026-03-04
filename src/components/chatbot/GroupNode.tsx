@@ -238,7 +238,7 @@ function StepRow({
   );
 }
 
-const addableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "action"];
+const addableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "waitForClick", "action"];
 
 function GroupNode({ id, data, selected }: GroupNodeProps) {
   const d = data as FlowNodeData;
