@@ -1,89 +1,43 @@
-## Plano: Sidebar Profissional + Configuracoes Reestruturadas com Gerenciamento de Instancias
 
-### 1. Redesign da Sidebar
 
-**Problemas atuais**: Visual generico, sem personalidade, footer com "API Conectada" estatico sem valor real.
+## Problema
 
-**Solucao**:
+As conversas existentes no banco de dados possuem `instance_name = null` porque o `sync-chats` e o `send-message` no edge function `evolution-proxy` nunca preenchem esse campo. Quando o filtro e aplicado por instancia ("FunilPrincipal"), nenhuma conversa corresponde e a lista fica vazia.
 
-- Logo mais sofisticado com tipografia refinada
-- Items de menu com icones maiores (h-5 w-5), padding mais generoso, border-radius mais suave
-- Badge de unread com estilo mais polido
-- Footer com avatar do usuario logado + nome + botao de logout
-- Remover o indicador "API Conectada" estatico
-- Separador visual sutil entre grupos de menu
-- Hover states mais refinados com transicao suave
+## Solucao
 
-### 2. Reestruturar Configuracoes com Tabs/Secoes
+### 1. Corrigir `evolution-proxy/index.ts` - Preencher `instance_name` nas conversas
 
-A pagina de configuracoes sera dividida em abas navegaveis:
+- **sync-chats** (linha ~394-396): Adicionar `instance_name: evolution_instance_name` no objeto de upsert das conversas
+- **send-message** (linha ~298-308): Adicionar `instance_name: evolution_instance_name` no upsert da conversa ao enviar mensagem
 
-- **Perfil**: Nome, avatar
-- **Conexoes**: Gerenciamento de instancias Evolution API (principal mudanca)
-- **Inteligencia Artificial**: API Key da OpenAI
-- **Aplicacao**: URL publica, webhook
+### 2. Backfill das conversas existentes
 
-### 3. Gerenciamento de Instancias Evolution API (Secao Conexoes)
-
-**Fluxo completo sem campo "nome da instancia" manual**:
-
-a) O usuario informa apenas **URL Base** e **API Key Global** da Evolution API
-
-b) A aplicacao busca as instancias ativas via `GET /instance/fetchInstances`
-
-c) Lista as instancias com status (open/close/connecting) em cards visuais
-
-d) Botao **"Criar Nova Instancia"** que:
-
-- Chama `POST /instance/create` com nome auto-gerado
-- Configura webhook automaticamente no body do create com URL do webhook da app e todos os eventos (MESSAGES_UPSERT, SEND_MESSAGE, CONTACTS_SET, CONTACTS_UPSERT, QRCODE_UPDATED, etc.)
-- Exibe QR Code retornado para o usuario escanear
-
-e) Botao **"Conectar"** em instancias desconectadas que chama `GET /instance/connect/{instance}` e exibe o QR Code
-
-f) Campo opcional de **Proxy** por instancia
-
-g) A instancia selecionada/ativa sera salva no perfil como `evolution_instance_name` (mantendo compatibilidade com o resto do sistema)
-
-### 4. Mudancas no Banco de Dados
-
-Nova tabela `evolution_instances` para suportar multiplas instancias:
+- Criar migration SQL que atualiza conversas com `instance_name IS NULL` usando o `evolution_instance_name` do profile do usuario:
 
 ```sql
-CREATE TABLE public.evolution_instances (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  instance_name text NOT NULL,
-  status text DEFAULT 'close',
-  is_active boolean DEFAULT false,
-  proxy_url text,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE(user_id, instance_name)
-);
+UPDATE conversations c
+SET instance_name = p.evolution_instance_name
+FROM profiles p
+WHERE c.user_id = p.user_id
+  AND c.instance_name IS NULL
+  AND p.evolution_instance_name IS NOT NULL;
 ```
 
-Manter campos `evolution_api_url` e `evolution_api_key` na tabela `profiles` (credenciais globais do servidor). O campo `evolution_instance_name` continua existindo para compatibilidade, mas sera preenchido automaticamente pela instancia ativa.
+### 3. Ajustar filtro no frontend
 
-### 5. Novas Actions no Edge Function `evolution-proxy`
+- Em `ConversationList.tsx`, quando uma instancia e selecionada, tambem incluir conversas com `instance_name` nulo (para nao perder conversas antigas nao tagueadas):
 
-- `fetch-instances`: GET /instance/fetchInstances
-- `create-instance`: POST /instance/create (com webhook auto-configurado)
-- `connect-instance`: GET /instance/connect/{instance} (retorna QR code)
-- `delete-instance`: DELETE /instance/delete/{instance}
-- `set-proxy`: configura proxy na instancia
+```typescript
+const matchInstance = !selectedInstance || 
+  c.instance_name === selectedInstance || 
+  !c.instance_name;
+```
 
-### Arquivos a criar/editar
+Isso garante que conversas sem tag continuem visiveis independente do filtro selecionado, ate serem re-sincronizadas.
 
-- **Migration SQL**: tabela `evolution_instances` + RLS
-- `src/components/AppSidebar.tsx`: redesign completo
-- `src/pages/SettingsPage.tsx`: reestruturar com tabs
-- `src/components/settings/ProfileSection.tsx`: secao de perfil
-- `src/components/settings/ConnectionsSection.tsx`: gerenciamento de instancias
-- `src/components/settings/AISection.tsx`: secao OpenAI
-- `src/components/settings/AppSection.tsx`: URL publica + webhook
-- `src/hooks/useEvolutionInstances.ts`: hook para CRUD de instancias
-- `supabase/functions/evolution-proxy/index.ts`: novas actions
-- `src/hooks/useProfile.ts`: ajustes para instancia ativa  
-  
-O chat deve conter as mensagens de TODAS as instancias conectadas, podendo selecionar individualmente
+### Arquivos a editar
+- `supabase/functions/evolution-proxy/index.ts` - sync-chats e send-message
+- `src/components/conversations/ConversationList.tsx` - filtro
+- Migration SQL para backfill
+
