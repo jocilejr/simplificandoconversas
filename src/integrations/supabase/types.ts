@@ -345,6 +345,51 @@ export type Database = {
         }
         Relationships: []
       }
+      tracked_links: {
+        Row: {
+          clicked: boolean | null
+          clicked_at: string | null
+          conversation_id: string | null
+          created_at: string | null
+          execution_id: string | null
+          flow_id: string
+          id: string
+          next_node_id: string | null
+          original_url: string
+          remote_jid: string
+          short_code: string
+          user_id: string
+        }
+        Insert: {
+          clicked?: boolean | null
+          clicked_at?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          execution_id?: string | null
+          flow_id: string
+          id?: string
+          next_node_id?: string | null
+          original_url: string
+          remote_jid: string
+          short_code: string
+          user_id: string
+        }
+        Update: {
+          clicked?: boolean | null
+          clicked_at?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          execution_id?: string | null
+          flow_id?: string
+          id?: string
+          next_node_id?: string | null
+          original_url?: string
+          remote_jid?: string
+          short_code?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
