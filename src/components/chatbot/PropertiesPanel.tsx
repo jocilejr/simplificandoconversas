@@ -317,10 +317,7 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
               <Label className="text-xs">Descrição do preview</Label>
               <Input value={d.clickPreviewDescription || ""} onChange={(e) => update({ clickPreviewDescription: e.target.value })} placeholder="Ex: Clique para acessar o conteúdo exclusivo" className="h-8 text-xs" />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Imagem do preview (URL)</Label>
-              <Input value={d.clickPreviewImage || ""} onChange={(e) => update({ clickPreviewImage: e.target.value })} placeholder="https://exemplo.com/imagem.jpg" className="h-8 text-xs" />
-            </div>
+            <MediaUpload label="Imagem do preview" value={d.clickPreviewImage || ""} accept="image/*" onChange={(url) => update({ clickPreviewImage: url })} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Timeout (segundos, 0 = sem limite)</Label>
