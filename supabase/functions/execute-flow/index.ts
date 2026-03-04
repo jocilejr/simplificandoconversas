@@ -501,11 +501,34 @@ Deno.serve(async (req) => {
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+              const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
                 method: "POST",
                 headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
                 body: JSON.stringify({ number: jid, text: messageText }),
               });
+              const sendResult = await sendResp.json();
+
+              // Save outbound message for group waitForClick
+              const { data: conv } = await serviceClient
+                .from("conversations")
+                .upsert(
+                  { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString() },
+                  { onConflict: "user_id,remote_jid" }
+                )
+                .select("id")
+                .single();
+              if (conv) {
+                await serviceClient.from("messages").insert({
+                  conversation_id: conv.id,
+                  user_id: userId,
+                  remote_jid: jid,
+                  content: messageText,
+                  message_type: "text",
+                  direction: "outbound",
+                  status: "sent",
+                  external_id: sendResult?.key?.id || null,
+                });
+              }
 
               await serviceClient
                 .from("flow_executions")
