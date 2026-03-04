@@ -197,19 +197,16 @@ async function checkAndTriggerFlows(
     const nodes = (flow.nodes || []) as any[];
     let matched = false;
 
-    // 2. Look for trigger nodes with triggerKeyword
+    // 2. Look for trigger nodes with triggerKeyword (flat architecture: data directly on node)
     for (const node of nodes) {
-      const children = node.data?.children || [node.data || {}];
-      for (const child of children) {
-        if (child.type === "trigger" && child.triggerKeyword) {
-          const keyword = child.triggerKeyword.trim().toLowerCase();
-          if (keyword && contentLower === keyword) {
-            matched = true;
-            break;
-          }
+      const data = node.data || {};
+      if (data.type === "trigger" && data.triggerKeyword) {
+        const keyword = data.triggerKeyword.trim().toLowerCase();
+        if (keyword && contentLower === keyword) {
+          matched = true;
+          break;
         }
       }
-      if (matched) break;
     }
 
     if (!matched) continue;

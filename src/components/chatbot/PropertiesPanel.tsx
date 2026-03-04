@@ -5,35 +5,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2 } from "lucide-react";
+import { X, Trash2, icons } from "lucide-react";
 import { type FlowNode, type FlowNodeData, nodeTypeConfig } from "@/types/chatbot";
 import { TextFormatToolbar } from "@/components/chatbot/TextFormatToolbar";
 import { MediaUpload } from "@/components/chatbot/MediaUpload";
 
 interface PropertiesPanelProps {
   node: FlowNode;
-  childIndex: number;
-  onUpdateChild: (nodeId: string, childIndex: number, data: Partial<FlowNodeData>) => void;
+  onUpdate: (nodeId: string, data: Partial<FlowNodeData>) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 }
 
-export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onClose }: PropertiesPanelProps) {
+export function PropertiesPanel({ node, onUpdate, onDelete, onClose }: PropertiesPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const nodeData = node.data as FlowNodeData;
-  const children = nodeData.children || [];
-  const child = children[childIndex];
-  if (!child) return null;
-
-  const config = nodeTypeConfig[child.type];
-  const update = (changes: Partial<FlowNodeData>) => onUpdateChild(node.id, childIndex, changes);
+  const d = node.data as FlowNodeData;
+  const config = nodeTypeConfig[d.type];
+  const LucideIcon = icons[config.icon as keyof typeof icons];
+  const update = (changes: Partial<FlowNodeData>) => onUpdate(node.id, changes);
 
   return (
     <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <span>{config.icon}</span>
+          <div
+            className="w-6 h-6 rounded flex items-center justify-center"
+            style={{ backgroundColor: `${config.color}22`, color: config.color }}
+          >
+            {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+          </div>
           <h3 className="text-sm font-semibold">{config.label}</h3>
         </div>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
@@ -41,41 +42,19 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
         </Button>
       </div>
 
-      {/* Child selector tabs */}
-      {children.length > 1 && (
-        <div className="flex gap-1 p-2 border-b border-border overflow-x-auto">
-          {children.map((c, i) => {
-            const cc = nodeTypeConfig[c.type];
-            return (
-              <button
-                key={c.childId || i}
-                className={`text-[10px] px-2 py-1 rounded-md whitespace-nowrap transition-colors ${
-                  i === childIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-secondary"
-                }`}
-                onClick={() => {
-                  // Trigger re-render with new index - parent handles this via click
-                }}
-              >
-                {cc.icon} {cc.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       <div className="p-3 space-y-4">
         {/* Label */}
         <div className="space-y-1.5">
           <Label className="text-xs">Nome</Label>
-          <Input value={child.label} onChange={(e) => update({ label: e.target.value })} className="h-8 text-xs" />
+          <Input value={d.label} onChange={(e) => update({ label: e.target.value })} className="h-8 text-xs" />
         </div>
 
         {/* Trigger */}
-        {child.type === "trigger" && (
+        {d.type === "trigger" && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs">Tipo de gatilho</Label>
-              <Select value={child.triggerType || "keyword"} onValueChange={(v) => update({ triggerType: v as any })}>
+              <Select value={d.triggerType || "keyword"} onValueChange={(v) => update({ triggerType: v as any })}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="keyword">Palavra-chave</SelectItem>
@@ -84,83 +63,68 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
                 </SelectContent>
               </Select>
             </div>
-            {(child.triggerType === "keyword" || !child.triggerType) && (
+            {(d.triggerType === "keyword" || !d.triggerType) && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Palavra-chave</Label>
-                <Input value={child.triggerKeyword || ""} onChange={(e) => update({ triggerKeyword: e.target.value })} placeholder="Ex: oi, olá, menu" className="h-8 text-xs" />
+                <Input value={d.triggerKeyword || ""} onChange={(e) => update({ triggerKeyword: e.target.value })} placeholder="Ex: oi, olá, menu" className="h-8 text-xs" />
               </div>
             )}
           </>
         )}
 
         {/* Send Text */}
-        {child.type === "sendText" && (
+        {d.type === "sendText" && (
           <div className="space-y-1.5">
             <Label className="text-xs">Mensagem</Label>
-            <TextFormatToolbar textareaRef={textareaRef} value={child.textContent || ""} onChange={(v) => update({ textContent: v })} />
-            <Textarea ref={textareaRef} value={child.textContent || ""} onChange={(e) => update({ textContent: e.target.value })} placeholder="Use *negrito*, _itálico_, ~riscado~" className="text-xs min-h-[100px] resize-none font-mono" />
+            <TextFormatToolbar textareaRef={textareaRef} value={d.textContent || ""} onChange={(v) => update({ textContent: v })} />
+            <Textarea ref={textareaRef} value={d.textContent || ""} onChange={(e) => update({ textContent: e.target.value })} placeholder="Use *negrito*, _itálico_, ~riscado~" className="text-xs min-h-[100px] resize-none font-mono" />
             <p className="text-[10px] text-muted-foreground">*negrito*, _itálico_, ~riscado~ · {"{{variável}}"}</p>
           </div>
         )}
 
         {/* Send Audio */}
-        {child.type === "sendAudio" && (
+        {d.type === "sendAudio" && (
           <>
-            <MediaUpload
-              label="Áudio"
-              value={child.audioUrl || ""}
-              accept="audio/*"
-              onChange={(url) => update({ audioUrl: url })}
-            />
+            <MediaUpload label="Áudio" value={d.audioUrl || ""} accept="audio/*" onChange={(url) => update({ audioUrl: url })} />
             <div className="flex items-center justify-between">
               <Label className="text-xs">Simular gravação</Label>
-              <Switch checked={child.simulateRecording || false} onCheckedChange={(v) => update({ simulateRecording: v })} />
+              <Switch checked={d.simulateRecording || false} onCheckedChange={(v) => update({ simulateRecording: v })} />
             </div>
           </>
         )}
 
         {/* Send Image */}
-        {child.type === "sendImage" && (
+        {d.type === "sendImage" && (
           <>
-            <MediaUpload
-              label="Imagem"
-              value={child.mediaUrl || ""}
-              accept="image/*"
-              onChange={(url) => update({ mediaUrl: url })}
-            />
+            <MediaUpload label="Imagem" value={d.mediaUrl || ""} accept="image/*" onChange={(url) => update({ mediaUrl: url })} />
             <div className="space-y-1.5">
               <Label className="text-xs">Legenda</Label>
-              <Input value={child.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
+              <Input value={d.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
             </div>
           </>
         )}
 
         {/* Send Video */}
-        {child.type === "sendVideo" && (
+        {d.type === "sendVideo" && (
           <>
-            <MediaUpload
-              label="Vídeo"
-              value={child.mediaUrl || ""}
-              accept="video/*"
-              onChange={(url) => update({ mediaUrl: url })}
-            />
+            <MediaUpload label="Vídeo" value={d.mediaUrl || ""} accept="video/*" onChange={(url) => update({ mediaUrl: url })} />
             <div className="space-y-1.5">
               <Label className="text-xs">Legenda</Label>
-              <Input value={child.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
+              <Input value={d.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
             </div>
           </>
         )}
 
         {/* Condition */}
-        {child.type === "condition" && (
+        {d.type === "condition" && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs">Campo</Label>
-              <Input value={child.conditionField || ""} onChange={(e) => update({ conditionField: e.target.value })} placeholder="Ex: mensagem" className="h-8 text-xs" />
+              <Input value={d.conditionField || ""} onChange={(e) => update({ conditionField: e.target.value })} placeholder="Ex: mensagem" className="h-8 text-xs" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Operador</Label>
-              <Select value={child.conditionOperator || "contains"} onValueChange={(v) => update({ conditionOperator: v as any })}>
+              <Select value={d.conditionOperator || "contains"} onValueChange={(v) => update({ conditionOperator: v as any })}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="equals">É igual a</SelectItem>
@@ -172,16 +136,16 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Valor</Label>
-              <Input value={child.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Valor para comparar" className="h-8 text-xs" />
+              <Input value={d.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Valor para comparar" className="h-8 text-xs" />
             </div>
           </>
         )}
 
         {/* Randomizer */}
-        {child.type === "randomizer" && (
+        {d.type === "randomizer" && (
           <div className="space-y-1.5">
             <Label className="text-xs">Número de caminhos</Label>
-            <Select value={String(child.paths || 2)} onValueChange={(v) => update({ paths: parseInt(v) })}>
+            <Select value={String(d.paths || 2)} onValueChange={(v) => update({ paths: parseInt(v) })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {[2, 3, 4, 5].map((n) => <SelectItem key={n} value={String(n)}>{n} caminhos</SelectItem>)}
@@ -191,44 +155,44 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
         )}
 
         {/* Wait/Delay */}
-        {child.type === "waitDelay" && (
+        {d.type === "waitDelay" && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs">Tempo de espera (segundos)</Label>
-              <Input type="number" value={child.delaySeconds || 0} onChange={(e) => update({ delaySeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
+              <Input type="number" value={d.delaySeconds || 0} onChange={(e) => update({ delaySeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
             </div>
             <div className="flex items-center justify-between">
               <Label className="text-xs">Simular "digitando..."</Label>
-              <Switch checked={child.simulateTyping !== false} onCheckedChange={(v) => update({ simulateTyping: v })} />
+              <Switch checked={d.simulateTyping !== false} onCheckedChange={(v) => update({ simulateTyping: v })} />
             </div>
           </>
         )}
 
         {/* Wait for Reply */}
-        {child.type === "waitForReply" && (
+        {d.type === "waitForReply" && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs">Salvar resposta na variável</Label>
-              <Input value={child.replyVariable || ""} onChange={(e) => update({ replyVariable: e.target.value })} placeholder="Ex: resposta, nome" className="h-8 text-xs" />
+              <Input value={d.replyVariable || ""} onChange={(e) => update({ replyVariable: e.target.value })} placeholder="Ex: resposta, nome" className="h-8 text-xs" />
               <p className="text-[10px] text-muted-foreground">Acesse com {"{{resposta}}"}</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Timeout (segundos)</Label>
-              <Input type="number" value={child.replyTimeout || 0} onChange={(e) => update({ replyTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
+              <Input type="number" value={d.replyTimeout || 0} onChange={(e) => update({ replyTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Mensagem de fallback</Label>
-              <Textarea value={child.replyFallback || ""} onChange={(e) => update({ replyFallback: e.target.value })} placeholder="Mensagem caso não responda" className="text-xs min-h-[60px] resize-none" />
+              <Textarea value={d.replyFallback || ""} onChange={(e) => update({ replyFallback: e.target.value })} placeholder="Mensagem caso não responda" className="text-xs min-h-[60px] resize-none" />
             </div>
           </>
         )}
 
         {/* Action */}
-        {child.type === "action" && (
+        {d.type === "action" && (
           <>
             <div className="space-y-1.5">
               <Label className="text-xs">Tipo de ação</Label>
-              <Select value={child.actionType || "add_tag"} onValueChange={(v) => update({ actionType: v as any })}>
+              <Select value={d.actionType || "add_tag"} onValueChange={(v) => update({ actionType: v as any })}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="add_tag">Adicionar Tag</SelectItem>
@@ -240,15 +204,15 @@ export function PropertiesPanel({ node, childIndex, onUpdateChild, onDelete, onC
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Valor</Label>
-              <Input value={child.actionValue || ""} onChange={(e) => update({ actionValue: e.target.value })} placeholder="Nome da tag, lista ou variável" className="h-8 text-xs" />
+              <Input value={d.actionValue || ""} onChange={(e) => update({ actionValue: e.target.value })} placeholder="Nome da tag, lista ou variável" className="h-8 text-xs" />
             </div>
           </>
         )}
 
-        {/* Delete block */}
+        {/* Delete */}
         <div className="pt-4 border-t border-border">
           <Button variant="destructive" size="sm" className="w-full text-xs" onClick={() => onDelete(node.id)}>
-            <Trash2 className="h-3 w-3 mr-1" /> Excluir Bloco
+            <Trash2 className="h-3 w-3 mr-1" /> Excluir Nó
           </Button>
         </div>
       </div>
