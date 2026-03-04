@@ -144,37 +144,51 @@ export function ConversationList({
             <span className="text-xs mt-1 opacity-60">Sincronize para importar</span>
           </div>
         ) : (
-          <div className="px-2 pb-2">
-            {filtered.map((conv) => {
+          <div className="px-1.5 pb-2">
+            {filtered.map((conv, index) => {
               const isSelected = selected?.id === conv.id;
               const hasUnread = conv.unread_count > 0;
 
               return (
-                <ContextMenu>
+                <ContextMenu key={conv.id}>
                   <ContextMenuTrigger asChild>
                     <button
-                      key={conv.id}
                       onClick={() => onSelect(conv)}
                       className={cn(
-                        "w-full text-left px-3 py-3 transition-all duration-150 flex items-center gap-3 rounded-xl mb-0.5",
+                        "w-full text-left px-3 py-3 transition-all duration-150 flex items-center gap-3 rounded-xl relative",
                         isSelected
                           ? "bg-primary/10 shadow-sm"
                           : "hover:bg-secondary/70"
                       )}
                     >
-                      <ContactAvatar
-                        photoUrl={contactPhotos[conv.remote_jid]}
-                        name={conv.contact_name}
-                        size="md"
-                      />
+                      {/* Unread indicator dot */}
+                      {hasUnread && (
+                        <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.5)]" />
+                      )}
+
+                      <div className="relative">
+                        <ContactAvatar
+                          photoUrl={contactPhotos[conv.remote_jid]}
+                          name={conv.contact_name}
+                          size="md"
+                        />
+                      </div>
+
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className={cn(
-                            "text-sm truncate",
-                            hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                          )}>
-                            {conv.contact_name || formatJid(conv.remote_jid)}
-                          </span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn(
+                              "text-sm truncate",
+                              hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                            )}>
+                              {conv.contact_name || formatJid(conv.remote_jid)}
+                            </span>
+                            {conv.instance_name && (
+                              <span className="shrink-0 text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded">
+                                {conv.instance_name}
+                              </span>
+                            )}
+                          </div>
                           <span className={cn(
                             "text-[10px] shrink-0 whitespace-nowrap",
                             hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
@@ -182,12 +196,7 @@ export function ConversationList({
                             {formatTime(conv.last_message_at)}
                           </span>
                         </div>
-                        {conv.instance_name && (
-                          <span className="text-[10px] text-muted-foreground/70 truncate">
-                            {conv.instance_name}
-                          </span>
-                        )}
-                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <div className="flex items-center justify-between gap-2 mt-1">
                           <p className={cn(
                             "text-xs truncate",
                             hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
@@ -195,7 +204,7 @@ export function ConversationList({
                             {conv.last_message || "..."}
                           </p>
                           {hasUnread && (
-                            <span className="flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">
+                            <span className="flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">
                               {conv.unread_count > 99 ? "99+" : conv.unread_count}
                             </span>
                           )}
@@ -212,6 +221,10 @@ export function ConversationList({
                       Excluir conversa
                     </ContextMenuItem>
                   </ContextMenuContent>
+                  {/* Separator between items */}
+                  {index < (filtered?.length || 0) - 1 && (
+                    <div className="mx-3 border-b border-border/40" />
+                  )}
                 </ContextMenu>
               );
             })}
