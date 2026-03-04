@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Bot, Play, Square, MoreHorizontal, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, GitBranch, Calendar, Layers } from "lucide-react";
 import { FlowEditor } from "@/components/chatbot/FlowEditor";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
 import { toast } from "sonner";
@@ -44,16 +45,11 @@ const ChatbotBuilder = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Chatbot Builder</h1>
-          <p className="text-muted-foreground">
-            Construa fluxos de automação visuais com drag & drop
-          </p>
-        </div>
-        <Button onClick={handleCreateFlow} disabled={createFlow.isPending}>
-          <Plus className="h-4 w-4 mr-1" /> Novo Fluxo
+        <h1 className="text-2xl font-bold tracking-tight">Fluxos Automáticos</h1>
+        <Button onClick={handleCreateFlow} disabled={createFlow.isPending} size="sm">
+          <Plus className="h-4 w-4" /> Novo Fluxo
         </Button>
       </div>
 
@@ -63,16 +59,16 @@ const ChatbotBuilder = () => {
         </div>
       ) : !flows?.length ? (
         <Card className="bg-card border-border">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-4">
-              <Bot className="h-8 w-8 text-primary" />
+          <CardContent className="flex flex-col items-center justify-center py-20">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted mb-5">
+              <Workflow className="h-7 w-7 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium mb-2">Nenhum fluxo criado</h3>
-            <p className="text-sm text-muted-foreground mb-6 text-center max-w-md">
-              Crie seu primeiro fluxo de chatbot com o construtor visual.
+            <h3 className="text-base font-medium mb-1">Nenhum fluxo criado</h3>
+            <p className="text-sm text-muted-foreground mb-6 text-center max-w-sm">
+              Crie seu primeiro fluxo de automação com o construtor visual.
             </p>
-            <Button onClick={handleCreateFlow}>
-              <Plus className="h-4 w-4 mr-1" /> Criar Primeiro Fluxo
+            <Button onClick={handleCreateFlow} size="sm">
+              <Plus className="h-4 w-4" /> Criar Fluxo
             </Button>
           </CardContent>
         </Card>
@@ -81,31 +77,35 @@ const ChatbotBuilder = () => {
           {flows.map((flow) => (
             <Card
               key={flow.id}
-              className="bg-card border-border hover:border-primary/50 transition-colors cursor-pointer group"
+              className={`bg-card border-border hover:border-primary/40 transition-all cursor-pointer group overflow-hidden ${
+                flow.active ? "border-l-2 border-l-primary" : "border-l-2 border-l-muted"
+              }`}
               onClick={() => setEditingFlowId(flow.id)}
             >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`h-2 w-2 rounded-full ${
-                        flow.active ? "bg-primary animate-pulse" : "bg-muted-foreground"
-                      }`}
-                    />
-                    <h3 className="font-medium text-sm">{flow.name}</h3>
+              <CardContent className="p-5 flex flex-col gap-4">
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col gap-1.5 min-w-0">
+                    <h3 className="font-medium text-sm truncate">{flow.name}</h3>
+                    <Badge
+                      variant={flow.active ? "default" : "secondary"}
+                      className="w-fit text-[10px] px-2 py-0"
+                    >
+                      {flow.active ? "Ativo" : "Inativo"}
+                    </Badge>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                        className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenuItem
                         className="text-destructive"
                         onClick={() => deleteFlow.mutate(flow.id)}
@@ -115,38 +115,49 @@ const ChatbotBuilder = () => {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{(flow.nodes as any[])?.length || 0} nós</span>
-                  <span>{new Date(flow.updated_at).toLocaleDateString("pt-BR")}</span>
+
+                {/* Meta */}
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Layers className="h-3 w-3" />
+                    {(flow.nodes as any[])?.length || 0} nós
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {new Date(flow.updated_at).toLocaleDateString("pt-BR")}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 mt-3">
-                  <Button
-                    variant={flow.active ? "destructive" : "default"}
-                    size="sm"
-                    className="h-7 text-xs flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateFlow.mutate({ id: flow.id, active: !flow.active });
-                    }}
-                  >
-                    {flow.active ? (
-                      <><Square className="h-3 w-3 mr-1" /> Parar</>
-                    ) : (
-                      <><Play className="h-3 w-3 mr-1" /> Ativar</>
-                    )}
-                  </Button>
-                </div>
+
+                {/* Action */}
+                <Button
+                  variant={flow.active ? "destructive" : "outline"}
+                  size="sm"
+                  className="h-8 text-xs w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateFlow.mutate({ id: flow.id, active: !flow.active });
+                  }}
+                >
+                  {flow.active ? (
+                    <><Square className="h-3 w-3" /> Parar</>
+                  ) : (
+                    <><Play className="h-3 w-3" /> Ativar</>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           ))}
 
+          {/* New flow card */}
           <Card
-            className="bg-card border-border border-dashed hover:border-primary/50 transition-colors cursor-pointer flex items-center justify-center min-h-[140px]"
+            className="bg-card border-border border-dashed hover:border-primary/40 transition-all cursor-pointer flex items-center justify-center min-h-[180px]"
             onClick={handleCreateFlow}
           >
-            <CardContent className="flex flex-col items-center p-4 text-muted-foreground">
-              <Plus className="h-8 w-8 mb-2" />
-              <span className="text-sm">Novo Fluxo</span>
+            <CardContent className="flex flex-col items-center gap-2 p-4 text-muted-foreground">
+              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center">
+                <Plus className="h-5 w-5" />
+              </div>
+              <span className="text-xs font-medium">Novo Fluxo</span>
             </CardContent>
           </Card>
         </div>
