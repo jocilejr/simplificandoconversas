@@ -1,36 +1,48 @@
 
 
-## Problemas Identificados
+## Diagnóstico: FunilPrincipal sem mensagens
 
-1. **onConflict desatualizado em vários arquivos**: A migração alterou o constraint para `(user_id, remote_jid, instance_name)`, mas 5 locais ainda usam o antigo `"user_id,remote_jid"`:
-   - `evolution-proxy/index.ts` linhas 387, 527
-   - `evolution-webhook/index.ts` linhas 198, 229
-   - `execute-flow/index.ts` linhas 65, 385, 445, 526
+### Causa raiz identificada nos logs
 
-   Isso faz os upserts falharem silenciosamente ou não encontrarem o registro correto, causando conversas de outras instâncias "vazarem".
+Os logs mostram claramente que a **Evolution API não retorna nenhuma mensagem** para a instância FunilPrincipal:
 
-2. **Falta indicador de instância na lista de conversas**: O usuário quer ver a qual instância cada conversa pertence.
+```text
+findMessages FunilPrincipal status: 200, body length: 63
+→ {"messages":{"total":0,"pages":0,"currentPage":1,"records":[]}}
 
-3. **Conversas de "FunilPrincipal" não aparecem**: Provavelmente porque os upserts com o onConflict errado falham ao inserir/atualizar essas conversas.
+findChats FunilPrincipal status: 200, body length: 2
+→ []
+```
 
-## Correções
+A API responde com sucesso (status 200), mas retorna **0 mensagens e 0 chats**. Isso não é um bug no código — a Evolution API simplesmente não tem dados armazenados para essa instância.
 
-### 1. Atualizar todos os onConflict para incluir instance_name
+### Possíveis causas
 
-Em todos os arquivos que fazem upsert na tabela `conversations`, trocar `"user_id,remote_jid"` por `"user_id,remote_jid,instance_name"` e garantir que `instance_name` é passado no objeto de upsert.
+1. **Webhook não configurado** para FunilPrincipal — sem webhook, mensagens em tempo real não chegam E o histórico pode não ser armazenado pela API
+2. **Instância desconectada** — se o status não é "open", a API não recebe/armazena mensagens
+3. **Store desabilitado** na instância — a Evolution API pode estar configurada para não persistir mensagens
 
-**Arquivos:**
-- `supabase/functions/evolution-proxy/index.ts` (linhas 387, 527)
-- `supabase/functions/evolution-webhook/index.ts` (linhas 198, 229)
-- `supabase/functions/execute-flow/index.ts` (linhas 65, 385, 445, 526)
+### Correções propostas
 
-### 2. Adicionar badge de instância na ConversationList
+#### 1. Forçar reconfiguração do webhook para FunilPrincipal
+Ao sincronizar, verificar se o webhook está ativo para cada instância e reconfigurá-lo automaticamente se necessário. O código de `sync-webhooks` já faz isso, mas não é chamado durante o `sync-chats`.
 
-Abaixo do nome/número do contato, mostrar um pequeno badge/tag com o `instance_name` da conversa (ex: "Meire Rosana - Entregas" ou "FunilPrincipal") em texto discreto.
+**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
+- No início do `sync-chats`, antes de buscar mensagens, chamar o endpoint `webhook/set` para cada instância (garantindo que mensagens futuras cheguem via webhook)
 
-**Arquivo:** `src/components/conversations/ConversationList.tsx`
+#### 2. Verificar e exibir status de conexão por instância
+Adicionar uma verificação de `connectionState` durante o sync para informar ao usuário se a instância está realmente conectada.
 
-### 3. Re-sincronizar após deploy
+**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
+- Chamar `/instance/connectionState/{instanceName}` para cada instância durante o sync
+- Retornar o status no resultado para que o usuário saiba se FunilPrincipal está "open" ou "close"
 
-Após as correções, o usuário deve sincronizar novamente para que as conversas de todas as instâncias sejam salvas corretamente com isolamento.
+#### 3. Tentar habilitar o store da instância
+Chamar o endpoint de configuração do store (`/chat/updateSettings`) para garantir que as mensagens são persistidas pela Evolution API.
+
+**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
+
+### Resumo das alterações
+- Modificar o `sync-chats` para: (1) verificar conexão, (2) configurar webhook, (3) habilitar store de mensagens — tudo antes de buscar dados
+- Retornar informações de status por instância no resultado do sync para feedback ao usuário
 
