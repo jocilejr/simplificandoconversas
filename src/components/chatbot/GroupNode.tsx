@@ -110,6 +110,8 @@ function StepRow({
       }
       case "waitDelay":
         return null;
+      case "waitForClick":
+        return null;
       default:
         return null;
     }
