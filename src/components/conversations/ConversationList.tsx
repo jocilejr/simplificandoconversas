@@ -162,17 +162,16 @@ export function ConversationList({
                             : "hover:bg-secondary/70"
                         )}
                       >
-                        <div className="relative">
-                          <ContactAvatar
-                            photoUrl={contactPhotos[conv.remote_jid]}
-                            name={conv.contact_name}
-                            size="md"
-                          />
-                          {/* Unread dot on avatar */}
-                          {hasUnread && (
-                            <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-primary border-2 border-card shadow-[0_0_6px_hsl(var(--primary)/0.5)]" />
-                          )}
-                        </div>
+                        <ContactAvatar
+                          photoUrl={contactPhotos[conv.remote_jid]}
+                          name={conv.contact_name}
+                          size="md"
+                        />
+
+                        {/* Unread dot - right side of card */}
+                        {hasUnread && (
+                          <span className="absolute top-3 right-3 h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.5)]" />
+                        )}
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
