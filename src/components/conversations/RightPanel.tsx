@@ -10,7 +10,7 @@ import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { useLabels, useConversationLabels } from "@/hooks/useLabels";
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import {
-  X, Plus, Trash2, Pencil, Check, Tag, Zap, User, Square, Loader2,
+  X, Plus, Trash2, Pencil, Check, Tag, Zap, User, Square, Loader2, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -113,13 +113,24 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
             {activeExecutions && activeExecutions.length > 0 ? (
               <div className="space-y-2">
-                {activeExecutions.map((exec: any) => (
-                  <div key={exec.id} className="flex items-center justify-between bg-destructive/10 rounded-lg p-2.5">
+                {activeExecutions.map((exec: any) => {
+                  const isWaiting = exec.status === "waiting_click";
+                  return (
+                  <div key={exec.id} className={cn("flex items-center justify-between rounded-lg p-2.5", isWaiting ? "bg-accent" : "bg-destructive/10")}>
                     <div className="flex items-center gap-2 min-w-0">
-                      <Loader2 className="h-3.5 w-3.5 text-destructive animate-spin shrink-0" />
-                      <span className="text-xs font-medium truncate">
-                        {exec.chatbot_flows?.name || "Fluxo"}
-                      </span>
+                      {isWaiting ? (
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      ) : (
+                        <Loader2 className="h-3.5 w-3.5 text-destructive animate-spin shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <span className="text-xs font-medium truncate block">
+                          {exec.chatbot_flows?.name || "Fluxo"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {isWaiting ? "Aguardando clique" : "Executando"}
+                        </span>
+                      </div>
                     </div>
                     <Button
                       variant="destructive"
@@ -134,7 +145,8 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                       Parar
                     </Button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground text-center py-2">Nenhum fluxo em execução</p>
