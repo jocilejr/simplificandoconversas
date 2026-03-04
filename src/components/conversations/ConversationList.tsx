@@ -94,7 +94,7 @@ export function ConversationList({
               key={conv.id}
               onClick={() => onSelect(conv)}
               className={cn(
-                "w-full text-left px-3 py-3 transition-colors hover:bg-accent/50 flex items-center gap-3",
+                "w-full text-left px-4 py-3 transition-colors hover:bg-accent/50 flex items-center gap-3 border-b border-border/50",
                 selected?.id === conv.id && "bg-accent"
               )}
             >
@@ -104,22 +104,22 @@ export function ConversationList({
                 size="md"
               />
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-sm truncate block">
-                  {conv.contact_name || formatJid(conv.remote_jid)}
-                </span>
-                <div className="flex items-center justify-between gap-1 mt-0.5">
-                  <p className="text-xs text-muted-foreground truncate max-w-[65%]">
-                    {conv.last_message || "Sem mensagens"}
-                  </p>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {formatTime(conv.last_message_at)}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm truncate">
+                    {conv.contact_name || formatJid(conv.remote_jid)}
                   </span>
-                  {conv.unread_count > 0 && (
-                    <Badge className="h-5 min-w-5 text-[10px] rounded-full px-1.5 shrink-0 bg-primary text-primary-foreground">
-                      {conv.unread_count}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {conv.unread_count > 0 && (
+                      <span className="h-2 w-2 rounded-full bg-primary" />
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {formatTime(conv.last_message_at)}
+                    </span>
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  {conv.last_message || "..."}
+                </p>
               </div>
             </button>
           ))
