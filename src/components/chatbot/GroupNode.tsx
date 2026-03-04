@@ -108,19 +108,8 @@ function StepRow({
           </div>
         );
       }
-      case "waitDelay": {
-        return (
-          <div className="mx-1 mt-1 px-2.5 py-2 rounded-lg bg-muted/60 border border-border/30 flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-[11px] text-foreground/70 font-medium">{d.delaySeconds || 0}s</span>
-            {d.simulateTyping && (
-              <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-auto">
-                digitando...
-              </span>
-            )}
-          </div>
-        );
-      }
+      case "waitDelay":
+        return null;
       default:
         return null;
     }
@@ -136,7 +125,7 @@ function StepRow({
     desc = `Salvar em {{${d.replyVariable || "resposta"}}}`;
   }
 
-  const hasRichPreview = ["sendText", "sendImage", "sendVideo", "sendAudio", "waitDelay"].includes(d.type);
+  const hasRichPreview = ["sendText", "sendImage", "sendVideo", "sendAudio"].includes(d.type);
 
   return (
     <div
@@ -176,10 +165,20 @@ function StepRow({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold text-foreground truncate">{d.label || config.label}</p>
-          {!hasRichPreview && (
+          {!hasRichPreview && d.type !== "waitDelay" && (
             <p className="text-[10px] text-muted-foreground truncate">{desc}</p>
           )}
         </div>
+        {d.type === "waitDelay" && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[11px] font-semibold text-foreground/70">{d.delaySeconds || 0}s</span>
+            {d.simulateTyping && (
+              <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                digitando...
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Rich preview */}
