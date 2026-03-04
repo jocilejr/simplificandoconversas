@@ -11,7 +11,7 @@ export type FlowNodeType =
   | "waitDelay"
   | "waitForReply"
   | "action"
-  | "group";
+  | "groupBlock";
 
 export interface FlowStepData {
   id: string;
@@ -130,7 +130,7 @@ export const nodeTypeConfig: Record<
     icon: "Settings",
     description: "Executa uma ação (tag, lista, variável)",
   },
-  group: {
+  groupBlock: {
     label: "Grupo",
     color: "#6b7280",
     icon: "Layers",
@@ -149,5 +149,5 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   waitDelay: { delaySeconds: 3, simulateTyping: true },
   waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyFallback: "" },
   action: { actionType: "add_tag", actionValue: "" },
-  group: { steps: [] },
+  groupBlock: { steps: [] },
 };
