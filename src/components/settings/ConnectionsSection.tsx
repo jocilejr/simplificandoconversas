@@ -48,6 +48,16 @@ export function ConnectionsSection() {
     }
   }, [profile]);
 
+  // Auto-fetch remote instances to get real connection status
+  useEffect(() => {
+    if (profile?.evolution_api_url && profile?.evolution_api_key && instances.length > 0) {
+      fetchRemoteInstances.mutateAsync().then((result) => {
+        if (Array.isArray(result)) setRemoteInstances(result);
+        else if (result?.instances) setRemoteInstances(result.instances);
+      }).catch(() => {});
+    }
+  }, [profile?.evolution_api_url, profile?.evolution_api_key, instances.length]);
+
   const handleSaveCredentials = () => {
     updateProfile.mutate({ evolution_api_url: apiUrl, evolution_api_key: apiKey });
   };
