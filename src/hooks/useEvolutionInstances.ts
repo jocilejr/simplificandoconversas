@@ -152,6 +152,22 @@ export function useEvolutionInstances() {
     },
   });
 
+  const syncWebhooks = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+        body: { action: "sync-webhooks" },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Webhooks sincronizados!", description: `${data?.synced || 0} instância(s) configurada(s)` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
+    },
+  });
+
   return {
     instances,
     isLoading,
@@ -161,5 +177,6 @@ export function useEvolutionInstances() {
     deleteInstance,
     setActiveInstance,
     setProxy,
+    syncWebhooks,
   };
 }
