@@ -182,6 +182,11 @@ export function ConversationList({
                             {formatTime(conv.last_message_at)}
                           </span>
                         </div>
+                        {conv.instance_name && (
+                          <span className="text-[10px] text-muted-foreground/70 truncate">
+                            {conv.instance_name}
+                          </span>
+                        )}
                         <div className="flex items-center justify-between gap-2 mt-0.5">
                           <p className={cn(
                             "text-xs truncate",

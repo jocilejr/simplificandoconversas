@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
                 last_message_at: new Date().toISOString(),
                 instance_name: evolution_instance_name,
               },
-              { onConflict: "user_id,remote_jid" }
+              { onConflict: "user_id,remote_jid,instance_name" }
             )
             .select("id")
             .single();
@@ -524,7 +524,7 @@ Deno.serve(async (req) => {
                   console.log(`[sync-chats] Found ${chatRows.length} chats from findChats for ${currentInstanceName}`);
                   for (let i = 0; i < chatRows.length; i += 100) {
                     const chunk = chatRows.slice(i, i + 100);
-                    const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid" });
+                    const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid,instance_name" });
                     if (!err) totalSynced += chunk.length;
                   }
                 }
