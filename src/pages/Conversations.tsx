@@ -12,7 +12,7 @@ import { RightPanel } from "@/components/conversations/RightPanel";
 
 const Conversations = () => {
   const queryClient = useQueryClient();
-  const { data: conversations, isLoading: loadingConvs, markAsRead } = useConversations();
+  const { data: conversations, isLoading: loadingConvs, markAsRead, deleteConversation } = useConversations();
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
@@ -73,6 +73,16 @@ const Conversations = () => {
     }
   };
 
+  const handleDelete = async (conv: Conversation) => {
+    try {
+      if (selected?.id === conv.id) setSelected(null);
+      await deleteConversation(conv.id);
+      toast({ title: "Conversa excluída" });
+    } catch (err: any) {
+      toast({ title: "Erro ao excluir", description: err.message, variant: "destructive" });
+    }
+  };
+
   return (
     <div className="h-full flex">
       {/* Left - Conversation List */}
@@ -83,6 +93,7 @@ const Conversations = () => {
           selected={selected}
           onSelect={(conv) => { setSelected(conv); }}
           onSync={() => syncChats.mutate()}
+          onDelete={handleDelete}
           isSyncing={syncChats.isPending}
           contactPhotos={contactPhotos || {}}
           instances={instanceTabs}

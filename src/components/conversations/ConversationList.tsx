@@ -2,13 +2,19 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, RefreshCw, Search, MessageSquare, ChevronDown } from "lucide-react";
+import { Loader2, RefreshCw, Search, MessageSquare, ChevronDown, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Conversation } from "@/hooks/useConversations";
 import { ContactAvatar } from "./ContactAvatar";
 import { cn } from "@/lib/utils";
@@ -25,6 +31,7 @@ interface ConversationListProps {
   selected: Conversation | null;
   onSelect: (conv: Conversation) => void;
   onSync: () => void;
+  onDelete: (conv: Conversation) => void;
   isSyncing: boolean;
   contactPhotos: Record<string, string>;
   instances?: InstanceTab[];
@@ -50,6 +57,7 @@ export function ConversationList({
   selected,
   onSelect,
   onSync,
+  onDelete,
   isSyncing,
   contactPhotos,
   instances = [],
@@ -142,51 +150,64 @@ export function ConversationList({
               const hasUnread = conv.unread_count > 0;
 
               return (
-                <button
-                  key={conv.id}
-                  onClick={() => onSelect(conv)}
-                  className={cn(
-                    "w-full text-left px-3 py-3 transition-all duration-150 flex items-center gap-3 rounded-xl mb-0.5",
-                    isSelected
-                      ? "bg-primary/10 shadow-sm"
-                      : "hover:bg-secondary/70"
-                  )}
-                >
-                  <ContactAvatar
-                    photoUrl={contactPhotos[conv.remote_jid]}
-                    name={conv.contact_name}
-                    size="md"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={cn(
-                        "text-sm truncate",
-                        hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                      )}>
-                        {conv.contact_name || formatJid(conv.remote_jid)}
-                      </span>
-                      <span className={cn(
-                        "text-[10px] shrink-0 whitespace-nowrap",
-                        hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
-                      )}>
-                        {formatTime(conv.last_message_at)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 mt-0.5">
-                      <p className={cn(
-                        "text-xs truncate",
-                        hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
-                      )}>
-                        {conv.last_message || "..."}
-                      </p>
-                      {hasUnread && (
-                        <span className="flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">
-                          {conv.unread_count > 99 ? "99+" : conv.unread_count}
-                        </span>
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <button
+                      key={conv.id}
+                      onClick={() => onSelect(conv)}
+                      className={cn(
+                        "w-full text-left px-3 py-3 transition-all duration-150 flex items-center gap-3 rounded-xl mb-0.5",
+                        isSelected
+                          ? "bg-primary/10 shadow-sm"
+                          : "hover:bg-secondary/70"
                       )}
-                    </div>
-                  </div>
-                </button>
+                    >
+                      <ContactAvatar
+                        photoUrl={contactPhotos[conv.remote_jid]}
+                        name={conv.contact_name}
+                        size="md"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={cn(
+                            "text-sm truncate",
+                            hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                          )}>
+                            {conv.contact_name || formatJid(conv.remote_jid)}
+                          </span>
+                          <span className={cn(
+                            "text-[10px] shrink-0 whitespace-nowrap",
+                            hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
+                          )}>
+                            {formatTime(conv.last_message_at)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <p className={cn(
+                            "text-xs truncate",
+                            hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
+                          )}>
+                            {conv.last_message || "..."}
+                          </p>
+                          {hasUnread && (
+                            <span className="flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">
+                              {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => onDelete(conv)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir conversa
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </div>
