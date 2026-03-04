@@ -65,6 +65,9 @@ export interface FlowNodeData {
   clickUrl?: string;
   clickMessage?: string;
   clickTimeout?: number;
+  clickPreviewTitle?: string;
+  clickPreviewDescription?: string;
+  clickPreviewImage?: string;
   // Dock indicator
   isDockTarget?: boolean;
   [key: string]: unknown;

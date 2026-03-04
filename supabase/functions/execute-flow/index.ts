@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await serviceClient
       .from("profiles")
-      .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key")
+      .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url")
       .eq("user_id", userId)
       .single();
 
@@ -401,6 +401,11 @@ Deno.serve(async (req) => {
             const nextIds = outgoingMap.get(node.id) || [];
             const nextNodeId = nextIds.length > 0 ? nextIds[0] : null;
 
+            // Get app public URL for nicer links
+            const appPublicUrl = profile.app_public_url
+              ? profile.app_public_url.replace(/\/$/, "")
+              : null;
+
             await serviceClient.from("tracked_links").insert({
               user_id: userId,
               flow_id: flowId,
@@ -410,10 +415,15 @@ Deno.serve(async (req) => {
               short_code: shortCode,
               next_node_id: nextNodeId,
               conversation_id: conversationId || null,
+              preview_title: data.clickPreviewTitle || null,
+              preview_description: data.clickPreviewDescription || null,
+              preview_image: data.clickPreviewImage || null,
             });
 
-            const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-            const trackingUrl = `${supabaseUrl}/functions/v1/link-redirect?code=${shortCode}`;
+            // Use app URL if configured, otherwise fall back to edge function URL
+            const trackingUrl = appPublicUrl
+              ? `${appPublicUrl}/r/${shortCode}`
+              : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
 
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
@@ -479,6 +489,10 @@ Deno.serve(async (req) => {
                 nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
               }
 
+              const appPublicUrl = profile.app_public_url
+                ? profile.app_public_url.replace(/\/$/, "")
+                : null;
+
               await serviceClient.from("tracked_links").insert({
                 user_id: userId,
                 flow_id: flowId,
@@ -488,10 +502,14 @@ Deno.serve(async (req) => {
                 short_code: shortCode,
                 next_node_id: nextNodeId,
                 conversation_id: conversationId || null,
+                preview_title: step.data.clickPreviewTitle || null,
+                preview_description: step.data.clickPreviewDescription || null,
+                preview_image: step.data.clickPreviewImage || null,
               });
 
-              const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-              const trackingUrl = `${supabaseUrl}/functions/v1/link-redirect?code=${shortCode}`;
+              const trackingUrl = appPublicUrl
+                ? `${appPublicUrl}/r/${shortCode}`
+                : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 

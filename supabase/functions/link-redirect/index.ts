@@ -78,6 +78,30 @@ Deno.serve(async (req) => {
     }
   } else if (isBot) {
     console.log(`[link-redirect] Ignored bot/preview request. UA: ${userAgent}`);
+    
+    // Serve OG HTML for link preview if preview data exists
+    if (link.preview_title || link.preview_description || link.preview_image) {
+      const title = link.preview_title || "Link";
+      const description = link.preview_description || "";
+      const image = link.preview_image || "";
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta property="og:title" content="${title.replace(/"/g, '&quot;')}">
+  <meta property="og:description" content="${description.replace(/"/g, '&quot;')}">
+  ${image ? `<meta property="og:image" content="${image.replace(/"/g, '&quot;')}">` : ""}
+  <meta property="og:url" content="${link.original_url}">
+  <meta property="og:type" content="website">
+  <title>${title.replace(/</g, '&lt;')}</title>
+</head>
+<body></body>
+</html>`;
+      return new Response(html, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders },
+      });
+    }
   }
 
   // Always redirect to original URL
