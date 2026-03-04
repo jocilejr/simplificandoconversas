@@ -1,12 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Send, Loader2, Check, CheckCheck } from "lucide-react";
+import { MessageSquare, Send, Loader2, Check, CheckCheck, Bot } from "lucide-react";
 import { Message } from "@/hooks/useMessages";
 import { Conversation } from "@/hooks/useConversations";
 import { ContactAvatar } from "./ContactAvatar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { useChatbotFlows } from "@/hooks/useChatbotFlows";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface ChatPanelProps {
   conversation: Conversation | null;
@@ -30,7 +38,26 @@ function StatusIcon({ status }: { status: string }) {
 
 export function ChatPanel({ conversation, messages, isLoading, onSend, isSending, contactPhoto }: ChatPanelProps) {
   const [text, setText] = useState("");
+  const [executingFlow, setExecutingFlow] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { data: flows } = useChatbotFlows();
+  const savedFlows = flows?.filter(f => (f.nodes as any[])?.length > 0) || [];
+
+  const handleExecuteFlow = async (flowId: string) => {
+    if (!conversation) return;
+    setExecutingFlow(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("execute-flow", {
+        body: { flowId, remoteJid: conversation.remote_jid },
+      });
+      if (error) throw error;
+      toast.success(`Fluxo executado: ${data?.executed?.length || 0} ações`);
+    } catch (err: any) {
+      toast.error("Erro ao executar fluxo: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setExecutingFlow(false);
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -160,6 +187,37 @@ export function ChatPanel({ conversation, messages, isLoading, onSend, isSending
 
       {/* Input */}
       <div className="px-4 py-3 border-t border-border bg-card flex items-center gap-2">
+        {savedFlows.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-full shrink-0"
+                disabled={executingFlow}
+              >
+                {executingFlow ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Bot className="h-4 w-4" />
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-56 p-1">
+              <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Disparar Fluxo</p>
+              {savedFlows.map((flow) => (
+                <button
+                  key={flow.id}
+                  className="flex items-center gap-2 w-full px-2 py-2 rounded-md hover:bg-secondary transition-colors text-left text-sm"
+                  onClick={() => handleExecuteFlow(flow.id)}
+                >
+                  <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="truncate">{flow.name}</span>
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        )}
         <Input
           placeholder="Digite uma mensagem..."
           value={text}

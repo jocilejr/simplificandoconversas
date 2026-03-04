@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      chatbot_flows: {
+        Row: {
+          active: boolean
+          created_at: string
+          edges: Json
+          id: string
+          name: string
+          nodes: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          edges?: Json
+          id?: string
+          name: string
+          nodes?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          edges?: Json
+          id?: string
+          name?: string
+          nodes?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           contact_name: string | null
