@@ -8,8 +8,9 @@ import { ContactAvatar } from "./ContactAvatar";
 import { Conversation } from "@/hooks/useConversations";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { useLabels, useConversationLabels } from "@/hooks/useLabels";
+import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import {
-  X, Plus, Trash2, Pencil, Check, Tag, Zap, User,
+  X, Plus, Trash2, Pencil, Check, Tag, Zap, User, Square, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -43,6 +44,9 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   const { data: convLabels, assign, unassign } = useConversationLabels(conversation.id);
   const [labelName, setLabelName] = useState("");
   const [labelColor, setLabelColor] = useState(PRESET_COLORS[0]);
+
+  // Flow Executions
+  const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
 
   const assignedLabelIds = new Set((convLabels || []).map(cl => cl.label_id));
 
@@ -96,6 +100,45 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
               <p className="font-semibold text-sm">{conversation.contact_name || formatJid(conversation.remote_jid)}</p>
               <p className="text-xs text-muted-foreground">{formatJid(conversation.remote_jid)}</p>
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Active Flow Executions */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fluxo Ativo</span>
+            </div>
+
+            {activeExecutions && activeExecutions.length > 0 ? (
+              <div className="space-y-2">
+                {activeExecutions.map((exec: any) => (
+                  <div key={exec.id} className="flex items-center justify-between bg-destructive/10 rounded-lg p-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Loader2 className="h-3.5 w-3.5 text-destructive animate-spin shrink-0" />
+                      <span className="text-xs font-medium truncate">
+                        {exec.chatbot_flows?.name || "Fluxo"}
+                      </span>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-6 text-[10px] shrink-0 ml-2"
+                      onClick={() => {
+                        cancelExecution.mutate(exec.id);
+                        toast.success("Fluxo cancelado");
+                      }}
+                    >
+                      <Square className="h-2.5 w-2.5 mr-1" />
+                      Parar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">Nenhum fluxo em execução</p>
+            )}
           </div>
 
           <Separator />

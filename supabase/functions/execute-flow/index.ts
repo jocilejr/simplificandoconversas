@@ -15,6 +15,13 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const serviceClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  let executionId: string | null = null;
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -40,7 +47,7 @@ Deno.serve(async (req) => {
     }
     const userId = claimsData.claims.sub;
 
-    const { flowId, remoteJid } = await req.json();
+    const { flowId, remoteJid, conversationId } = await req.json();
     if (!flowId || !remoteJid) {
       return new Response(JSON.stringify({ error: "flowId and remoteJid required" }), {
         status: 400,
@@ -78,12 +85,34 @@ Deno.serve(async (req) => {
 
     const { evolution_api_url, evolution_api_key, evolution_instance_name } = profile;
     const baseUrl = evolution_api_url.replace(/\/$/, "");
+    const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
-    // Parse flow: traverse nodes in order following edges
+    // Create flow execution record
+    const { data: execution, error: execErr } = await serviceClient
+      .from("flow_executions")
+      .insert({
+        user_id: userId,
+        conversation_id: conversationId || null,
+        flow_id: flowId,
+        remote_jid: jid,
+        status: "running",
+      })
+      .select("id")
+      .single();
+
+    if (execErr || !execution) {
+      console.error("Failed to create execution record:", execErr);
+      return new Response(JSON.stringify({ error: "Failed to start execution tracking" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    executionId = execution.id;
+
+    // Parse flow nodes/edges
     const nodes = (flow.nodes || []) as any[];
     const edges = (flow.edges || []) as any[];
 
-    // Build execution order: start from nodes with no incoming edges, follow edges
     const incomingMap = new Map<string, string[]>();
     const outgoingMap = new Map<string, string[]>();
     for (const edge of edges) {
@@ -93,37 +122,47 @@ Deno.serve(async (req) => {
       incomingMap.get(edge.target)!.push(edge.source);
     }
 
-    // Find start nodes (no incoming edges)
     const startNodes = nodes.filter((n: any) => !incomingMap.has(n.id) || incomingMap.get(n.id)!.length === 0);
     if (startNodes.length === 0 && nodes.length > 0) {
-      startNodes.push(nodes[0]); // fallback
+      startNodes.push(nodes[0]);
     }
 
-    // BFS execution
+    // BFS execution with cancellation checks
     const visited = new Set<string>();
     const queue = [...startNodes];
     const results: string[] = [];
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
-    const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+    let nodeIndex = 0;
 
     while (queue.length > 0) {
       const node = queue.shift()!;
       if (visited.has(node.id)) continue;
       visited.add(node.id);
 
+      // Check if execution was cancelled
+      const { data: statusCheck } = await serviceClient
+        .from("flow_executions")
+        .select("status")
+        .eq("id", executionId)
+        .single();
+
+      if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
+        results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
+        break;
+      }
+
+      // Update current node index
+      await serviceClient
+        .from("flow_executions")
+        .update({ current_node_index: nodeIndex })
+        .eq("id", executionId);
+
       const data = node.data || {};
-      const children = data.children || [data]; // If no children, treat node data as single item
+      const children = data.children || [data];
 
       for (const child of children) {
         const childType = child.type;
-
         try {
           if (childType === "trigger") {
-            // Skip trigger nodes during execution
             results.push("trigger: skipped");
             continue;
           }
@@ -139,7 +178,6 @@ Deno.serve(async (req) => {
             );
             const r = await resp.json();
 
-            // Save to DB
             const { data: conv } = await serviceClient
               .from("conversations")
               .upsert(
@@ -161,57 +199,48 @@ Deno.serve(async (req) => {
                 external_id: r?.key?.id || null,
               });
             }
-            results.push(`sendText: ok`);
+            results.push("sendText: ok");
           }
 
           if (childType === "sendImage" && child.mediaUrl) {
-            await fetch(
-              `${baseUrl}/message/sendMedia/${evolution_instance_name}`,
-              {
-                method: "POST",
-                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-                body: JSON.stringify({ number: jid, mediatype: "image", media: child.mediaUrl, caption: child.caption || "" }),
-              }
-            );
+            await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ number: jid, mediatype: "image", media: child.mediaUrl, caption: child.caption || "" }),
+            });
             results.push("sendImage: ok");
           }
 
           if (childType === "sendAudio" && child.audioUrl) {
-            await fetch(
-              `${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`,
-              {
-                method: "POST",
-                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-                body: JSON.stringify({ number: jid, audio: child.audioUrl }),
-              }
-            );
+            await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ number: jid, audio: child.audioUrl }),
+            });
             results.push("sendAudio: ok");
           }
 
           if (childType === "sendVideo" && child.mediaUrl) {
-            await fetch(
-              `${baseUrl}/message/sendMedia/${evolution_instance_name}`,
-              {
-                method: "POST",
-                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-                body: JSON.stringify({ number: jid, mediatype: "video", media: child.mediaUrl, caption: child.caption || "" }),
-              }
-            );
+            await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ number: jid, mediatype: "video", media: child.mediaUrl, caption: child.caption || "" }),
+            });
             results.push("sendVideo: ok");
           }
 
           if (childType === "waitDelay") {
             const delay = (child.delaySeconds || 3) * 1000;
-            await sleep(Math.min(delay, 30000)); // max 30s per delay
+            await sleep(Math.min(delay, 30000));
             results.push(`waitDelay: ${child.delaySeconds}s`);
           }
-
         } catch (err: any) {
           results.push(`${childType}: error - ${err.message}`);
         }
       }
 
-      // Follow edges to next nodes
+      nodeIndex++;
+
       const nextIds = outgoingMap.get(node.id) || [];
       for (const nextId of nextIds) {
         const nextNode = nodes.find((n: any) => n.id === nextId);
@@ -219,11 +248,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, executed: results }), {
+    // Mark completed
+    await serviceClient
+      .from("flow_executions")
+      .update({ status: "completed" })
+      .eq("id", executionId)
+      .eq("status", "running");
+
+    return new Response(JSON.stringify({ ok: true, executed: results, executionId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
     console.error("execute-flow error:", err);
+    if (executionId) {
+      await serviceClient
+        .from("flow_executions")
+        .update({ status: "completed" })
+        .eq("id", executionId);
+    }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
