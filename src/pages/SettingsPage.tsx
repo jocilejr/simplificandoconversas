@@ -160,33 +160,6 @@ const SettingsPage = () => {
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-lg">URL Pública do App</CardTitle>
-          <CardDescription>URL do seu app publicado para gerar links rastreáveis com domínio próprio</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>URL do App</Label>
-            <Input
-              placeholder="https://simplificandoconversas.lovable.app"
-              value={appPublicUrl}
-              onChange={(e) => setAppPublicUrl(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Os links rastreáveis usarão este domínio. Ex: <strong>seuapp.lovable.app/r/abc123</strong>
-            </p>
-          </div>
-          <Button
-            onClick={() => updateProfile.mutate({ app_public_url: appPublicUrl } as any)}
-            disabled={updateProfile.isPending}
-          >
-            {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Salvar
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-card border-border">
-        <CardHeader>
           <CardTitle className="text-lg">Webhook</CardTitle>
           <CardDescription>
             Configure este URL no painel da Evolution API para receber mensagens
