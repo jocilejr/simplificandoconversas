@@ -498,9 +498,7 @@ Deno.serve(async (req) => {
                 preview_image: step.data.clickPreviewImage || null,
               });
 
-              const trackingUrl = appPublicUrl
-                ? `${appPublicUrl}/r/${shortCode}`
-                : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
+              const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
