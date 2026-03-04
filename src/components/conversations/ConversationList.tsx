@@ -169,42 +169,40 @@ export function ConversationList({
                         />
 
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className={cn(
-                                "text-sm truncate",
-                                hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                              )}>
-                                {conv.contact_name || formatJid(conv.remote_jid)}
-                              </span>
-                              {conv.instance_name && (
-                                <span className="shrink-0 text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded">
-                                  {conv.instance_name}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={cn(
-                                "text-[10px] whitespace-nowrap",
-                                hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
-                              )}>
-                                {formatTime(conv.last_message_at)}
-                              </span>
-                              {hasUnread && (
-                                <span className="flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
-                                  {conv.unread_count > 99 ? "99+" : conv.unread_count}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="mt-1">
-                            <p className={cn(
-                              "text-xs truncate",
-                              hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn(
+                              "text-sm truncate",
+                              hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
                             )}>
-                              {conv.last_message || "..."}
-                            </p>
+                              {conv.contact_name || formatJid(conv.remote_jid)}
+                            </span>
+                            {conv.instance_name && (
+                              <span className="shrink-0 text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded">
+                                {conv.instance_name}
+                              </span>
+                            )}
                           </div>
+                          <p className={cn(
+                            "text-xs truncate mt-1",
+                            hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
+                          )}>
+                            {conv.last_message || "..."}
+                          </p>
+                        </div>
+
+                        {/* Right column: time + unread badge */}
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={cn(
+                            "text-[10px] whitespace-nowrap",
+                            hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
+                          )}>
+                            {formatTime(conv.last_message_at)}
+                          </span>
+                          {hasUnread && (
+                            <span className="flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                              {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                            </span>
+                          )}
                         </div>
                       </button>
                     </ContextMenuTrigger>
