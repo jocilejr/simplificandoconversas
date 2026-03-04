@@ -1,44 +1,32 @@
 
 
-## Plan: Autosave with History + Fix Add Node Button
+## Plan: Rename to "Fluxos Automáticos" + Redesign Flow Cards
 
-### 1. Autosave with Debounce
-- Remove the "Salvar" button and `isSaving` state from `FlowEditor.tsx`
-- Add a `useEffect` that watches `nodes`, `edges`, and `name` changes
-- Debounce saves with a 1.5s delay using `setTimeout`/`useRef` pattern
-- Show a subtle status indicator (e.g., "Salvando..." / "Salvo ✓") in the top panel instead of the save button
-- Call `onSave(name, nodes, edges)` automatically on each debounced change
+### Changes
 
-### 2. Modification History
-- Create a new database table `chatbot_flow_history` with columns: `id`, `flow_id` (FK), `user_id`, `name`, `nodes` (jsonb), `edges` (jsonb), `created_at`
-- Add RLS policies for user access
-- Before each autosave, insert a snapshot into `chatbot_flow_history`
-- Limit stored snapshots (keep last 50 per flow, or debounce history saves to every ~30s to avoid excessive records)
-- Add a "Histórico" button in the top panel that opens a sheet/dialog listing past versions with timestamps
-- Each history entry shows a timestamp and allows "Restaurar" to load that version back into the editor
+**1. Rename everywhere**
+- `ChatbotBuilder.tsx`: Title "Chatbot Builder" → "Fluxos Automáticos", subtitle updated
+- `AppSidebar.tsx`: Menu item "Chatbot Builder" → "Fluxos"
+- Empty state text updated to match
 
-### 3. Fix Add Node Button
-- The current "Adicionar Nó" popover button works but may have positioning/interaction issues. Ensure it functions correctly by reviewing its placement and ensuring it doesn't conflict with the canvas. Move it to a more accessible position if needed.
+**2. Redesign the flow listing page (`ChatbotBuilder.tsx`)**
 
-### Technical Details
+Current design is basic cards with small text. New design:
 
-**New migration:**
-```sql
-CREATE TABLE public.chatbot_flow_history (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  flow_id uuid NOT NULL,
-  user_id uuid NOT NULL,
-  name text NOT NULL,
-  nodes jsonb NOT NULL DEFAULT '[]',
-  edges jsonb NOT NULL DEFAULT '[]',
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE public.chatbot_flow_history ENABLE ROW LEVEL SECURITY;
--- RLS: users can view/insert/delete own history
-```
+- **Header**: Clean layout with "Fluxos Automáticos" title (no subtitle paragraph — keep it minimal) and a refined "Novo Fluxo" button
+- **Flow cards**: Taller cards with better visual hierarchy:
+  - Top section: flow name in medium font, status dot with label ("Ativo" / "Inativo") as a subtle badge
+  - Middle: node count and last modified date with icons (not just raw text)
+  - Bottom: action buttons (Ativar/Parar) with better spacing, and the dropdown menu integrated more cleanly
+  - Subtle left border accent color (green for active, muted for inactive) instead of the tiny 2px dot
+- **Empty state**: Replace the Bot icon with a more relevant `Workflow` or `GitBranch` icon from Lucide, cleaner copy
+- **"New flow" card**: Refined dashed card with better hover state
 
-**Files to edit:**
-- `src/components/chatbot/FlowEditor.tsx` — remove save button, add autosave effect, add history panel trigger, add save status indicator
-- New hook `src/hooks/useFlowHistory.ts` — fetch/insert history snapshots
-- New component `src/components/chatbot/FlowHistoryPanel.tsx` — sheet listing versions with restore action
+**3. Sidebar label**
+- Change icon from `Bot` to `Workflow` (or `GitBranch`) to match the new naming
+- Label: "Fluxos" (short, professional)
+
+### Files to edit
+- `src/pages/ChatbotBuilder.tsx` — rename + redesign cards
+- `src/components/AppSidebar.tsx` — rename menu item + change icon
 
