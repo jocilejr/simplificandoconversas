@@ -10,6 +10,19 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getGreetingBrasilia(): string {
+  const now = new Date();
+  // Brasília = UTC-3
+  const brasiliaHour = (now.getUTCHours() - 3 + 24) % 24;
+  if (brasiliaHour >= 5 && brasiliaHour < 12) return "Bom dia";
+  if (brasiliaHour >= 12 && brasiliaHour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function resolveVariables(text: string): string {
+  return text.replace(/\{\{saudacao\}\}/gi, getGreetingBrasilia());
+}
+
 interface StepData {
   type: string;
   textContent?: string;
