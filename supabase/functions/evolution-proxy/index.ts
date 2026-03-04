@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     const { action, ...params } = body;
 
     // Actions that only need URL + API Key (no instance required)
-    const noInstanceActions = ["fetch-instances", "create-instance", "connect-instance", "delete-instance", "set-proxy"];
+    const noInstanceActions = ["fetch-instances", "create-instance", "connect-instance", "delete-instance", "set-proxy", "set-webhook"];
 
     if (!evolution_api_url || !evolution_api_key) {
       return new Response(
@@ -250,6 +250,34 @@ Deno.serve(async (req) => {
         result = await resp.json();
         break;
       }
+      case "set-webhook": {
+        const { instanceName: whInstName } = params;
+        if (!whInstName) {
+          return new Response(JSON.stringify({ error: "instanceName required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evolution-webhook`;
+        console.log(`[set-webhook] Setting webhook for ${whInstName} -> ${webhookUrl}`);
+        const resp = await fetch(`${baseUrl}/webhook/set/${whInstName}`, {
+          method: "POST",
+          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: webhookUrl,
+            webhook_by_events: false,
+            webhook_base64: true,
+            events: [
+              "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+              "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+              "QRCODE_UPDATED", "CONNECTION_UPDATE",
+            ],
+          }),
+        });
+        result = await resp.json();
+        console.log(`[set-webhook] Result for ${whInstName}:`, JSON.stringify(result));
+        break;
+      }
+
       case "test-connection": {
         const resp = await fetch(
           `${evolution_api_url}/instance/connectionState/${evolution_instance_name}`,
