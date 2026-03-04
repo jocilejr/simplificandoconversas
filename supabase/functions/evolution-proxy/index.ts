@@ -538,7 +538,7 @@ Deno.serve(async (req) => {
           console.log(`[sync-chats] Found ${allMessages.length} messages for ${currentInstanceName}`);
 
           // Group by remoteJid
-          const convMap = new Map<string, { name: string | null; lastMsg: string | null; lastAt: string; messages: any[] }>();
+          const convMap = new Map<string, { name: string | null; lastMsg: string | null; lastAt: string; messages: any[]; hasInbound: boolean }>();
           for (const msg of allMessages) {
             const key = msg.key || {};
             const jid = key.remoteJid;
@@ -547,16 +547,23 @@ Deno.serve(async (req) => {
             const ts = msg.messageTimestamp ? new Date(Number(msg.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
             const isInbound = !key.fromMe;
             const pushName = isInbound ? (msg.pushName || null) : null;
-            if (!convMap.has(jid)) convMap.set(jid, { name: pushName, lastMsg: content, lastAt: ts, messages: [] });
+            if (!convMap.has(jid)) convMap.set(jid, { name: pushName, lastMsg: content, lastAt: ts, messages: [], hasInbound: false });
             const conv = convMap.get(jid)!;
             conv.messages.push(msg);
             if (ts > conv.lastAt) { conv.lastMsg = content; conv.lastAt = ts; }
-            if (isInbound && msg.pushName) conv.name = msg.pushName;
+            if (isInbound) {
+              conv.hasInbound = true;
+              if (msg.pushName) conv.name = msg.pushName;
+            }
           }
 
-          const convRows = Array.from(convMap).map(([jid, data]) => ({
-            user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt, instance_name: currentInstanceName,
-          }));
+          // Only create conversations that have at least one inbound message (skip broadcast-only)
+          const convRows = Array.from(convMap)
+            .filter(([_, data]) => data.hasInbound)
+            .map(([jid, data]) => ({
+              user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt, instance_name: currentInstanceName,
+            }));
+          console.log(`[sync-chats] ${convMap.size} total jids, ${convRows.length} with inbound messages for ${currentInstanceName}`);
 
           let synced = 0;
           for (let i = 0; i < convRows.length; i += 100) {
@@ -571,6 +578,8 @@ Deno.serve(async (req) => {
             Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
           );
           for (const [jid, data] of convMap) {
+            // Skip outbound-only conversations (broadcast recipients)
+            if (!data.hasInbound) continue;
             const { data: convRecord } = await serviceClient.from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid).single();
             if (!convRecord) continue;
             const inserts = [];
