@@ -10,11 +10,19 @@ export type FlowNodeType =
   | "randomizer"
   | "waitDelay"
   | "waitForReply"
-  | "action";
+  | "action"
+  | "group";
+
+export interface FlowStepData {
+  id: string;
+  data: FlowNodeData;
+}
 
 export interface FlowNodeData {
   label: string;
   type: FlowNodeType;
+  // Group
+  steps?: FlowStepData[];
   // Trigger
   triggerKeyword?: string;
   triggerType?: "keyword" | "any_message" | "event";
@@ -42,6 +50,8 @@ export interface FlowNodeData {
   // Action
   actionType?: "add_tag" | "remove_tag" | "add_to_list" | "set_variable";
   actionValue?: string;
+  // Dock indicator
+  isDockTarget?: boolean;
   [key: string]: unknown;
 }
 
@@ -120,6 +130,12 @@ export const nodeTypeConfig: Record<
     icon: "Settings",
     description: "Executa uma ação (tag, lista, variável)",
   },
+  group: {
+    label: "Grupo",
+    color: "#6b7280",
+    icon: "Layers",
+    description: "Grupo de passos empilhados",
+  },
 };
 
 export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
@@ -133,4 +149,5 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   waitDelay: { delaySeconds: 3, simulateTyping: true },
   waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyFallback: "" },
   action: { actionType: "add_tag", actionValue: "" },
+  group: { steps: [] },
 };
