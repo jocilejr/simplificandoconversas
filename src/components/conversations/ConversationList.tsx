@@ -104,18 +104,16 @@ export function ConversationList({
                 size="md"
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-sm truncate">
-                    {conv.contact_name || formatJid(conv.remote_jid)}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground shrink-0">
-                    {formatTime(conv.last_message_at)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-2 mt-0.5">
-                  <p className="text-xs text-muted-foreground truncate">
+                <span className="font-medium text-sm truncate block">
+                  {conv.contact_name || formatJid(conv.remote_jid)}
+                </span>
+                <div className="flex items-center justify-between gap-1 mt-0.5">
+                  <p className="text-xs text-muted-foreground truncate max-w-[65%]">
                     {conv.last_message || "Sem mensagens"}
                   </p>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {formatTime(conv.last_message_at)}
+                  </span>
                   {conv.unread_count > 0 && (
                     <Badge className="h-5 min-w-5 text-[10px] rounded-full px-1.5 shrink-0 bg-primary text-primary-foreground">
                       {conv.unread_count}
