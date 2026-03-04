@@ -2,50 +2,46 @@
 
 ## Problem
 
-The unread count badge IS in the code and the data shows `unread_count: 4` for the first conversation. The badge is likely being clipped or hidden due to layout overflow. The parent container uses `flex items-center justify-between` but the instance name badge and the time+count badge compete for the limited horizontal space, potentially pushing the count badge off-screen or truncating it.
+The time and unread count elements exist in the DOM (confirmed via browser inspection: "15:44" and "6"), but they are invisible — pushed off-screen and clipped by the `ScrollArea`'s `overflow: hidden`. The `flex` layout lets the content column (name + instance badge) expand too much, pushing the right column beyond the card's visible width.
+
+## Root Cause
+
+The `ScrollArea` component sets `overflow-x: hidden` on its viewport. The content div (`flex-1 min-w-0`) combined with the instance badge (`shrink-0`) isn't shrinking enough to leave room for the right column, which gets clipped.
 
 ## Solution
 
-1. **Restructure the card layout** to place the unread badge and timestamp in a dedicated right column that won't be squeezed:
-   - Move the time and unread count to a **separate right-aligned column** outside the main content flex, ensuring they always have space to render
-   - Use a 3-column layout: avatar | content | time+badge
+Replace the `flex` layout of the card with a `CSS grid` layout using fixed column sizes to guarantee space for each section:
 
-2. **Make the unread badge more prominent**:
-   - Place it below the timestamp in a vertical stack on the right side
-   - Use `min-w-fit` to prevent shrinking
-
-## Changes
-
-**`src/components/conversations/ConversationList.tsx`** — Restructure the card layout:
-- Change from `avatar + content(name+time row)` to `avatar + content(name+instance) + right-column(time+badge)`
-- The right column will be a flex-col with shrink-0, ensuring it never gets clipped
-- Instance badge stays next to the name
-- Time and unread count stack vertically on the right side, always visible
+**`src/components/conversations/ConversationList.tsx`** — Change the card button from flex to grid:
 
 ```tsx
-<button className={cn("w-full text-left px-3 py-3 ... flex items-center gap-3 ...")}>
+<button
+  className={cn(
+    "w-full text-left px-3 py-3 transition-all duration-150 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl",
+    ...
+  )}
+>
   <ContactAvatar ... />
   
-  {/* Center: name + last message */}
-  <div className="flex-1 min-w-0">
+  <div className="min-w-0 overflow-hidden">
     <div className="flex items-center gap-2 min-w-0">
       <span className="truncate ...">{name}</span>
-      {instance badge}
+      {instance badge - remove shrink-0}
     </div>
     <p className="truncate ...">{last_message}</p>
   </div>
   
-  {/* Right column: time + unread badge - ALWAYS visible */}
-  <div className="flex flex-col items-end gap-1 shrink-0">
-    <span className="text-[10px] ...">{time}</span>
-    {hasUnread && (
-      <span className="h-[18px] min-w-[18px] rounded-full bg-primary ...">
-        {count}
-      </span>
-    )}
+  <div className="flex flex-col items-end gap-1">
+    <span>{time}</span>
+    {badge}
   </div>
 </button>
 ```
 
-This ensures the badge is in its own non-shrinkable column and will always be visible regardless of content width.
+Key changes:
+1. Button: `flex items-center` → `grid grid-cols-[auto_1fr_auto] items-center` — this guarantees the rightmost column always gets its natural width
+2. Content div: add `overflow-hidden` to ensure long names don't push content out
+3. Instance badge: remove `shrink-0` so it can shrink with the content column
+4. Right column: remove `shrink-0` (not needed with grid `auto`)
+5. Remove `relative` from button (no longer needed)
 
