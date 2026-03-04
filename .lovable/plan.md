@@ -1,41 +1,33 @@
 
 
-## Problem
+## Plan: Redesign Flow Cards — Professional & Refined
 
-The current dark theme uses a washed-out, low-saturation gray (`222 30% 8%` background, `222 25% 11%` cards) that looks flat and lifeless. The light theme is similarly bland. The overall effect is "dead gray" — no depth, no contrast hierarchy, no premium feel.
+### Problems with current design
+- Cards look flat and generic — just a plain `bg-card` box with no visual interest
+- The full-width "Ativar/Parar" button dominates the card and looks cheap
+- Status badge is tiny and disconnected from the flow identity
+- No visual distinction between cards — they all look identical
+- The left border accent (`border-l-2`) is too subtle to convey status
+- Overall layout feels like a basic admin template, not a polished product
 
-## Solution: Deeper, richer dark palette with better contrast layers
+### New card design
 
-### Color System Overhaul (`src/index.css`)
+**Structure per card:**
+1. **Top bar** — subtle gradient or colored top border (4px) based on status: green for active, muted for inactive
+2. **Icon + Name row** — small `Workflow` icon in a tinted circle + flow name (medium weight, truncated) + dropdown menu (3-dot) on hover
+3. **Status** — inline dot indicator (green/gray) with "Ativo"/"Inativo" text, no badge component — cleaner
+4. **Metadata row** — node count + last modified, same as now but with slightly better spacing
+5. **Footer** — small toggle-style button or subtle text button for activate/deactivate, not a full-width destructive button
 
-**Dark mode** — shift to a deeper, blue-tinted near-black with more layered contrast:
+**Visual improvements:**
+- Cards get `hover:shadow-lg hover:shadow-primary/5` for a subtle glow on hover
+- Remove the heavy `border-l-2` in favor of a `border-t-2` colored accent at top
+- Better padding and internal spacing (p-6 instead of p-5)
+- The "New Flow" card gets a centered `+` icon with hover scale effect
 
-| Token | Current | New | Rationale |
-|---|---|---|---|
-| `--background` | `222 30% 8%` | `225 35% 5%` | Deeper, richer black with blue undertone |
-| `--foreground` | `210 20% 93%` | `210 15% 95%` | Slightly brighter text |
-| `--card` | `222 25% 11%` | `225 30% 8%` | Cards clearly lifted from bg |
-| `--popover` | `222 25% 11%` | `225 30% 10%` | Popover layer above cards |
-| `--secondary` | `222 20% 16%` | `225 25% 12%` | Better secondary surface |
-| `--muted` | `222 20% 16%` | `225 25% 12%` | Consistent with secondary |
-| `--muted-foreground` | `215 15% 55%` | `215 15% 50%` | Slightly dimmer for hierarchy |
-| `--border` | `222 20% 18%` | `225 20% 14%` | Subtler borders, less visible |
-| `--input` | `222 20% 18%` | `225 20% 14%` | Match border |
-| `--sidebar-background` | `222 30% 6%` | `225 40% 4%` | Darkest layer |
-| `--sidebar-accent` | `222 20% 14%` | `225 25% 10%` | Deeper accent |
-| `--sidebar-border` | `222 20% 14%` | `225 20% 8%` | Very subtle sidebar border |
-
-**Light mode** — warmer, less "dead white":
-
-| Token | Current | New |
-|---|---|---|
-| `--background` | `220 20% 97%` | `220 15% 96%` |
-| `--card` | `0 0% 100%` | `0 0% 100%` (keep) |
-| `--secondary` | `220 14% 90%` | `220 14% 92%` |
-| `--muted` | `220 14% 93%` | `220 12% 94%` |
-| `--border` | `220 13% 87%` | `220 10% 89%` |
-| `--sidebar-background` | `0 0% 98%` | `220 15% 97%` |
+**Header area:**
+- Keep title + button as-is (already clean)
 
 ### Files to edit
-- `src/index.css` — update CSS custom properties for both light and dark themes
+- `src/pages/ChatbotBuilder.tsx` — redesign card markup and classes
 
