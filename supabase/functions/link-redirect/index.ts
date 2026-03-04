@@ -98,6 +98,15 @@ Deno.serve(async (req) => {
           .update({ clicked: true, clicked_at: new Date().toISOString() })
           .eq("id", link.id);
 
+        // Mark the old execution as completed since the click happened
+        if (link.execution_id) {
+          await serviceClient
+            .from("flow_executions")
+            .update({ status: "completed" })
+            .eq("id", link.execution_id)
+            .eq("status", "waiting_click");
+        }
+
         if (link.next_node_id && link.flow_id && link.execution_id) {
           const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
           const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
