@@ -50,17 +50,18 @@ async function executeStep(
   }
 
   if (nodeType === "sendText" && stepData.textContent) {
+    const resolvedText = resolveVariables(stepData.textContent);
     const resp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
       method: "POST",
       headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, text: stepData.textContent }),
+      body: JSON.stringify({ number: jid, text: resolvedText }),
     });
     const r = await resp.json();
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: stepData.textContent.substring(0, 50), last_message_at: new Date().toISOString() },
+        { user_id: userId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString() },
         { onConflict: "user_id,remote_jid" }
       )
       .select("id")
@@ -70,7 +71,7 @@ async function executeStep(
         conversation_id: conv.id,
         user_id: userId,
         remote_jid: jid,
-        content: stepData.textContent,
+        content: resolvedText,
         message_type: "text",
         direction: "outbound",
         status: "sent",
