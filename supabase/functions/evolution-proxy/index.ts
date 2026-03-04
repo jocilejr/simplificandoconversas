@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     const { action, ...params } = body;
 
     // Actions that only need URL + API Key (no instance required)
-    const noInstanceActions = ["fetch-instances", "create-instance", "connect-instance", "delete-instance", "set-proxy", "set-webhook"];
+    const noInstanceActions = ["fetch-instances", "create-instance", "connect-instance", "delete-instance", "set-proxy", "set-webhook", "sync-webhooks"];
 
     if (!evolution_api_url || !evolution_api_key) {
       return new Response(
@@ -263,20 +263,64 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
           body: JSON.stringify({
-            webhook: {
-              url: webhookUrl,
-              byEvents: false,
-              base64: true,
-              events: [
-                "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
-                "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
-                "QRCODE_UPDATED", "CONNECTION_UPDATE",
-              ],
-            },
+            enabled: true,
+            url: webhookUrl,
+            webhook_by_events: false,
+            webhook_base64: true,
+            events: [
+              "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+              "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+              "QRCODE_UPDATED", "CONNECTION_UPDATE",
+            ],
           }),
         });
         result = await resp.json();
         console.log(`[set-webhook] Result for ${whInstName}:`, JSON.stringify(result));
+        break;
+      }
+
+      case "sync-webhooks": {
+        const serviceClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        const { data: userInstances } = await serviceClient
+          .from("evolution_instances")
+          .select("instance_name")
+          .eq("user_id", userId);
+
+        const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
+        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evolution-webhook`;
+        const results: any[] = [];
+
+        for (const instName of instancesToSync) {
+          console.log(`[sync-webhooks] Configuring webhook for ${instName}`);
+          try {
+            const resp = await fetch(`${baseUrl}/webhook/set/${instName}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                enabled: true,
+                url: webhookUrl,
+                webhook_by_events: false,
+                webhook_base64: true,
+                events: [
+                  "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+                  "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+                  "QRCODE_UPDATED", "CONNECTION_UPDATE",
+                ],
+              }),
+            });
+            const r = await resp.json();
+            console.log(`[sync-webhooks] Result for ${instName}:`, JSON.stringify(r));
+            results.push({ instance: instName, success: true, result: r });
+          } catch (e) {
+            console.error(`[sync-webhooks] Error for ${instName}:`, e.message);
+            results.push({ instance: instName, success: false, error: e.message });
+          }
+        }
+
+        result = { synced: results.length, results };
         break;
       }
 

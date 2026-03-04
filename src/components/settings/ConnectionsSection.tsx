@@ -31,6 +31,7 @@ export function ConnectionsSection() {
     deleteInstance,
     setActiveInstance,
     setProxy,
+    syncWebhooks,
   } = useEvolutionInstances();
 
   const [apiUrl, setApiUrl] = useState("");
@@ -127,6 +128,17 @@ export function ConnectionsSection() {
           <p className="text-sm text-muted-foreground">Suas conexões WhatsApp vinculadas</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Sync Webhooks Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!hasCredentials || instances.length === 0 || syncWebhooks.isPending}
+            onClick={() => syncWebhooks.mutate()}
+          >
+            {syncWebhooks.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Sincronizar
+          </Button>
+
           {/* Browse / Link Dialog */}
           <Dialog open={showBrowseDialog} onOpenChange={setShowBrowseDialog}>
             <DialogTrigger asChild>
