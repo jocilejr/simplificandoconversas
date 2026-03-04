@@ -417,20 +417,32 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
         if (!removedStep) return nds;
         const remainingSteps = data.steps.filter((s) => s.id !== stepId);
 
+        const newNodeId = `step-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const newStepNode: FlowNode = {
-          id: removedStep.id,
+          id: newNodeId,
           type: "step",
           position,
           data: { ...removedStep.data } as FlowNodeData,
         };
 
         if (remainingSteps.length === 0) {
-          // Remove empty group
-          return [...nds.filter((n) => n.id !== nodeId), newStepNode];
+          // Remove empty group, transfer its edges to the new node
+          const updatedNodes = nds.filter((n) => n.id !== nodeId);
+          setEdges((eds) =>
+            eds.map((e) => {
+              if (e.source === nodeId) return { ...e, source: newNodeId };
+              if (e.target === nodeId) return { ...e, target: newNodeId };
+              return e;
+            })
+          );
+          return [...updatedNodes, newStepNode];
         }
-        // Keep group with remaining steps (even if only 1)
+        // Keep group with remaining steps — deep copy to force re-render
         return [
-          ...nds.map((n) => n.id === nodeId ? { ...n, data: { ...data, steps: remainingSteps } } : n),
+          ...nds.map((n) => {
+            if (n.id !== nodeId) return n;
+            return { ...n, data: { ...data, steps: [...remainingSteps] } };
+          }),
           newStepNode,
         ];
       });
