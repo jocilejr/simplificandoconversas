@@ -391,12 +391,130 @@ Deno.serve(async (req) => {
             }
             results.push(`aiAgent: ok (${aiModel})`);
           }
-        } else if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
-          // Execute all steps in group sequentially
-          for (const step of data.steps) {
-            const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
-            results.push(`group.${step.id}: ${stepResult}`);
+        } else if (nodeType === "waitForClick") {
+          // Generate tracked link and pause execution
+          const clickUrl = data.clickUrl;
+          if (!clickUrl) {
+            results.push("waitForClick: error - URL não configurada");
+          } else {
+            const shortCode = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+            const nextIds = outgoingMap.get(node.id) || [];
+            const nextNodeId = nextIds.length > 0 ? nextIds[0] : null;
+
+            await serviceClient.from("tracked_links").insert({
+              user_id: userId,
+              flow_id: flowId,
+              execution_id: executionId,
+              remote_jid: jid,
+              original_url: clickUrl,
+              short_code: shortCode,
+              next_node_id: nextNodeId,
+              conversation_id: conversationId || null,
+            });
+
+            const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+            const trackingUrl = `${supabaseUrl}/functions/v1/link-redirect?code=${shortCode}`;
+
+            const messageTemplate = data.clickMessage || "Acesse: {{link}}";
+            const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
+
+            const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ number: jid, text: messageText }),
+            });
+            const sendResult = await sendResp.json();
+
+            // Save outbound message
+            const { data: conv } = await serviceClient
+              .from("conversations")
+              .upsert(
+                { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString() },
+                { onConflict: "user_id,remote_jid" }
+              )
+              .select("id")
+              .single();
+            if (conv) {
+              await serviceClient.from("messages").insert({
+                conversation_id: conv.id,
+                user_id: userId,
+                remote_jid: jid,
+                content: messageText,
+                message_type: "text",
+                direction: "outbound",
+                status: "sent",
+                external_id: sendResult?.key?.id || null,
+              });
+            }
+
+            // Pause execution - waiting for click
+            await serviceClient
+              .from("flow_executions")
+              .update({ status: "waiting_click", current_node_index: nodeIndex })
+              .eq("id", executionId);
+
+            results.push(`waitForClick: paused (code=${shortCode})`);
+            // Stop processing further nodes
+            break;
           }
+        } else if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
+          // Execute all steps in group sequentially - handle waitForClick inside groups
+          let groupPaused = false;
+          for (let si = 0; si < data.steps.length; si++) {
+            const step = data.steps[si];
+            if (step.data.type === "waitForClick") {
+              const clickUrl = step.data.clickUrl;
+              if (!clickUrl) {
+                results.push(`group.${step.id}: waitForClick: error - URL não configurada`);
+                continue;
+              }
+              const shortCode = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+              // Next node is the next step in group, or if last step, the next connected node
+              let nextNodeId: string | null = null;
+              if (si < data.steps.length - 1) {
+                // There are more steps in the group - we need to resume from this group node
+                // but we can't resume mid-group easily, so we use the next connected node
+                nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
+              } else {
+                nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
+              }
+
+              await serviceClient.from("tracked_links").insert({
+                user_id: userId,
+                flow_id: flowId,
+                execution_id: executionId,
+                remote_jid: jid,
+                original_url: clickUrl,
+                short_code: shortCode,
+                next_node_id: nextNodeId,
+                conversation_id: conversationId || null,
+              });
+
+              const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+              const trackingUrl = `${supabaseUrl}/functions/v1/link-redirect?code=${shortCode}`;
+              const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
+              const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
+
+              await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+                method: "POST",
+                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                body: JSON.stringify({ number: jid, text: messageText }),
+              });
+
+              await serviceClient
+                .from("flow_executions")
+                .update({ status: "waiting_click", current_node_index: nodeIndex })
+                .eq("id", executionId);
+
+              results.push(`group.${step.id}: waitForClick: paused (code=${shortCode})`);
+              groupPaused = true;
+              break;
+            } else {
+              const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+              results.push(`group.${step.id}: ${stepResult}`);
+            }
+          }
+          if (groupPaused) break;
         } else {
           const result = await executeStep(data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
           results.push(result);

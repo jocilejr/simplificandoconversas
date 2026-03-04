@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.execute-flow]
 verify_jwt = false
+
+[functions.link-redirect]
+verify_jwt = false
