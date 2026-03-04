@@ -482,9 +482,7 @@ Deno.serve(async (req) => {
                 nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
               }
 
-              const appPublicUrl = profile.app_public_url
-                ? profile.app_public_url.replace(/\/$/, "")
-                : null;
+              // Always use edge function URL — SPA can't serve OG tags for crawlers
 
               await serviceClient.from("tracked_links").insert({
                 user_id: userId,
