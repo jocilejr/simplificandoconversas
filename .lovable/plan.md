@@ -2,33 +2,28 @@
 
 ## Diagnóstico
 
-Os logs do `evolution-webhook` confirmam que **nenhum evento** está chegando da instância "Meire Rosana - Entregas" — nem `messages.upsert`, nem `connection.update`. Apenas eventos de `FunilPrincipal` e `sc-mmciul2y` estão sendo recebidos.
+Os logs mostram que a sincronização **encontra mensagens com sucesso** (`Found 50 messages for Meire Rosana - Entregas`), mas a API da Evolution retorna dados paginados:
 
-Embora o `sync-webhooks` tenha retornado sucesso com `enabled: true`, a instância tem espaços no nome ("Meire Rosana - Entregas"). A URL `${baseUrl}/webhook/set/Meire Rosana - Entregas` contém espaços não-codificados, o que pode causar problemas na configuração real do webhook no servidor da Evolution API.
+```
+total: 5776, pages: 116, currentPage: 1, records: [50 itens]
+```
 
-Além disso, o `create-instance` (linha 164) não inclui `enabled: true` no webhook, então instâncias criadas por esse fluxo também podem não ter webhook ativado.
+O codigo atual so busca a **pagina 1** (50 mensagens de 5776 total). O parametro `limit: 500` e ignorado pela API, que usa paginacao propria de 50 por pagina.
 
-## Correções
+Alem disso, a insercao de mensagens usa `.insert()` sem tratamento de conflito, entao mensagens duplicadas falham silenciosamente.
 
-### 1. URL-encode os nomes de instância em TODAS as chamadas à Evolution API
+## Correcoes
 
-Em `evolution-proxy/index.ts`, usar `encodeURIComponent(instanceName)` em todas as URLs que incluem o nome da instância:
-- `set-webhook` (linha 262)
-- `sync-webhooks` (linha 301)
-- `connect-instance` (linha 206)
-- `delete-instance` (linha 220)
-- `set-proxy` (linha 245)
-- `findMessages` (linha 450)
-- `findChats` (linha 479)
-- `send-message` (linha 357)
-- `test-connection` (linha 333)
-- `fetch-profile-picture` (linha 600)
-- `fetch-instances` — não precisa (sem nome na URL)
+### 1. Adicionar paginacao no findMessages
 
-### 2. Adicionar `enabled: true` no `create-instance`
+Fazer um loop buscando todas as paginas ate um limite razoavel (ex: 10 paginas = 500 mensagens recentes), usando o parametro `page` no body do POST.
 
-Na linha 164, adicionar `enabled: true` ao objeto `webhook` para garantir que instâncias novas já nasçam com webhook ativado.
+### 2. Usar upsert para mensagens
+
+Trocar `.insert()` por `.upsert()` com `onConflict: "external_id"` para evitar falhas silenciosas em duplicatas.
 
 ### Arquivo a editar
-- `supabase/functions/evolution-proxy/index.ts` — adicionar `encodeURIComponent()` em todas as URLs com instance name + `enabled: true` no create-instance.
+- `supabase/functions/evolution-proxy/index.ts`:
+  - Linhas 450-473: adicionar loop de paginacao no findMessages (buscar paginas 1 ate N enquanto houver records)
+  - Linha 576: trocar `.insert()` por `.upsert()` com conflito em `external_id`
 
