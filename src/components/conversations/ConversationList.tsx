@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw, Search, MessageSquare } from "lucide-react";
 import { Conversation } from "@/hooks/useConversations";
 import { ContactAvatar } from "./ContactAvatar";
@@ -49,32 +48,32 @@ export function ConversationList({
   );
 
   return (
-    <div className="flex flex-col h-full bg-card">
+    <div className="flex flex-col h-full bg-card/50">
       {/* Header */}
-      <div className="p-3 space-y-2 border-b border-border">
+      <div className="px-4 pt-4 pb-3 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Conversas</h2>
+          <h2 className="text-base font-semibold text-foreground tracking-tight">Conversas</h2>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary"
             onClick={onSync}
             disabled={isSyncing}
           >
             {isSyncing ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-4 w-4" />
             )}
           </Button>
         </div>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar..."
+            placeholder="Buscar conversa..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 pl-9 bg-muted/50 border-0 focus-visible:ring-1 text-xs"
+            className="h-9 pl-10 rounded-full bg-secondary/60 border-0 focus-visible:ring-1 focus-visible:ring-ring text-sm placeholder:text-muted-foreground/60"
           />
         </div>
       </div>
@@ -82,49 +81,72 @@ export function ConversationList({
       {/* List */}
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="flex justify-center py-12">
+          <div className="flex justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : !filtered?.length ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <MessageSquare className="h-8 w-8 mb-2 opacity-40" />
-            <span className="text-sm">Nenhuma conversa</span>
+          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+            <div className="h-12 w-12 rounded-full bg-secondary flex items-center justify-center mb-3">
+              <MessageSquare className="h-5 w-5 opacity-50" />
+            </div>
+            <span className="text-sm font-medium">Nenhuma conversa</span>
+            <span className="text-xs mt-1 opacity-60">Sincronize para importar</span>
           </div>
         ) : (
-          filtered.map((conv) => (
-            <button
-              key={conv.id}
-              onClick={() => onSelect(conv)}
-              className={cn(
-                "w-full text-left px-3 py-2.5 transition-colors hover:bg-accent/50 flex items-center gap-3 border-b border-border/30",
-                selected?.id === conv.id && "bg-primary/10 border-l-2 border-l-primary"
-              )}
-            >
-              <ContactAvatar
-                photoUrl={contactPhotos[conv.remote_jid]}
-                name={conv.contact_name}
-                size="md"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {conv.unread_count > 0 && (
-                      <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                    )}
-                    <span className="font-medium text-sm truncate text-foreground">
-                      {conv.contact_name || formatJid(conv.remote_jid)}
-                    </span>
+          <div className="px-2 pb-2">
+            {filtered.map((conv) => {
+              const isSelected = selected?.id === conv.id;
+              const hasUnread = conv.unread_count > 0;
+
+              return (
+                <button
+                  key={conv.id}
+                  onClick={() => onSelect(conv)}
+                  className={cn(
+                    "w-full text-left px-3 py-3 transition-all duration-150 flex items-center gap-3 rounded-xl mb-0.5",
+                    isSelected
+                      ? "bg-primary/10 shadow-sm"
+                      : "hover:bg-secondary/70"
+                  )}
+                >
+                  <ContactAvatar
+                    photoUrl={contactPhotos[conv.remote_jid]}
+                    name={conv.contact_name}
+                    size="md"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={cn(
+                        "text-sm truncate",
+                        hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                      )}>
+                        {conv.contact_name || formatJid(conv.remote_jid)}
+                      </span>
+                      <span className={cn(
+                        "text-[10px] shrink-0 whitespace-nowrap",
+                        hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
+                      )}>
+                        {formatTime(conv.last_message_at)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <p className={cn(
+                        "text-xs truncate",
+                        hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
+                      )}>
+                        {conv.last_message || "..."}
+                      </p>
+                      {hasUnread && (
+                        <span className="flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">
+                          {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap">
-                    {formatTime(conv.last_message_at)}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {conv.last_message || "..."}
-                </p>
-              </div>
-            </button>
-          ))
+                </button>
+              );
+            })}
+          </div>
         )}
       </ScrollArea>
     </div>
