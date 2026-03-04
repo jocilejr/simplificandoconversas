@@ -10,7 +10,7 @@ import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { useLabels, useConversationLabels } from "@/hooks/useLabels";
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import {
-  X, Plus, Trash2, Pencil, Check, Tag, Zap, User, Square, Loader2,
+  X, Plus, Trash2, Pencil, Check, Tag, Zap, User, Square, Loader2, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
