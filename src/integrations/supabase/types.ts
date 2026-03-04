@@ -85,6 +85,30 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_photos: {
+        Row: {
+          id: string
+          photo_url: string
+          remote_jid: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          photo_url: string
+          remote_jid: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          photo_url?: string
+          remote_jid?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversation_labels: {
         Row: {
           conversation_id: string
