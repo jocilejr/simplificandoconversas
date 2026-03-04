@@ -1,33 +1,31 @@
 
+## Plano: Mostrar fluxo "aguardando clique" como ativo e bloquear novos fluxos
 
-## Plan: Redesign Flow Cards — Professional & Refined
+### Problema
 
-### Problems with current design
-- Cards look flat and generic — just a plain `bg-card` box with no visual interest
-- The full-width "Ativar/Parar" button dominates the card and looks cheap
-- Status badge is tiny and disconnected from the flow identity
-- No visual distinction between cards — they all look identical
-- The left border accent (`border-l-2`) is too subtle to convey status
-- Overall layout feels like a basic admin template, not a polished product
+1. O `useFlowExecutions` filtra apenas `status = 'running'`, mas o `waitForClick` define o status como `'waiting_click'`. Por isso o painel lateral mostra "Nenhum fluxo em execução" mesmo com um fluxo pausado aguardando clique.
 
-### New card design
+2. O botão de disparar fluxo no chat (ícone Bot) permite executar novos fluxos mesmo quando já existe um em andamento.
 
-**Structure per card:**
-1. **Top bar** — subtle gradient or colored top border (4px) based on status: green for active, muted for inactive
-2. **Icon + Name row** — small `Workflow` icon in a tinted circle + flow name (medium weight, truncated) + dropdown menu (3-dot) on hover
-3. **Status** — inline dot indicator (green/gray) with "Ativo"/"Inativo" text, no badge component — cleaner
-4. **Metadata row** — node count + last modified, same as now but with slightly better spacing
-5. **Footer** — small toggle-style button or subtle text button for activate/deactivate, not a full-width destructive button
+### Correções
 
-**Visual improvements:**
-- Cards get `hover:shadow-lg hover:shadow-primary/5` for a subtle glow on hover
-- Remove the heavy `border-l-2` in favor of a `border-t-2` colored accent at top
-- Better padding and internal spacing (p-6 instead of p-5)
-- The "New Flow" card gets a centered `+` icon with hover scale effect
+#### 1. `useFlowExecutions` -- incluir status `waiting_click`
 
-**Header area:**
-- Keep title + button as-is (already clean)
+Alterar o filtro de `.eq("status", "running")` para `.in("status", ["running", "waiting_click"])`. Isso faz com que fluxos pausados no waitForClick apareçam no painel lateral e no chat.
 
-### Files to edit
-- `src/pages/ChatbotBuilder.tsx` — redesign card markup and classes
+#### 2. ChatPanel -- bloquear disparo quando há fluxo ativo
 
+- Importar `useFlowExecutions` no `ChatPanel`
+- Verificar se `activeExecutions?.length > 0`
+- Desabilitar o botão Bot e mostrar tooltip/indicador de que já há um fluxo em execução
+- Mostrar um banner discreto na área de chat indicando o fluxo ativo com opção de parar
+
+#### 3. RightPanel -- ajustar texto para `waiting_click`
+
+Diferenciar visualmente o status "waiting_click" (ex: ícone de relógio em vez de spinner, texto "Aguardando clique") do status "running" (spinner + "Executando").
+
+### Arquivos editados
+
+- `src/hooks/useFlowExecutions.ts` -- filtro de status
+- `src/components/conversations/ChatPanel.tsx` -- bloquear novos fluxos + mostrar indicador
+- `src/components/conversations/RightPanel.tsx` -- ajuste visual para waiting_click
