@@ -21,6 +21,7 @@ const SettingsPage = () => {
       setApiKey(profile.evolution_api_key || "");
       setInstanceName(profile.evolution_instance_name || "");
       setFullName(profile.full_name || "");
+      setOpenaiKey(profile.openai_api_key || "");
     }
   }, [profile]);
 
