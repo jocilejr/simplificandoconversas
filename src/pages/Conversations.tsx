@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useConversations, Conversation } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { useContactPhotos } from "@/hooks/useContactPhoto";
+import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,14 +15,21 @@ const Conversations = () => {
   const { data: conversations, isLoading: loadingConvs, markAsRead } = useConversations();
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [showRightPanel, setShowRightPanel] = useState(false);
+  const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
+  const { instances } = useEvolutionInstances();
 
   const remoteJids = useMemo(
     () => (conversations || []).map((c) => c.remote_jid),
     [conversations]
   );
   const { data: contactPhotos } = useContactPhotos(remoteJids);
+
+  const instanceTabs = useMemo(
+    () => instances.map((i) => ({ name: i.instance_name, label: i.instance_name })),
+    [instances]
+  );
 
   const syncChats = useMutation({
     mutationFn: async () => {
@@ -77,6 +85,9 @@ const Conversations = () => {
           onSync={() => syncChats.mutate()}
           isSyncing={syncChats.isPending}
           contactPhotos={contactPhotos || {}}
+          instances={instanceTabs}
+          selectedInstance={selectedInstance}
+          onSelectInstance={setSelectedInstance}
         />
       </div>
 

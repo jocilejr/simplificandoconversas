@@ -171,6 +171,7 @@ Deno.serve(async (req) => {
             remote_jid: remoteJid,
             last_message: lastMessagePreview,
             last_message_at: new Date().toISOString(),
+            instance_name: instance,
           },
           { onConflict: "user_id,remote_jid" }
         );
@@ -195,6 +196,7 @@ Deno.serve(async (req) => {
       remote_jid: remoteJid,
       last_message: lastMessagePreview,
       last_message_at: new Date().toISOString(),
+      instance_name: instance,
     };
     if (contactName) {
       upsertData.contact_name = contactName;
