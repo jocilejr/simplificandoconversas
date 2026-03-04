@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
       console.log(`[execute-flow] Processing node ${node.id}, type: ${nodeType}`);
 
       try {
-        if (nodeType === "group" && data.steps) {
+        if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
           // Execute all steps in group sequentially
           for (const step of data.steps) {
             const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);

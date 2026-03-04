@@ -211,7 +211,7 @@ async function checkAndTriggerFlows(
       }
       
       // Group node: check steps for triggers
-      if (data.type === "group" && data.steps) {
+      if ((data.type === "group" || data.type === "groupBlock") && data.steps) {
         for (const step of data.steps) {
           if (step.data?.type === "trigger" && step.data?.triggerKeyword) {
             const keyword = step.data.triggerKeyword.trim().toLowerCase();

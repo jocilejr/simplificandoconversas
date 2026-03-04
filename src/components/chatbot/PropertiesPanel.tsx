@@ -197,7 +197,7 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
 
 export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, onUpdateStep, onDelete, onRemoveStep, onClose }: PropertiesPanelProps) {
   const d = node.data as FlowNodeData;
-  const isGroup = d.type === "group" && d.steps;
+  const isGroup = d.type === "groupBlock" && d.steps;
 
   // For groups, show step list or step editor
   if (isGroup) {

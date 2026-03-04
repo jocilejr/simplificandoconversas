@@ -92,8 +92,10 @@
 .react-flow__node:hover {
   z-index: 10 !important;
 }
-.react-flow__node-group {
+.react-flow__node-groupBlock {
   background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
 }
 
 /* ═══════════════════════════════════════

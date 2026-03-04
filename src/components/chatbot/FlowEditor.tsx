@@ -38,7 +38,7 @@ const DOCK_THRESHOLD = 80;
 
 const nodeTypes: NodeTypes = {
   step: StepNode,
-  group: GroupNode,
+  groupBlock: GroupNode,
 };
 
 interface FlowEditorProps {
@@ -54,7 +54,9 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const migratedNodes = useMemo(() => {
     const raw = initialNodes || [];
     return raw.map((n: any) => {
-      if (n.type === "step" || n.type === "group") return n;
+      if (n.type === "step" || n.type === "groupBlock") return n;
+      // Migrate old "group" type to "groupBlock"
+      if (n.type === "group") return { ...n, type: "groupBlock" };
       if (n.type === "block") {
         const data = n.data || {};
         const children = data.children || [];
@@ -94,7 +96,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
 
   const addNode = useCallback(
     (type: FlowNodeType) => {
-      if (type === "group") return;
+      if (type === "groupBlock") return;
       const config = nodeTypeConfig[type];
       const center = reactFlowInstance.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       const offset = { x: (Math.random() - 0.5) * 100, y: (Math.random() - 0.5) * 100 };
@@ -120,7 +122,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     (event: React.DragEvent) => {
       event.preventDefault();
       const type = event.dataTransfer.getData("application/reactflow") as FlowNodeType;
-      if (!type || type === "group") return;
+      if (!type || type === "groupBlock") return;
       const config = nodeTypeConfig[type];
       const position = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const newNode: FlowNode = {
@@ -214,14 +216,14 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
       let newSteps: FlowStepData[] = [];
 
       // Target: extract steps
-      if (targetNode.type === "group" && targetData.steps) {
+      if (targetNode.type === "groupBlock" && targetData.steps) {
         existingSteps = [...targetData.steps];
       } else {
         existingSteps = [{ id: targetNode.id, data: { ...targetData } }];
       }
 
       // Dragged: extract steps
-      if (draggedNode.type === "group" && draggedData.steps) {
+      if (draggedNode.type === "groupBlock" && draggedData.steps) {
         newSteps = [...draggedData.steps];
       } else {
         newSteps = [{ id: draggedNode.id, data: { ...draggedData } }];
@@ -259,10 +261,10 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           if (n.id !== dropTarget) return n;
           return {
             ...n,
-            type: "group",
+            type: "groupBlock",
             data: {
               label: "Grupo",
-              type: "group" as FlowNodeType,
+              type: "groupBlock" as FlowNodeType,
               steps: mergedSteps,
               isDockTarget: false,
             } as FlowNodeData,
@@ -281,7 +283,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     setSelectedStepId(null);
     
     // If clicking a group, check if a specific step was clicked
-    if (node.type === "group") {
+    if (node.type === "groupBlock") {
       const target = (_ as any).target as HTMLElement;
       const stepEl = target?.closest?.("[data-step-id]");
       if (stepEl) {
