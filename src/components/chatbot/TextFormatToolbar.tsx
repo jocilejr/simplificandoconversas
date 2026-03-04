@@ -1,5 +1,6 @@
-import { Bold, Italic, Strikethrough, Underline } from "lucide-react";
+import { Bold, Italic, Strikethrough, Underline, Sun, Sunrise, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRef, useCallback } from "react";
 
 interface TextFormatToolbarProps {
@@ -26,7 +27,6 @@ export function TextFormatToolbar({ textareaRef, value, onChange }: TextFormatTo
           suffix +
           value.substring(end);
         onChange(newText);
-        // Restore cursor
         setTimeout(() => {
           textarea.focus();
           textarea.setSelectionRange(
@@ -35,7 +35,6 @@ export function TextFormatToolbar({ textareaRef, value, onChange }: TextFormatTo
           );
         }, 0);
       } else {
-        // Insert wrapper at cursor
         const newText =
           value.substring(0, start) +
           prefix +
@@ -54,10 +53,31 @@ export function TextFormatToolbar({ textareaRef, value, onChange }: TextFormatTo
     [value, onChange, textareaRef]
   );
 
+  const insertVariable = useCallback(
+    (variable: string) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const tag = `{{${variable}}}`;
+      const newText = value.substring(0, start) + tag + value.substring(end);
+      onChange(newText);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + tag.length, start + tag.length);
+      }, 0);
+    },
+    [value, onChange, textareaRef]
+  );
+
   const formats = [
     { icon: Bold, wrap: "*", label: "Negrito" },
     { icon: Italic, wrap: "_", label: "Itálico" },
     { icon: Strikethrough, wrap: "~", label: "Riscado" },
+  ];
+
+  const variables = [
+    { name: "saudacao", label: "Saudação", icon: Sun, description: "Bom dia / Boa tarde / Boa noite (Brasília)" },
   ];
 
   return (
@@ -75,6 +95,30 @@ export function TextFormatToolbar({ textareaRef, value, onChange }: TextFormatTo
           <Icon className="h-3 w-3" />
         </Button>
       ))}
+      <div className="w-px h-4 bg-border mx-0.5" />
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] font-mono" title="Inserir variável">
+            {"{x}"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-1" align="start">
+          <p className="text-[10px] text-muted-foreground px-2 py-1 uppercase tracking-wider">Variáveis</p>
+          {variables.map(({ name, label, icon: VarIcon, description }) => (
+            <button
+              key={name}
+              className="flex items-center gap-2 w-full p-2 rounded hover:bg-secondary transition-colors text-left"
+              onClick={() => insertVariable(name)}
+            >
+              <VarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <div>
+                <p className="text-xs font-medium">{label}</p>
+                <p className="text-[10px] text-muted-foreground">{description}</p>
+              </div>
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
