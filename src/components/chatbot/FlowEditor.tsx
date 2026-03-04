@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -306,25 +306,32 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     [setEdges]
   );
 
-  const reorderStep = useCallback(
-    (nodeId: string, stepId: string, direction: "up" | "down") => {
+  const reorderStepByIndex = useCallback(
+    (nodeId: string, fromIndex: number, toIndex: number) => {
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id !== nodeId) return n;
           const data = n.data as FlowNodeData;
           if (!data.steps) return n;
-          const idx = data.steps.findIndex((s) => s.id === stepId);
-          if (idx < 0) return n;
-          const newIdx = direction === "up" ? idx - 1 : idx + 1;
-          if (newIdx < 0 || newIdx >= data.steps.length) return n;
           const newSteps = [...data.steps];
-          [newSteps[idx], newSteps[newIdx]] = [newSteps[newIdx], newSteps[idx]];
+          const [moved] = newSteps.splice(fromIndex, 1);
+          newSteps.splice(toIndex, 0, moved);
           return { ...n, data: { ...data, steps: newSteps } };
         })
       );
     },
     [setNodes]
   );
+
+  // Listen for drag-and-drop reorder events from GroupNode
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId, fromIndex, toIndex } = (e as CustomEvent).detail;
+      reorderStepByIndex(nodeId, fromIndex, toIndex);
+    };
+    document.addEventListener("group-reorder-step", handler);
+    return () => document.removeEventListener("group-reorder-step", handler);
+  }, [reorderStepByIndex]);
 
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
@@ -538,7 +545,6 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onUpdateStep={updateStepData}
           onDelete={deleteNode}
           onRemoveStep={removeStepFromGroup}
-          onReorderStep={reorderStep}
           onClose={() => { setSelectedNodeId(null); setSelectedStepId(null); }}
         />
       )}

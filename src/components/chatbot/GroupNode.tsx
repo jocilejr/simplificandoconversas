@@ -1,6 +1,6 @@
-import { memo } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus } from "lucide-react";
+import { icons, CheckCircle2, Plus, GripVertical } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, type FlowStepData } from "@/types/chatbot";
 
 interface GroupNodeProps {
@@ -9,14 +9,31 @@ interface GroupNodeProps {
   selected?: boolean;
 }
 
-function StepRow({ step }: { step: FlowStepData }) {
+function StepRow({
+  step,
+  index,
+  totalSteps,
+  dragIndex,
+  dropIndex,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+}: {
+  step: FlowStepData;
+  index: number;
+  totalSteps: number;
+  dragIndex: number | null;
+  dropIndex: number | null;
+  onDragStart: (i: number) => void;
+  onDragOver: (i: number) => void;
+  onDragEnd: () => void;
+}) {
   const d = step.data;
   const config = nodeTypeConfig[d.type];
   if (!config) return null;
 
   const LucideIcon = icons[config.icon as keyof typeof icons];
 
-  // Build a short description
   let desc = config.description;
   if (d.type === "sendText" && d.textContent) {
     desc = d.textContent.length > 40 ? d.textContent.slice(0, 40) + "…" : d.textContent;
@@ -30,11 +47,36 @@ function StepRow({ step }: { step: FlowStepData }) {
     desc = `Salvar em {{${d.replyVariable || "resposta"}}}`;
   }
 
+  const isDragging = dragIndex === index;
+  const isDropTarget = dropIndex === index && dragIndex !== null && dragIndex !== index;
+
   return (
     <div
       data-step-id={step.id}
-      className="flex items-center gap-3 px-3 py-2.5 mx-2 mb-1 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors cursor-pointer"
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart(index);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDragOver(index);
+      }}
+      onDragEnd={(e) => {
+        e.stopPropagation();
+        onDragEnd();
+      }}
+      className={`flex items-center gap-2 px-2 py-2 mx-2 mb-1 rounded-lg transition-all cursor-grab active:cursor-grabbing ${
+        isDragging
+          ? "opacity-40 scale-95"
+          : isDropTarget
+          ? "bg-primary/10 ring-1 ring-primary/30"
+          : "bg-secondary/50 hover:bg-secondary"
+      }`}
     >
+      <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
       <div
         className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: `${config.color}18`, color: config.color }}
@@ -53,15 +95,36 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
   const d = data as FlowNodeData;
   const steps = (d.steps || []) as FlowStepData[];
   const isDockTarget = d.isDockTarget === true;
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
-  // Use first step's color as accent, fallback to primary green
   const firstStep = steps[0];
   const headerConfig = firstStep ? nodeTypeConfig[firstStep.data.type] : null;
   const accentColor = headerConfig?.color || "hsl(142, 70%, 45%)";
 
+  const handleDragStart = useCallback((i: number) => {
+    setDragIndex(i);
+  }, []);
+
+  const handleDragOver = useCallback((i: number) => {
+    setDropIndex(i);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
+      // Dispatch a custom event that FlowEditor can listen to
+      const event = new CustomEvent("group-reorder-step", {
+        detail: { nodeId: id, fromIndex: dragIndex, toIndex: dropIndex },
+        bubbles: true,
+      });
+      document.dispatchEvent(event);
+    }
+    setDragIndex(null);
+    setDropIndex(null);
+  }, [dragIndex, dropIndex, id]);
+
   return (
-    <div className="relative" style={{ background: 'transparent' }}>
-      {/* Input handle — top left */}
+    <div className="relative" style={{ background: "transparent" }}>
       <Handle
         type="target"
         position={Position.Left}
@@ -78,7 +141,6 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
             : "border-border shadow-md hover:shadow-lg"
         }`}
       >
-        {/* Header */}
         <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50">
           <div
             className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -92,10 +154,21 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           <CheckCircle2 className="w-4 h-4 text-muted-foreground/40 flex-shrink-0" />
         </div>
 
-        {/* Steps */}
         <div className="py-2">
           {steps.length > 0 ? (
-            steps.map((step) => <StepRow key={step.id} step={step} />)
+            steps.map((step, i) => (
+              <StepRow
+                key={step.id}
+                step={step}
+                index={i}
+                totalSteps={steps.length}
+                dragIndex={dragIndex}
+                dropIndex={dropIndex}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+              />
+            ))
           ) : (
             <div className="px-4 py-6 text-center text-[12px] text-muted-foreground">
               Arraste nós para acoplar
@@ -103,7 +176,6 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           )}
         </div>
 
-        {/* Footer — add action */}
         <div className="px-3 pb-2.5">
           <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors">
             <Plus className="w-3.5 h-3.5" />
@@ -111,7 +183,6 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           </button>
         </div>
 
-        {/* Dock indicator */}
         {isDockTarget && (
           <div className="px-3 py-2 bg-blue-500/10 border-t border-blue-500/30">
             <p className="text-[11px] text-blue-500 text-center font-medium animate-pulse">
@@ -121,7 +192,6 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
       </div>
 
-      {/* Output handle — top right */}
       <Handle
         type="source"
         position={Position.Right}
