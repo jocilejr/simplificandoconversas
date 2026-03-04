@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2, Unlink, ArrowUp, ArrowDown, icons } from "lucide-react";
+import { X, Trash2, Unlink, icons } from "lucide-react";
 import { type FlowNode, type FlowNodeData, type FlowStepData, nodeTypeConfig } from "@/types/chatbot";
 import { TextFormatToolbar } from "@/components/chatbot/TextFormatToolbar";
 import { MediaUpload } from "@/components/chatbot/MediaUpload";
@@ -18,7 +18,6 @@ interface PropertiesPanelProps {
   onUpdateStep?: (nodeId: string, stepId: string, data: Partial<FlowNodeData>) => void;
   onDelete: (id: string) => void;
   onRemoveStep?: (nodeId: string, stepId: string) => void;
-  onReorderStep?: (nodeId: string, stepId: string, direction: "up" | "down") => void;
   onClose: () => void;
 }
 
@@ -196,7 +195,7 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
   );
 }
 
-export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, onUpdateStep, onDelete, onRemoveStep, onReorderStep, onClose }: PropertiesPanelProps) {
+export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, onUpdateStep, onDelete, onRemoveStep, onClose }: PropertiesPanelProps) {
   const d = node.data as FlowNodeData;
   const isGroup = d.type === "groupBlock" && d.steps;
 
@@ -232,14 +231,6 @@ export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, 
               update={(changes) => onUpdateStep?.(node.id, activeStep.id, changes)}
             />
             <div className="pt-4 border-t border-border space-y-2">
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => onReorderStep?.(node.id, activeStep.id, "up")}>
-                  <ArrowUp className="h-3 w-3 mr-1" /> Subir
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => onReorderStep?.(node.id, activeStep.id, "down")}>
-                  <ArrowDown className="h-3 w-3 mr-1" /> Descer
-                </Button>
-              </div>
               <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => onRemoveStep?.(node.id, activeStep.id)}>
                 <Unlink className="h-3 w-3 mr-1" /> Desagrupar Step
               </Button>
