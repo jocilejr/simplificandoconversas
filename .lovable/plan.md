@@ -1,41 +1,72 @@
 
 
-## Problema
+## Reformulacao Completa do Chatbot Builder
 
-O webhook chama `execute-flow` via `fetch` e faz `await resp.json()` — ou seja, espera o fluxo inteiro terminar (que leva 6+ segundos com sendText + 3s de delay + sendVideo). O runtime do webhook pode ser encerrado antes disso, interrompendo a execucao. O resultado: o registro fica preso com `status = 'running'` eternamente, e a verificacao de duplicatas impede novas execucoes para o mesmo contato + fluxo.
+### Problemas Atuais
 
-## Plano
+1. **IDs duplicados**: `childIdCounter` global e `idCounter` via useRef(1) causam conflitos ao reabrir fluxos salvos — resulta no erro de "two children with same key"
+2. **Modelo de "children dentro de blocos"** e extremamente fragil: deteccao DOM para merge, closure stale no onDrop, reordenacao bugada
+3. **Painel de propriedades**: tabs de children nao funcionam (onClick vazio)
+4. **Codigo morto**: `CustomNode.tsx` e `GroupNode.tsx` nao sao usados
+5. **Sem persistencia de IDs**: ao salvar/reabrir, o counter reinicia e gera conflitos
 
-### 1. Webhook — fire-and-forget
+### Nova Arquitetura (inspirada no ManyChat)
 
-No `evolution-webhook/index.ts`, trocar o `await fetch(...)` + `await resp.json()` por um fire-and-forget:
+Cada step e um no independente no canvas (1 no = 1 acao). Sem sub-itens/children. Conexoes via edges entre nos. Simples, previsivel, sem bugs de merge/reorder.
 
-```js
-// Antes (bloqueia):
-const resp = await fetch(url, opts);
-const result = await resp.json();
-
-// Depois (fire-and-forget):
-fetch(url, opts)
-  .then(r => r.json())
-  .then(r => console.log("Flow result:", r))
-  .catch(e => console.error("Flow call error:", e));
+```text
+[Gatilho] --> [Enviar Texto] --> [Aguardar] --> [Enviar Imagem]
+                                     |
+                                     v
+                              [Capturar Resposta] --> [Acao]
 ```
 
-### 2. Execute-flow — adicionar logs de debug
+### Plano de Implementacao
 
-Adicionar `console.log` em pontos-chave do `execute-flow/index.ts`:
-- Ao iniciar execucao
-- Ao processar cada no/child
-- Ao completar ou falhar
-- Resultado de cada chamada a Evolution API
+**1. Novo tipo `FlowNodeData` simplificado**
 
-### 3. Limpar execucao travada
+Remover o conceito de `children` e `childId`. Cada no tem seus proprios dados diretamente (sem aninhamento). IDs gerados com `crypto.randomUUID()` para garantir unicidade.
 
-Atualizar o registro preso (`f02d1b50...`) para `status = 'completed'` via migracao, e adicionar logica de auto-cleanup: ao criar uma nova execucao, cancelar automaticamente execucoes "running" com mais de 5 minutos (provavelmente travadas).
+**2. Reescrever `BlockNode.tsx` → `StepNode.tsx`**
+
+Um unico componente de no que renderiza de acordo com `data.type`:
+- Header colorido com icone + label do tipo
+- Body com preview do conteudo (texto, midia, delay, etc)
+- Handle esquerdo (target) + Handle direito (source)
+- Sem sub-itens, sem reorder, sem merge
+
+**3. Reescrever `FlowEditor.tsx`**
+
+- Remover toda logica de children, merge, findBlockIdUnderCursor
+- Drag from palette ou popover cria um novo no independente no canvas
+- Clique em um no abre o PropertiesPanel para aquele no diretamente
+- Edges conectam nos sequencialmente (smoothstep)
+- IDs com `crypto.randomUUID()`
+- Ao carregar fluxo salvo, usar os IDs persistidos (sem counter)
+
+**4. Reescrever `PropertiesPanel.tsx`**
+
+- Recebe o no selecionado diretamente (sem childIndex)
+- Edita `node.data` ao inves de `children[index]`
+- Remove tabs de children (nao existem mais)
+- Mesmos campos de edicao por tipo (trigger, sendText, etc)
+
+**5. Limpar codigo morto**
+
+- Deletar `CustomNode.tsx` e `GroupNode.tsx`
+
+**6. Atualizar `execute-flow` edge function**
+
+Adaptar o loop de execucao para o novo formato: em vez de iterar children dentro de nodes, seguir os edges entre nos sequencialmente (topological sort baseado em edges).
+
+**7. Atualizar `evolution-webhook`**
+
+Ajustar a busca de triggers: em vez de procurar `children[].triggerKeyword`, procurar diretamente `nodes[].data.triggerKeyword` onde `data.type === 'trigger'`.
 
 ### Arquivos impactados
 
-- **Editar**: `supabase/functions/evolution-webhook/index.ts` (fire-and-forget)
-- **Editar**: `supabase/functions/execute-flow/index.ts` (logs + cleanup de execucoes travadas)
+- **Criar**: `src/components/chatbot/StepNode.tsx`
+- **Reescrever**: `src/components/chatbot/FlowEditor.tsx`, `src/components/chatbot/PropertiesPanel.tsx`
+- **Deletar**: `src/components/chatbot/CustomNode.tsx`, `src/components/chatbot/GroupNode.tsx`
+- **Editar**: `src/types/chatbot.ts` (remover children), `supabase/functions/execute-flow/index.ts`, `supabase/functions/evolution-webhook/index.ts`
 
