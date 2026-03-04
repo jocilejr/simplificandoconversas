@@ -181,6 +181,39 @@ export type Database = {
         }
         Relationships: []
       }
+      evolution_instances: {
+        Row: {
+          created_at: string | null
+          id: string
+          instance_name: string
+          is_active: boolean | null
+          proxy_url: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          instance_name: string
+          is_active?: boolean | null
+          proxy_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          instance_name?: string
+          is_active?: boolean | null
+          proxy_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       flow_executions: {
         Row: {
           conversation_id: string | null
