@@ -12,7 +12,8 @@ export type FlowNodeType =
   | "waitForReply"
   | "action"
   | "groupBlock"
-  | "aiAgent";
+  | "aiAgent"
+  | "waitForClick";
 
 export interface FlowStepData {
   id: string;
