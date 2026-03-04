@@ -63,7 +63,7 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
           <Label className="text-xs">Mensagem</Label>
           <TextFormatToolbar textareaRef={textareaRef} value={d.textContent || ""} onChange={(v) => update({ textContent: v })} />
           <Textarea ref={textareaRef} value={d.textContent || ""} onChange={(e) => update({ textContent: e.target.value })} placeholder="Use *negrito*, _itálico_, ~riscado~" className="text-xs min-h-[100px] resize-none font-mono" />
-          <p className="text-[10px] text-muted-foreground">*negrito*, _itálico_, ~riscado~ · {"{{variável}}"}</p>
+          <p className="text-[10px] text-muted-foreground">*negrito*, _itálico_, ~riscado~ · {"{{saudacao}}"} = Bom dia/Boa tarde/Boa noite</p>
         </div>
       )}
 
