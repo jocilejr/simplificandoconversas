@@ -1,43 +1,51 @@
 
 
-## Problema
+## Plano: Auto-configurar webhook ao vincular instância
 
-As conversas existentes no banco de dados possuem `instance_name = null` porque o `sync-chats` e o `send-message` no edge function `evolution-proxy` nunca preenchem esse campo. Quando o filtro e aplicado por instancia ("FunilPrincipal"), nenhuma conversa corresponde e a lista fica vazia.
+### Problema
+Quando uma instância existente é vinculada ao app (via "Buscar Instâncias" ou "Ativar"), o webhook não é configurado automaticamente. Apenas instâncias **criadas** pelo app recebem o webhook (no `create-instance`). Instâncias importadas ficam sem webhook, não recebendo mensagens.
 
-## Solucao
+### Solução
 
-### 1. Corrigir `evolution-proxy/index.ts` - Preencher `instance_name` nas conversas
-
-- **sync-chats** (linha ~394-396): Adicionar `instance_name: evolution_instance_name` no objeto de upsert das conversas
-- **send-message** (linha ~298-308): Adicionar `instance_name: evolution_instance_name` no upsert da conversa ao enviar mensagem
-
-### 2. Backfill das conversas existentes
-
-- Criar migration SQL que atualiza conversas com `instance_name IS NULL` usando o `evolution_instance_name` do profile do usuario:
-
-```sql
-UPDATE conversations c
-SET instance_name = p.evolution_instance_name
-FROM profiles p
-WHERE c.user_id = p.user_id
-  AND c.instance_name IS NULL
-  AND p.evolution_instance_name IS NOT NULL;
-```
-
-### 3. Ajustar filtro no frontend
-
-- Em `ConversationList.tsx`, quando uma instancia e selecionada, tambem incluir conversas com `instance_name` nulo (para nao perder conversas antigas nao tagueadas):
+#### 1. Criar action `set-webhook` no `evolution-proxy/index.ts`
+Adicionar um novo case no switch que chama a Evolution API para configurar o webhook de uma instância:
 
 ```typescript
-const matchInstance = !selectedInstance || 
-  c.instance_name === selectedInstance || 
-  !c.instance_name;
+case "set-webhook": {
+  const { instanceName: whInstName } = params;
+  const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evolution-webhook`;
+  const resp = await fetch(`${baseUrl}/webhook/set/${whInstName}`, {
+    method: "POST",
+    headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: webhookUrl,
+      webhook_by_events: false,
+      webhook_base64: true,
+      events: [
+        "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE",
+        "CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE",
+        "QRCODE_UPDATED", "CONNECTION_UPDATE",
+      ],
+    }),
+  });
+  result = await resp.json();
+  break;
+}
 ```
 
-Isso garante que conversas sem tag continuem visiveis independente do filtro selecionado, ate serem re-sincronizadas.
+Adicionar `"set-webhook"` à lista `noInstanceActions`.
+
+#### 2. Chamar `set-webhook` automaticamente no `setActiveInstance` (hook)
+Em `useEvolutionInstances.ts`, após o upsert da instância no banco, chamar `set-webhook` via edge function para garantir que o webhook é configurado:
+
+```typescript
+// After upsert, configure webhook
+await supabase.functions.invoke("evolution-proxy", {
+  body: { action: "set-webhook", instanceName },
+});
+```
 
 ### Arquivos a editar
-- `supabase/functions/evolution-proxy/index.ts` - sync-chats e send-message
-- `src/components/conversations/ConversationList.tsx` - filtro
-- Migration SQL para backfill
+- `supabase/functions/evolution-proxy/index.ts` — novo case `set-webhook` + adicionar na lista `noInstanceActions`
+- `src/hooks/useEvolutionInstances.ts` — chamar `set-webhook` no `setActiveInstance`
 
