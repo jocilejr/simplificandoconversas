@@ -297,6 +297,35 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     setSelectedStepId(null);
   }, []);
 
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: any) => {
+      event.preventDefault();
+      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      toast.success("Conexão removida");
+    },
+    [setEdges]
+  );
+
+  const reorderStep = useCallback(
+    (nodeId: string, stepId: string, direction: "up" | "down") => {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== nodeId) return n;
+          const data = n.data as FlowNodeData;
+          if (!data.steps) return n;
+          const idx = data.steps.findIndex((s) => s.id === stepId);
+          if (idx < 0) return n;
+          const newIdx = direction === "up" ? idx - 1 : idx + 1;
+          if (newIdx < 0 || newIdx >= data.steps.length) return n;
+          const newSteps = [...data.steps];
+          [newSteps[idx], newSteps[newIdx]] = [newSteps[newIdx], newSteps[idx]];
+          return { ...n, data: { ...data, steps: newSteps } };
+        })
+      );
+    },
+    [setNodes]
+  );
+
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>
@@ -407,6 +436,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onPaneClick={onPaneClick}
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
+          onEdgeContextMenu={onEdgeContextMenu}
           nodeTypes={nodeTypes}
           fitView
           panOnDrag
@@ -508,6 +538,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onUpdateStep={updateStepData}
           onDelete={deleteNode}
           onRemoveStep={removeStepFromGroup}
+          onReorderStep={reorderStep}
           onClose={() => { setSelectedNodeId(null); setSelectedStepId(null); }}
         />
       )}
