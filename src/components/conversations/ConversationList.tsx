@@ -156,7 +156,7 @@ export function ConversationList({
                       <button
                         onClick={() => onSelect(conv)}
                         className={cn(
-                          "w-full text-left px-3 py-3 transition-all duration-150 flex items-center gap-3 rounded-xl relative",
+                          "w-full text-left px-3 py-3 transition-all duration-150 grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl",
                           isSelected
                             ? "bg-primary/10 shadow-sm"
                             : "hover:bg-secondary/70"
@@ -168,7 +168,7 @@ export function ConversationList({
                           size="md"
                         />
 
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className={cn(
                               "text-sm truncate",
@@ -177,7 +177,7 @@ export function ConversationList({
                               {conv.contact_name || formatJid(conv.remote_jid)}
                             </span>
                             {conv.instance_name && (
-                              <span className="shrink-0 text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded">
+                              <span className="text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded truncate">
                                 {conv.instance_name}
                               </span>
                             )}
@@ -191,7 +191,7 @@ export function ConversationList({
                         </div>
 
                         {/* Right column: time + unread badge */}
-                        <div className="flex flex-col items-end gap-1 shrink-0">
+                        <div className="flex flex-col items-end gap-1">
                           <span className={cn(
                             "text-[10px] whitespace-nowrap",
                             hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
