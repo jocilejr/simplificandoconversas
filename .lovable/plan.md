@@ -1,16 +1,23 @@
 
 
-## Correções do GroupNode
+## Diagnóstico dos 3 problemas persistentes
 
-### Problemas identificados
+### 1. Parte branca/cinza atrás do bloco
+A div do card (linha 198) tem `overflow-hidden`, mas a barra de destaque (linha 208) usa `absolute` e se posiciona relativa ao wrapper externo (`relative` na linha 190), não ao card. Isso cria um artefato visual. **Solução**: adicionar `relative` ao card para que a barra se posicione dentro dele.
 
-1. **Parte branca atrás**: O `borderLeft: 4px solid` cria uma borda que, combinada com `overflow-hidden` e `rounded-2xl`, gera artefato visual branco. Solucao: usar uma div interna como barra de cor absoluta posicionada.
-2. **Handle de entrada no topo**: Deve ser `Position.Left` com `top: 24` para ficar no canto superior esquerdo.
-3. **Handle de saída no meio**: O xyflow aplica `top: 50%` por padrao e o `style={{ bottom: 16, top: 'auto' }}` nao sobrescreve corretamente. Solucao: calcular a posicao absoluta ou usar classes CSS com `!important` para forcar `top: auto` e `bottom`.
+### 2. Handle de saída (source) preso no meio
+React Flow aplica `top: 50%` como **inline style** nos handles de posição Right. Classes Tailwind com `!important` (`!top-auto !bottom-4`) nem sempre sobrescrevem inline styles do React Flow. **Solução**: usar `style={{ top: 'auto', bottom: 16 }}` diretamente no Handle, que sempre vence inline vs inline.
 
-### Alteracoes em `GroupNode.tsx`
+### 3. Conexão entra pelo meio mesmo com handle no topo
+O handle target está correto com `style={{ top: 24 }}`, mas React Flow também pode aplicar `top: 50%` inline em handles Left. **Solução**: garantir que o `style` inline está correto e verificar que não há CSS global sobrescrevendo (`.block-handle-target` em `index.css` força `top: 50% !important` — esse é o problema).
 
-- **Handle target**: `Position.Left` com `style={{ top: 24 }}` e classe `!-left-1.5`
-- **Handle source**: `Position.Right` com classes `!-right-1.5` e usar estilo inline `top` calculado ou usar `Position.Bottom` com `style={{ right: ... }}`
-- **Borda esquerda**: Remover `borderLeft` do style e usar uma div absoluta `absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl` com a cor de destaque, evitando o artefato branco
+### CSS global conflitante (`index.css`)
+As classes `.block-handle-target` e `.block-handle-source` em `index.css` (linhas 136-144) forçam `top: 50% !important` em **todos** os handles. Embora o GroupNode não use a classe `block-handle`, o React Flow pode aplicar estilos inline `top: 50%` que competem com nossas classes.
+
+### Alterações
+
+**`src/components/chatbot/GroupNode.tsx`:**
+- Adicionar `relative` ao card div para conter a barra de destaque
+- Handle target: manter `Position.Left` com `style={{ top: 24 }}` 
+- Handle source: trocar classes `!top-auto !bottom-4` por `style={{ top: 'auto', bottom: 16 }}` para garantir override do inline style do React Flow
 
