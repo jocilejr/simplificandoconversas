@@ -157,6 +157,12 @@ export const nodeTypeConfig: Record<
     icon: "BrainCircuit",
     description: "Processa mensagens com OpenAI (texto, áudio, imagem, PDF)",
   },
+  waitForClick: {
+    label: "Aguardar Clique",
+    color: "#0ea5e9",
+    icon: "Link",
+    description: "Envia link rastreável e aguarda o clique para continuar",
+  },
 };
 
 export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
