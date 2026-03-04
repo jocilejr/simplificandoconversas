@@ -363,7 +363,11 @@ Deno.serve(async (req) => {
         let totalSynced = 0;
 
         for (const currentInstanceName of instancesToSync) {
+          console.log(`[sync-chats] Syncing instance: ${currentInstanceName}`);
+          
           // Try findMessages for this instance
+          let allMessages: any[] = [];
+          
           const msgsResp = await fetch(
             `${baseUrl}/chat/findMessages/${currentInstanceName}`,
             {
@@ -373,7 +377,8 @@ Deno.serve(async (req) => {
             }
           );
           const msgsBody = await msgsResp.text();
-          let allMessages: any[] = [];
+          console.log(`[sync-chats] findMessages ${currentInstanceName} status: ${msgsResp.status}, body length: ${msgsBody.length}, preview: ${msgsBody.substring(0, 200)}`);
+          
           try {
             const parsed = JSON.parse(msgsBody);
             if (Array.isArray(parsed)) allMessages = parsed;
@@ -388,7 +393,51 @@ Deno.serve(async (req) => {
             }
           } catch (_) {}
 
-          if (allMessages.length === 0) continue;
+          // Fallback: try findChats if no messages found
+          if (allMessages.length === 0) {
+            console.log(`[sync-chats] No messages for ${currentInstanceName}, trying findChats...`);
+            try {
+              const chatsResp = await fetch(
+                `${baseUrl}/chat/findChats/${currentInstanceName}`,
+                {
+                  method: "POST",
+                  headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                }
+              );
+              const chatsBody = await chatsResp.text();
+              console.log(`[sync-chats] findChats ${currentInstanceName} status: ${chatsResp.status}, body length: ${chatsBody.length}, preview: ${chatsBody.substring(0, 300)}`);
+              
+              const chats = JSON.parse(chatsBody);
+              if (Array.isArray(chats) && chats.length > 0) {
+                // Convert chats to conversation rows directly
+                const chatRows = chats
+                  .filter((ch: any) => ch.id?.includes("@s.whatsapp.net") || ch.remoteJid?.includes("@s.whatsapp.net"))
+                  .map((ch: any) => ({
+                    user_id: userId,
+                    remote_jid: ch.id || ch.remoteJid,
+                    ...(ch.name || ch.pushName ? { contact_name: ch.name || ch.pushName } : {}),
+                    last_message: ch.lastMessage?.message?.conversation || ch.lastMessage?.message?.extendedTextMessage?.text || ch.lastMsgContent || null,
+                    last_message_at: ch.updatedAt || ch.lastMessage?.messageTimestamp ? new Date(Number(ch.lastMessage?.messageTimestamp || 0) * 1000).toISOString() : new Date().toISOString(),
+                    instance_name: currentInstanceName,
+                  }));
+
+                if (chatRows.length > 0) {
+                  console.log(`[sync-chats] Found ${chatRows.length} chats from findChats for ${currentInstanceName}`);
+                  for (let i = 0; i < chatRows.length; i += 100) {
+                    const chunk = chatRows.slice(i, i + 100);
+                    const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid" });
+                    if (!err) totalSynced += chunk.length;
+                  }
+                }
+              }
+            } catch (e) {
+              console.error(`[sync-chats] findChats error for ${currentInstanceName}:`, e.message);
+            }
+            continue;
+          }
+
+          console.log(`[sync-chats] Found ${allMessages.length} messages for ${currentInstanceName}`);
 
           // Group by remoteJid
           const convMap = new Map<string, { name: string | null; lastMsg: string | null; lastAt: string; messages: any[] }>();
