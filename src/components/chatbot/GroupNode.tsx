@@ -187,12 +187,11 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
   const accentColor = headerConfig?.color || "#6b7280";
 
   return (
-    <div className="relative">
+    <div className="relative !bg-transparent">
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-left-1.5"
-        style={{ top: 24 }}
+        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-left-1.5 group-handle-target"
       />
 
       <div
@@ -262,8 +261,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
-        style={{ top: 'auto', bottom: 16 }}
+        className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5 group-handle-source"
       />
     </div>
   );
