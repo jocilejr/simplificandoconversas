@@ -2,25 +2,22 @@
 
 ## Problema
 
-Os logs confirmam o erro: `"instance requires property \"webhook\""`. O endpoint `/webhook/set/{instance}` da Evolution API exige que o payload contenha uma propriedade **`webhook`** como wrapper (estrutura nested), igual ao `create-instance`. Porém o código atual de `set-webhook` e `sync-webhooks` envia propriedades flat (`enabled`, `url`, `webhook_by_events`).
+Os logs mostram claramente: `"webhook requires property \"enabled\""`. A propriedade `enabled: true` está faltando **dentro** do objeto `webhook`. A Evolution API exige essa propriedade mesmo dentro da estrutura nested.
 
 ## Correção
 
-Alterar o body de **ambos** os cases (`set-webhook` e `sync-webhooks`) em `evolution-proxy/index.ts` para usar a estrutura nested:
+Adicionar `enabled: true` dentro do objeto `webhook` em ambos os cases (`set-webhook` linha 266 e `sync-webhooks` linha 304):
 
-```json
-{
-  "webhook": {
-    "url": "https://...",
-    "byEvents": false,
-    "base64": true,
-    "events": ["MESSAGES_UPSERT", ...]
-  }
+```typescript
+webhook: {
+  enabled: true,  // ← faltando
+  url: webhookUrl,
+  byEvents: false,
+  base64: true,
+  events: [...]
 }
 ```
 
-Isso replica exatamente a mesma estrutura que já funciona no `create-instance` (linhas 164-178).
-
 ### Arquivo a editar
-- `supabase/functions/evolution-proxy/index.ts` — linhas 265-275 (`set-webhook`) e 302-313 (`sync-webhooks`): trocar payload flat por nested `webhook` object.
+- `supabase/functions/evolution-proxy/index.ts` — adicionar `enabled: true` nas linhas 267 e 305.
 
