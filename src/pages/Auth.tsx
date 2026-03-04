@@ -54,7 +54,7 @@ const Auth = () => {
               <Zap className="h-6 w-6 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-2xl">AutoMsg</CardTitle>
+          <CardTitle className="text-2xl">Simplificando Conversas</CardTitle>
           <CardDescription>
             {isLogin ? "Entre na sua conta" : "Crie sua conta"}
           </CardDescription>

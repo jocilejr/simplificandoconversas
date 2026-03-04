@@ -11,6 +11,76 @@ function truncate(text: string, max: number): string {
   return text.substring(0, max) + "…";
 }
 
+async function downloadAndUploadMedia(
+  supabase: any,
+  profile: { evolution_api_url: string; evolution_api_key: string; evolution_instance_name: string },
+  messageData: any,
+  messageType: string,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const { evolution_api_url, evolution_api_key, evolution_instance_name } = profile;
+    const baseUrl = evolution_api_url.replace(/\/$/, "");
+
+    // Try to get base64 from the message
+    let base64 = messageData.message?.base64;
+    const mediaMessage = messageData.message?.imageMessage || messageData.message?.videoMessage || messageData.message?.audioMessage || messageData.message?.documentMessage;
+
+    if (!base64 && mediaMessage) {
+      // Use Evolution API to get base64
+      try {
+        const resp = await fetch(
+          `${baseUrl}/chat/getBase64FromMediaMessage/${evolution_instance_name}`,
+          {
+            method: "POST",
+            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+            body: JSON.stringify({ message: messageData, convertToMp4: messageType === "audio" }),
+          }
+        );
+        if (resp.ok) {
+          const result = await resp.json();
+          base64 = result?.base64;
+        }
+      } catch (e) {
+        console.error("getBase64 error:", e.message);
+      }
+    }
+
+    if (!base64) return null;
+
+    // Determine mimetype and extension
+    const mimetype = mediaMessage?.mimetype || (messageType === "image" ? "image/jpeg" : messageType === "video" ? "video/mp4" : "audio/ogg");
+    const extMap: Record<string, string> = {
+      "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+      "video/mp4": "mp4", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a",
+    };
+    const ext = extMap[mimetype] || mimetype.split("/")[1] || "bin";
+    const fileName = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+    // Decode base64 and upload
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from("chatbot-media")
+      .upload(fileName, bytes, { contentType: mimetype, upsert: false });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError.message);
+      return null;
+    }
+
+    const { data: publicUrl } = supabase.storage.from("chatbot-media").getPublicUrl(fileName);
+    return publicUrl?.publicUrl || null;
+  } catch (e) {
+    console.error("Media download/upload error:", e.message);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,6 +109,7 @@ Deno.serve(async (req) => {
       data.message?.conversation ||
       data.message?.extendedTextMessage?.text ||
       data.message?.imageMessage?.caption ||
+      data.message?.videoMessage?.caption ||
       "";
     const messageType = data.message?.imageMessage
       ? "image"
@@ -46,6 +117,8 @@ Deno.serve(async (req) => {
       ? "audio"
       : data.message?.videoMessage
       ? "video"
+      : data.message?.documentMessage
+      ? "document"
       : "text";
     const externalId = key.id || data.keyId || null;
 
@@ -61,7 +134,7 @@ Deno.serve(async (req) => {
     // Find user by instance name
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("user_id")
+      .select("user_id, evolution_api_url, evolution_api_key, evolution_instance_name")
       .eq("evolution_instance_name", instance)
       .single();
 
@@ -106,6 +179,13 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Download and upload media if applicable
+    let mediaUrl: string | null = null;
+    if (messageType !== "text" && profile.evolution_api_url && profile.evolution_api_key) {
+      mediaUrl = await downloadAndUploadMedia(supabase, profile as any, data, messageType, userId);
+      console.log("Media uploaded:", mediaUrl ? "success" : "failed/skipped");
+    }
+
     // Only use pushName for contact name on INBOUND messages (not fromMe)
     const contactName = !fromMe ? (data.pushName || null) : null;
 
@@ -140,7 +220,7 @@ Deno.serve(async (req) => {
     }
 
     // Insert message
-    console.log("Inserting message:", { remoteJid, direction: fromMe ? "outbound" : "inbound", content: messageContent?.substring(0, 50) });
+    console.log("Inserting message:", { remoteJid, direction: fromMe ? "outbound" : "inbound", content: messageContent?.substring(0, 50), mediaUrl });
     await supabase.from("messages").insert({
       conversation_id: conv.id,
       user_id: userId,
@@ -150,6 +230,7 @@ Deno.serve(async (req) => {
       direction: fromMe ? "outbound" : "inbound",
       status: "received",
       external_id: externalId,
+      media_url: mediaUrl,
     });
 
     // === AUTO-TRIGGER: Check keyword matching for inbound messages ===
