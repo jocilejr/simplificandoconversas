@@ -568,7 +568,7 @@ Deno.serve(async (req) => {
           let synced = 0;
           for (let i = 0; i < convRows.length; i += 100) {
             const chunk = convRows.slice(i, i + 100);
-            const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid" });
+            const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid,instance_name" });
             if (!err) synced += chunk.length;
           }
 

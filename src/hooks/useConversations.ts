@@ -54,5 +54,16 @@ export function useConversations() {
       .eq("id", conversationId);
   };
 
-  return { ...query, markAsRead };
+  const deleteConversation = async (conversationId: string) => {
+    // Delete messages first (FK constraint)
+    await supabase.from("messages").delete().eq("conversation_id", conversationId);
+    // Delete conversation labels
+    await supabase.from("conversation_labels").delete().eq("conversation_id", conversationId);
+    // Delete conversation
+    const { error } = await supabase.from("conversations").delete().eq("id", conversationId);
+    if (error) throw error;
+    queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  };
+
+  return { ...query, markAsRead, deleteConversation };
 }
