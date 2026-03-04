@@ -348,32 +348,48 @@ Deno.serve(async (req) => {
 
         const baseUrl = evolution_api_url.replace(/\/$/, "");
 
-        // Try findMessages first to get actual conversations with messages
-        const msgsResp = await fetch(
-          `${baseUrl}/chat/findMessages/${evolution_instance_name}`,
-          {
-            method: "POST",
-            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-            body: JSON.stringify({ limit: 500 }),
-          }
-        );
-        const msgsBody = await msgsResp.text();
-        let allMessages: any[] = [];
-        try {
-          const parsed = JSON.parse(msgsBody);
-          if (Array.isArray(parsed)) allMessages = parsed;
-          else if (parsed.messages?.records) allMessages = parsed.messages.records;
-          else {
-            for (const key of Object.keys(parsed)) {
-              if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
-                allMessages = parsed[key];
-                break;
+        // Fetch all user instances to sync from each one
+        const { data: userInstances } = await serviceClient
+          .from("evolution_instances")
+          .select("instance_name")
+          .eq("user_id", userId);
+
+        const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
+        // Always include the profile instance as fallback
+        if (evolution_instance_name && !instancesToSync.includes(evolution_instance_name)) {
+          instancesToSync.push(evolution_instance_name);
+        }
+
+        let totalSynced = 0;
+
+        for (const currentInstanceName of instancesToSync) {
+          // Try findMessages for this instance
+          const msgsResp = await fetch(
+            `${baseUrl}/chat/findMessages/${currentInstanceName}`,
+            {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({ limit: 500 }),
+            }
+          );
+          const msgsBody = await msgsResp.text();
+          let allMessages: any[] = [];
+          try {
+            const parsed = JSON.parse(msgsBody);
+            if (Array.isArray(parsed)) allMessages = parsed;
+            else if (parsed.messages?.records) allMessages = parsed.messages.records;
+            else {
+              for (const key of Object.keys(parsed)) {
+                if (Array.isArray(parsed[key]) && parsed[key].length > 0) {
+                  allMessages = parsed[key];
+                  break;
+                }
               }
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
 
-        if (allMessages.length > 0) {
+          if (allMessages.length === 0) continue;
+
           // Group by remoteJid
           const convMap = new Map<string, { name: string | null; lastMsg: string | null; lastAt: string; messages: any[] }>();
           for (const msg of allMessages) {
@@ -388,12 +404,11 @@ Deno.serve(async (req) => {
             const conv = convMap.get(jid)!;
             conv.messages.push(msg);
             if (ts > conv.lastAt) { conv.lastMsg = content; conv.lastAt = ts; }
-            // Only update name from inbound messages with a valid pushName
             if (isInbound && msg.pushName) conv.name = msg.pushName;
           }
 
           const convRows = Array.from(convMap).map(([jid, data]) => ({
-            user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt, instance_name: evolution_instance_name,
+            user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt, instance_name: currentInstanceName,
           }));
 
           let synced = 0;
@@ -421,7 +436,7 @@ Deno.serve(async (req) => {
               
               let mediaUrl: string | null = null;
               if (t !== "text") {
-                mediaUrl = await downloadAndUploadMedia(serviceClientMedia, evolution_api_url, evolution_api_key, evolution_instance_name, m, t, userId);
+                mediaUrl = await downloadAndUploadMedia(serviceClientMedia, evolution_api_url, evolution_api_key, currentInstanceName, m, t, userId);
               }
               
               inserts.push({ conversation_id: convRecord.id, user_id: userId, remote_jid: jid, content: c, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: mediaUrl, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() });
@@ -430,13 +445,14 @@ Deno.serve(async (req) => {
               await serviceClient.from("messages").insert(inserts.slice(i, i + 100));
             }
           }
-          result = { synced, source: "messages" };
-          break;
+          totalSynced += synced;
         }
 
-        // Fallback: No cached messages available yet. 
-        // Inform user that conversations will appear as messages arrive via webhook.
-        result = { synced: 0, info: "Nenhuma mensagem cacheada na instância. As conversas aparecerão automaticamente quando novas mensagens forem enviadas ou recebidas via WhatsApp." };
+        if (totalSynced > 0) {
+          result = { synced: totalSynced, source: "messages" };
+        } else {
+          result = { synced: 0, info: "Nenhuma mensagem cacheada nas instâncias. As conversas aparecerão automaticamente quando novas mensagens forem enviadas ou recebidas via WhatsApp." };
+        }
         break;
       }
 
