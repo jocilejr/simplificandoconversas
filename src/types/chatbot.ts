@@ -11,7 +11,8 @@ export type FlowNodeType =
   | "waitDelay"
   | "waitForReply"
   | "action"
-  | "groupBlock";
+  | "groupBlock"
+  | "aiAgent";
 
 export interface FlowStepData {
   id: string;
@@ -50,6 +51,15 @@ export interface FlowNodeData {
   // Action
   actionType?: "add_tag" | "remove_tag" | "add_to_list" | "set_variable";
   actionValue?: string;
+  // AI Agent
+  aiSystemPrompt?: string;
+  aiModel?: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo";
+  aiAcceptedMedia?: ("text" | "audio" | "image" | "pdf")[];
+  aiResponseVariable?: string;
+  aiAutoSend?: boolean;
+  aiTemperature?: number;
+  aiMaxTokens?: number;
+  aiHistoryCount?: number;
   // Dock indicator
   isDockTarget?: boolean;
   [key: string]: unknown;
@@ -136,6 +146,12 @@ export const nodeTypeConfig: Record<
     icon: "Layers",
     description: "Grupo de passos empilhados",
   },
+  aiAgent: {
+    label: "Agente IA",
+    color: "#a855f7",
+    icon: "BrainCircuit",
+    description: "Processa mensagens com OpenAI (texto, áudio, imagem, PDF)",
+  },
 };
 
 export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
@@ -150,4 +166,14 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyFallback: "" },
   action: { actionType: "add_tag", actionValue: "" },
   groupBlock: { steps: [] },
+  aiAgent: {
+    aiSystemPrompt: "",
+    aiModel: "gpt-4o",
+    aiAcceptedMedia: ["text", "audio", "image", "pdf"],
+    aiResponseVariable: "resposta_ia",
+    aiAutoSend: true,
+    aiTemperature: 0.7,
+    aiMaxTokens: 500,
+    aiHistoryCount: 10,
+  },
 };

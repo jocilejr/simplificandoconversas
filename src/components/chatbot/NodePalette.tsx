@@ -23,6 +23,10 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
       label: "Ações",
       types: ["action"] as FlowNodeType[],
     },
+    {
+      label: "Inteligência Artificial",
+      types: ["aiAgent"] as FlowNodeType[],
+    },
   ];
 
   return (
