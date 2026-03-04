@@ -49,6 +49,11 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
         : d.actionType === "set_variable"
         ? `Var: ${d.actionValue || "..."}`
         : "Sem ação";
+    case "aiAgent": {
+      const model = d.aiModel || "gpt-4o";
+      const prompt = d.aiSystemPrompt ? d.aiSystemPrompt.substring(0, 40) + (d.aiSystemPrompt.length > 40 ? "..." : "") : "Sem prompt";
+      return `${model} · ${prompt}`;
+    }
     default:
       return "";
   }

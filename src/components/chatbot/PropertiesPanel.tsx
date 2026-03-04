@@ -3,6 +3,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { X, Trash2, Unlink, icons } from "lucide-react";
@@ -189,6 +191,107 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
             <Label className="text-xs">Valor</Label>
             <Input value={d.actionValue || ""} onChange={(e) => update({ actionValue: e.target.value })} placeholder="Nome da tag, lista ou variável" className="h-8 text-xs" />
           </div>
+        </>
+      )}
+
+      {/* AI Agent */}
+      {d.type === "aiAgent" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Prompt do sistema</Label>
+            <Textarea
+              value={d.aiSystemPrompt || ""}
+              onChange={(e) => update({ aiSystemPrompt: e.target.value })}
+              placeholder="Ex: Você é um atendente virtual da empresa X..."
+              className="text-xs min-h-[100px] resize-none"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Modelo</Label>
+            <Select value={d.aiModel || "gpt-4o"} onValueChange={(v) => update({ aiModel: v as any })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+                <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Tipos de mídia aceitos</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["text", "audio", "image", "pdf"] as const).map((media) => {
+                const labels = { text: "Texto", audio: "Áudio", image: "Imagem", pdf: "PDF" };
+                const current = d.aiAcceptedMedia || ["text"];
+                return (
+                  <div key={media} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`media-${media}`}
+                      checked={current.includes(media)}
+                      onCheckedChange={(checked) => {
+                        const updated = checked
+                          ? [...current, media]
+                          : current.filter((m) => m !== media);
+                        update({ aiAcceptedMedia: updated });
+                      }}
+                    />
+                    <Label htmlFor={`media-${media}`} className="text-xs">{labels[media]}</Label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Salvar resposta na variável</Label>
+            <Input
+              value={d.aiResponseVariable || "resposta_ia"}
+              onChange={(e) => update({ aiResponseVariable: e.target.value })}
+              placeholder="resposta_ia"
+              className="h-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Enviar resposta automaticamente</Label>
+            <Switch
+              checked={d.aiAutoSend !== false}
+              onCheckedChange={(v) => update({ aiAutoSend: v })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Temperatura: {d.aiTemperature ?? 0.7}</Label>
+            <Slider
+              value={[d.aiTemperature ?? 0.7]}
+              onValueChange={([v]) => update({ aiTemperature: v })}
+              min={0}
+              max={1}
+              step={0.1}
+              className="w-full"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Max tokens</Label>
+            <Input
+              type="number"
+              value={d.aiMaxTokens || 500}
+              onChange={(e) => update({ aiMaxTokens: parseInt(e.target.value) || 500 })}
+              className="h-8 text-xs"
+              min={50}
+              max={4000}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Histórico de mensagens</Label>
+            <Input
+              type="number"
+              value={d.aiHistoryCount || 10}
+              onChange={(e) => update({ aiHistoryCount: parseInt(e.target.value) || 10 })}
+              className="h-8 text-xs"
+              min={0}
+              max={50}
+            />
+            <p className="text-[10px] text-muted-foreground">Quantas mensagens anteriores enviar como contexto</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Configure sua API Key da OpenAI em Configurações.</p>
         </>
       )}
     </>

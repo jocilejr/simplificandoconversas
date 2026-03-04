@@ -29,6 +29,7 @@ export function useProfile() {
       evolution_api_url?: string;
       evolution_api_key?: string;
       evolution_instance_name?: string;
+      openai_api_key?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");

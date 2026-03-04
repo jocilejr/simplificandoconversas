@@ -13,6 +13,7 @@ const SettingsPage = () => {
   const [apiKey, setApiKey] = useState("");
   const [instanceName, setInstanceName] = useState("");
   const [fullName, setFullName] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
 
   useEffect(() => {
     if (profile) {
@@ -20,6 +21,7 @@ const SettingsPage = () => {
       setApiKey(profile.evolution_api_key || "");
       setInstanceName(profile.evolution_instance_name || "");
       setFullName(profile.full_name || "");
+      setOpenaiKey(profile.openai_api_key || "");
     }
   }, [profile]);
 
@@ -121,6 +123,37 @@ const SettingsPage = () => {
           <Button onClick={handleSaveProfile} disabled={updateProfile.isPending}>
             {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Salvar Perfil
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-lg">OpenAI</CardTitle>
+          <CardDescription>Configure sua API Key da OpenAI para usar o nó Agente IA</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>API Key</Label>
+            <Input
+              type="password"
+              placeholder="sk-..."
+              value={openaiKey}
+              onChange={(e) => setOpenaiKey(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Obtenha sua chave em{" "}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">
+                platform.openai.com/api-keys
+              </a>
+            </p>
+          </div>
+          <Button
+            onClick={() => updateProfile.mutate({ openai_api_key: openaiKey })}
+            disabled={updateProfile.isPending}
+          >
+            {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            Salvar
           </Button>
         </CardContent>
       </Card>

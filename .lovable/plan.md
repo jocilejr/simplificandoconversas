@@ -1,52 +1,33 @@
 
 
-## Plan: Nó "Agente IA" com OpenAI API Key do Usuário
+## Plan: Redesign Flow Cards — Professional & Refined
 
-### Abordagem
+### Problems with current design
+- Cards look flat and generic — just a plain `bg-card` box with no visual interest
+- The full-width "Ativar/Parar" button dominates the card and looks cheap
+- Status badge is tiny and disconnected from the flow identity
+- No visual distinction between cards — they all look identical
+- The left border accent (`border-l-2`) is too subtle to convey status
+- Overall layout feels like a basic admin template, not a polished product
 
-O usuário fornecerá sua própria API key da OpenAI, que será armazenada como secret no backend. O nó `aiAgent` chamará a API da OpenAI diretamente (não o Lovable AI Gateway), suportando texto, áudio, imagens e PDFs via modelos multimodais (GPT-4o).
+### New card design
 
-### Secret necessário
+**Structure per card:**
+1. **Top bar** — subtle gradient or colored top border (4px) based on status: green for active, muted for inactive
+2. **Icon + Name row** — small `Workflow` icon in a tinted circle + flow name (medium weight, truncated) + dropdown menu (3-dot) on hover
+3. **Status** — inline dot indicator (green/gray) with "Ativo"/"Inativo" text, no badge component — cleaner
+4. **Metadata row** — node count + last modified, same as now but with slightly better spacing
+5. **Footer** — small toggle-style button or subtle text button for activate/deactivate, not a full-width destructive button
 
-- **OPENAI_API_KEY** — será solicitado ao usuário via ferramenta de secrets antes de implementar
+**Visual improvements:**
+- Cards get `hover:shadow-lg hover:shadow-primary/5` for a subtle glow on hover
+- Remove the heavy `border-l-2` in favor of a `border-t-2` colored accent at top
+- Better padding and internal spacing (p-6 instead of p-5)
+- The "New Flow" card gets a centered `+` icon with hover scale effect
 
-### Configuração do nó (Properties Panel)
+**Header area:**
+- Keep title + button as-is (already clean)
 
-| Campo | Tipo | Default |
-|---|---|---|
-| Prompt do sistema | Textarea | "" |
-| Modelo | Select | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo` |
-| Tipos de mídia aceitos | Checkboxes | Texto, Áudio, Imagem, PDF |
-| Salvar resposta em | Input | `resposta_ia` |
-| Enviar resposta automaticamente | Switch | true |
-| Temperatura | Slider 0–1 | 0.7 |
-| Max tokens | Input number | 500 |
-| Histórico de mensagens | Input number | 10 |
-
-### Visual
-
-- **Ícone**: `BrainCircuit` · **Cor**: `#a855f7` (roxo) · **Label**: "Agente IA"
-- Nova categoria "Inteligência Artificial" na paleta
-
-### Execução no backend
-
-No `execute-flow/index.ts`, o handler `aiAgent`:
-1. Busca últimas N mensagens da conversa no banco
-2. Monta payload multimodal OpenAI (`content` array com `text`, `image_url`, `input_audio`)
-3. Chama `https://api.openai.com/v1/chat/completions` com `OPENAI_API_KEY`
-4. Se `aiAutoSend` = true, envia resposta via Evolution API
-5. Armazena resposta na variável especificada
-
-### Arquivos a editar
-
-1. **`src/types/chatbot.ts`** — Adicionar `aiAgent` ao type union, campos AI no `FlowNodeData`, entradas em `nodeTypeConfig` e `defaultNodeData`
-2. **`src/components/chatbot/NodePalette.tsx`** — Nova categoria "Inteligência Artificial"
-3. **`src/components/chatbot/StepNode.tsx`** — Caso `aiAgent` no `renderDescription()`
-4. **`src/components/chatbot/PropertiesPanel.tsx`** — Seção completa com prompt, modelo, checkboxes de mídia, variáveis, temperatura, max tokens
-5. **`supabase/functions/execute-flow/index.ts`** — Handler `aiAgent` chamando OpenAI diretamente
-6. **`supabase/config.toml`** — Sem alteração (função já existe)
-
-### Passo 0 (antes de codar)
-
-Solicitar ao usuário a `OPENAI_API_KEY` via ferramenta de secrets.
+### Files to edit
+- `src/pages/ChatbotBuilder.tsx` — redesign card markup and classes
 
