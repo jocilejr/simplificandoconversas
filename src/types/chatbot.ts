@@ -187,4 +187,9 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
     aiMaxTokens: 500,
     aiHistoryCount: 10,
   },
+  waitForClick: {
+    clickUrl: "",
+    clickMessage: "Clique no link para continuar: {{link}}",
+    clickTimeout: 0,
+  },
 };
