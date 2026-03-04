@@ -25,6 +25,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/r/:code" element={<LinkRedirect />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>

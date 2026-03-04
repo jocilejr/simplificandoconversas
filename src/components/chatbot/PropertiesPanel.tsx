@@ -307,6 +307,21 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
             <Textarea value={d.clickMessage || ""} onChange={(e) => update({ clickMessage: e.target.value })} placeholder="Clique no link: {{link}}" className="text-xs min-h-[80px] resize-none" />
             <p className="text-[10px] text-muted-foreground">Use {"{{link}}"} onde o link rastreável será inserido</p>
           </div>
+          <div className="border-t border-border pt-3 mt-3 space-y-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Link Preview (WhatsApp)</p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Título do preview</Label>
+              <Input value={d.clickPreviewTitle || ""} onChange={(e) => update({ clickPreviewTitle: e.target.value })} placeholder="Ex: Acesse seu material" className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Descrição do preview</Label>
+              <Input value={d.clickPreviewDescription || ""} onChange={(e) => update({ clickPreviewDescription: e.target.value })} placeholder="Ex: Clique para acessar o conteúdo exclusivo" className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Imagem do preview (URL)</Label>
+              <Input value={d.clickPreviewImage || ""} onChange={(e) => update({ clickPreviewImage: e.target.value })} placeholder="https://exemplo.com/imagem.jpg" className="h-8 text-xs" />
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Timeout (segundos, 0 = sem limite)</Label>
             <Input type="number" value={d.clickTimeout || 0} onChange={(e) => update({ clickTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
