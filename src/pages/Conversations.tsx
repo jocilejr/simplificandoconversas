@@ -37,9 +37,6 @@ const Conversations = () => {
         body: { action: "sync-chats" },
       });
       if (error) throw error;
-      await supabase.functions.invoke("evolution-proxy", {
-        body: { action: "fetch-contact-names" },
-      });
       return data;
     },
     onSuccess: (data) => {
