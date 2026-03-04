@@ -1,6 +1,6 @@
 import { memo, useState, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Mic, Clock } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Mic, Clock, Link } from "lucide-react";
 import { nodeTypeConfig, parseWhatsAppFormatting, type FlowNodeData, type FlowNodeType, type FlowStepData } from "@/types/chatbot";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -110,6 +110,8 @@ function StepRow({
       }
       case "waitDelay":
         return null;
+      case "waitForClick":
+        return null;
       default:
         return null;
     }
@@ -144,7 +146,37 @@ function StepRow({
     );
   }
 
-  // For sendText with content, render as a chat bubble without header
+  // For waitForClick, render a compact pill with link icon
+  if (d.type === "waitForClick") {
+    const truncatedUrl = d.clickUrl ? (d.clickUrl.length > 30 ? d.clickUrl.substring(0, 30) + "..." : d.clickUrl) : "URL não definida";
+    return (
+      <div
+        data-step-id={step.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("application/step-id", step.id);
+          e.dataTransfer.setData("application/source-node-id", nodeId);
+          onDragStart(index);
+        }}
+        onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+        onDragOver={(e) => { e.preventDefault(); }}
+        onDragEnd={(e) => onDragEnd(e)}
+        className={`mx-1 mb-1 px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+          isDragging ? "opacity-30 scale-95"
+            : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
+            : "bg-muted/50 hover:bg-muted/70"
+        }`}
+      >
+        <Link className="w-3.5 h-3.5 text-sky-500 flex-shrink-0" />
+        <span className="text-[11px] font-medium text-muted-foreground truncate">
+          {truncatedUrl}
+        </span>
+      </div>
+    );
+  }
+
+
   if (d.type === "sendText" && d.textContent) {
     const html = parseWhatsAppFormatting(d.textContent);
     return (
@@ -236,7 +268,7 @@ function StepRow({
   );
 }
 
-const addableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "action"];
+const addableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "waitForClick", "action"];
 
 function GroupNode({ id, data, selected }: GroupNodeProps) {
   const d = data as FlowNodeData;

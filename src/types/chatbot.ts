@@ -12,7 +12,8 @@ export type FlowNodeType =
   | "waitForReply"
   | "action"
   | "groupBlock"
-  | "aiAgent";
+  | "aiAgent"
+  | "waitForClick";
 
 export interface FlowStepData {
   id: string;
@@ -60,6 +61,10 @@ export interface FlowNodeData {
   aiTemperature?: number;
   aiMaxTokens?: number;
   aiHistoryCount?: number;
+  // Wait for Click
+  clickUrl?: string;
+  clickMessage?: string;
+  clickTimeout?: number;
   // Dock indicator
   isDockTarget?: boolean;
   [key: string]: unknown;
@@ -152,6 +157,12 @@ export const nodeTypeConfig: Record<
     icon: "BrainCircuit",
     description: "Processa mensagens com OpenAI (texto, áudio, imagem, PDF)",
   },
+  waitForClick: {
+    label: "Aguardar Clique",
+    color: "#0ea5e9",
+    icon: "Link",
+    description: "Envia link rastreável e aguarda o clique para continuar",
+  },
 };
 
 export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
@@ -175,5 +186,10 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
     aiTemperature: 0.7,
     aiMaxTokens: 500,
     aiHistoryCount: 10,
+  },
+  waitForClick: {
+    clickUrl: "",
+    clickMessage: "Clique no link para continuar: {{link}}",
+    clickTimeout: 0,
   },
 };
