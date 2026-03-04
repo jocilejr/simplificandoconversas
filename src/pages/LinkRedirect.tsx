@@ -1,46 +1,19 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 
 const LinkRedirect = () => {
   const { code } = useParams<{ code: string }>();
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!code) return;
+    if (!code) {
+      setError(true);
+      return;
+    }
 
-    const processRedirect = async () => {
-      try {
-        // Call the edge function to process the click and get the redirect URL
-        const resp = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-redirect?code=${code}`,
-          { redirect: "manual" }
-        );
-
-        // The edge function returns a 302 redirect
-        const location = resp.headers.get("location");
-        if (location) {
-          window.location.href = location;
-        } else {
-          // Fallback: try to get the URL directly
-          const { data } = await supabase
-            .from("tracked_links")
-            .select("original_url")
-            .eq("short_code", code)
-            .single();
-
-          if (data?.original_url) {
-            window.location.href = data.original_url;
-          } else {
-            setError(true);
-          }
-        }
-      } catch {
-        setError(true);
-      }
-    };
-
-    processRedirect();
+    // Redirect to the edge function which handles click processing and redirect
+    const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-redirect?code=${code}`;
+    window.location.href = edgeFunctionUrl;
   }, [code]);
 
   if (error) {
