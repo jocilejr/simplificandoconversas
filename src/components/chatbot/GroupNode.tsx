@@ -192,6 +192,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         type="target"
         position={Position.Left}
         className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-left-1.5"
+        style={{ top: 24 }}
       />
 
       <div
@@ -261,6 +262,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         type="source"
         position={Position.Right}
         className="!w-3 !h-3 !border-2 !border-card !bg-muted-foreground !-right-1.5"
+        style={{ bottom: 18, top: 'auto' }}
       />
     </div>
   );
