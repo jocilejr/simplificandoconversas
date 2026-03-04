@@ -23,6 +23,7 @@ const SettingsPage = () => {
       setInstanceName(profile.evolution_instance_name || "");
       setFullName(profile.full_name || "");
       setOpenaiKey(profile.openai_api_key || "");
+      setAppPublicUrl((profile as any).app_public_url || "");
     }
   }, [profile]);
 
