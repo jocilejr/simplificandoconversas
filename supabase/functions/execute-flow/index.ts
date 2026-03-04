@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await serviceClient
       .from("profiles")
-      .select("evolution_api_url, evolution_api_key, evolution_instance_name")
+      .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key")
       .eq("user_id", userId)
       .single();
 
