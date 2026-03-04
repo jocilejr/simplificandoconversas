@@ -1,31 +1,23 @@
 
 
-## Plan: WhatsApp-style Chat Layout with Patterned Background
+## Plan: Optimize Chat Appearance
 
-### What changes
+### Issues to fix
+1. **Images too large** — No max dimensions on images, they fill 70% of viewport width
+2. **Background pattern** — Current SVG pattern is barely visible, needs to match WhatsApp's doodle style (image-72 reference)
+3. **Message bubbles** — Need better contrast and readability, closer to WhatsApp reference (image-73)
 
-**1. `src/index.css`** — Add a WhatsApp-style doodle/pattern background using a CSS SVG pattern (dark theme compatible). This creates the iconic subtle icon pattern seen in WhatsApp's chat area.
+### Changes
 
-```css
-.chat-bg-pattern {
-  background-color: hsl(225 35% 4%);
-  background-image: url("data:image/svg+xml,..."); /* SVG pattern with subtle chat icons */
-  background-size: 300px;
-  background-repeat: repeat;
-}
-```
+**1. `src/components/conversations/ChatPanel.tsx`**
+- Limit images: add `max-h-[280px] max-w-[280px] w-auto object-cover` to constrain image size
+- Limit video: `max-h-[280px] max-w-[280px]`
+- Limit audio: keep as-is (already compact)
+- Reduce bubble max-width from `max-w-[70%]` to `max-w-[65%]` for tighter bubbles
+- Add slight padding adjustments for better text readability
+- Inbound bubble: use `bg-[hsl(225,30%,12%)]` instead of `bg-card` for more contrast against the patterned background
 
-**2. `src/components/conversations/ChatPanel.tsx`** — Apply WhatsApp-identical styling:
-
-- **Messages area**: Add `chat-bg-pattern` class to the scrollable messages container, replacing the plain `bg-background`
-- **Message bubbles**: Refine to match WhatsApp more closely:
-  - Outbound (sent): Keep green (`hsl(142,50%,24%)`), use WhatsApp-style rounded corners with a small tail (rounded everywhere except bottom-right)
-  - Inbound (received): Use a slightly lighter card color (`bg-[hsl(225,30%,12%)]`) instead of bordered card style, with tail on bottom-left
-- **Date separator**: Style as a small rounded pill with semi-transparent dark background (like WhatsApp's "Hoje" pill)
-- **Header**: Keep as-is (already looks good)
-- **Input area**: Keep as-is with the dark card background
-
-### Files to modify
-1. `src/index.css` — Add `.chat-bg-pattern` CSS class with SVG repeating pattern
-2. `src/components/conversations/ChatPanel.tsx` — Apply pattern class to messages area, refine bubble styles
+**2. `src/index.css`**
+- Replace the current complex SVG pattern with the actual WhatsApp-style doodle pattern (matching image-72): a darker, more visible pattern with recognizable icons (phones, hearts, clocks, cameras, etc.)
+- Increase opacity from 0.03/0.04 to 0.06/0.07 so the pattern is actually visible like in the reference images
 
