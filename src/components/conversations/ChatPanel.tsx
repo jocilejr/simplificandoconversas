@@ -188,6 +188,32 @@ export function ChatPanel({
         )}
       </div>
 
+      {/* Active flow banner */}
+      {hasActiveFlow && (
+        <div className="px-4 py-2 border-t border-border bg-accent flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Bot className="h-3.5 w-3.5 text-primary" />
+            <span className="font-medium">
+              Fluxo ativo: {activeExecutions![0].chatbot_flows?.name || "Fluxo"}
+            </span>
+            <span className="text-[10px]">
+              ({activeExecutions![0].status === "waiting_click" ? "Aguardando clique" : "Executando"})
+            </span>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-6 text-[10px]"
+            onClick={() => {
+              cancelExecution.mutate(activeExecutions![0].id);
+              toast.success("Fluxo cancelado");
+            }}
+          >
+            Parar
+          </Button>
+        </div>
+      )}
+
       {/* Input area */}
       <div className="px-4 py-3 border-t border-border bg-card flex items-center gap-2">
         {/* Bot flows */}
@@ -196,8 +222,13 @@ export function ChatPanel({
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-full shrink-0 bg-primary/10 hover:bg-primary/20 text-primary"
-              disabled={executingFlow}
+              className={cn(
+                "h-10 w-10 rounded-full shrink-0",
+                hasActiveFlow
+                  ? "bg-muted text-muted-foreground cursor-not-allowed"
+                  : "bg-primary/10 hover:bg-primary/20 text-primary"
+              )}
+              disabled={executingFlow || hasActiveFlow}
             >
               {executingFlow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
             </Button>

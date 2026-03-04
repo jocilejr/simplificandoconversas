@@ -145,7 +145,8 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                       Parar
                     </Button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground text-center py-2">Nenhum fluxo em execução</p>
