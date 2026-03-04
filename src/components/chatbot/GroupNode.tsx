@@ -1,6 +1,6 @@
 import { memo, useState, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Mic, Clock } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Mic, Clock, Link } from "lucide-react";
 import { nodeTypeConfig, parseWhatsAppFormatting, type FlowNodeData, type FlowNodeType, type FlowStepData } from "@/types/chatbot";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
