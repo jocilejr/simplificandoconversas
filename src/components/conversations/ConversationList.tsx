@@ -168,11 +168,6 @@ export function ConversationList({
                           size="md"
                         />
 
-                        {/* Unread dot - right side of card */}
-                        {hasUnread && (
-                          <span className="absolute top-3 right-3 h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.5)]" />
-                        )}
-
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
@@ -188,25 +183,27 @@ export function ConversationList({
                                 </span>
                               )}
                             </div>
-                            <span className={cn(
-                              "text-[10px] shrink-0 whitespace-nowrap",
-                              hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
-                            )}>
-                              {formatTime(conv.last_message_at)}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={cn(
+                                "text-[10px] whitespace-nowrap",
+                                hasUnread ? "text-primary font-semibold" : "text-muted-foreground"
+                              )}>
+                                {formatTime(conv.last_message_at)}
+                              </span>
+                              {hasUnread && (
+                                <span className="flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                                  {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between gap-2 mt-1">
+                          <div className="mt-1">
                             <p className={cn(
                               "text-xs truncate",
                               hasUnread ? "text-foreground/70 font-medium" : "text-muted-foreground"
                             )}>
                               {conv.last_message || "..."}
                             </p>
-                            {hasUnread && (
-                              <span className="flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0">
-                                {conv.unread_count > 99 ? "99+" : conv.unread_count}
-                              </span>
-                            )}
                           </div>
                         </div>
                       </button>
