@@ -1,33 +1,33 @@
 
 
-## Plan: Redesign Flow Cards — Professional & Refined
+## Plano: Corrigir extração de step do grupo
 
-### Problems with current design
-- Cards look flat and generic — just a plain `bg-card` box with no visual interest
-- The full-width "Ativar/Parar" button dominates the card and looks cheap
-- Status badge is tiny and disconnected from the flow identity
-- No visual distinction between cards — they all look identical
-- The left border accent (`border-l-2`) is too subtle to convey status
-- Overall layout feels like a basic admin template, not a polished product
+### Problema raiz
 
-### New card design
+Quando um step é extraído do grupo, o novo nó criado reutiliza `removedStep.id` como ID do nó. Esse ID pode colidir com referências internas do React Flow (evidenciado pelo erro de console "Encountered two children with the same key"). Além disso, o grupo restante pode não re-renderizar corretamente porque a atualização imutável dos dados não está forçando um novo render do componente memoizado.
 
-**Structure per card:**
-1. **Top bar** — subtle gradient or colored top border (4px) based on status: green for active, muted for inactive
-2. **Icon + Name row** — small `Workflow` icon in a tinted circle + flow name (medium weight, truncated) + dropdown menu (3-dot) on hover
-3. **Status** — inline dot indicator (green/gray) with "Ativo"/"Inativo" text, no badge component — cleaner
-4. **Metadata row** — node count + last modified, same as now but with slightly better spacing
-5. **Footer** — small toggle-style button or subtle text button for activate/deactivate, not a full-width destructive button
+### Correções em `src/components/chatbot/FlowEditor.tsx`
 
-**Visual improvements:**
-- Cards get `hover:shadow-lg hover:shadow-primary/5` for a subtle glow on hover
-- Remove the heavy `border-l-2` in favor of a `border-t-2` colored accent at top
-- Better padding and internal spacing (p-6 instead of p-5)
-- The "New Flow" card gets a centered `+` icon with hover scale effect
+1. **Gerar um novo ID único** para o nó extraído em vez de reusar `removedStep.id`:
+   ```typescript
+   const newNodeId = `step-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+   ```
 
-**Header area:**
-- Keep title + button as-is (already clean)
+2. **Transferir edges** do grupo para o nó extraído quando o grupo fica vazio, e criar edges do grupo para o novo nó quando o grupo permanece:
+   - Se o grupo ficou vazio: mover edges que apontavam para/do grupo para o novo nó
+   - Se o grupo permanece: não precisa transferir edges
 
-### Files to edit
-- `src/pages/ChatbotBuilder.tsx` — redesign card markup and classes
+3. **Forçar re-render do grupo** garantindo que o objeto do nó é completamente novo (spread profundo no data e no nó):
+   ```typescript
+   return nds.map((n) => {
+     if (n.id !== nodeId) return n;
+     return { ...n, data: { ...data, steps: [...remainingSteps] } };
+   });
+   ```
+
+4. **Atualizar edges quando grupo fica vazio**: transferir as conexões do grupo removido para o novo nó extraído.
+
+### Arquivo editado
+
+- `src/components/chatbot/FlowEditor.tsx` — handler do evento `group-extract-step` (linhas ~402-441)
 
