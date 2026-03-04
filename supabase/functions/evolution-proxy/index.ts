@@ -195,14 +195,18 @@ Deno.serve(async (req) => {
             if (!jid || !jid.includes("@s.whatsapp.net")) continue;
             const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "[mídia]";
             const ts = msg.messageTimestamp ? new Date(Number(msg.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
-            if (!convMap.has(jid)) convMap.set(jid, { name: msg.pushName || null, lastMsg: content, lastAt: ts, messages: [] });
+            const isInbound = !key.fromMe;
+            const pushName = isInbound ? (msg.pushName || null) : null;
+            if (!convMap.has(jid)) convMap.set(jid, { name: pushName, lastMsg: content, lastAt: ts, messages: [] });
             const conv = convMap.get(jid)!;
             conv.messages.push(msg);
-            if (ts > conv.lastAt) { conv.lastMsg = content; conv.lastAt = ts; if (msg.pushName) conv.name = msg.pushName; }
+            if (ts > conv.lastAt) { conv.lastMsg = content; conv.lastAt = ts; }
+            // Only update name from inbound messages with a valid pushName
+            if (isInbound && msg.pushName) conv.name = msg.pushName;
           }
 
           const convRows = Array.from(convMap).map(([jid, data]) => ({
-            user_id: userId, remote_jid: jid, contact_name: data.name, last_message: data.lastMsg, last_message_at: data.lastAt,
+            user_id: userId, remote_jid: jid, ...(data.name ? { contact_name: data.name } : {}), last_message: data.lastMsg, last_message_at: data.lastAt,
           }));
 
           let synced = 0;
@@ -298,6 +302,50 @@ Deno.serve(async (req) => {
           );
         }
         result = photos;
+        break;
+      }
+
+      case "fetch-contact-names": {
+        // Fetch contacts from Evolution API and update conversation names
+        const baseUrlContacts = evolution_api_url.replace(/\/$/, "");
+        const serviceClientContacts = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+
+        try {
+          const contactsResp = await fetch(
+            `${baseUrlContacts}/chat/findContacts/${evolution_instance_name}`,
+            {
+              method: "POST",
+              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            }
+          );
+          const contacts = await contactsResp.json();
+          let updated = 0;
+
+          if (Array.isArray(contacts)) {
+            for (const contact of contacts) {
+              const jid = contact.id || contact.remoteJid;
+              const name = contact.pushName || contact.name || contact.notify || contact.verifiedName;
+              if (!jid || !name || jid === "status@broadcast" || !jid.includes("@s.whatsapp.net")) continue;
+
+              const { error } = await serviceClientContacts
+                .from("conversations")
+                .update({ contact_name: name })
+                .eq("user_id", userId)
+                .eq("remote_jid", jid)
+                .is("contact_name", null)
+                .or("contact_name.eq.Comunidade,contact_name.eq.Você");
+
+              if (!error) updated++;
+            }
+          }
+          result = { updated };
+        } catch (e) {
+          result = { updated: 0, error: e.message };
+        }
         break;
       }
 

@@ -81,15 +81,13 @@ Deno.serve(async (req) => {
 
     // Skip outbound messages sent via our proxy (already saved by proxy)
     if (fromMe && event === "send.message") {
-      // Still update conversation metadata
-      const contactName = data.pushName || remoteJid.split("@")[0];
+      // Update conversation metadata but DON'T overwrite contact_name with sender's pushName
       await supabase
         .from("conversations")
         .upsert(
           {
             user_id: userId,
             remote_jid: remoteJid,
-            contact_name: contactName,
             last_message: messageContent || `[${messageType}]`,
             last_message_at: new Date().toISOString(),
           },
@@ -100,22 +98,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    const contactName = data.pushName || remoteJid.split("@")[0];
+    // Only use pushName for contact name on INBOUND messages (not fromMe)
+    const contactName = !fromMe ? (data.pushName || null) : null;
 
-    // Upsert conversation
+    // Upsert conversation - only set contact_name if we have a real name from inbound
+    const upsertData: Record<string, unknown> = {
+      user_id: userId,
+      remote_jid: remoteJid,
+      last_message: messageContent || `[${messageType}]`,
+      last_message_at: new Date().toISOString(),
+      ...(!fromMe ? { unread_count: 1 } : {}),
+    };
+    if (contactName) {
+      upsertData.contact_name = contactName;
+    }
+
     const { data: conv } = await supabase
       .from("conversations")
-      .upsert(
-        {
-          user_id: userId,
-          remote_jid: remoteJid,
-          contact_name: contactName,
-          last_message: messageContent || `[${messageType}]`,
-          last_message_at: new Date().toISOString(),
-          ...(!fromMe ? { unread_count: 1 } : {}),
-        },
-        { onConflict: "user_id,remote_jid" }
-      )
+      .upsert(upsertData, { onConflict: "user_id,remote_jid" })
       .select("id, unread_count")
       .single();
 
