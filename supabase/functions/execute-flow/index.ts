@@ -416,7 +416,11 @@ Deno.serve(async (req) => {
             });
 
             // Always use edge function URL (serves OG tags for bots, redirects for humans)
-            const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
+            // Use app_public_url for cleaner tracking URLs, fallback to edge function
+            const appPublicUrl = profile.app_public_url?.replace(/\/$/, "");
+            const trackingUrl = appPublicUrl
+              ? `${appPublicUrl}/r/${shortCode}`
+              : `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
 
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
