@@ -2,28 +2,42 @@
 
 ## Diagnóstico
 
-Os logs mostram que a sincronização **encontra mensagens com sucesso** (`Found 50 messages for Meire Rosana - Entregas`), mas a API da Evolution retorna dados paginados:
+O problema é que a tabela `conversations` tem um constraint de unicidade em `(user_id, remote_jid)`, sem incluir `instance_name`. Isso significa que se o mesmo contato (mesmo número de telefone) aparecer em duas instâncias diferentes, o upsert sobrescreve o `instance_name` com a última instância sincronizada.
 
-```
-total: 5776, pages: 116, currentPage: 1, records: [50 itens]
-```
+Além disso, a API da Evolution pode estar retornando mensagens que pertencem ao mesmo servidor/número mas que o usuário considera de outra conta. Como não temos controle sobre o que a API retorna, precisamos:
 
-O codigo atual so busca a **pagina 1** (50 mensagens de 5776 total). O parametro `limit: 500` e ignorado pela API, que usa paginacao propria de 50 por pagina.
+1. Permitir que o usuário exclua conversas indesejadas manualmente
+2. Corrigir o constraint de unicidade para incluir `instance_name`, evitando colisões entre instâncias
 
-Alem disso, a insercao de mensagens usa `.insert()` sem tratamento de conflito, entao mensagens duplicadas falham silenciosamente.
+## Correções
 
-## Correcoes
+### 1. Alterar o constraint de unicidade da tabela `conversations`
 
-### 1. Adicionar paginacao no findMessages
+Atualmente: `UNIQUE (user_id, remote_jid)`
+Novo: `UNIQUE (user_id, remote_jid, instance_name)`
 
-Fazer um loop buscando todas as paginas ate um limite razoavel (ex: 10 paginas = 500 mensagens recentes), usando o parametro `page` no body do POST.
+Isso permite que o mesmo contato exista em instâncias diferentes sem sobrescrever dados.
 
-### 2. Usar upsert para mensagens
+**Migração SQL:**
+- Dropar constraint antigo e criar o novo com `instance_name`
+- Atualizar o `onConflict` no upsert de `"user_id,remote_jid"` para `"user_id,remote_jid,instance_name"`
 
-Trocar `.insert()` por `.upsert()` com `onConflict: "external_id"` para evitar falhas silenciosas em duplicatas.
+### 2. Adicionar funcionalidade de excluir conversa
 
-### Arquivo a editar
-- `supabase/functions/evolution-proxy/index.ts`:
-  - Linhas 450-473: adicionar loop de paginacao no findMessages (buscar paginas 1 ate N enquanto houver records)
-  - Linha 576: trocar `.insert()` por `.upsert()` com conflito em `external_id`
+Permitir que o usuário delete conversas indesejadas via swipe ou botão de contexto na lista de conversas, para limpar dados incorretos vindos da API.
+
+**Alterações:**
+- Adicionar RLS policy para DELETE em `messages` (atualmente faltando)
+- Adicionar botão/menu de contexto na `ConversationList` para excluir conversa
+- Implementar função que deleta mensagens + conversa
+
+### 3. Limpar conversas fantasma existentes
+
+Executar migração para deletar as conversas que têm apenas mensagens de broadcast (a mesma mensagem "Oii meu bem...") sem interação real significativa.
+
+### Arquivos a editar
+- **Migração SQL**: alterar constraint + adicionar DELETE policy em messages
+- `supabase/functions/evolution-proxy/index.ts`: atualizar `onConflict` para incluir `instance_name`
+- `src/components/conversations/ConversationList.tsx`: adicionar opção de excluir conversa
+- `src/hooks/useConversations.ts`: adicionar função `deleteConversation`
 
