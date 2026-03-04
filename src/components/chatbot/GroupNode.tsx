@@ -108,19 +108,8 @@ function StepRow({
           </div>
         );
       }
-      case "waitDelay": {
-        return (
-          <div className="mx-1 mt-1 px-2.5 py-2 rounded-lg bg-muted/60 border border-border/30 flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-[11px] text-foreground/70 font-medium">{d.delaySeconds || 0}s</span>
-            {d.simulateTyping && (
-              <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-auto">
-                digitando...
-              </span>
-            )}
-          </div>
-        );
-      }
+      case "waitDelay":
+        return null;
       default:
         return null;
     }
