@@ -439,11 +439,18 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           return [...result, newStepNode];
         }
 
-        // Otherwise update the group
-        return nds.map((n) => {
+        // Otherwise update the group and create standalone node for removed step
+        const newStepNode: FlowNode = {
+          id: removedStep.id,
+          type: "step",
+          position: { x: (node.position?.x || 0) + 320, y: (node.position?.y || 0) + (data.steps.indexOf(removedStep) * 80) },
+          data: { ...removedStep.data } as FlowNodeData,
+        };
+        const updated = nds.map((n) => {
           if (n.id !== nodeId) return n;
           return { ...n, data: { ...data, steps: remainingSteps } };
         });
+        return [...updated, newStepNode];
       });
 
       setSelectedStepId(null);
