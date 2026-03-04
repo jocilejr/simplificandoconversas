@@ -14,7 +14,6 @@ const SettingsPage = () => {
   const [instanceName, setInstanceName] = useState("");
   const [fullName, setFullName] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
-  const [appPublicUrl, setAppPublicUrl] = useState("");
 
   useEffect(() => {
     if (profile) {
