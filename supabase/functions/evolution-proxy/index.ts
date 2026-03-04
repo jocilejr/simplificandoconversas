@@ -495,18 +495,7 @@ Deno.serve(async (req) => {
             console.error(`[sync-chats] Failed to set webhook for ${currentInstanceName}:`, e.message);
           }
 
-          // 3. Enable message store (ensure messages are persisted by Evolution API)
-          try {
-            const storeResp = await fetch(`${baseUrl}/chat/updateSettings/${encodeURIComponent(currentInstanceName)}`, {
-              method: "POST",
-              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-              body: JSON.stringify({ storeMessages: true, storeLids: true }),
-            });
-            const storeResult = await storeResp.text();
-            console.log(`[sync-chats] Store settings for ${currentInstanceName}: status=${storeResp.status}, result=${storeResult.substring(0, 200)}`);
-          } catch (e) {
-            console.error(`[sync-chats] Failed to enable store for ${currentInstanceName}:`, e.message);
-          }
+          // Note: updateSettings endpoint not available on this Evolution API version, skipped
 
           instanceStatuses.push({ instance: currentInstanceName, connectionState });
 
@@ -516,7 +505,7 @@ Deno.serve(async (req) => {
           let allMessages: any[] = [];
           
           // Paginate through findMessages (API returns 50 per page)
-          const MAX_PAGES = 10; // up to 500 messages
+          const MAX_PAGES = 3; // up to 150 messages for faster sync
           for (let page = 1; page <= MAX_PAGES; page++) {
             try {
               const msgsResp = await fetch(
@@ -645,11 +634,19 @@ Deno.serve(async (req) => {
             Deno.env.get("SUPABASE_URL")!,
             Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
           );
+          // Batch-fetch conversation IDs for all jids
+          const jidsWithInbound = Array.from(convMap).filter(([_, d]) => d.hasInbound).map(([jid]) => jid);
+          const { data: convRecords } = await serviceClient
+            .from("conversations")
+            .select("id, remote_jid")
+            .eq("user_id", userId)
+            .in("remote_jid", jidsWithInbound);
+          const convIdMap = new Map((convRecords || []).map((r: any) => [r.remote_jid, r.id]));
+
           for (const [jid, data] of convMap) {
-            // Skip outbound-only conversations (broadcast recipients)
             if (!data.hasInbound) continue;
-            const { data: convRecord } = await serviceClient.from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid).single();
-            if (!convRecord) continue;
+            const convId = convIdMap.get(jid);
+            if (!convId) continue;
             const inserts = [];
             for (const m of data.messages) {
               if (!m.key?.id) continue;
@@ -658,12 +655,8 @@ Deno.serve(async (req) => {
               let t = "text";
               if (m.message?.imageMessage) t = "image"; else if (m.message?.audioMessage) t = "audio"; else if (m.message?.videoMessage) t = "video";
               
-              let mediaUrl: string | null = null;
-              if (t !== "text") {
-                mediaUrl = await downloadAndUploadMedia(serviceClientMedia, evolution_api_url, evolution_api_key, currentInstanceName, m, t, userId);
-              }
-              
-              inserts.push({ conversation_id: convRecord.id, user_id: userId, remote_jid: jid, content: c, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: mediaUrl, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() });
+              // Skip media download during sync for speed — just mark the type, media will be null
+              inserts.push({ conversation_id: convId, user_id: userId, remote_jid: jid, content: c || `[${t}]`, message_type: t, direction: k.fromMe ? "outbound" : "inbound", status: "delivered", external_id: k.id, media_url: null, created_at: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString() });
             }
             for (let i = 0; i < inserts.length; i += 100) {
               await serviceClient.from("messages").upsert(inserts.slice(i, i + 100), { onConflict: "external_id" });
