@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const isServiceRole = token === serviceRoleKey;
 
-    const { flowId, remoteJid, conversationId, userId: bodyUserId } = await req.json();
+    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId } = await req.json();
 
     let userId: string;
     if (isServiceRole && bodyUserId) {
