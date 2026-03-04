@@ -92,6 +92,20 @@
 .react-flow__node:hover {
   z-index: 10 !important;
 }
+.react-flow__node-group {
+  background: transparent !important;
+}
+
+/* ═══════════════════════════════════════
+   GroupNode — Handle positioning
+   ═══════════════════════════════════════ */
+.group-handle-target {
+  top: 24px !important;
+}
+.group-handle-source {
+  top: auto !important;
+  bottom: 16px !important;
+}
 
 /* ═══════════════════════════════════════
    React Flow — Handles (connection points)
