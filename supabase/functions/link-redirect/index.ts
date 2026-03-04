@@ -88,39 +88,48 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Real human click — mark as clicked and resume flow
+  // Real human click — redirect IMMEDIATELY, process in background
   if (!link.clicked) {
-    await serviceClient
-      .from("tracked_links")
-      .update({ clicked: true, clicked_at: new Date().toISOString() })
-      .eq("id", link.id);
-
-    if (link.next_node_id && link.flow_id && link.execution_id) {
+    // Fire-and-forget: mark as clicked and resume flow in background
+    const processClick = async () => {
       try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        await serviceClient
+          .from("tracked_links")
+          .update({ clicked: true, clicked_at: new Date().toISOString() })
+          .eq("id", link.id);
 
-        await fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${serviceRoleKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            flowId: link.flow_id,
-            remoteJid: link.remote_jid,
-            conversationId: link.conversation_id,
-            userId: link.user_id,
-            resumeFromNodeId: link.next_node_id,
-          }),
-        });
-        console.log(`[link-redirect] Resumed flow ${link.flow_id} from node ${link.next_node_id}`);
+        if (link.next_node_id && link.flow_id && link.execution_id) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+          fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${serviceRoleKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              flowId: link.flow_id,
+              remoteJid: link.remote_jid,
+              conversationId: link.conversation_id,
+              userId: link.user_id,
+              resumeFromNodeId: link.next_node_id,
+            }),
+          }).then(() => {
+            console.log(`[link-redirect] Resumed flow ${link.flow_id} from node ${link.next_node_id}`);
+          }).catch((err) => {
+            console.error("[link-redirect] Failed to resume flow:", err);
+          });
+        }
       } catch (err) {
-        console.error("[link-redirect] Failed to resume flow:", err);
+        console.error("[link-redirect] Error processing click:", err);
       }
-    }
+    };
+    // Don't await — let it run in background
+    processClick();
   }
 
+  // Redirect immediately without waiting for processing
   return new Response(null, {
     status: 302,
     headers: { Location: link.original_url, ...corsHeaders },
