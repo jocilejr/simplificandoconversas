@@ -61,7 +61,7 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
   };
 
   return (
-    <div className="flex items-center gap-2 min-w-[200px] max-w-[300px] py-1">
+    <div className="flex items-center gap-2.5 min-w-[260px] max-w-[340px] py-0.5">
       <audio ref={audioRef} src={src} preload="metadata" />
 
       {/* Play/Pause */}
@@ -105,7 +105,7 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
           />
         </div>
         <span className={cn(
-          "text-[10px] leading-none mt-0.5 block",
+          "text-[10px] leading-none -mt-0.5 block",
           isOutbound ? "text-white/45" : "text-[#8696a0]"
         )}>
           {formatTime(playing ? currentTime : duration)}
