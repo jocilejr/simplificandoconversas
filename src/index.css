@@ -241,8 +241,8 @@
 .wa-audio-player {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 6px 4px 4px;
+  gap: 0px;
+  padding: 4px 6px 2px 4px;
 }
 
 .wa-audio-player__top {
