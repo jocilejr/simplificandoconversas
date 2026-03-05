@@ -204,6 +204,7 @@ export function AppSidebar() {
           )}
         </div>
       </SidebarFooter>
+      <ManualFlowTrigger open={triggerOpen} onOpenChange={setTriggerOpen} />
     </Sidebar>
   );
 }
