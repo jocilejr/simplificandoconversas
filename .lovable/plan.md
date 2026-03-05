@@ -2,23 +2,33 @@
 
 ## Corrigir player de áudio no GroupNode
 
-### Problema
-O `<audio>` nativo do browser está sendo bloqueado pelo React Flow. Mesmo com `stopPropagation`, o React Flow intercepta eventos pointer no nível do nó, impedindo interação com os controles do `<audio>`. Isso é um problema conhecido do React Flow — elementos interativos dentro de nós custom precisam de tratamento especial.
+### Problema raiz
+O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
 
 ### Solução
-O problema é que o React Flow captura eventos pointer no container do nó. A solução é usar `pointer-events: all` explicitamente no elemento `<audio>` e adicionar `style={{ pointerEvents: 'all' }}` diretamente. Além disso, o `<audio>` precisa de `controlsList` para garantir que todos os controles são visíveis.
+Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
 
-Mas o problema principal é provavelmente que o `renderPreview()` para `sendAudio` retorna o player, mas o bloco de fallback genérico no final do `StepRow` (que renderiza o header + `renderPreview()`) pode estar sendo usado em vez do bloco especial. Preciso verificar o fluxo de renderização.
+O player terá:
+- Botão play/pause (ícone)
+- Barra de progresso simples (div com width percentual)
+- Duração e tempo atual em texto
+- Sem waves, sem controles nativos
 
-Verificando: o `sendAudio` tem `hasRichPreview = true` (linha inclui "sendAudio"), então cai no bloco genérico que renderiza header + `renderPreview()`. O `renderPreview()` retorna o `<audio>`. Mas o wrapper genérico **não** tem `nopan nodrag nowheel` — apenas o div interno do `renderPreview()` tem.
+### Preview sem URL
+Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
 
 ### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-1. **Wrapper genérico do StepRow** — Adicionar classes `nopan nodrag nowheel` no wrapper quando o tipo for `sendAudio`, para que React Flow não intercepte eventos no nível do step inteiro.
+1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
+   - `useRef` para `new Audio(src)` 
+   - `useState` para `isPlaying`, `currentTime`, `duration`
+   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
+   - Barra de progresso visual (div bg com width%)
+   - Display de tempo `currentTime / duration`
 
-2. **Audio element** — Adicionar `style={{ pointerEvents: 'all' }}` no `<audio>` e no wrapper para forçar interatividade. Adicionar `onTouchStart` stop propagation também.
+2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
 
-3. **Garantir height adequado** — Usar `height: 40px` com `min-height: 40px` para que os controles do browser (incluindo barra de progresso e tempo) fiquem visíveis.
+3. **Manter** badge "Gravando" se `simulateRecording`
 
 ### Arquivo alterado
 - `src/components/chatbot/GroupNode.tsx`
