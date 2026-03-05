@@ -188,6 +188,32 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     [reactFlowInstance, setNodes]
   );
 
+  const addNodeAtPosition = useCallback(
+    (type: FlowNodeType, flowPos: { x: number; y: number }) => {
+      if (type === "groupBlock") return;
+      const config = nodeTypeConfig[type];
+      const newNode: FlowNode = {
+        id: crypto.randomUUID(),
+        type: "step",
+        position: flowPos,
+        data: { label: config.label, type, ...defaultNodeData[type] } as FlowNodeData,
+      };
+      setNodes((nds) => nds.concat(newNode));
+      setContextMenu(null);
+      toast.success(`${config.label} adicionado`);
+    },
+    [setNodes]
+  );
+
+  const onPaneContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      setContextMenu({ x: event.clientX, y: event.clientY, flowPos });
+    },
+    [reactFlowInstance]
+  );
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
