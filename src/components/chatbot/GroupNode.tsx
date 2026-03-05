@@ -117,6 +117,45 @@ function StepDuplicateButton({ nodeId, stepId }: { nodeId: string; stepId: strin
   );
 }
 
+function DragHandle({
+  index,
+  stepId,
+  nodeId,
+  onDragStart,
+  onDragEnd,
+  containerRef,
+}: {
+  index: number;
+  stepId: string;
+  nodeId: string;
+  onDragStart: (i: number) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  containerRef: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("application/step-id", stepId);
+        e.dataTransfer.setData("application/source-node-id", nodeId);
+        // Use parent container as drag image
+        if (containerRef.current) {
+          e.dataTransfer.setDragImage(containerRef.current, containerRef.current.offsetWidth / 2, containerRef.current.offsetHeight / 2);
+        }
+        onDragStart(index);
+      }}
+      onDragEnd={onDragEnd}
+      className="flex-shrink-0 cursor-grab active:cursor-grabbing opacity-0 group-hover/step:opacity-100 transition-opacity nopan nodrag"
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 hover:text-muted-foreground" />
+    </div>
+  );
+}
+
 function StepRow({
   step,
   index,
