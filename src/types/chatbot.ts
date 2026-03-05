@@ -44,6 +44,9 @@ export interface FlowNodeData {
   paths?: number;
   // Wait/Delay
   delaySeconds?: number;
+  delayRandomMode?: boolean;
+  delayMinSeconds?: number;
+  delayMaxSeconds?: number;
   simulateTyping?: boolean;
   // Wait for Reply
   replyVariable?: string;
