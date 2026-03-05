@@ -21,6 +21,29 @@ const Conversations = () => {
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
   const { instances } = useEvolutionInstances();
+  const { user } = useAuth();
+
+  // Fetch all conversation labels with label details for the sidebar
+  const { data: allConversationLabels } = useQuery({
+    queryKey: ["all_conversation_labels"],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("conversation_labels")
+        .select("*, labels(*)");
+      if (error) throw error;
+      return data as ({ conversation_id: string; label_id: string; labels: Label })[];
+    },
+  });
+
+  const conversationLabelsMap = useMemo(() => {
+    const map: Record<string, Label[]> = {};
+    (allConversationLabels || []).forEach((cl) => {
+      if (!map[cl.conversation_id]) map[cl.conversation_id] = [];
+      if (cl.labels) map[cl.conversation_id].push(cl.labels);
+    });
+    return map;
+  }, [allConversationLabels]);
 
   const remoteJids = useMemo(
     () => (conversations || []).map((c) => c.remote_jid),
