@@ -471,6 +471,7 @@ export type Database = {
           execution_id: string | null
           flow_id: string
           id: string
+          instance_name: string | null
           next_node_id: string | null
           original_url: string
           preview_description: string | null
@@ -488,6 +489,7 @@ export type Database = {
           execution_id?: string | null
           flow_id: string
           id?: string
+          instance_name?: string | null
           next_node_id?: string | null
           original_url: string
           preview_description?: string | null
@@ -505,6 +507,7 @@ export type Database = {
           execution_id?: string | null
           flow_id?: string
           id?: string
+          instance_name?: string | null
           next_node_id?: string | null
           original_url?: string
           preview_description?: string | null
