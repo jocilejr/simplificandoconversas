@@ -1,6 +1,41 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy, GripVertical, FileText } from "lucide-react";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+/* ---- PDF Thumbnail ---- */
+function PdfThumbnail({ src }: { src: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!src) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pdf = await pdfjsLib.getDocument(src).promise;
+        const page = await pdf.getPage(1);
+        const canvas = canvasRef.current;
+        if (!canvas || cancelled) return;
+        const vp = page.getViewport({ scale: 1 });
+        const scale = 200 / vp.width;
+        const viewport = page.getViewport({ scale });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d")!;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [src]);
+
+  if (error) return null;
+  return <canvas ref={canvasRef} className="w-full rounded-t-lg" style={{ maxHeight: 140, objectFit: "contain" }} />;
+}
 
 /* ---- Mini player customizado para dentro do React Flow ---- */
 function AudioPreviewPlayer({ src }: { src: string }) {
