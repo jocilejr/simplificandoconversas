@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
     // === CHECK FOR WAITING_REPLY: Resume flow if contact responded ===
     if (!fromMe && messageContent) {
       try {
-        await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id);
+        await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id, instance);
       } catch (resumeErr) {
         console.error("Resume waiting_reply error (non-fatal):", resumeErr);
       }
@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
     // === AUTO-TRIGGER: Check keyword matching for inbound messages ===
     if (!fromMe && messageContent) {
       try {
-        await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id);
+        await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance);
       } catch (triggerErr) {
         console.error("Flow trigger error (non-fatal):", triggerErr);
       }
@@ -292,7 +292,8 @@ async function checkAndTriggerFlows(
   userId: string,
   remoteJid: string,
   messageContent: string,
-  conversationId: string
+  conversationId: string,
+  instanceName: string
 ) {
   // 1. Fetch all active flows for this user
   const { data: flows, error: flowsErr } = await supabase
@@ -373,6 +374,7 @@ async function checkAndTriggerFlows(
         remoteJid,
         conversationId,
         userId,
+        instanceName,
       }),
     })
       .then(r => r.json())
@@ -384,7 +386,8 @@ async function checkAndResumeWaitingReply(
   supabase: any,
   userId: string,
   remoteJid: string,
-  conversationId: string
+  conversationId: string,
+  instanceName: string
 ) {
   // Find active execution waiting for reply from this contact
   const { data: waitingExecs } = await supabase
@@ -465,6 +468,7 @@ async function checkAndResumeWaitingReply(
       conversationId,
       userId,
       resumeFromNodeId: nextNodeId,
+      instanceName,
     }),
   })
     .then((r) => r.json())
