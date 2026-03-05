@@ -219,7 +219,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             {activeExecutions && activeExecutions.length > 0 ? (
               <div className="space-y-2">
                 {activeExecutions.map((exec: any) => {
-                  const isWaiting = exec.status === "waiting_click";
+                  const isWaiting = exec.status === "waiting_click" || exec.status === "waiting_reply";
                   return (
                     <div key={exec.id} className={cn(
                       "flex items-center justify-between rounded-xl p-3",
