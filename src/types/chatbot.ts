@@ -182,7 +182,7 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   sendImage: { mediaUrl: "", caption: "" },
   condition: { conditionField: "mensagem", conditionOperator: "contains", conditionValue: "" },
   randomizer: { paths: 2 },
-  waitDelay: { delaySeconds: 3, simulateTyping: true, delayRandomMode: false, delayMinSeconds: 3, delayMaxSeconds: 9 },
+  waitDelay: { delaySeconds: 3, simulateTyping: true, delayRandomMode: false, delayMinSeconds: 3, delayMaxSeconds: 9, delayPresenceType: "composing" },
   waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyTimeoutUnit: "minutes", replyFallback: "" },
   action: { actionType: "add_tag", actionValue: "" },
   groupBlock: { steps: [] },

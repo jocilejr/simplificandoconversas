@@ -162,9 +162,16 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
               <Input type="number" value={d.delaySeconds || 0} onChange={(e) => update({ delaySeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
             </div>
           )}
-          <div className="flex items-center justify-between">
-            <Label className="text-xs">Simular "digitando..."</Label>
-            <Switch checked={d.simulateTyping !== false} onCheckedChange={(v) => update({ simulateTyping: v })} />
+          <div className="space-y-1.5">
+            <Label className="text-xs">Simulação de presença</Label>
+            <Select value={d.delayPresenceType || "none"} onValueChange={(v) => update({ delayPresenceType: v as any, simulateTyping: v !== "none" })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhuma</SelectItem>
+                <SelectItem value="composing">Digitando...</SelectItem>
+                <SelectItem value="recording">Gravando áudio...</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </>
       )}
