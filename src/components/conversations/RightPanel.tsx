@@ -236,7 +236,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                             {exec.chatbot_flows?.name || "Fluxo"}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
-                            {isWaiting ? "Aguardando clique" : "Executando"}
+                            {exec.status === "waiting_click" ? "Aguardando clique" : exec.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
                           </span>
                         </div>
                       </div>
