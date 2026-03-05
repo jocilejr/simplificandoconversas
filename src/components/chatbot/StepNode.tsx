@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, Clock, Copy } from "lucide-react";
+import { icons, Clock, Copy, Trash2 } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 interface StepNodeProps {
