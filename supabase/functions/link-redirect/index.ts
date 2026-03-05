@@ -98,16 +98,28 @@ Deno.serve(async (req) => {
           .update({ clicked: true, clicked_at: new Date().toISOString() })
           .eq("id", link.id);
 
-        // Mark the old execution as completed since the click happened
+        // Check if the execution is still waiting for this click
+        let executionActive = false;
         if (link.execution_id) {
-          await serviceClient
+          const { data: execution } = await serviceClient
             .from("flow_executions")
-            .update({ status: "completed" })
+            .select("status")
             .eq("id", link.execution_id)
-            .eq("status", "waiting_click");
+            .single();
+
+          if (execution?.status === "waiting_click") {
+            executionActive = true;
+            // Mark the old execution as completed since the click happened
+            await serviceClient
+              .from("flow_executions")
+              .update({ status: "completed" })
+              .eq("id", link.execution_id);
+          } else {
+            console.log(`[link-redirect] Execution ${link.execution_id} status is '${execution?.status}' - not resuming flow`);
+          }
         }
 
-        if (link.next_node_id && link.flow_id && link.execution_id) {
+        if (executionActive && link.next_node_id && link.flow_id && link.execution_id) {
           const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
           const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -123,9 +135,10 @@ Deno.serve(async (req) => {
               conversationId: link.conversation_id,
               userId: link.user_id,
               resumeFromNodeId: link.next_node_id,
+              instanceName: link.instance_name || undefined,
             }),
           }).then(() => {
-            console.log(`[link-redirect] Resumed flow ${link.flow_id} from node ${link.next_node_id}`);
+            console.log(`[link-redirect] Resumed flow ${link.flow_id} from node ${link.next_node_id} via instance ${link.instance_name}`);
           }).catch((err) => {
             console.error("[link-redirect] Failed to resume flow:", err);
           });
