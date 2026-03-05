@@ -407,6 +407,92 @@ function StepRow({
     );
   }
 
+  // For condition, render a styled card with rule pills
+  if (d.type === "condition") {
+    const operatorLabels: Record<string, string> = { equals: "=", contains: "contém", starts_with: "começa com", regex: "regex" };
+    const hasRule = d.conditionField && d.conditionValue;
+    return (
+      <div
+        ref={containerRef}
+        data-step-id={step.id}
+        onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+        onDragOver={(e) => { e.preventDefault(); }}
+        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer nopan nodrag ${
+          isDragging ? "opacity-30 scale-95" : isDropTarget ? "ring-1 ring-primary/30 scale-[1.02]" : ""
+        }`}
+      >
+        <div className="flex items-center gap-2.5 px-3 py-2 bg-red-500/8 border-b border-red-500/15">
+          <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
+          <div className="w-6 h-6 rounded-md bg-red-500/15 flex items-center justify-center flex-shrink-0">
+            {LucideIcon && <LucideIcon className="w-3.5 h-3.5 text-red-400" />}
+          </div>
+          <span className="text-[11px] font-semibold text-red-400">{d.label || "Condição"}</span>
+        </div>
+        <div className="px-3 py-2.5 bg-muted/30">
+          {hasRule ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-500/10 text-[10px] font-semibold text-red-400 border border-red-500/20">
+                {d.conditionField}
+              </span>
+              <span className="text-[10px] text-muted-foreground font-medium">
+                {operatorLabels[d.conditionOperator || "contains"] || d.conditionOperator}
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-foreground/5 text-[10px] font-medium text-foreground/70 border border-border/40">
+                "{d.conditionValue}"
+              </span>
+            </div>
+          ) : (
+            <p className="text-[10px] text-muted-foreground/60 italic">Configurar condição...</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // For action, render a styled card with action type badge
+  if (d.type === "action") {
+    const actionLabels: Record<string, { label: string; color: string }> = {
+      add_tag: { label: "Tag", color: "#f97316" },
+      remove_tag: { label: "Remover Tag", color: "#ef4444" },
+      add_to_list: { label: "Lista", color: "#3b82f6" },
+      set_variable: { label: "Variável", color: "#8b5cf6" },
+    };
+    const actionInfo = actionLabels[d.actionType || "add_tag"] || actionLabels.add_tag;
+    return (
+      <div
+        ref={containerRef}
+        data-step-id={step.id}
+        onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+        onDragOver={(e) => { e.preventDefault(); }}
+        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer nopan nodrag ${
+          isDragging ? "opacity-30 scale-95" : isDropTarget ? "ring-1 ring-primary/30 scale-[1.02]" : ""
+        }`}
+      >
+        <div className="flex items-center gap-2.5 px-3 py-2 bg-orange-500/8 border-b border-orange-500/15">
+          <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
+          <div className="w-6 h-6 rounded-md bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+            {LucideIcon && <LucideIcon className="w-3.5 h-3.5 text-orange-400" />}
+          </div>
+          <span className="text-[11px] font-semibold text-orange-400">{d.label || "Ação"}</span>
+        </div>
+        <div className="px-3 py-2.5 bg-muted/30">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border"
+              style={{ backgroundColor: `${actionInfo.color}15`, color: actionInfo.color, borderColor: `${actionInfo.color}30` }}
+            >
+              {actionInfo.label}
+            </span>
+            {d.actionValue ? (
+              <span className="text-[11px] text-foreground/70 font-medium truncate">{d.actionValue}</span>
+            ) : (
+              <span className="text-[10px] text-muted-foreground/60 italic">Sem valor</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (d.type === "sendText" && d.textContent) {
     const html = parseWhatsAppFormatting(d.textContent);
@@ -435,11 +521,7 @@ function StepRow({
 
   // Compact description for remaining types
   let desc = config.description;
-  if (d.type === "action") {
-    desc = d.actionValue || config.description;
-  } else if (d.type === "condition") {
-    desc = `${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
-  } else if (d.type === "waitForReply") {
+  if (d.type === "waitForReply") {
     desc = `Salvar em {{${d.replyVariable || "resposta"}}}`;
   }
 
