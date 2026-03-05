@@ -381,6 +381,7 @@ async function checkAndTriggerFlows(
       .then(r => console.log(`Flow ${flow.id} trigger result:`, r))
       .catch(e => console.error(`Flow ${flow.id} call error:`, e));
 }
+}
 
 async function checkAndResumeWaitingReply(
   supabase: any,
