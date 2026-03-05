@@ -617,6 +617,16 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => document.removeEventListener("group-receive-step", handler);
   }, [setNodes]);
 
+  // Listen for group-delete events from GroupNode
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      setDeleteGroupId(nodeId);
+    };
+    document.addEventListener("group-delete", handler);
+    return () => document.removeEventListener("group-delete", handler);
+  }, []);
+
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>
