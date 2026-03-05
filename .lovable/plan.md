@@ -1,35 +1,37 @@
 
 
-## Corrigir player de áudio no GroupNode
+## Plano: Corrigir fluxo não continuando após "Capturar Resposta"
 
-### Problema raiz
-O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
+### Problema identificado
 
-### Solução
-Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
+Há 3 bugs interligados no webhook e no executor:
 
-O player terá:
-- Botão play/pause (ícone)
-- Barra de progresso simples (div com width percentual)
-- Duração e tempo atual em texto
-- Sem waves, sem controles nativos
+1. **`checkAndResumeWaitingReply` encontra o nó errado**: Ela itera TODOS os nós do fluxo e pega o PRIMEIRO `waitForReply` que encontrar, não o que realmente estava pausado. Se houver múltiplos grupos com `waitForReply`, sempre retoma do primeiro — causando o loop.
 
-### Preview sem URL
-Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
+2. **`checkAndTriggerFlows` roda APÓS a retomada**: Após completar a execução antiga e disparar a retomada, o webhook ainda roda `checkAndTriggerFlows`. Se o texto da resposta do contato bater com a keyword do trigger, ele inicia o fluxo DO ZERO novamente.
 
-### Alterações em `src/components/chatbot/GroupNode.tsx`
+3. **Bloqueio incompleto no trigger**: `checkAndTriggerFlows` só verifica execuções com status `"running"`, ignorando `"waiting_reply"` e `"waiting_click"`. Então mesmo sem o bug 2, um novo fluxo poderia ser disparado enquanto outro está pausado.
 
-1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
-   - `useRef` para `new Audio(src)` 
-   - `useState` para `isPlaying`, `currentTime`, `duration`
-   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
-   - Barra de progresso visual (div bg com width%)
-   - Display de tempo `currentTime / duration`
+### Correções
 
-2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+**1. Migração: adicionar `waiting_node_id` na tabela `flow_executions`**
+- Coluna `text nullable` para armazenar o ID do nó que está em espera.
 
-3. **Manter** badge "Gravando" se `simulateRecording`
+**2. `execute-flow/index.ts` — Salvar o `waiting_node_id` ao pausar**
+- Quando o executor seta `waiting_reply` ou `waiting_click`, também gravar `waiting_node_id: node.id` (ou `node.id` do grupo que contém o step).
 
-### Arquivo alterado
-- `src/components/chatbot/GroupNode.tsx`
+**3. `evolution-webhook/index.ts` — Usar `waiting_node_id` para retomar corretamente**
+- Em `checkAndResumeWaitingReply`: ler o `waiting_node_id` da execução, encontrar a edge de saída (output-0) desse nó específico, e retomar a partir do target correto.
+- Retornar `true` se retomou um fluxo.
+
+**4. `evolution-webhook/index.ts` — Pular trigger se retomou**
+- Se `checkAndResumeWaitingReply` retornou `true`, não chamar `checkAndTriggerFlows`.
+
+**5. `evolution-webhook/index.ts` — Bloquear trigger em TODOS os status ativos**
+- Em `checkAndTriggerFlows`, verificar execuções com status `in("running", "waiting_click", "waiting_reply")` ao invés de apenas `"running"`.
+
+### Arquivos alterados
+- Nova migração SQL (1 coluna)
+- `supabase/functions/execute-flow/index.ts` (4 pontos: standalone waitForClick, standalone waitForReply, group waitForClick, group waitForReply)
+- `supabase/functions/evolution-webhook/index.ts` (3 funções: checkAndResumeWaitingReply, checkAndTriggerFlows, chamada no handler principal)
 
