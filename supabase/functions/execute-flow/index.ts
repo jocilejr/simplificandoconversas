@@ -610,7 +610,7 @@ Deno.serve(async (req) => {
             // Pause execution - waiting for click
             await serviceClient
               .from("flow_executions")
-              .update({ status: "waiting_click", current_node_index: nodeIndex })
+              .update({ status: "waiting_click", current_node_index: nodeIndex, waiting_node_id: node.id })
               .eq("id", executionId);
 
             // Insert timeout if configured
