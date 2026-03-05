@@ -163,7 +163,7 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
         </div>
       </div>
 
-      {/* Bottom: duration + timestamp */}
+      {/* Bottom: duration left, timestamp right — aligned under waveform */}
       <div className="wa-audio-player__bottom">
         <span
           className="wa-audio-player__time"
