@@ -65,7 +65,7 @@ interface FlowEditorProps {
   onSave?: (name: string, nodes: any[], edges: any[], instanceNames: string[]) => Promise<void>;
 }
 
-function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack, onSave }: FlowEditorProps) {
+function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initialInstanceNames, onBack, onSave }: FlowEditorProps) {
   const migratedNodes = useMemo(() => {
     const raw = initialNodes || [];
     return raw.map((n: any) => {
