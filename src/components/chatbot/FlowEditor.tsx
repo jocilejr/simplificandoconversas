@@ -98,6 +98,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const isInitialMount = useRef(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; flowPos: { x: number; y: number } } | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useReactFlow();
   const { saveSnapshot } = useFlowHistory(flowId);
