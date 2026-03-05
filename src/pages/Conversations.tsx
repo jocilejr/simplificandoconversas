@@ -14,7 +14,7 @@ const Conversations = () => {
   const queryClient = useQueryClient();
   const { data: conversations, isLoading: loadingConvs, markAsRead, deleteConversation } = useConversations();
   const [selected, setSelected] = useState<Conversation | null>(null);
-  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [showRightPanel, setShowRightPanel] = useState(true);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
