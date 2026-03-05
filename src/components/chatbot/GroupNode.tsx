@@ -476,7 +476,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
                 position={Position.Right}
                 id="output-0"
                 className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-0"
-                style={{ background: accentColor }}
+                style={{ background: "#10b981" }}
               />
             </div>
             <div className="relative flex items-center justify-end pr-5 h-6">
