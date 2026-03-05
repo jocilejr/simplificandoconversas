@@ -320,14 +320,47 @@ export function ChatPanel({
           </PopoverContent>
         </Popover>
 
-
-        <Input
-          placeholder="Digite uma mensagem..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          className="h-10 bg-secondary/50 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full px-4 text-sm"
-        />
+        <div className="relative flex-1">
+          {showQuickReplies && quickReplies && quickReplies.length > 0 && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 bg-popover border border-border rounded-xl shadow-lg p-1.5 max-h-48 overflow-y-auto z-10">
+              <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Respostas Rápidas</p>
+              {quickReplies
+                .filter((qr) => {
+                  const search = text.slice(1).toLowerCase();
+                  return !search || qr.title.toLowerCase().includes(search) || qr.content.toLowerCase().includes(search);
+                })
+                .map((qr) => (
+                  <button
+                    key={qr.id}
+                    className="flex flex-col w-full px-2.5 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setText(qr.content);
+                      setShowQuickReplies(false);
+                    }}
+                  >
+                    <span className="text-sm font-medium truncate">{qr.title}</span>
+                    <span className="text-xs text-muted-foreground truncate">{qr.content}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+          <Input
+            placeholder="Digite uma mensagem... (/ para respostas rápidas)"
+            value={text}
+            onChange={(e) => {
+              const val = e.target.value;
+              setText(val);
+              setShowQuickReplies(val.startsWith("/"));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setShowQuickReplies(false);
+              if (e.key === "Enter" && !e.shiftKey && !showQuickReplies) handleSend();
+            }}
+            onBlur={() => setTimeout(() => setShowQuickReplies(false), 150)}
+            className="h-10 bg-secondary/50 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full px-4 text-sm"
+          />
+        </div>
         <Button
           size="icon"
           className="h-9 w-9 rounded-full shrink-0 shadow-sm"
