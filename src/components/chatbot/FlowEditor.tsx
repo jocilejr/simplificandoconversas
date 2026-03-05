@@ -962,9 +962,10 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
       </AlertDialog>
 
       {/* Right-click context menu */}
-      {contextMenu && (
+      {contextMenu && (<>
+        <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
         <div
-          className="fixed z-[100] w-64 bg-card border border-border rounded-xl shadow-2xl p-2 space-y-3 animate-in fade-in-0 zoom-in-95"
+          className="fixed z-[100] w-64 max-h-[70vh] overflow-y-auto bg-card border border-border rounded-xl shadow-2xl p-2 space-y-3 animate-in fade-in-0 zoom-in-95"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
