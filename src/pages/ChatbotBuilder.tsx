@@ -34,9 +34,10 @@ const ChatbotBuilder = () => {
           flowName={flow?.name || "Novo Fluxo"}
           initialNodes={flow?.nodes || []}
           initialEdges={flow?.edges || []}
+          initialInstanceNames={flow?.instance_names || []}
           onBack={() => setEditingFlowId(null)}
-          onSave={async (name, nodes, edges) => {
-            await updateFlow.mutateAsync({ id: editingFlowId, name, nodes, edges });
+          onSave={async (name, nodes, edges, instanceNames) => {
+            await updateFlow.mutateAsync({ id: editingFlowId, name, nodes, edges, instance_names: instanceNames });
           }}
         />
       </div>
