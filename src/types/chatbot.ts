@@ -128,6 +128,12 @@ export const nodeTypeConfig: Record<
     icon: "Image",
     description: "Envia uma imagem",
   },
+  sendFile: {
+    label: "Enviar Arquivo",
+    color: "#dc2626",
+    icon: "FileText",
+    description: "Envia um documento PDF",
+  },
   condition: {
     label: "Condição",
     color: "#ef4444",
