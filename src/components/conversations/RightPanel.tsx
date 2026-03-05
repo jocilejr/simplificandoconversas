@@ -306,7 +306,10 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   <div key={label.id} className="flex items-center justify-between group">
                     <button
                       className="flex items-center gap-2 text-xs py-1.5 hover:text-foreground text-muted-foreground transition-colors"
-                      onClick={() => assign.mutate(label.id)}
+                      onClick={() => assign.mutate(label.id, {
+                        onSuccess: () => toast.success("Etiqueta atribuída"),
+                        onError: (err: any) => toast.error("Erro ao atribuir etiqueta: " + err.message),
+                      })}
                     >
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
                       {label.name}
