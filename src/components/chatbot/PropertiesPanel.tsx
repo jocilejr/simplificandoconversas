@@ -100,6 +100,14 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
         </>
       )}
 
+      {/* Send File (PDF) */}
+      {d.type === "sendFile" && (
+        <MediaUpload label="Documento PDF" value={d.fileUrl || ""} accept=".pdf,application/pdf" onChange={(url) => {
+          const fileName = url ? url.split("/").pop() || "documento.pdf" : "";
+          update({ fileUrl: url, fileName });
+        }} />
+      )}
+
       {/* Condition */}
       {d.type === "condition" && (
         <>

@@ -6,6 +6,7 @@ export type FlowNodeType =
   | "sendAudio"
   | "sendVideo"
   | "sendImage"
+  | "sendFile"
   | "condition"
   | "randomizer"
   | "waitDelay"
@@ -36,6 +37,9 @@ export interface FlowNodeData {
   // Send Video/Image
   mediaUrl?: string;
   caption?: string;
+  // Send File (PDF)
+  fileUrl?: string;
+  fileName?: string;
   // Condition
   conditionField?: string;
   conditionOperator?: "equals" | "contains" | "starts_with" | "regex";
@@ -124,6 +128,12 @@ export const nodeTypeConfig: Record<
     icon: "Image",
     description: "Envia uma imagem",
   },
+  sendFile: {
+    label: "Enviar Arquivo",
+    color: "#dc2626",
+    icon: "FileText",
+    description: "Envia um documento PDF",
+  },
   condition: {
     label: "Condição",
     color: "#ef4444",
@@ -180,6 +190,7 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   sendAudio: { audioUrl: "", simulateRecording: false },
   sendVideo: { mediaUrl: "", caption: "" },
   sendImage: { mediaUrl: "", caption: "" },
+  sendFile: { fileUrl: "", fileName: "" },
   condition: { conditionField: "mensagem", conditionOperator: "contains", conditionValue: "" },
   randomizer: { paths: 2 },
   waitDelay: { delaySeconds: 3, simulateTyping: true, delayRandomMode: false, delayMinSeconds: 3, delayMaxSeconds: 9, delayPresenceType: "composing" },

@@ -32,6 +32,8 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
     case "sendVideo":
     case "sendImage":
       return d.mediaUrl ? "Mídia carregada" : "Sem mídia";
+    case "sendFile":
+      return d.fileUrl ? (d.fileName || "Arquivo carregado") : "Sem arquivo";
     case "condition":
       return `Se ${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
     case "randomizer":
