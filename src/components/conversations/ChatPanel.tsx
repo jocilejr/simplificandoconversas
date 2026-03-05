@@ -348,7 +348,7 @@ export function ChatPanel({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          className="h-10 bg-secondary/50 border-0 focus-visible:ring-1 focus-visible:ring-ring rounded-full px-4 text-sm"
+          className="h-10 bg-secondary/50 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full px-4 text-sm"
         />
         <Button
           size="icon"
