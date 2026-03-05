@@ -73,34 +73,39 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
     enabled: !!contactNumber,
   });
 
-  const { data: messageStats } = useQuery({
-    queryKey: ["message-stats", conversation.id],
+  // Fetch last messages from other instances for this contact
+  const { data: otherInstanceMessages } = useQuery({
+    queryKey: ["other-instance-messages", contactNumber, conversation.id],
     queryFn: async () => {
-      const { count: totalCount } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("conversation_id", conversation.id);
-      const { count: inboundCount } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("conversation_id", conversation.id)
-        .eq("direction", "inbound");
-      const { count: outboundCount } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("conversation_id", conversation.id)
-        .eq("direction", "outbound");
-      return {
-        total: totalCount || 0,
-        inbound: inboundCount || 0,
-        outbound: outboundCount || 0,
-      };
+      // Get conversations from other instances
+      const { data: otherConvs } = await supabase
+        .from("conversations")
+        .select("id, instance_name")
+        .eq("remote_jid", contactNumber)
+        .neq("id", conversation.id);
+      if (!otherConvs || otherConvs.length === 0) return [];
+
+      // Fetch last 3 messages from each other instance
+      const results = await Promise.all(
+        otherConvs.map(async (conv) => {
+          const { data: msgs } = await supabase
+            .from("messages")
+            .select("id, content, direction, message_type, created_at")
+            .eq("conversation_id", conv.id)
+            .order("created_at", { ascending: false })
+            .limit(3);
+          return {
+            instance_name: conv.instance_name,
+            messages: msgs || [],
+          };
+        })
+      );
+      return results.filter(r => r.messages.length > 0);
     },
-    enabled: !!conversation.id,
+    enabled: !!contactNumber && !!conversation.id,
   });
 
   const assignedLabelIds = new Set((convLabels || []).map(cl => cl.label_id));
-  const otherInstances = (crossInstanceConvs || []).filter(c => c.id !== conversation.id);
 
   const handleCreateQR = async () => {
     if (!qrTitle.trim() || !qrContent.trim()) return;
@@ -172,58 +177,44 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             </div>
           </div>
 
-          {/* ── Message Stats ── */}
-          {messageStats && (
+          {/* ── History from Other Instances ── */}
+          {otherInstanceMessages && otherInstanceMessages.length > 0 && (
             <div className="bg-secondary/40 rounded-2xl p-4">
               <div className="flex items-center gap-1.5 mb-3">
-                <MessageSquare className="h-3.5 w-3.5 text-primary" />
-                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Estatísticas</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-background rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-foreground">{messageStats.total}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
-                </div>
-                <div className="bg-background rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-primary">{messageStats.inbound}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Recebidas</p>
-                </div>
-                <div className="bg-background rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-info">{messageStats.outbound}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Enviadas</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Cross-Instance Conversations ── */}
-          {otherInstances.length > 0 && (
-            <div className="bg-secondary/40 rounded-2xl p-4">
-              <div className="flex items-center gap-1.5 mb-3">
-                <Globe className="h-3.5 w-3.5 text-info" />
+                <Globe className="h-3.5 w-3.5 text-primary" />
                 <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
-                  Outras Instâncias ({otherInstances.length})
+                  Histórico em Outras Instâncias
                 </span>
               </div>
-              <div className="space-y-2">
-                {otherInstances.map((conv) => (
-                  <div key={conv.id} className="bg-background rounded-xl p-3 flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                      <Globe className="h-3.5 w-3.5 text-info" />
+              <div className="space-y-3">
+                {otherInstanceMessages.map((inst, idx) => (
+                  <div key={idx}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Globe className="h-3 w-3 text-primary" />
+                      </div>
+                      <span className="text-[11px] font-semibold text-foreground">{inst.instance_name || "Sem nome"}</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-foreground truncate">
-                        {conv.instance_name || "Sem nome"}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                        {conv.last_message || "Sem mensagens"}
-                      </p>
+                    <div className="space-y-1 pl-6">
+                      {inst.messages.map((msg) => (
+                        <div key={msg.id} className="bg-background rounded-lg p-2 border border-border/20">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className={cn(
+                              "text-[10px] font-medium",
+                              msg.direction === "inbound" ? "text-primary" : "text-muted-foreground"
+                            )}>
+                              {msg.direction === "inbound" ? "Recebida" : "Enviada"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {format(new Date(msg.created_at), "dd/MM HH:mm")}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-foreground line-clamp-2">
+                            {msg.message_type !== "text" ? `[${msg.message_type}]` : msg.content || "—"}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    {conv.last_message_at && (
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {format(new Date(conv.last_message_at), "dd/MM")}
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
