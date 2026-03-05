@@ -468,14 +468,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
 
         {hasFinalizerStep && (
-          <div className="relative border-t border-border/40" style={{ height: '52px' }}>
-            <div className="absolute right-5 flex items-center" style={{ bottom: '32px' }}>
-              <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
-            </div>
-            <div className="absolute right-5 flex items-center" style={{ bottom: '8px' }}>
-              <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
-            </div>
-          </div>
+          <div className="border-t border-border/40" style={{ height: '48px' }} />
         )}
 
         {isDockTarget && (
@@ -489,6 +482,12 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
 
       {hasFinalizerStep ? (
         <>
+          <div className="absolute right-8 flex items-center" style={{ top: 'calc(100% - 42px)', transform: 'translateY(-50%)' }}>
+            <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
+          </div>
+          <div className="absolute right-8 flex items-center" style={{ top: 'calc(100% - 18px)', transform: 'translateY(-50%)' }}>
+            <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
+          </div>
           <Handle
             type="source"
             position={Position.Right}
