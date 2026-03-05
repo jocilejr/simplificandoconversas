@@ -59,43 +59,28 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
 
   const contactNumber = conversation.remote_jid;
-  const { data: crossInstanceConvs } = useQuery({
-    queryKey: ["cross-instance", contactNumber],
+  // Fetch last messages from ALL instances for this contact
+  const { data: allInstanceMessages } = useQuery({
+    queryKey: ["all-instance-messages", contactNumber, conversation.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("conversations")
-        .select("id, instance_name, last_message, last_message_at, unread_count")
-        .eq("remote_jid", contactNumber)
-        .order("last_message_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!contactNumber,
-  });
-
-  // Fetch last messages from other instances for this contact
-  const { data: otherInstanceMessages } = useQuery({
-    queryKey: ["other-instance-messages", contactNumber, conversation.id],
-    queryFn: async () => {
-      // Get conversations from other instances
-      const { data: otherConvs } = await supabase
+      const { data: allConvs } = await supabase
         .from("conversations")
         .select("id, instance_name")
-        .eq("remote_jid", contactNumber)
-        .neq("id", conversation.id);
-      if (!otherConvs || otherConvs.length === 0) return [];
+        .eq("remote_jid", contactNumber);
+      if (!allConvs || allConvs.length === 0) return [];
 
-      // Fetch last 3 messages from each other instance
       const results = await Promise.all(
-        otherConvs.map(async (conv) => {
+        allConvs.map(async (conv) => {
           const { data: msgs } = await supabase
             .from("messages")
             .select("id, content, direction, message_type, created_at")
             .eq("conversation_id", conv.id)
             .order("created_at", { ascending: false })
-            .limit(3);
+            .limit(5);
           return {
             instance_name: conv.instance_name,
+            conversation_id: conv.id,
+            is_current: conv.id === conversation.id,
             messages: msgs || [],
           };
         })
@@ -177,23 +162,26 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             </div>
           </div>
 
-          {/* ── History from Other Instances ── */}
-          {otherInstanceMessages && otherInstanceMessages.length > 0 && (
+          {/* ── History from All Instances ── */}
+          {allInstanceMessages && allInstanceMessages.length > 0 && (
             <div className="bg-secondary/40 rounded-2xl p-4">
               <div className="flex items-center gap-1.5 mb-3">
                 <Globe className="h-3.5 w-3.5 text-primary" />
                 <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
-                  Histórico em Outras Instâncias
+                  Histórico de Mensagens
                 </span>
               </div>
               <div className="space-y-3">
-                {otherInstanceMessages.map((inst, idx) => (
+                {allInstanceMessages.map((inst, idx) => (
                   <div key={idx}>
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
                         <Globe className="h-3 w-3 text-primary" />
                       </div>
-                      <span className="text-[11px] font-semibold text-foreground">{inst.instance_name || "Sem nome"}</span>
+                      <span className="text-[11px] font-semibold text-foreground">
+                        {inst.instance_name || "Sem nome"}
+                        {inst.is_current && " (atual)"}
+                      </span>
                     </div>
                     <div className="space-y-1 pl-6">
                       {inst.messages.map((msg) => (
