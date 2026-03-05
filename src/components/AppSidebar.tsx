@@ -40,6 +40,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path;
   const [unreadCount, setUnreadCount] = useState(0);
+  const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
   const { profile } = useProfile();
 
