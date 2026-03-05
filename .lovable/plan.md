@@ -1,24 +1,36 @@
 
 
-## Fix: Layout e 2 saídas do GroupNode
+## Fix: 2 saídas do GroupNode
 
-### Problema
-O `overflow-hidden` no card corta os handles do React Flow. Mover o footer para fora do card criou um layout quebrado — o footer fica desconectado visualmente e os handles continuam não aparecendo corretamente.
+### Causa raiz
+
+Em `src/index.css`, a classe `.group-handle-source` define:
+```css
+top: auto !important;
+bottom: 16px !important;
+```
+
+Isso sobrescreve os valores de `top` inline (`calc(100% - 42px)` e `calc(100% - 18px)`) dos dois handles, forçando ambos para a mesma posição (`bottom: 16px`). Resultado: os dois handles ficam empilhados e parecem ser apenas um.
 
 ### Solução
 
-Abordagem simples: **remover `overflow-hidden` do card** e colocar o footer de volta dentro dele. Sem `overflow-hidden`, os handles (que estão no wrapper externo `relative`) ficam visíveis normalmente. Para manter cantos arredondados no conteúdo interno (imagens, etc.), aplicar `rounded-xl` apenas nos elementos internos que precisam.
+1. **`src/index.css`**: Remover as regras `top` e `bottom` com `!important` da classe `.group-handle-source`. O posicionamento dos handles será controlado exclusivamente pelo inline `style` no componente React.
 
-### Mudanças em `src/components/chatbot/GroupNode.tsx`
+2. **`src/components/chatbot/GroupNode.tsx`**: Usar classes CSS distintas para os handles quando `hasFinalizerStep` é true (ex: `group-handle-output-0` e `group-handle-output-1`), ou simplesmente não usar a classe `group-handle-source` nos handles com `top` customizado. O handle padrão (sem finalizer) pode manter a classe com `bottom: 16px`.
 
-1. **Trocar `overflow-hidden` por `overflow-visible`** na classe do card div (linha 362).
+### Abordagem concreta
 
-2. **Mover o footer de volta para dentro do card** (antes do `isDockTarget`), removendo o bloco externo (linhas 479-488).
+- Criar duas novas classes em `index.css`: nenhuma regra de posicionamento — deixar o `style` inline do componente controlar.
+- Ou mais simples: **remover `!important` de `top` e `bottom`** na `.group-handle-source`, e usar `!important` apenas nos inline styles via Tailwind/style prop.
+- A abordagem mais limpa: remover a regra CSS global de posicionamento da `.group-handle-source` e deixar cada handle definir sua posição via `style` prop.
 
-3. **Garantir que o footer tenha borda superior** (`border-t`) para separar visualmente dos steps.
+### Mudanças
 
-4. **Ajustar posição dos handles** — como o footer agora está dentro do card, os valores de `top` dos handles devem alinhar com as labels "Continuou ✓" e "Se não clicou ⏱" que estarão no final do card.
+**`src/index.css`**: Remover `top: auto !important` e `bottom: 16px !important` de `.group-handle-source`.
 
-### Arquivo alterado
+**`src/components/chatbot/GroupNode.tsx`**: No handle padrão (single output, sem finalizer), adicionar `bottom: "16px"` no inline style para manter o comportamento atual. Os dois handles do finalizer já têm seus `top` values corretos — sem o `!important` do CSS, eles vão funcionar.
+
+### Arquivos alterados
+- `src/index.css`
 - `src/components/chatbot/GroupNode.tsx`
 
