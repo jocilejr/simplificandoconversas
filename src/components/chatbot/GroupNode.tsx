@@ -281,6 +281,15 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
   const headerConfig = firstStep ? nodeTypeConfig[firstStep.data.type] : null;
   const accentColor = headerConfig?.color || "hsl(142, 70%, 45%)";
 
+  // Check if any step in the group has timeout configured
+  const timeoutStep = steps.find(
+    (s) =>
+      (s.data.type === "waitForReply" && (s.data.replyTimeout || 0) > 0) ||
+      (s.data.type === "waitForClick" && (s.data.clickTimeout || 0) > 0)
+  );
+  const hasTimeoutOutputs = !!timeoutStep;
+  const timeoutLabel = timeoutStep?.data.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
+
   const handleDragStart = useCallback((i: number) => {
     setDragIndex(i);
   }, []);
@@ -446,12 +455,43 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
       </div>
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
-        style={{ background: accentColor }}
-      />
+      {hasTimeoutOutputs ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-0"
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
+            style={{ background: accentColor, top: "35%" }}
+          />
+          <span
+            className="absolute text-[9px] font-medium text-muted-foreground pointer-events-none"
+            style={{ right: -68, top: "calc(35% - 6px)" }}
+          >
+            Continuou ✓
+          </span>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-1"
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
+            style={{ background: "#f97316", top: "70%" }}
+          />
+          <span
+            className="absolute text-[9px] font-medium pointer-events-none"
+            style={{ right: -90, top: "calc(70% - 6px)", color: "#f97316" }}
+          >
+            {timeoutLabel} ⏱
+          </span>
+        </>
+      ) : (
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
+          style={{ background: accentColor }}
+        />
+      )}
     </div>
   );
 }
