@@ -85,7 +85,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           };
         })
       );
-      return results.filter(r => r.messages.length > 0);
+      return results.filter(r => r.messages.length > 0 && !r.is_current);
     },
     enabled: !!contactNumber && !!conversation.id,
   });
