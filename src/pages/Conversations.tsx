@@ -5,10 +5,12 @@ import { useContactPhotos } from "@/hooks/useContactPhoto";
 import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import { ChatPanel } from "@/components/conversations/ChatPanel";
 import { RightPanel } from "@/components/conversations/RightPanel";
+import { useAuth } from "@/hooks/useAuth";
+import { Label } from "@/hooks/useLabels";
 
 const Conversations = () => {
   const queryClient = useQueryClient();
