@@ -1,28 +1,40 @@
 
 
-## Melhorar layout do GroupNode com saídas de timeout
+## Organizar regras de "Aguardar Mensagem" e "Aguardar Clique" dentro de grupos
 
-O problema: os labels das saídas ("Continuou ✓" e "Se não clicou ⏱") usam posicionamento absoluto com `right: -68px` / `right: -90px`, ficando cortados ou invisíveis. O grupo também é estreito demais (280px) para acomodar bem os handles e labels.
+Os steps `waitForReply` e `waitForClick` devem ser tratados como "finalizadores" de grupo: sempre ficam na última posição, no máximo 1 por grupo, e determinam as saídas (2 handles: sucesso + timeout).
 
-### Mudanças em `src/components/chatbot/GroupNode.tsx`
+### Mudanças
 
-1. **Aumentar largura do grupo** de `w-[280px]` para `w-[320px]` quando `hasTimeoutOutputs`, dando mais espaço visual.
+#### 1. `src/components/chatbot/GroupNode.tsx` — UI do popover e rodapé
 
-2. **Adicionar rodapé interno** com os labels de saída dentro do card (não mais fora com posição absoluta):
-   - Quando `hasTimeoutOutputs`, renderizar um rodapé com duas linhas:
-     - Linha verde: `● Continuou ✓` alinhado à direita
-     - Linha laranja: `● Se não respondeu/clicou ⏱` alinhado à direita
-   - Cada linha terá um pequeno círculo colorido que corresponde visualmente ao handle
+- **Filtrar tipos no popover "Adicionar ação"**: se o grupo já contém um step `waitForReply` ou `waitForClick`, remover ambos da lista `addableTypes` exibida no popover.
+- **Remover bolinhas decorativas** do rodapé (os `div` com `w-2.5 h-2.5 rounded-full`) que criam confusão visual com os handles reais. Manter apenas os textos "Continuou ✓" e o label de timeout.
 
-3. **Remover os `<span>` externos** com posição absoluta (`right: -68`, `right: -90`) que causam o clipping.
+#### 2. `src/components/chatbot/FlowEditor.tsx` — Lógica de posicionamento e validação
 
-4. **Ajustar posição dos handles** para alinhar com o rodapé interno — mover para posições mais baixas no nó (ex: últimos 25% do card) para que fiquem ao lado das labels internas.
+**a) No handler `group-add-step`** (~linha 392):
+- Se `stepType` é `waitForReply` ou `waitForClick`, verificar se o grupo já tem um. Se sim, mostrar toast de erro e retornar.
+- Caso contrário, adicionar normalmente (já vai para o final).
+
+**b) No handler `group-reorder-step`** (~linha 382):
+- Após reordenar, verificar se o último step é um `waitForReply`/`waitForClick`. Se a reordenação moveu ele para fora da última posição, bloquear a operação (não aplicar) e mostrar toast informativo.
+
+**c) No handler de docking `onNodeDragStop`** (~linha 262):
+- Ao montar `mergedSteps`, verificar se já existe um finalizador nos `existingSteps`. Se o `newSteps` contém outro finalizador, bloquear o merge (toast de erro, retornar sem agrupar).
+- Após montar `mergedSteps`, garantir que qualquer step `waitForReply`/`waitForClick` fique na última posição (mover automaticamente para o final do array).
+
+**d) No handler `group-receive-step`** (~linha 467):
+- Mesma validação: se o grupo destino já tem um finalizador e o step sendo recebido é outro finalizador, bloquear com toast.
+- Se o step recebido é um finalizador, colocá-lo na última posição.
 
 ### Resultado
-- Labels de saída visíveis dentro do card, nunca cortados
-- Handles alinhados verticalmente com as labels internas
-- Design mais limpo e consistente
+- Máximo 1 finalizador por grupo, sempre na última posição
+- O grupo ganha 2 saídas quando tem finalizador (já implementado)
+- Não é possível adicionar steps depois do finalizador
+- Bolinhas decorativas removidas para evitar confusão com os handles reais
 
-### Arquivo alterado
+### Arquivos alterados
 - `src/components/chatbot/GroupNode.tsx`
+- `src/components/chatbot/FlowEditor.tsx`
 
