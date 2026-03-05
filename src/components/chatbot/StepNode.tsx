@@ -69,6 +69,13 @@ function StepNode({ data, selected }: StepNodeProps) {
   const isDockTarget = d.isDockTarget === true;
   const accentColor = config.color;
 
+  // Timeout-based dual outputs for waitForReply and waitForClick
+  const hasTimeoutOutputs =
+    (d.type === "waitForReply" && (d.replyTimeout || 0) > 0) ||
+    (d.type === "waitForClick" && (d.clickTimeout || 0) > 0);
+  const timeoutLabel =
+    d.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
+
   // ─── Trigger: special gradient card ───
   if (isTrigger) {
     return (
@@ -150,6 +157,18 @@ function StepNode({ data, selected }: StepNodeProps) {
           </div>
         </div>
 
+        {/* Timeout indicator */}
+        {hasTimeoutOutputs && (
+          <div className="px-3 pb-2.5 flex items-center gap-1.5">
+            <Clock className="w-3 h-3 text-orange-500" />
+            <span className="text-[10px] text-orange-500 font-medium">
+              Timeout: {d.type === "waitForReply" ? d.replyTimeout : d.clickTimeout}
+              {(d.type === "waitForReply" ? d.replyTimeoutUnit : d.clickTimeoutUnit) === "seconds" ? "s" :
+               (d.type === "waitForReply" ? d.replyTimeoutUnit : d.clickTimeoutUnit) === "hours" ? "h" : "min"}
+            </span>
+          </div>
+        )}
+
         {/* Dock indicator */}
         {isDockTarget && (
           <div className="px-3 py-2 bg-blue-500/10 border-t border-blue-500/30">
@@ -171,6 +190,37 @@ function StepNode({ data, selected }: StepNodeProps) {
             style={{ background: accentColor, top: `${((i + 1) / (pathCount + 1)) * 100}%` }}
           />
         ))
+      ) : hasTimeoutOutputs ? (
+        <>
+          {/* Normal path handle */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-0"
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+            style={{ background: accentColor, top: "35%" }}
+          />
+          <span
+            className="absolute text-[9px] font-medium text-muted-foreground pointer-events-none"
+            style={{ right: -68, top: "calc(35% - 6px)" }}
+          >
+            Respondeu ✓
+          </span>
+          {/* Timeout path handle */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-1"
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+            style={{ background: "#f97316", top: "70%" }}
+          />
+          <span
+            className="absolute text-[9px] font-medium pointer-events-none"
+            style={{ right: -90, top: "calc(70% - 6px)", color: "#f97316" }}
+          >
+            {timeoutLabel} ⏱
+          </span>
+        </>
       ) : (
         <Handle
           type="source"

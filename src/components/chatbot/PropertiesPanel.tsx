@@ -162,12 +162,19 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
             <p className="text-[10px] text-muted-foreground">Acesse com {"{{resposta}}"}</p>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Timeout (segundos)</Label>
-            <Input type="number" value={d.replyTimeout || 0} onChange={(e) => update({ replyTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Mensagem de fallback</Label>
-            <Textarea value={d.replyFallback || ""} onChange={(e) => update({ replyFallback: e.target.value })} placeholder="Mensagem caso não responda" className="text-xs min-h-[60px] resize-none" />
+            <Label className="text-xs">Timeout (se não responder)</Label>
+            <div className="flex gap-2">
+              <Input type="number" value={d.replyTimeout || 0} onChange={(e) => update({ replyTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs flex-1" min={0} />
+              <Select value={d.replyTimeoutUnit || "minutes"} onValueChange={(v) => update({ replyTimeoutUnit: v as any })}>
+                <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="seconds">Segundos</SelectItem>
+                  <SelectItem value="minutes">Minutos</SelectItem>
+                  <SelectItem value="hours">Horas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[10px] text-muted-foreground">0 = sem timeout. Quando ativo, o nó ganha uma saída extra "Se não respondeu" para conectar ao caminho alternativo.</p>
           </div>
         </>
       )}
@@ -320,8 +327,19 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
             <MediaUpload label="Imagem do preview" value={d.clickPreviewImage || ""} accept="image/*" onChange={(url) => update({ clickPreviewImage: url })} />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Timeout (segundos, 0 = sem limite)</Label>
-            <Input type="number" value={d.clickTimeout || 0} onChange={(e) => update({ clickTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
+            <Label className="text-xs">Timeout (se não clicar)</Label>
+            <div className="flex gap-2">
+              <Input type="number" value={d.clickTimeout || 0} onChange={(e) => update({ clickTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs flex-1" min={0} />
+              <Select value={d.clickTimeoutUnit || "minutes"} onValueChange={(v) => update({ clickTimeoutUnit: v as any })}>
+                <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="seconds">Segundos</SelectItem>
+                  <SelectItem value="minutes">Minutos</SelectItem>
+                  <SelectItem value="hours">Horas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[10px] text-muted-foreground">0 = sem timeout. Quando ativo, o nó ganha uma saída extra "Se não clicou" para conectar ao caminho alternativo.</p>
           </div>
         </>
       )}

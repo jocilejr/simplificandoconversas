@@ -268,6 +268,60 @@ export type Database = {
           },
         ]
       }
+      flow_timeouts: {
+        Row: {
+          conversation_id: string | null
+          created_at: string | null
+          execution_id: string
+          flow_id: string
+          id: string
+          processed: boolean | null
+          remote_jid: string
+          timeout_at: string
+          timeout_node_id: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string | null
+          execution_id: string
+          flow_id: string
+          id?: string
+          processed?: boolean | null
+          remote_jid: string
+          timeout_at: string
+          timeout_node_id: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string | null
+          execution_id?: string
+          flow_id?: string
+          id?: string
+          processed?: boolean | null
+          remote_jid?: string
+          timeout_at?: string
+          timeout_node_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_timeouts_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "flow_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_timeouts_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "chatbot_flows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           color: string
