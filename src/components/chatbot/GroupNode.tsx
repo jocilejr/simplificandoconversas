@@ -91,24 +91,38 @@ function StepRow({
       }
       case "sendAudio": {
         return (
-          <div className="mx-1 mt-1 px-2.5 py-2.5 rounded-lg bg-muted/60 border border-border/30 flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-              <Play className="w-3 h-3 text-primary fill-primary" />
-            </div>
-            <div className="flex items-center gap-[2px] flex-1">
-              {Array.from({ length: 28 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-[2.5px] rounded-full bg-primary/50"
-                  style={{ height: `${4 + Math.sin(i * 0.7) * 8 + Math.sin(i * 1.3) * 3}px` }}
-                />
-              ))}
-            </div>
-            <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">0:00</span>
+          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30 overflow-hidden">
+            {d.mediaUrl ? (
+              <audio
+                controls
+                preload="metadata"
+                src={d.mediaUrl}
+                className="w-full h-9"
+                onClick={(e) => e.stopPropagation()}
+                onPlay={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <div className="flex items-center gap-2.5 px-2.5 py-2.5">
+                <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
+                  <Play className="w-3 h-3 text-primary fill-primary" />
+                </div>
+                <div className="flex items-center gap-[2px] flex-1">
+                  {Array.from({ length: 28 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-[2.5px] rounded-full bg-primary/40"
+                      style={{ height: `${4 + Math.sin(i * 0.7) * 8 + Math.sin(i * 1.3) * 3}px` }}
+                    />
+                  ))}
+                </div>
+                <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">0:00</span>
+              </div>
+            )}
             {d.simulateRecording && (
-              <span className="text-[9px] font-semibold text-red-400 bg-red-500/15 px-2 py-0.5 rounded-full tracking-wide">
-                REC
-              </span>
+              <div className="flex items-center justify-center gap-1.5 px-2 py-1 bg-red-500/8 border-t border-red-500/15">
+                <Mic className="w-3 h-3 text-red-400" />
+                <span className="text-[9px] font-semibold text-red-400 tracking-wider uppercase">Gravando</span>
+              </div>
             )}
           </div>
         );
@@ -137,16 +151,18 @@ function StepRow({
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
         onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-auto mb-1 w-fit px-4 py-1.5 rounded-full flex items-center justify-center gap-1.5 transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
-          isDragging ? "opacity-30 scale-95"
-            : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
-            : "bg-muted/60 hover:bg-muted/80 border border-border/40"
+        className={`relative flex items-center my-2 mx-3 cursor-pointer active:cursor-grabbing nopan nodrag ${
+          isDragging ? "opacity-30 scale-95" : isDropTarget ? "scale-[1.02]" : ""
         }`}
       >
-        <Clock className="w-3 h-3 text-muted-foreground" />
-        <span className="text-[10px] font-semibold text-muted-foreground tabular-nums">
-          {d.delaySeconds || 0}s
-        </span>
+        <div className="flex-1 h-px bg-border/60" />
+        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-muted-foreground transition-colors ${
+          isDropTarget ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/40 hover:bg-muted/60"
+        }`}>
+          <Clock className="w-3 h-3" />
+          <span className="text-[10px] font-medium tabular-nums">{d.delaySeconds || 0}s</span>
+        </div>
+        <div className="flex-1 h-px bg-border/60" />
       </div>
     );
   }
@@ -169,7 +185,7 @@ function StepRow({
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
         onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
           isDragging ? "opacity-30 scale-95"
             : isDropTarget ? "ring-1 ring-primary/30 scale-[1.02]"
             : ""
@@ -220,7 +236,7 @@ function StepRow({
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
         onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 px-3.5 py-3 rounded-xl transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 px-3.5 py-3 rounded-xl transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
           isDragging ? "opacity-30 scale-95"
             : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
             : "bg-secondary/50 hover:bg-secondary/70"
@@ -266,7 +282,7 @@ function StepRow({
         e.preventDefault();
       }}
       onDragEnd={(e) => onDragEnd(e)}
-      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
         isDragging
           ? "opacity-30 scale-95"
           : isDropTarget
