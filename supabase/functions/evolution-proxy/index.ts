@@ -505,7 +505,7 @@ Deno.serve(async (req) => {
           let allMessages: any[] = [];
           
           // Paginate through findMessages (API returns 50 per page)
-          const MAX_PAGES = 3; // up to 150 messages for faster sync
+          const MAX_PAGES = 5; // up to 250 messages for better coverage
           for (let page = 1; page <= MAX_PAGES; page++) {
             try {
               const msgsResp = await fetch(
