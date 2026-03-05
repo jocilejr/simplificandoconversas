@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const isServiceRole = token === serviceRoleKey;
 
-    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId } = await req.json();
+    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName } = await req.json();
 
     let userId: string;
     if (isServiceRole && bodyUserId) {
@@ -202,7 +202,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { evolution_api_url, evolution_api_key, evolution_instance_name } = profile;
+    const { evolution_api_url, evolution_api_key } = profile;
+    // Use instance from webhook if provided, fallback to profile default (manual execution)
+    const evolution_instance_name = bodyInstanceName || profile.evolution_instance_name;
     const baseUrl = evolution_api_url.replace(/\/$/, "");
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
