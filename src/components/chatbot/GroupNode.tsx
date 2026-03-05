@@ -182,8 +182,8 @@ function StepRow({
       case "sendAudio": {
         return (
           <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30">
-            {d.mediaUrl ? (
-              <AudioPreviewPlayer src={d.mediaUrl as string} />
+            {d.audioUrl ? (
+              <AudioPreviewPlayer src={d.audioUrl as string} />
             ) : (
               <div className="flex items-center gap-2 px-2.5 py-2.5">
                 <Mic className="w-4 h-4 text-muted-foreground" />
