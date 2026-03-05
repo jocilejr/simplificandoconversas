@@ -389,13 +389,27 @@ Deno.serve(async (req) => {
     // Also build a separate map for timeout edges (output-1)
     const outgoingMap = new Map<string, string[]>();
     const timeoutEdgeMap = new Map<string, string>(); // sourceNodeId -> targetNodeId for timeout path
+    const conditionEdgeMap = new Map<string, { trueTarget: string | null; falseTarget: string | null }>();
     for (const edge of edges) {
       if (edge.sourceHandle === "output-1") {
-        // This is a timeout edge
+        // This is a timeout or "false" edge
         timeoutEdgeMap.set(edge.source, edge.target);
       } else {
         if (!outgoingMap.has(edge.source)) outgoingMap.set(edge.source, []);
         outgoingMap.get(edge.source)!.push(edge.target);
+      }
+    }
+
+    // Build condition edge map for condition nodes
+    for (const node of nodes) {
+      const data = node.data || {};
+      if (data.type === "condition") {
+        const trueEdge = edges.find((e: any) => e.source === node.id && e.sourceHandle === "output-0");
+        const falseEdge = edges.find((e: any) => e.source === node.id && e.sourceHandle === "output-1");
+        conditionEdgeMap.set(node.id, {
+          trueTarget: trueEdge?.target || null,
+          falseTarget: falseEdge?.target || null,
+        });
       }
     }
 
