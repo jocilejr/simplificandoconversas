@@ -430,19 +430,32 @@ async function checkAndResumeWaitingReply(
   const nodes = (flow.nodes || []) as any[];
 
   // Find the waitForReply node that was being waited on
-  // It's the node at current_node_index, but we can find it by looking for
-  // waitForReply nodes that have output-0 edges
+  // Check both standalone waitForReply nodes AND waitForReply steps inside groupBlocks
   let nextNodeId: string | null = null;
   for (const node of nodes) {
     const data = node.data || {};
     if (data.type === "waitForReply") {
-      // Find the normal path edge (output-0 or default)
+      // Standalone waitForReply node
       const normalEdge = edges.find(
         (e: any) => e.source === node.id && (e.sourceHandle === "output-0" || !e.sourceHandle)
       );
       if (normalEdge) {
         nextNodeId = normalEdge.target;
         break;
+      }
+    }
+    // Check inside groupBlock steps
+    if ((data.type === "group" || data.type === "groupBlock") && data.steps) {
+      const hasWaitForReply = data.steps.some((s: any) => s.data?.type === "waitForReply");
+      if (hasWaitForReply) {
+        // Group output edge (output-0)
+        const groupEdge = edges.find(
+          (e: any) => e.source === node.id && (e.sourceHandle === "output-0" || !e.sourceHandle)
+        );
+        if (groupEdge) {
+          nextNodeId = groupEdge.target;
+          break;
+        }
       }
     }
   }
