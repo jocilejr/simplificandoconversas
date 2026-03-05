@@ -1,0 +1,1 @@
+ALTER TABLE public.chatbot_flows ADD COLUMN instance_names text[] NOT NULL DEFAULT '{}';

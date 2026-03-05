@@ -45,7 +45,7 @@ export function useChatbotFlows() {
   });
 
   const updateFlow = useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; name?: string; nodes?: any[]; edges?: any[]; active?: boolean }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; name?: string; nodes?: any[]; edges?: any[]; active?: boolean; instance_names?: string[] }) => {
       const { data, error } = await supabase
         .from("chatbot_flows")
         .update(updates)
