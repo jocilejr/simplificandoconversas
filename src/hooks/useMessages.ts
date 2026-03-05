@@ -76,7 +76,39 @@ export function useMessages(conversationId: string | null) {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onMutate: async ({ remoteJid, message, messageType = "text", mediaUrl }) => {
+      // Cancel outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ["messages", conversationId] });
+
+      const previousMessages = queryClient.getQueryData<Message[]>(["messages", conversationId]);
+
+      const optimisticMsg: Message = {
+        id: `optimistic-${Date.now()}`,
+        conversation_id: conversationId!,
+        user_id: "",
+        remote_jid: remoteJid,
+        content: message,
+        message_type: messageType,
+        direction: "outbound",
+        status: "sending",
+        external_id: null,
+        media_url: mediaUrl || null,
+        created_at: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData<Message[]>(["messages", conversationId], (old) => [
+        ...(old || []),
+        optimisticMsg,
+      ]);
+
+      return { previousMessages };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", conversationId], context.previousMessages);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
