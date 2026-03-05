@@ -29,6 +29,13 @@ export function useFlowExecutions(conversationId?: string) {
         .update({ status: "cancelled" })
         .eq("id", executionId);
       if (error) throw error;
+
+      // Cancel pending timeouts for this execution
+      await supabase
+        .from("flow_timeouts")
+        .update({ processed: true })
+        .eq("execution_id", executionId)
+        .eq("processed", false);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["flow_executions", conversationId] });
