@@ -1,9 +1,10 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, Clock } from "lucide-react";
+import { icons, Clock, Copy } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 interface StepNodeProps {
+  id: string;
   data: Record<string, unknown>;
   selected?: boolean;
 }
@@ -59,7 +60,7 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
   }
 }
 
-function StepNode({ data, selected }: StepNodeProps) {
+function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
   const d = data as FlowNodeData;
   const config = nodeTypeConfig[d.type];
   const LucideIcon = icons[config.icon as keyof typeof icons];
@@ -75,6 +76,12 @@ function StepNode({ data, selected }: StepNodeProps) {
     (d.type === "waitForClick" && (d.clickTimeout || 0) > 0);
   const timeoutLabel =
     d.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
+
+  const dispatchDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId }, bubbles: true }));
+  };
 
   // ─── Trigger: special gradient card ───
   if (isTrigger) {
@@ -108,7 +115,17 @@ function StepNode({ data, selected }: StepNodeProps) {
 
   // ─── Regular node — GroupNode-style card ───
   return (
-    <div className="relative">
+    <div className="relative group/node">
+      {/* Duplicate button — visible on hover */}
+      <button
+        className="absolute -top-3 -right-3 z-50 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/node:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
+        onClick={dispatchDuplicate}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <Copy className="w-3.5 h-3.5" />
+      </button>
+
       <Handle
         type="target"
         position={Position.Left}

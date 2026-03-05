@@ -627,6 +627,66 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => document.removeEventListener("group-delete", handler);
   }, []);
 
+  // Listen for node-duplicate events (standalone nodes and groups)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      setNodes((nds) => {
+        const original = nds.find((n) => n.id === nodeId);
+        if (!original) return nds;
+        const newId = crypto.randomUUID();
+        const clonedData = JSON.parse(JSON.stringify(original.data));
+        // For groups, assign new IDs to all steps
+        if (clonedData.steps) {
+          clonedData.steps = clonedData.steps.map((s: any) => ({ ...s, id: crypto.randomUUID() }));
+        }
+        const cloned: FlowNode = {
+          ...original,
+          id: newId,
+          position: { x: (original.position?.x || 0) + 40, y: (original.position?.y || 0) + 40 },
+          data: clonedData,
+          selected: false,
+        };
+        return [...nds, cloned];
+      });
+      toast.success("Nó duplicado!");
+    };
+    document.addEventListener("node-duplicate", handler);
+    return () => document.removeEventListener("node-duplicate", handler);
+  }, [setNodes]);
+
+  // Listen for group-duplicate-step events (duplicate a step within a group)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId, stepId } = (e as CustomEvent).detail;
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== nodeId) return n;
+          const data = n.data as FlowNodeData;
+          if (!data.steps) return n;
+          const stepIndex = data.steps.findIndex((s) => s.id === stepId);
+          if (stepIndex === -1) return n;
+          const original = data.steps[stepIndex];
+          // Don't duplicate finalizer if one already exists
+          if (isFinalizer(original.data.type)) {
+            toast.error("Só é permitido um step de aguardar por grupo");
+            return n;
+          }
+          const cloned: FlowStepData = {
+            id: crypto.randomUUID(),
+            data: JSON.parse(JSON.stringify(original.data)),
+          };
+          const newSteps = [...data.steps];
+          newSteps.splice(stepIndex + 1, 0, cloned);
+          return { ...n, data: { ...data, steps: newSteps } };
+        })
+      );
+      toast.success("Step duplicado!");
+    };
+    document.addEventListener("group-duplicate-step", handler);
+    return () => document.removeEventListener("group-duplicate-step", handler);
+  }, [setNodes]);
+
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>

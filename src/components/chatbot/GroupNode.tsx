@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2 } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy } from "lucide-react";
 
 /* ---- Mini player customizado para dentro do React Flow ---- */
 function AudioPreviewPlayer({ src }: { src: string }) {
@@ -98,6 +98,23 @@ interface GroupNodeProps {
   id: string;
   data: Record<string, unknown>;
   selected?: boolean;
+}
+
+function StepDuplicateButton({ nodeId, stepId }: { nodeId: string; stepId: string }) {
+  return (
+    <button
+      className="absolute -top-2 -right-2 z-50 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/step:opacity-100 transition-opacity shadow-md hover:scale-110 nopan nodrag"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent("group-duplicate-step", { detail: { nodeId, stepId }, bubbles: true }));
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <Copy className="w-3 h-3" />
+    </button>
+  );
 }
 
 function StepRow({
@@ -461,17 +478,27 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
 
   return (
     <div className="relative group/card" style={{ background: "transparent" }}>
+      {/* External duplicate button — visible on hover */}
+      <button
+        className="absolute -top-3 -right-12 z-50 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId: id }, bubbles: true }));
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <Copy className="w-3.5 h-3.5" />
+      </button>
+
       {/* External trash button — visible on hover */}
       <button
         className="absolute -top-3 -right-3 z-50 w-7 h-7 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          const event = new CustomEvent("group-delete", {
-            detail: { nodeId: id },
-            bubbles: true,
-          });
-          document.dispatchEvent(event);
+          document.dispatchEvent(new CustomEvent("group-delete", { detail: { nodeId: id }, bubbles: true }));
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
@@ -532,17 +559,19 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         >
           {steps.length > 0 ? (
             steps.map((step, i) => (
-              <StepRow
-                key={step.id}
-                step={step}
-                index={i}
-                nodeId={id}
-                isDragging={dragIndex === i}
-                isDropTarget={overIndex === i && dragIndex !== null && dragIndex !== i}
-                onDragStart={handleDragStart}
-                onDragEnter={handleDragEnter}
-                onDragEnd={handleDragEnd}
-              />
+              <div key={step.id} className="relative group/step">
+                <StepDuplicateButton nodeId={id} stepId={step.id} />
+                <StepRow
+                  step={step}
+                  index={i}
+                  nodeId={id}
+                  isDragging={dragIndex === i}
+                  isDropTarget={overIndex === i && dragIndex !== null && dragIndex !== i}
+                  onDragStart={handleDragStart}
+                  onDragEnter={handleDragEnter}
+                  onDragEnd={handleDragEnd}
+                />
+              </div>
             ))
           ) : (
             <div className="px-4 py-6 text-center text-[12px] text-muted-foreground">

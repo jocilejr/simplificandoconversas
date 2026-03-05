@@ -1,29 +1,35 @@
 
 
-## Duplicar nós com hover — dentro e fora do grupo
+## Corrigir player de áudio no GroupNode
 
-### Abordagem
+### Problema raiz
+O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
 
-Adicionar um botão de duplicar (ícone `Copy`) que aparece no hover, tanto em nós standalone (`StepNode`) quanto em steps dentro de grupos (`GroupNode`).
+### Solução
+Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
 
-### Alterações
+O player terá:
+- Botão play/pause (ícone)
+- Barra de progresso simples (div com width percentual)
+- Duração e tempo atual em texto
+- Sem waves, sem controles nativos
 
-**1. `src/components/chatbot/StepNode.tsx`**
-- Adicionar botão `Copy` posicionado `absolute -top-3 -right-3` (similar à lixeira do grupo), visível no hover com `group/node` + `opacity-0 group-hover/node:opacity-100`.
-- Ao clicar, dispara evento customizado `node-duplicate` com `{ nodeId }`.
-- Não mostrar no trigger.
+### Preview sem URL
+Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
 
-**2. `src/components/chatbot/GroupNode.tsx`**
-- Em cada `StepRow`, adicionar botão `Copy` no canto superior direito do step, visível no hover do step (`group/step` pattern).
-- Ao clicar, dispara evento customizado `group-duplicate-step` com `{ nodeId, stepId }`.
-- Adicionar botão `Copy` ao lado da lixeira do grupo (`-top-3 -right-12`) para duplicar o grupo inteiro, dispara `node-duplicate`.
+### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-**3. `src/components/chatbot/FlowEditor.tsx`**
-- Listener para `node-duplicate`: clona o nó (standalone ou grupo) com novo ID, posição deslocada (+40, +40), e adiciona ao canvas.
-- Listener para `group-duplicate-step`: encontra o step no grupo, clona com novo ID, e insere logo após o step original (respeitando regra de finalizer).
+1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
+   - `useRef` para `new Audio(src)` 
+   - `useState` para `isPlaying`, `currentTime`, `duration`
+   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
+   - Barra de progresso visual (div bg com width%)
+   - Display de tempo `currentTime / duration`
 
-### Arquivos alterados
-- `src/components/chatbot/StepNode.tsx`
+2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+
+3. **Manter** badge "Gravando" se `simulateRecording`
+
+### Arquivo alterado
 - `src/components/chatbot/GroupNode.tsx`
-- `src/components/chatbot/FlowEditor.tsx`
 
