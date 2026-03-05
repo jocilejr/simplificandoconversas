@@ -204,7 +204,7 @@
 .chat-bg-pattern {
   background-color: #eae6df;
   background-image: url('/images/chat-bg-pattern.png');
-  background-size: 350px;
+  background-size: 200px;
   background-repeat: repeat;
   filter: brightness(1.3) opacity(0.4);
 }
@@ -212,7 +212,7 @@
 .dark .chat-bg-pattern {
   background-color: #0b141a;
   background-image: url('/images/chat-bg-pattern.png');
-  background-size: 350px;
+  background-size: 200px;
   background-repeat: repeat;
   filter: none;
 }
