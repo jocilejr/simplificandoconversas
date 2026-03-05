@@ -378,25 +378,11 @@ function StepRow({
 
   return (
     <div
+      ref={containerRef}
       data-step-id={step.id}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("application/step-id", step.id);
-        e.dataTransfer.setData("application/source-node-id", nodeId);
-        const el = e.currentTarget;
-        e.dataTransfer.setDragImage(el, el.offsetWidth / 2, el.offsetHeight / 2);
-        onDragStart(index);
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault();
-        onDragEnter(index);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-      }}
-      onDragEnd={(e) => onDragEnd(e)}
-      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer active:cursor-grabbing nopan nodrag nowheel ${
+      onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+      onDragOver={(e) => { e.preventDefault(); }}
+      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer nopan nodrag nowheel ${
         isDragging
           ? "opacity-30 scale-95"
           : isDropTarget
@@ -407,8 +393,9 @@ function StepRow({
       onPointerDown={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
       onTouchStart={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
     >
-      {/* Header row: icon + label */}
+      {/* Header row: grip + icon + label */}
       <div className="flex items-center gap-2.5 py-1.5 px-1">
+        <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
         <div
           className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: `${config.color}18`, color: config.color }}
