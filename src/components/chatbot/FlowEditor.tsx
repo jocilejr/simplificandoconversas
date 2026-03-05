@@ -121,7 +121,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        await onSave(name, nodes, edges);
+        await onSave(name, nodes, edges, instanceNames);
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 2000);
       } catch {
