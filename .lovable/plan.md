@@ -1,23 +1,41 @@
 
 
-## Bug: Mesmo contato não pode ter conversas em instâncias diferentes
+## Bug: Fluxo permanece ativo após timeout quando saída de timeout não está conectada
 
 ### Causa raiz
 
-Existe um **índice único antigo** `idx_conversations_user_jid` na tabela `conversations` com colunas `(user_id, remote_jid)` — **sem incluir `instance_name`**. Isso impede a criação de uma segunda conversa para o mesmo contato em outra instância, mesmo que o constraint mais novo `(user_id, remote_jid, instance_name)` permita.
+No `execute-flow`, o timeout só é registrado na tabela `flow_timeouts` quando existe um nó conectado à saída de timeout (`output-1`). Se a saída "Se não clicou" não está conectada a nada, **nenhum timeout é criado**, e a execução fica presa com status `waiting_click` para sempre.
 
-Quando o webhook tenta fazer upsert com `onConflict: "user_id,remote_jid,instance_name"`, a operação INSERT subjacente viola o índice antigo `idx_conversations_user_jid`, causando o erro "Failed to upsert conversation" nos logs.
+Código atual (linhas 480-497):
+```javascript
+if (clickTimeout > 0) {
+  const timeoutNodeId = timeoutEdgeMap.get(node.id);
+  if (timeoutNodeId) {  // ← só cria timeout se tiver nó conectado
+    // ...insert timeout
+  }
+}
+```
 
 ### Solução
 
-Uma única migration SQL:
+Dois arquivos precisam de alteração:
 
-```sql
-DROP INDEX IF EXISTS idx_conversations_user_jid;
+**1. `supabase/functions/execute-flow/index.ts`** — Registrar timeout mesmo sem nó conectado:
+- No `waitForClick` (linha ~482): remover a condição `if (timeoutNodeId)` e inserir o timeout com `timeout_node_id: timeoutNodeId || null`
+- No `waitForReply` (linha ~514): mesma alteração
+
+**2. `supabase/functions/check-timeouts/index.ts`** — Tratar timeout sem nó de destino:
+- Quando `timeout_node_id` é `null`, apenas marcar a execução como `completed` e o timeout como `processed`, sem chamar `execute-flow` para retomar
+
+```text
+Antes:
+  timeout=20s + sem conexão → nenhum timeout criado → fluxo preso em waiting_click
+
+Depois:
+  timeout=20s + sem conexão → timeout criado com node_id=null → check-timeouts completa a execução
 ```
 
-Isso remove o índice antigo que bloqueia conversas multi-instância. O constraint `conversations_user_id_remote_jid_instance_key` (que inclui `instance_name`) permanece e garante a unicidade correta.
-
 ### Arquivos alterados
-- Apenas uma migration SQL (nenhum arquivo de código precisa mudar)
+- `supabase/functions/execute-flow/index.ts` — inserir timeout independente de haver nó conectado
+- `supabase/functions/check-timeouts/index.ts` — completar execução quando `timeout_node_id` é null
 
