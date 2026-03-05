@@ -1,27 +1,28 @@
 
 
-## Problema: GitHub ainda não tem as correções de código
+## Plano: Recriar os arquivos de deploy do backend
 
-O `git pull` trouxe apenas o arquivo `.lovable/plan.md` — os 4 arquivos com as correções de TypeScript e Dockerfile **não foram enviados**. O build continua falhando com os mesmos 16 erros.
+O problema é que o Lovable não está sincronizando as edições dos arquivos `deploy/` com o GitHub — só o `.lovable/plan.md` é enviado. A solução é **reescrever completamente** os 3 arquivos TypeScript e o Dockerfile para forçar o commit.
 
-Os arquivos estão corretos aqui no Lovable, mas o GitHub não os recebeu. Preciso fazer uma edição em cada arquivo para forçar o commit.
+### Causa raiz dos erros de build
 
-### Plano
+O `@types/node@22` faz `Response.json()` retornar `unknown`. Mesmo com `strict: false` no tsconfig, isso causa erros TS2339. Os arquivos no workspace do Lovable já têm os casts `any`, mas o GitHub nunca recebeu essas mudanças.
 
-Fazer uma edição mínima (adicionar comentário) nos 4 arquivos para forçar o Lovable a commitar e pushar ao GitHub:
+### Arquivos a reescrever completamente
 
-| Arquivo | Estado no Lovable | Ação |
-|---------|-------------------|------|
-| `deploy/baileys-service/Dockerfile` | Correto (tem `git`) | Adicionar comentário para forçar push |
-| `deploy/backend/src/routes/evolution-proxy.ts` | Correto (tem casts `any`) | Adicionar comentário para forçar push |
-| `deploy/backend/src/routes/execute-flow.ts` | Correto (tem casts `any`) | Adicionar comentário para forçar push |
-| `deploy/backend/src/routes/webhook.ts` | Correto (tem cast `any`) | Adicionar comentário para forçar push |
+| Arquivo | Correção |
+|---------|----------|
+| `deploy/baileys-service/Dockerfile` | Reescrever com `RUN apk add --no-cache git` |
+| `deploy/backend/src/routes/evolution-proxy.ts` | Reescrever inteiro (já tem os casts `any` corretos) |
+| `deploy/backend/src/routes/execute-flow.ts` | Reescrever inteiro (já tem os casts `any` corretos) |
+| `deploy/backend/src/routes/webhook.ts` | Reescrever inteiro (já tem o cast `any` correto) |
+
+### Abordagem
+
+Vou usar `code--write` para reescrever cada arquivo por completo (não edição incremental), o que garante que o Lovable registre a mudança e faça push ao GitHub.
 
 Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas
-git pull origin main
-cd deploy
-docker compose build --no-cache && docker compose up -d
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
 
