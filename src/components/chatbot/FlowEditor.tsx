@@ -98,6 +98,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const isInitialMount = useRef(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; flowPos: { x: number; y: number } } | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useReactFlow();
   const { saveSnapshot } = useFlowHistory(flowId);
@@ -185,6 +186,32 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
       toast.success(`${config.label} adicionado`);
     },
     [reactFlowInstance, setNodes]
+  );
+
+  const addNodeAtPosition = useCallback(
+    (type: FlowNodeType, flowPos: { x: number; y: number }) => {
+      if (type === "groupBlock") return;
+      const config = nodeTypeConfig[type];
+      const newNode: FlowNode = {
+        id: crypto.randomUUID(),
+        type: "step",
+        position: flowPos,
+        data: { label: config.label, type, ...defaultNodeData[type] } as FlowNodeData,
+      };
+      setNodes((nds) => nds.concat(newNode));
+      setContextMenu(null);
+      toast.success(`${config.label} adicionado`);
+    },
+    [setNodes]
+  );
+
+  const onPaneContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      const flowPos = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      setContextMenu({ x: event.clientX, y: event.clientY, flowPos });
+    },
+    [reactFlowInstance]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -384,6 +411,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedStepId(null);
+    setContextMenu(null);
   }, []);
 
   const onEdgeContextMenu = useCallback(
@@ -805,6 +833,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onEdgeContextMenu={onEdgeContextMenu}
+          onPaneContextMenu={onPaneContextMenu}
           nodeTypes={nodeTypes}
           fitView
           panOnDrag
@@ -931,6 +960,49 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Right-click context menu */}
+      {contextMenu && (<>
+        <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
+        <div
+          className="fixed z-[100] w-64 max-h-[70vh] overflow-y-auto bg-card border border-border rounded-xl shadow-2xl p-2 space-y-3 animate-in fade-in-0 zoom-in-95"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {[
+            { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
+            { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
+            { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[] },
+            { label: "Ações", types: ["action"] as FlowNodeType[] },
+            { label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] },
+          ].map((cat) => (
+            <div key={cat.label}>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">{cat.label}</p>
+              <div className="space-y-0.5">
+                {cat.types.map((type) => {
+                  const config = nodeTypeConfig[type];
+                  const LucideIcon = icons[config.icon as keyof typeof icons];
+                  return (
+                    <button
+                      key={type}
+                      className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-secondary transition-colors text-left"
+                      onClick={() => addNodeAtPosition(type, contextMenu.flowPos)}
+                    >
+                      <div className="flex items-center justify-center w-7 h-7 rounded-md" style={{ backgroundColor: config.color + "20", color: config.color }}>
+                        {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{config.label}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{config.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>)}
     </div>
   );
 }
