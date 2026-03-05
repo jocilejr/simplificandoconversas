@@ -182,8 +182,8 @@ export function ChatPanel({
                 <div className={cn("flex mb-1", isOutbound ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[75%] text-[13px] shadow-sm",
-                      msg.message_type === "audio" ? "px-2 py-1" : "px-3 py-2",
+                      "max-w-[85%] text-sm shadow-sm",
+                      msg.message_type === "audio" ? "px-2 py-1.5" : "px-4 py-2.5",
                       isOutbound
                         ? "bg-[#005c4b] text-white rounded-2xl rounded-br-sm"
                         : "bg-[#202c33] text-[#e9edef] rounded-2xl rounded-bl-sm"
@@ -195,7 +195,7 @@ export function ChatPanel({
                           <img
                             src={msg.media_url}
                             alt=""
-                            className="rounded-xl max-w-[280px] max-h-[280px] w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            className="rounded-xl max-w-[360px] max-h-[360px] w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
                             loading="lazy"
                             onClick={() => setLightboxUrl(msg.media_url!)}
                           />
@@ -211,7 +211,7 @@ export function ChatPanel({
                           <video
                             controls
                             src={msg.media_url}
-                            className="rounded-xl max-w-[280px] max-h-[280px]"
+                            className="rounded-xl max-w-[360px] max-h-[360px]"
                             preload="metadata"
                           />
                         ) : msg.message_type === "document" ? (
