@@ -83,6 +83,12 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
     document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId }, bubbles: true }));
   };
 
+  const dispatchDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent("node-delete", { detail: { nodeId }, bubbles: true }));
+  };
+
   // ─── Trigger: special gradient card ───
   if (isTrigger) {
     return (
