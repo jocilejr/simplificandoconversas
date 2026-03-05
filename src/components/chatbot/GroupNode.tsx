@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy, GripVertical } from "lucide-react";
 
 /* ---- Mini player customizado para dentro do React Flow ---- */
 function AudioPreviewPlayer({ src }: { src: string }) {
@@ -117,6 +117,45 @@ function StepDuplicateButton({ nodeId, stepId }: { nodeId: string; stepId: strin
   );
 }
 
+function DragHandle({
+  index,
+  stepId,
+  nodeId,
+  onDragStart,
+  onDragEnd,
+  containerRef,
+}: {
+  index: number;
+  stepId: string;
+  nodeId: string;
+  onDragStart: (i: number) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  containerRef: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("application/step-id", stepId);
+        e.dataTransfer.setData("application/source-node-id", nodeId);
+        // Use parent container as drag image
+        if (containerRef.current) {
+          e.dataTransfer.setDragImage(containerRef.current, containerRef.current.offsetWidth / 2, containerRef.current.offsetHeight / 2);
+        }
+        onDragStart(index);
+      }}
+      onDragEnd={onDragEnd}
+      className="flex-shrink-0 cursor-grab active:cursor-grabbing opacity-0 group-hover/step:opacity-100 transition-opacity nopan nodrag"
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 hover:text-muted-foreground" />
+    </div>
+  );
+}
+
 function StepRow({
   step,
   index,
@@ -136,6 +175,7 @@ function StepRow({
   onDragEnter: (i: number) => void;
   onDragEnd: (e: React.DragEvent) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null!);
   const d = step.data;
   const config = nodeTypeConfig[d.type];
   if (!config) return null;
@@ -229,21 +269,15 @@ function StepRow({
   if (d.type === "waitDelay") {
     return (
       <div
+        ref={containerRef}
         data-step-id={step.id}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("application/step-id", step.id);
-          e.dataTransfer.setData("application/source-node-id", nodeId);
-          onDragStart(index);
-        }}
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
-        onDragEnd={(e) => onDragEnd(e)}
-        className={`relative flex items-center my-2 mx-3 cursor-pointer active:cursor-grabbing nopan nodrag ${
+        className={`relative flex items-center my-2 mx-3 cursor-pointer nopan nodrag ${
           isDragging ? "opacity-30 scale-95" : isDropTarget ? "scale-[1.02]" : ""
         }`}
       >
+        <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
         <div className="flex-1 h-px bg-border/60" />
         <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-muted-foreground transition-colors ${
           isDropTarget ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/50 hover:bg-muted/70"
@@ -264,18 +298,11 @@ function StepRow({
       : "URL não definida";
     return (
       <div
+        ref={containerRef}
         data-step-id={step.id}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("application/step-id", step.id);
-          e.dataTransfer.setData("application/source-node-id", nodeId);
-          onDragStart(index);
-        }}
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
-        onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer nopan nodrag ${
           isDragging ? "opacity-30 scale-95"
             : isDropTarget ? "ring-1 ring-primary/30 scale-[1.02]"
             : ""
@@ -283,6 +310,7 @@ function StepRow({
       >
         {/* Header bar */}
         <div className="flex items-center gap-2.5 px-3 py-2 bg-sky-500/10 border-b border-sky-500/20">
+          <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
           <div className="w-6 h-6 rounded-md bg-sky-500/20 flex items-center justify-center flex-shrink-0">
             <Link className="w-3.5 h-3.5 text-sky-400" />
           </div>
@@ -315,25 +343,21 @@ function StepRow({
     const html = parseWhatsAppFormatting(d.textContent);
     return (
       <div
+        ref={containerRef}
         data-step-id={step.id}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("application/step-id", step.id);
-          e.dataTransfer.setData("application/source-node-id", nodeId);
-          onDragStart(index);
-        }}
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
-        onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 px-3.5 py-3 rounded-xl transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 px-3.5 py-3 rounded-xl transition-all cursor-pointer nopan nodrag flex items-start gap-1.5 ${
           isDragging ? "opacity-30 scale-95"
             : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
             : "bg-secondary/50 hover:bg-secondary/70"
         }`}
       >
+        <div className="pt-0.5">
+          <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
+        </div>
         <p
-          className="text-[13px] text-foreground/85 whitespace-pre-wrap line-clamp-8 leading-relaxed"
+          className="text-[13px] text-foreground/85 whitespace-pre-wrap line-clamp-8 leading-relaxed flex-1 min-w-0"
           dangerouslySetInnerHTML={{ __html: html }}
         />
       </div>
@@ -354,25 +378,11 @@ function StepRow({
 
   return (
     <div
+      ref={containerRef}
       data-step-id={step.id}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("application/step-id", step.id);
-        e.dataTransfer.setData("application/source-node-id", nodeId);
-        const el = e.currentTarget;
-        e.dataTransfer.setDragImage(el, el.offsetWidth / 2, el.offsetHeight / 2);
-        onDragStart(index);
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault();
-        onDragEnter(index);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-      }}
-      onDragEnd={(e) => onDragEnd(e)}
-      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer active:cursor-grabbing nopan nodrag nowheel ${
+      onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
+      onDragOver={(e) => { e.preventDefault(); }}
+      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer nopan nodrag nowheel ${
         isDragging
           ? "opacity-30 scale-95"
           : isDropTarget
@@ -383,8 +393,9 @@ function StepRow({
       onPointerDown={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
       onTouchStart={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
     >
-      {/* Header row: icon + label */}
+      {/* Header row: grip + icon + label */}
       <div className="flex items-center gap-2.5 py-1.5 px-1">
+        <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
         <div
           className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: `${config.color}18`, color: config.color }}

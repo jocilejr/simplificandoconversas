@@ -1,28 +1,35 @@
 
 
-## Melhorar reordenação de steps dentro do grupo
+## Corrigir player de áudio no GroupNode
 
-### Problema
-Os steps dentro do grupo usam `draggable` diretamente no elemento inteiro, fazendo com que qualquer clique que se mova minimamente inicie um drag acidental. Isso causa reordenações indesejadas.
+### Problema raiz
+O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
 
 ### Solução
-Adicionar um **drag handle dedicado** (ícone de arrastar `GripVertical`) em cada step. Apenas ao segurar esse ícone o drag será iniciado. Clicar no corpo do step continuará abrindo o painel de propriedades normalmente.
+Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
 
-### Alterações
+O player terá:
+- Botão play/pause (ícone)
+- Barra de progresso simples (div com width percentual)
+- Duração e tempo atual em texto
+- Sem waves, sem controles nativos
 
-**`src/components/chatbot/GroupNode.tsx`**
+### Preview sem URL
+Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
 
-1. Remover `draggable` do container principal de cada `StepRow`.
-2. Adicionar um ícone `GripVertical` (lucide) no lado esquerdo de cada step, visível no hover do step.
-3. O `GripVertical` terá `draggable="true"` e os handlers `onDragStart`/`onDragEnd`. O `setDragImage` apontará para o container pai para manter o visual do drag.
-4. O container do step mantém `onDragEnter` e `onDragOver` para aceitar drops, mas não inicia drags sozinho.
-5. Aplicar o mesmo padrão aos tipos especiais (`waitDelay`, `waitForClick`, `sendText` inline) — todos ganham o grip handle.
+### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-### Resultado
-- Clique no step → abre propriedades (sem drag acidental)
-- Segurar o grip → arrasta para reordenar
-- Soltar fora do grupo → extrai o step (comportamento existente preservado)
+1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
+   - `useRef` para `new Audio(src)` 
+   - `useState` para `isPlaying`, `currentTime`, `duration`
+   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
+   - Barra de progresso visual (div bg com width%)
+   - Display de tempo `currentTime / duration`
 
-### Arquivos alterados
+2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+
+3. **Manter** badge "Gravando" se `simulateRecording`
+
+### Arquivo alterado
 - `src/components/chatbot/GroupNode.tsx`
 
