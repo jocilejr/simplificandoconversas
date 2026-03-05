@@ -173,7 +173,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                               {format(new Date(msg.created_at), "dd/MM HH:mm")}
                             </span>
                           </div>
-                          <p className="text-[11px] text-foreground line-clamp-2">
+                          <p className="text-[11px] text-foreground line-clamp-2 break-all">
                             {msg.message_type !== "text" ? `[${msg.message_type}]` : msg.content || "—"}
                           </p>
                         </div>
