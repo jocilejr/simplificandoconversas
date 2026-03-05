@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy, GripVertical } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy, GripVertical, FileText } from "lucide-react";
 
 /* ---- Mini player customizado para dentro do React Flow ---- */
 function AudioPreviewPlayer({ src }: { src: string }) {
