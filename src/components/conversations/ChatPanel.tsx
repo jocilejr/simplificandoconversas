@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare, Send, Loader2, Check, CheckCheck,
-  Bot, PanelRight, Zap,
+  Bot, PanelRight, Zap, X,
 } from "lucide-react";
 import { Message } from "@/hooks/useMessages";
 import { Conversation } from "@/hooks/useConversations";
@@ -49,6 +49,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [text, setText] = useState("");
   const [executingFlow, setExecutingFlow] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { data: flows } = useChatbotFlows();
   const { data: quickReplies } = useQuickReplies();
@@ -105,6 +106,28 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-background">
+      {/* Image Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center cursor-pointer"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-4 right-4 text-white hover:bg-white/10 z-10"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="h-6 w-6" />
+          </Button>
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
       {/* Header */}
       <div className="px-4 py-3 border-b border-border/60 flex items-center gap-3 bg-card/80 backdrop-blur-sm">
         <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="md" />
@@ -160,8 +183,8 @@ export function ChatPanel({
                     className={cn(
                       "max-w-[65%] px-3 py-2 text-[13px] shadow-sm",
                       isOutbound
-                        ? "bg-[hsl(142,50%,24%)] text-white rounded-2xl rounded-br-sm"
-                        : "bg-[hsl(225,30%,12%)] text-card-foreground rounded-2xl rounded-bl-sm"
+                        ? "bg-[#005c4b] text-white rounded-2xl rounded-br-sm"
+                        : "bg-[#202c33] text-[#e9edef] rounded-2xl rounded-bl-sm"
                     )}
                   >
                     {msg.media_url && (
@@ -172,7 +195,7 @@ export function ChatPanel({
                             alt=""
                             className="rounded-xl max-w-[280px] max-h-[280px] w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
                             loading="lazy"
-                            onClick={() => window.open(msg.media_url!, "_blank")}
+                            onClick={() => setLightboxUrl(msg.media_url!)}
                           />
                         ) : msg.message_type === "audio" ? (
                           <audio controls src={msg.media_url} className="max-w-full min-w-[220px]" />
