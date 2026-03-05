@@ -150,6 +150,15 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
+                  className="h-10 rounded-lg transition-all duration-200 cursor-pointer hover:bg-sidebar-accent/80"
+                  onClick={() => setTriggerOpen(true)}
+                >
+                  <Send className="h-5 w-5" />
+                  {!collapsed && <span className="text-sm">Disparar Fluxo</span>}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
                   asChild
                   isActive={isActive("/settings")}
                   className="h-10 rounded-lg transition-all duration-200"
