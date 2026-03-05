@@ -461,17 +461,27 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
 
   return (
     <div className="relative group/card" style={{ background: "transparent" }}>
+      {/* External duplicate button — visible on hover */}
+      <button
+        className="absolute -top-3 -right-12 z-50 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId: id }, bubbles: true }));
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <Copy className="w-3.5 h-3.5" />
+      </button>
+
       {/* External trash button — visible on hover */}
       <button
         className="absolute -top-3 -right-3 z-50 w-7 h-7 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          const event = new CustomEvent("group-delete", {
-            detail: { nodeId: id },
-            bubbles: true,
-          });
-          document.dispatchEvent(event);
+          document.dispatchEvent(new CustomEvent("group-delete", { detail: { nodeId: id }, bubbles: true }));
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
