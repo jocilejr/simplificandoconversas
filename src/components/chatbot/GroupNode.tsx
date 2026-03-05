@@ -100,6 +100,23 @@ interface GroupNodeProps {
   selected?: boolean;
 }
 
+function StepDuplicateButton({ nodeId, stepId }: { nodeId: string; stepId: string }) {
+  return (
+    <button
+      className="absolute -top-2 -right-2 z-50 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/step:opacity-100 transition-opacity shadow-md hover:scale-110 nopan nodrag"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent("group-duplicate-step", { detail: { nodeId, stepId }, bubbles: true }));
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <Copy className="w-3 h-3" />
+    </button>
+  );
+}
+
 function StepRow({
   step,
   index,
