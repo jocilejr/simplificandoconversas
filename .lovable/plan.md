@@ -1,37 +1,35 @@
 
 
-## Fix: Linha bugada ao puxar do handle
+## Fix: Labels desalinhados com os handles
 
-### Causa raiz
+### Problema
 
-O React Flow aplica `top: 50%` nos handles via CSS interno. Os inline styles `top: "calc(100% - 42px)"` **não vencem** essa regra por especificidade. Resultado: o React Flow calcula a posição da aresta a partir do centro do nó (50%), mas o handle está visualmente em outro lugar — causando a curva estranha.
-
-Prova: o `.group-handle-target` funciona corretamente porque usa `top: 24px !important` via CSS. Os handles de saída perderam o `!important` quando removemos as regras do `.group-handle-source`.
+Os handles estão posicionados com CSS absoluto (`top: calc(100% - 42px)` e `top: calc(100% - 18px)`), mas as labels "Continuou ✓" e "Se não clicou ⏱" estão dentro de um div com `space-y-3` e padding genérico. O espaçamento CSS não corresponde às coordenadas reais dos handles — especialmente o segundo label fica visualmente acima do handle laranja.
 
 ### Solução
 
-Criar classes CSS dedicadas para os dois handles de saída, com posicionamento via `!important` (igual ao `.group-handle-target`):
+Trocar o footer por um container com altura fixa e posicionamento relativo. Cada label será posicionada com `bottom` absoluto para corresponder exatamente aos handles:
 
-**`src/index.css`**:
-```css
-.group-handle-output-0 {
-  top: calc(100% - 42px) !important;
-}
-.group-handle-output-1 {
-  top: calc(100% - 18px) !important;
-}
-.group-handle-source {
-  top: auto !important;
-  bottom: 16px !important;
-}
+- Handle `output-0`: `top: calc(100% - 42px)` → label "Continuou" a `bottom: 42px`
+- Handle `output-1`: `top: calc(100% - 18px)` → label "Se não clicou" a `bottom: 18px`
+
+**`src/components/chatbot/GroupNode.tsx`** (linhas 470-478):
+
+```tsx
+{hasFinalizerStep && (
+  <div className="relative border-t border-border/40" style={{ height: '52px' }}>
+    <div className="absolute right-5 flex items-center" style={{ bottom: '32px' }}>
+      <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
+    </div>
+    <div className="absolute right-5 flex items-center" style={{ bottom: '8px' }}>
+      <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
+    </div>
+  </div>
+)}
 ```
 
-**`src/components/chatbot/GroupNode.tsx`**:
-- `output-0`: adicionar classe `group-handle-output-0`, remover `top` do inline style
-- `output-1`: adicionar classe `group-handle-output-1`, remover `top` do inline style
-- Handle default (sem finalizer): restaurar classe `group-handle-source` com as regras `!important` de volta
+Os valores `bottom` são ajustados para compensar o offset do footer dentro do nó (o footer não começa em `bottom: 0` do nó, pois há o border-radius e padding do card).
 
 ### Arquivos alterados
-- `src/index.css`
 - `src/components/chatbot/GroupNode.tsx`
 
