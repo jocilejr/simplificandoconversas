@@ -192,7 +192,7 @@ export function ChatPanel({
                       msg.message_type === "audio" ? "px-2 py-1.5" : "px-4 py-2.5",
                       isOutbound
                         ? "bg-[#075e54] text-[#ffffff] rounded-2xl rounded-br-sm"
-                        : "bg-[#1f2c34] text-[#f1f1f2] rounded-2xl rounded-bl-sm"
+                        : "bg-[#1f2c34] text-white rounded-2xl rounded-bl-sm"
                     )}
                   >
                     {msg.media_url && (
