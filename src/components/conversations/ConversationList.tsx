@@ -16,6 +16,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Conversation } from "@/hooks/useConversations";
+import { Label } from "@/hooks/useLabels";
 import { ContactAvatar } from "./ContactAvatar";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";

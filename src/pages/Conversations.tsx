@@ -121,6 +121,7 @@ const Conversations = () => {
           instances={instanceTabs}
           selectedInstance={selectedInstance}
           onSelectInstance={setSelectedInstance}
+          conversationLabels={conversationLabelsMap}
         />
       </div>
 
