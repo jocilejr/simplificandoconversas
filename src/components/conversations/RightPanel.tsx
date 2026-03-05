@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { ContactAvatar } from "./ContactAvatar";
 import { Conversation } from "@/hooks/useConversations";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
-import { useLabels, useConversationLabels } from "@/hooks/useLabels";
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
