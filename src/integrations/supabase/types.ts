@@ -112,6 +112,30 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_tags: {
+        Row: {
+          created_at: string
+          id: string
+          remote_jid: string
+          tag_name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          remote_jid: string
+          tag_name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          remote_jid?: string
+          tag_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversation_labels: {
         Row: {
           conversation_id: string
