@@ -97,6 +97,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useReactFlow();
   const { saveSnapshot } = useFlowHistory(flowId);
