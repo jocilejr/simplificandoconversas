@@ -352,17 +352,22 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
-    setSelectedNodeId(node.id);
-    setSelectedStepId(null);
-    
-    // If clicking a group, check if a specific step was clicked
+    // For groups: only open properties if a step was clicked
     if (node.type === "groupBlock") {
       const target = (_ as any).target as HTMLElement;
       const stepEl = target?.closest?.("[data-step-id]");
       if (stepEl) {
+        setSelectedNodeId(node.id);
         setSelectedStepId(stepEl.getAttribute("data-step-id"));
+      } else {
+        // Clicked on group container/header — don't select
+        setSelectedNodeId(null);
+        setSelectedStepId(null);
       }
+      return;
     }
+    setSelectedNodeId(node.id);
+    setSelectedStepId(null);
   }, []);
 
   const onPaneClick = useCallback(() => {
