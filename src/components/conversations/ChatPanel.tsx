@@ -9,6 +9,7 @@ import { Message } from "@/hooks/useMessages";
 import { Conversation } from "@/hooks/useConversations";
 import { ContactAvatar } from "./ContactAvatar";
 import { cn } from "@/lib/utils";
+import { WhatsAppAudioPlayer } from "./WhatsAppAudioPlayer";
 import { format } from "date-fns";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
@@ -198,7 +199,7 @@ export function ChatPanel({
                             onClick={() => setLightboxUrl(msg.media_url!)}
                           />
                         ) : msg.message_type === "audio" ? (
-                          <audio controls src={msg.media_url} className="max-w-full min-w-[220px]" />
+                          <WhatsAppAudioPlayer src={msg.media_url} isOutbound={isOutbound} />
                         ) : msg.message_type === "video" ? (
                           <video
                             controls
