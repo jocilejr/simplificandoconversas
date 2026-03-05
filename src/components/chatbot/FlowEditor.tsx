@@ -411,6 +411,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedStepId(null);
+    setContextMenu(null);
   }, []);
 
   const onEdgeContextMenu = useCallback(
