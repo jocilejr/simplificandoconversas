@@ -493,15 +493,15 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
             type="source"
             position={Position.Right}
             id="output-0"
-            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
-            style={{ background: accentColor, top: "calc(100% - 42px)" }}
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-0"
+            style={{ background: accentColor }}
           />
           <Handle
             type="source"
             position={Position.Right}
             id="output-1"
-            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
-            style={{ background: "#f97316", top: "calc(100% - 18px)" }}
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-1"
+            style={{ background: "#f97316" }}
           />
         </>
       ) : (
@@ -509,7 +509,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           type="source"
           position={Position.Right}
           className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
-          style={{ background: accentColor, bottom: "16px" }}
+          style={{ background: accentColor }}
         />
       )}
     </div>
