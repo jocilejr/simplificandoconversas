@@ -343,25 +343,21 @@ function StepRow({
     const html = parseWhatsAppFormatting(d.textContent);
     return (
       <div
+        ref={containerRef}
         data-step-id={step.id}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("application/step-id", step.id);
-          e.dataTransfer.setData("application/source-node-id", nodeId);
-          onDragStart(index);
-        }}
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
-        onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 px-3.5 py-3 rounded-xl transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 px-3.5 py-3 rounded-xl transition-all cursor-pointer nopan nodrag flex items-start gap-1.5 ${
           isDragging ? "opacity-30 scale-95"
             : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
             : "bg-secondary/50 hover:bg-secondary/70"
         }`}
       >
+        <div className="pt-0.5">
+          <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
+        </div>
         <p
-          className="text-[13px] text-foreground/85 whitespace-pre-wrap line-clamp-8 leading-relaxed"
+          className="text-[13px] text-foreground/85 whitespace-pre-wrap line-clamp-8 leading-relaxed flex-1 min-w-0"
           dangerouslySetInnerHTML={{ __html: html }}
         />
       </div>
