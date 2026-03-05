@@ -284,7 +284,7 @@ function StepRow({
         }`}>
           <span className="text-[11px] font-semibold tabular-nums">
             {d.delayRandomMode ? `${d.delayMinSeconds || 0}s–${d.delayMaxSeconds || 0}s` : `${d.delaySeconds || 0}s`}
-            {d.delayPresenceType === "recording" ? " · gravando..." : d.delayPresenceType === "composing" || d.simulateTyping ? " · digitando..." : ""}
+            {d.delayPresenceType === "recording" ? " · gravando..." : d.delayPresenceType === "composing" ? " · digitando..." : ""}
           </span>
         </div>
         <div className="flex-1 h-px bg-border/60" />
