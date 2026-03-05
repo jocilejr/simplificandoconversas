@@ -36,10 +36,13 @@ export function useLabels() {
 
   const create = useMutation({
     mutationFn: async ({ name, color }: { name: string; color: string }) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("labels")
-        .insert({ name, color, user_id: user!.id });
+        .insert({ name, color, user_id: user!.id })
+        .select()
+        .single();
       if (error) throw error;
+      return data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["labels"] }),
   });
