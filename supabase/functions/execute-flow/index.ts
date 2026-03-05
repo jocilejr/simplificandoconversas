@@ -478,22 +478,20 @@ Deno.serve(async (req) => {
             // Insert timeout if configured
             const clickTimeout = data.clickTimeout || 0;
             if (clickTimeout > 0) {
-              const timeoutNodeId = timeoutEdgeMap.get(node.id);
-              if (timeoutNodeId) {
-                const unit = data.clickTimeoutUnit || "minutes";
-                const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
-                const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
-                await serviceClient.from("flow_timeouts").insert({
-                  execution_id: executionId,
-                  flow_id: flowId,
-                  user_id: userId,
-                  remote_jid: jid,
-                  conversation_id: conversationId || null,
-                  timeout_node_id: timeoutNodeId,
-                  timeout_at: timeoutAt,
-                });
-                console.log(`[execute-flow] Timeout set for waitForClick: ${timeoutAt} -> node ${timeoutNodeId}`);
-              }
+              const timeoutNodeId = timeoutEdgeMap.get(node.id) || null;
+              const unit = data.clickTimeoutUnit || "minutes";
+              const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+              const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
+              await serviceClient.from("flow_timeouts").insert({
+                execution_id: executionId,
+                flow_id: flowId,
+                user_id: userId,
+                remote_jid: jid,
+                conversation_id: conversationId || null,
+                timeout_node_id: timeoutNodeId,
+                timeout_at: timeoutAt,
+              });
+              console.log(`[execute-flow] Timeout set for waitForClick: ${timeoutAt} -> node ${timeoutNodeId || '(end flow)'}`);
             }
 
             results.push(`waitForClick: paused (code=${shortCode})`);
@@ -510,22 +508,20 @@ Deno.serve(async (req) => {
           // Insert timeout if configured
           const replyTimeout = data.replyTimeout || 0;
           if (replyTimeout > 0) {
-            const timeoutNodeId = timeoutEdgeMap.get(node.id);
-            if (timeoutNodeId) {
-              const unit = data.replyTimeoutUnit || "minutes";
-              const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
-              const timeoutAt = new Date(Date.now() + replyTimeout * multiplier).toISOString();
-              await serviceClient.from("flow_timeouts").insert({
-                execution_id: executionId,
-                flow_id: flowId,
-                user_id: userId,
-                remote_jid: jid,
-                conversation_id: conversationId || null,
-                timeout_node_id: timeoutNodeId,
-                timeout_at: timeoutAt,
-              });
-              console.log(`[execute-flow] Timeout set for waitForReply: ${timeoutAt} -> node ${timeoutNodeId}`);
-            }
+            const timeoutNodeId = timeoutEdgeMap.get(node.id) || null;
+            const unit = data.replyTimeoutUnit || "minutes";
+            const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+            const timeoutAt = new Date(Date.now() + replyTimeout * multiplier).toISOString();
+            await serviceClient.from("flow_timeouts").insert({
+              execution_id: executionId,
+              flow_id: flowId,
+              user_id: userId,
+              remote_jid: jid,
+              conversation_id: conversationId || null,
+              timeout_node_id: timeoutNodeId,
+              timeout_at: timeoutAt,
+            });
+            console.log(`[execute-flow] Timeout set for waitForReply: ${timeoutAt} -> node ${timeoutNodeId || '(end flow)'}`);
           }
 
           results.push(`waitForReply: paused (var=${data.replyVariable || "resposta"})`);

@@ -278,7 +278,7 @@ export type Database = {
           processed: boolean | null
           remote_jid: string
           timeout_at: string
-          timeout_node_id: string
+          timeout_node_id: string | null
           user_id: string
         }
         Insert: {
@@ -290,7 +290,7 @@ export type Database = {
           processed?: boolean | null
           remote_jid: string
           timeout_at: string
-          timeout_node_id: string
+          timeout_node_id?: string | null
           user_id: string
         }
         Update: {
@@ -302,7 +302,7 @@ export type Database = {
           processed?: boolean | null
           remote_jid?: string
           timeout_at?: string
-          timeout_node_id?: string
+          timeout_node_id?: string | null
           user_id?: string
         }
         Relationships: [
