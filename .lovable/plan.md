@@ -1,29 +1,28 @@
 
 
-## Fix: Backend TypeScript compilation failing
+## Fix: TypeScript `unknown` type errors no backend
 
-The `npx tsc` step fails but Docker doesn't show the specific TypeScript errors. The most likely causes are:
+Todos os 16 erros são do mesmo tipo: acessar propriedades em valores tipados como `unknown` (retorno de `fetch().json()` e `baileysRequest`).
 
-1. **`atob` usage in `webhook.ts` line 54** — `atob` is a browser/DOM API. With `"lib": ["ES2022"]` only, TypeScript doesn't include DOM types. Node 20 has `atob` at runtime but the types aren't included without `"DOM"` in lib.
+### Causa raiz
 
-2. **Potential other type mismatches** across the 561-line `execute-flow.ts` and other files.
+No TypeScript 4.9+, `Response.json()` retorna `Promise<any>` **apenas** quando `"DOM"` está no `lib`. Porém a função `baileysRequest` retorna `resp.json()` sem tipo explícito, e o TS infere `unknown` em alguns contextos.
 
-### Changes
+### Correções (3 arquivos)
 
-**`deploy/backend/tsconfig.json`** — Two fixes:
-- Add `"DOM"` to the `lib` array so `atob`, `fetch`, and other globals are typed
-- Ensure `skipLibCheck` is true (already set)
+1. **`deploy/backend/src/routes/evolution-proxy.ts`** — Tipar retorno de `baileysRequest` como `Promise<any>`:
+   ```typescript
+   async function baileysRequest(path: string, method: string = "POST", body?: any): Promise<any> {
+   ```
 
-```json
-"lib": ["ES2022", "DOM"]
-```
+2. **`deploy/backend/src/routes/execute-flow.ts`** — Mesmo padrão: localizar a função `baileysRequest` (se duplicada) e tipar como `Promise<any>`. Adicionar `as any` nos `.json()` restantes:
+   - Linha 195: `const userData: any = await userResp.json();`
+   - Linha 393: `const aiData: any = await aiResp.json();`
 
-**`deploy/backend/src/routes/webhook.ts`** (safer alternative) — Replace `atob` + manual byte conversion (line 54-58) with Node-native `Buffer.from(base64, "base64")`, matching how `evolution-proxy.ts` already does it:
+3. **`deploy/backend/src/routes/webhook.ts`** — Cast no `.json()` da linha 36:
+   - `const result: any = await resp.json();`
 
-```typescript
-const buffer = Buffer.from(base64, "base64");
-const bytes = new Uint8Array(buffer);
-```
+### Resultado
 
-Both changes together ensure the build works regardless of lib configuration.
+Zero erros de compilação. Nenhuma mudança de lógica — apenas anotações de tipo.
 
