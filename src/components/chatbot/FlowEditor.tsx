@@ -833,6 +833,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onEdgeContextMenu={onEdgeContextMenu}
+          onPaneContextMenu={onPaneContextMenu}
           nodeTypes={nodeTypes}
           fitView
           panOnDrag
