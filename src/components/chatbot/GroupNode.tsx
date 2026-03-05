@@ -271,6 +271,29 @@ function StepRow({
         return null;
       case "waitForClick":
         return null;
+      case "sendFile": {
+        const fName = d.fileName || (d.fileUrl ? d.fileUrl.split("/").pop() : null);
+        return (
+          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30">
+            {d.fileUrl ? (
+              <div className="flex items-center gap-2 px-2.5 py-2">
+                <div className="w-8 h-10 rounded bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-4 h-4 text-red-500" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium text-foreground truncate">{fName || "documento.pdf"}</p>
+                  <p className="text-[9px] text-muted-foreground uppercase">PDF</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-2.5 py-2.5">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[11px] text-muted-foreground">Nenhum arquivo</span>
+              </div>
+            )}
+          </div>
+        );
+      }
       default:
         return null;
     }
