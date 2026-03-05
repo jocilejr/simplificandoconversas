@@ -283,7 +283,10 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   key={cl.id}
                   className="text-[11px] gap-1.5 cursor-pointer hover:opacity-80 border-0 rounded-full px-3 py-1 font-medium"
                   style={{ backgroundColor: cl.labels.color + "22", color: cl.labels.color, border: `1px solid ${cl.labels.color}44` }}
-                  onClick={() => unassign.mutate(cl.label_id)}
+                  onClick={() => unassign.mutate(cl.label_id, {
+                    onSuccess: () => toast.success("Etiqueta removida"),
+                    onError: (err: any) => toast.error("Erro ao remover etiqueta: " + err.message),
+                  })}
                 >
                   <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: cl.labels.color }} />
                   {cl.labels.name}
