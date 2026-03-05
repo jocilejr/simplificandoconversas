@@ -1,35 +1,39 @@
 
 
-## URLs Configuráveis via Variáveis de Ambiente na Stack
+## Instalação com um único `install.sh`
 
-### Conceito
+O script atual já faz quase tudo automaticamente, mas precisa de alguns ajustes para ficar completo:
 
-Em vez de hardcodar `app.chatbotsimples.cloud` e `api.chatbotsimples.cloud`, usar variáveis de ambiente no `portainer-stack.yml` que o Portainer permite preencher na UI. Assim, para mudar de domínio basta editar as variáveis e redesploiar.
+### Problemas atuais
+
+1. **Domínios não são perguntados** -- o script usa o IP público como fallback, mas não pergunta interativamente se o usuário quer usar domínios personalizados
+2. **docker-compose.yml desatualizado** -- o Nginx ainda referencia `default.conf` em vez do template `default.conf.template` com envsubst
+3. **Falta passar `APP_DOMAIN`/`API_DOMAIN`** como env vars para o container Nginx no docker-compose.yml
 
 ### Mudanças
 
-1. **`deploy/portainer-stack.yml`** — Adicionar duas variáveis:
-   - `APP_DOMAIN` (default: `app.chatbotsimples.cloud`) — domínio do frontend
-   - `API_DOMAIN` (default: `api.chatbotsimples.cloud`) — domínio da API
-   - Passar ambas para o container Nginx e Backend como env vars
+1. **`deploy/install.sh`** -- Adicionar prompt interativo no início:
+   - Perguntar `APP_DOMAIN` (default: IP público)
+   - Perguntar `API_DOMAIN` (default: mesmo que APP_DOMAIN)
+   - Mostrar resumo antes de continuar
+   - Atualizar as URLs de saída no final para mostrar os domínios corretos
 
-2. **`deploy/nginx/default.conf`** — Converter para template (`default.conf.template`) que usa `${APP_DOMAIN}` e `${API_DOMAIN}` nos `server_name`. O Nginx Alpine suporta `envsubst` nativo via `/etc/nginx/templates/`.
+2. **`deploy/docker-compose.yml`** -- Sincronizar com o `portainer-stack.yml`:
+   - Nginx: trocar volume de `default.conf` para `default.conf.template` em `/etc/nginx/templates/`
+   - Nginx: adicionar env vars `APP_DOMAIN` e `API_DOMAIN`
+   - Backend: adicionar `API_DOMAIN` como env var
+   - GoTrue: usar `APP_DOMAIN` nas URLs (GOTRUE_SITE_URL, API_EXTERNAL_URL)
+   - Remover portas internas desnecessárias (PostgREST, GoTrue, Storage) -- só Nginx precisa expor 80/443
 
-3. **`deploy/portainer-stack.yml`** — No serviço Nginx, montar o template em `/etc/nginx/templates/default.conf.template` (o Nginx Alpine auto-processa com envsubst) e passar as env vars.
+### Resultado
 
-4. **`deploy/install.sh`** e **`deploy/update.sh`** — Usar `APP_DOMAIN` e `API_DOMAIN` do `.env` para gerar o `VITE_SUPABASE_URL` do frontend build.
+O usuário faz:
+```bash
+git clone <REPO> app
+cd app/deploy
+chmod +x install.sh
+./install.sh
+```
 
-5. **`deploy/PORTAINER.md`** — Atualizar tabela de variáveis com `APP_DOMAIN` e `API_DOMAIN`.
-
-### Resultado no Portainer
-
-| Variável | Valor | Descrição |
-|----------|-------|-----------|
-| `APP_DOMAIN` | `app.chatbotsimples.cloud` | Domínio do frontend |
-| `API_DOMAIN` | `api.chatbotsimples.cloud` | Domínio da API |
-| `APP_URL` | `https://app.chatbotsimples.cloud` | URL completa (usada pelo GoTrue) |
-
-Para mudar de domínio: edite as variáveis no Portainer → Redeploy. O Nginx recarrega automaticamente com os novos `server_name`.
-
-**Nota:** O frontend precisa ser rebuildado ao mudar `API_DOMAIN` pois `VITE_SUPABASE_URL` é compilado no build. Os demais serviços atualizam sem rebuild.
+O script pergunta os domínios, gera secrets, builda o frontend, sobe tudo com Docker, e no final mostra as URLs de acesso. Zero configuração manual.
 
