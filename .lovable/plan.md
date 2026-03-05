@@ -1,46 +1,36 @@
 
 
-## Fix: Labels desalinhados — StepNode.tsx (componente correto)
+## Bug: Fluxo responde pela instância errada
 
 ### Causa raiz
 
-Todas as 6 tentativas anteriores editaram `GroupNode.tsx`. O screenshot mostra um **StepNode** ("Aguardar Clique" autônomo com header, body e timeout indicator) — componente `StepNode.tsx`.
+Quando o webhook recebe uma mensagem na instância "FunilPrincipal" e dispara um fluxo, o `execute-flow` **ignora a instância de origem** e usa `profile.evolution_instance_name` (a instância padrão/ativa do perfil — "Meire Rosana - Entregas") para enviar todas as mensagens do fluxo.
 
-O desalinhamento vem da diferença entre como handles e labels calculam sua posição vertical:
+O problema está em dois pontos:
 
-- **Handles**: `top: "35%"` + CSS `transform: translate(50%, -50%)` → centrado em Y=35%
-- **Labels**: `top: "calc(35% - 6px)"` sem transform → topo do texto a 35%-6px, NÃO centrado
+1. **`evolution-webhook/index.ts`** — `checkAndTriggerFlows` e `checkAndResumeWaitingReply` não passam o `instance` (nome da instância que recebeu a mensagem) para o `execute-flow`.
 
-A aproximação de -6px não funciona porque depende da altura do texto e do handle serem constantes.
+2. **`execute-flow/index.ts`** — Não aceita um parâmetro `instanceName` no body; sempre lê `profile.evolution_instance_name`.
 
 ### Solução
 
-Corrigir os spans de label no StepNode para usar o MESMO sistema de posicionamento dos handles: `top` percentual + `translateY(-50%)` para centralizar.
+**`evolution-webhook/index.ts`** (2 alterações):
+- Em `checkAndTriggerFlows`: adicionar `instanceName: instance` no body do fetch para `execute-flow`.
+- Em `checkAndResumeWaitingReply`: adicionar parâmetro `instanceName` e passá-lo no fetch. Atualizar a chamada para incluir o `instance`.
 
-**`src/components/chatbot/StepNode.tsx`** — linhas 203-208 e 217-222:
+**`execute-flow/index.ts`** (1 alteração):
+- Ler `instanceName` do body da request.
+- Se fornecido, usar esse valor em vez de `profile.evolution_instance_name` para enviar mensagens e salvar conversas.
+- Manter o fallback para `profile.evolution_instance_name` quando não fornecido (execução manual pelo usuário).
 
-```tsx
-// Label "Respondeu ✓" (linha 203-208)
-<span
-  className="absolute text-[9px] font-medium text-muted-foreground pointer-events-none"
-  style={{ right: -68, top: "35%", transform: "translateY(-50%)" }}
->
-  Respondeu ✓
-</span>
-
-// Label timeout (linhas 217-222)
-<span
-  className="absolute text-[9px] font-medium pointer-events-none"
-  style={{ right: -90, top: "70%", transform: "translateY(-50%)", color: "#f97316" }}
->
-  {timeoutLabel} ⏱
-</span>
+```text
+Webhook recebe msg na instância "FunilPrincipal"
+  → checkAndTriggerFlows(..., instance="FunilPrincipal")
+    → fetch execute-flow { instanceName: "FunilPrincipal" }
+      → execute-flow usa "FunilPrincipal" para enviar (não mais o padrão do perfil)
 ```
 
-### Por que funciona
-
-Handles e labels agora usam a mesma fórmula: `top: X%` + `translateY(-50%)`. Ambos são `position: absolute` relativo ao mesmo `div.relative` (o container raiz do StepNode). O centro vertical dos dois elementos coincide exatamente.
-
 ### Arquivos alterados
-- `src/components/chatbot/StepNode.tsx` (2 spans corrigidos)
+- `supabase/functions/evolution-webhook/index.ts` — passar `instanceName` nas chamadas ao execute-flow
+- `supabase/functions/execute-flow/index.ts` — aceitar e usar `instanceName` do body
 
