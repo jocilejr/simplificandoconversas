@@ -521,11 +521,7 @@ function StepRow({
 
   // Compact description for remaining types
   let desc = config.description;
-  if (d.type === "action") {
-    desc = d.actionValue || config.description;
-  } else if (d.type === "condition") {
-    desc = `${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
-  } else if (d.type === "waitForReply") {
+  if (d.type === "waitForReply") {
     desc = `Salvar em {{${d.replyVariable || "resposta"}}}`;
   }
 
