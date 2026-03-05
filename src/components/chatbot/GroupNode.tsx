@@ -91,15 +91,20 @@ function StepRow({
       }
       case "sendAudio": {
         return (
-          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30">
+          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30 nopan nodrag nowheel">
             {d.mediaUrl ? (
-              <div className="p-1.5" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="p-1.5 nopan nodrag"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 <audio
                   controls
                   preload="metadata"
                   src={d.mediaUrl}
                   className="w-full"
-                  style={{ height: '36px' }}
+                  style={{ height: '40px', minHeight: '40px' }}
                 />
               </div>
             ) : (
