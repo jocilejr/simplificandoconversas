@@ -174,6 +174,38 @@ async function executeStep(
     return "sendVideo: ok";
   }
 
+  if (nodeType === "sendFile" && stepData.fileUrl) {
+    const fileName = (stepData as any).fileName || "documento.pdf";
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+      method: "POST",
+      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      body: JSON.stringify({ number: jid, mediatype: "document", media: stepData.fileUrl, fileName }),
+    });
+    const r = await resp.json();
+    const { data: conv } = await serviceClient
+      .from("conversations")
+      .upsert(
+        { user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { onConflict: "user_id,remote_jid,instance_name" }
+      )
+      .select("id")
+      .single();
+    if (conv) {
+      await serviceClient.from("messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        remote_jid: jid,
+        content: fileName,
+        message_type: "document",
+        direction: "outbound",
+        status: "sent",
+        external_id: r?.key?.id || null,
+        media_url: stepData.fileUrl,
+      });
+    }
+    return "sendFile: ok";
+  }
+
   if (nodeType === "waitDelay") {
     let delaySec: number;
     if (stepData.delayRandomMode && stepData.delayMinSeconds != null && stepData.delayMaxSeconds != null) {
