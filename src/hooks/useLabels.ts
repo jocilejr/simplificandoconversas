@@ -104,14 +104,17 @@ export function useConversationLabels(conversationId: string | null) {
 
   const unassign = useMutation({
     mutationFn: async (labelId: string) => {
+      if (!conversationId) throw new Error("Sem conversa");
       const { error } = await supabase
         .from("conversation_labels")
         .delete()
-        .eq("conversation_id", conversationId!)
+        .eq("conversation_id", conversationId)
         .eq("label_id", labelId);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation_labels", conversationId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversation_labels", conversationId] });
+    },
   });
 
   return { ...query, assign, unassign };
