@@ -226,13 +226,20 @@ export function ChatPanel({
                       </div>
                     )}
                     {msg.content && <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>}
-                    <div className={cn(
-                      "flex items-center gap-1 justify-end mt-1",
-                      isOutbound ? "text-white/50" : "text-muted-foreground/60"
-                    )}>
-                      <span className="text-[10px]">{format(new Date(msg.created_at), "HH:mm")}</span>
-                      {isOutbound && <StatusIcon status={msg.status} />}
-                    </div>
+                    {msg.message_type !== "audio" && (
+                      <div className={cn(
+                        "flex items-center gap-1 justify-end mt-1",
+                        isOutbound ? "text-white/50" : "text-muted-foreground/60"
+                      )}>
+                        <span className="text-[10px]">{format(new Date(msg.created_at), "HH:mm")}</span>
+                        {isOutbound && <StatusIcon status={msg.status} />}
+                      </div>
+                    )}
+                    {msg.message_type === "audio" && isOutbound && (
+                      <div className="flex items-center gap-1 justify-end -mt-1">
+                        <StatusIcon status={msg.status} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
