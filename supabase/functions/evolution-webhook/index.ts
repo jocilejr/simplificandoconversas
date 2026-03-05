@@ -350,18 +350,18 @@ async function checkAndTriggerFlows(
       continue;
     }
 
-    // 3. Check if there's already a running execution for this jid + flow
+    // 3. Check if there's already a running/waiting execution for this jid + flow
     const { data: existing } = await supabase
       .from("flow_executions")
       .select("id")
       .eq("user_id", userId)
       .eq("flow_id", flow.id)
       .eq("remote_jid", remoteJid)
-      .eq("status", "running")
+      .in("status", ["running", "waiting_click", "waiting_reply"])
       .limit(1);
 
     if (existing && existing.length > 0) {
-      console.log(`Flow ${flow.id} already running for ${remoteJid}, skipping`);
+      console.log(`Flow ${flow.id} already active for ${remoteJid} (id=${existing[0].id}), skipping`);
       continue;
     }
 
