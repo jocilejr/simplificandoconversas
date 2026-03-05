@@ -58,9 +58,16 @@ export function ChatPanel({
   const [executingFlow, setExecutingFlow] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [selectedQR, setSelectedQR] = useState<string | null>(null);
+  const [qrSearch, setQrSearch] = useState("");
+  const [showNewQRForm, setShowNewQRForm] = useState(false);
+  const [newQRTitle, setNewQRTitle] = useState("");
+  const [newQRContent, setNewQRContent] = useState("");
+  const [managingQR, setManagingQR] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const qrSearchRef = useRef<HTMLInputElement>(null);
   const { data: flows } = useChatbotFlows();
-  const { data: quickReplies } = useQuickReplies();
+  const { data: quickReplies, create: createQR, remove: removeQR } = useQuickReplies();
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation?.id);
   const savedFlows = flows?.filter(f => (f.nodes as any[])?.length > 0) || [];
   const hasActiveFlow = (activeExecutions?.length || 0) > 0;
