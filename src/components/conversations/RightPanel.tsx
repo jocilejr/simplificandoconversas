@@ -78,9 +78,9 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   };
 
   return (
-    <div className="w-80 border-l border-border/60 bg-card/50 backdrop-blur-sm flex flex-col h-full">
+    <div className="w-80 border-l border-[#2a3942] bg-[#111b21] flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-[#2a3942] flex items-center justify-between">
         <span className="text-sm font-semibold text-foreground">Detalhes</span>
         <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -90,7 +90,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
           {/* Contact Info Card */}
-          <div className="bg-secondary/40 rounded-xl p-5 flex flex-col items-center text-center gap-3">
+          <div className="bg-[#202c33] rounded-xl p-5 flex flex-col items-center text-center gap-3">
             <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="xl" />
             <div>
               <p className="font-semibold text-base text-foreground">
@@ -104,7 +104,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           </div>
 
           {/* Active Flow Executions */}
-          <div className="bg-secondary/30 rounded-xl p-4">
+          <div className="bg-[#202c33] rounded-xl p-4">
             <div className="flex items-center gap-1.5 mb-3">
               <Zap className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Fluxo Ativo</span>
@@ -156,7 +156,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           </div>
 
           {/* Labels Section */}
-          <div className="bg-secondary/30 rounded-xl p-4">
+          <div className="bg-[#202c33] rounded-xl p-4">
             <div className="flex items-center gap-1.5 mb-3">
               <Tag className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Etiquetas</span>
@@ -231,7 +231,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           </div>
 
           {/* Quick Replies Section */}
-          <div className="bg-secondary/30 rounded-xl p-4">
+          <div className="bg-[#202c33] rounded-xl p-4">
             <div className="flex items-center gap-1.5 mb-3">
               <Zap className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Respostas Rápidas</span>
