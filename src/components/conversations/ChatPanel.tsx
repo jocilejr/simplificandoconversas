@@ -77,7 +77,7 @@ export function ChatPanel({
     setExecutingFlow(true);
     try {
       const { data, error } = await supabase.functions.invoke("execute-flow", {
-        body: { flowId, remoteJid: conversation.remote_jid, instanceName: conversation.instance_name },
+        body: { flowId, remoteJid: conversation.remote_jid, conversationId: conversation.id, instanceName: conversation.instance_name },
       });
       if (error) throw error;
       toast.success(`Fluxo executado: ${data?.executed?.length || 0} ações`);
