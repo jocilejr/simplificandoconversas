@@ -640,7 +640,7 @@ Deno.serve(async (req) => {
           // Pause execution - waiting for reply
           await serviceClient
             .from("flow_executions")
-            .update({ status: "waiting_reply", current_node_index: nodeIndex })
+            .update({ status: "waiting_reply", current_node_index: nodeIndex, waiting_node_id: node.id })
             .eq("id", executionId);
 
           // Insert timeout if configured
