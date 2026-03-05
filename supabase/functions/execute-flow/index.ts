@@ -348,13 +348,16 @@ Deno.serve(async (req) => {
     // Block new executions if there's already an active flow for this contact
     // (but allow resuming from waitForClick or timeout)
     if (!resumeFromNodeId) {
-      const { data: activeExecs } = await serviceClient
+      let activeExecQuery = serviceClient
         .from("flow_executions")
         .select("id")
         .eq("user_id", userId)
         .eq("remote_jid", jid)
-        .in("status", ["running", "waiting_click", "waiting_reply"])
-        .limit(1);
+        .in("status", ["running", "waiting_click", "waiting_reply"]);
+      if (evolution_instance_name) {
+        activeExecQuery = activeExecQuery.eq("instance_name", evolution_instance_name);
+      }
+      const { data: activeExecs } = await activeExecQuery.limit(1);
 
       if (activeExecs && activeExecs.length > 0) {
         console.log(`[execute-flow] Blocked: active execution ${activeExecs[0].id} already exists for ${jid}`);
@@ -369,7 +372,7 @@ Deno.serve(async (req) => {
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({ user_id: userId, conversation_id: conversationId || null, flow_id: flowId, remote_jid: jid, status: "running" })
+      .insert({ user_id: userId, conversation_id: conversationId || null, flow_id: flowId, remote_jid: jid, status: "running", instance_name: evolution_instance_name || null })
       .select("id")
       .single();
 

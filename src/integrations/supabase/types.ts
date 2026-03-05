@@ -251,6 +251,7 @@ export type Database = {
           current_node_index: number
           flow_id: string | null
           id: string
+          instance_name: string | null
           remote_jid: string
           status: string
           updated_at: string
@@ -263,6 +264,7 @@ export type Database = {
           current_node_index?: number
           flow_id?: string | null
           id?: string
+          instance_name?: string | null
           remote_jid: string
           status?: string
           updated_at?: string
@@ -275,6 +277,7 @@ export type Database = {
           current_node_index?: number
           flow_id?: string | null
           id?: string
+          instance_name?: string | null
           remote_jid?: string
           status?: string
           updated_at?: string

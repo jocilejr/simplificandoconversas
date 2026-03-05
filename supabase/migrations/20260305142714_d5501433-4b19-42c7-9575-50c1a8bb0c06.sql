@@ -1,0 +1,1 @@
+ALTER TABLE public.flow_executions ADD COLUMN instance_name text;
