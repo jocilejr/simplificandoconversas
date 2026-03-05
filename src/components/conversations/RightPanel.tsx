@@ -161,7 +161,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                       </span>
                     </div>
                     <div className="space-y-1 pl-6">
-                      {inst.messages.map((msg) => (
+                      {inst.messages.filter(m => m.direction === "inbound").map((msg) => (
                         <div key={msg.id} className="bg-background rounded-lg p-2 border border-border/20">
                           <div className="flex items-center justify-between mb-0.5">
                             <span className={cn(
