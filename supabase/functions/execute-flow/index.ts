@@ -626,6 +626,36 @@ Deno.serve(async (req) => {
               results.push(`group.${step.id}: waitForClick: paused (code=${shortCode})`);
               groupPaused = true;
               break;
+            } else if (step.data.type === "waitForReply") {
+              // Pause flow waiting for contact reply (inside group)
+              console.log(`[execute-flow] Group waitForReply: pausing execution ${executionId}`);
+              await serviceClient
+                .from("flow_executions")
+                .update({ status: "waiting_reply", current_node_index: nodeIndex })
+                .eq("id", executionId);
+
+              // Insert timeout if configured (inside group)
+              const replyTimeout = step.data.replyTimeout || 0;
+              if (replyTimeout > 0) {
+                const timeoutNodeId = timeoutEdgeMap.get(node.id) || null;
+                const unit = step.data.replyTimeoutUnit || "minutes";
+                const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+                const timeoutAt = new Date(Date.now() + replyTimeout * multiplier).toISOString();
+                await serviceClient.from("flow_timeouts").insert({
+                  execution_id: executionId,
+                  flow_id: flowId,
+                  user_id: userId,
+                  remote_jid: jid,
+                  conversation_id: conversationId || null,
+                  timeout_node_id: timeoutNodeId,
+                  timeout_at: timeoutAt,
+                });
+                console.log(`[execute-flow] Timeout set for group waitForReply: ${timeoutAt} -> node ${timeoutNodeId || '(end flow)'}`);
+              }
+
+              results.push(`group.${step.id}: waitForReply: paused`);
+              groupPaused = true;
+              break;
             } else {
               const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
               results.push(`group.${step.id}: ${stepResult}`);
