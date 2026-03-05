@@ -430,6 +430,7 @@ const allAddableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "
 const finalizerTypes: FlowNodeType[] = ["waitForReply", "waitForClick"];
 
 function GroupNode({ id, data, selected }: GroupNodeProps) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
   const d = data as FlowNodeData;
   const steps = (d.steps || []) as FlowStepData[];
   const hasFinalizerStep = steps.some((s) => finalizerTypes.includes(s.data.type as FlowNodeType));
