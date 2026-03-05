@@ -584,6 +584,42 @@ Deno.serve(async (req) => {
                     const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid,instance_name" });
                     if (!err) totalSynced += chunk.length;
                   }
+
+                  // Also create message entries from lastMessage data so chat panel shows content
+                  const jidsToLookup = chatRows.map((r: any) => r.remote_jid);
+                  const { data: convRecordsFC } = await serviceClient
+                    .from("conversations")
+                    .select("id, remote_jid")
+                    .eq("user_id", userId)
+                    .eq("instance_name", currentInstanceName)
+                    .in("remote_jid", jidsToLookup);
+                  const convIdMapFC = new Map((convRecordsFC || []).map((r: any) => [r.remote_jid, r.id]));
+
+                  const msgInserts: any[] = [];
+                  for (const ch of chats) {
+                    const rid = ch.id || ch.remoteJid || "";
+                    if (rid.includes("@g.us") || rid === "status@broadcast") continue;
+                    const convId = convIdMapFC.get(rid);
+                    if (!convId) continue;
+                    const lastMsg = ch.lastMessage;
+                    if (!lastMsg) continue;
+                    const content = lastMsg.message?.conversation || lastMsg.message?.extendedTextMessage?.text || null;
+                    if (!content) continue;
+                    const extId = lastMsg.key?.id || `findchats-${rid}-${Date.now()}`;
+                    const ts = lastMsg.messageTimestamp ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
+                    const direction = lastMsg.key?.fromMe ? "outbound" : "inbound";
+                    msgInserts.push({
+                      conversation_id: convId, user_id: userId, remote_jid: rid,
+                      content, message_type: "text", direction, status: "delivered",
+                      external_id: extId, media_url: null, created_at: ts,
+                    });
+                  }
+                  if (msgInserts.length > 0) {
+                    console.log(`[sync-chats] Inserting ${msgInserts.length} messages from findChats for ${currentInstanceName}`);
+                    for (let i = 0; i < msgInserts.length; i += 100) {
+                      await serviceClient.from("messages").upsert(msgInserts.slice(i, i + 100), { onConflict: "external_id" });
+                    }
+                  }
                 }
               }
             } catch (e) {
