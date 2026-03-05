@@ -542,17 +542,19 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         >
           {steps.length > 0 ? (
             steps.map((step, i) => (
-              <StepRow
-                key={step.id}
-                step={step}
-                index={i}
-                nodeId={id}
-                isDragging={dragIndex === i}
-                isDropTarget={overIndex === i && dragIndex !== null && dragIndex !== i}
-                onDragStart={handleDragStart}
-                onDragEnter={handleDragEnter}
-                onDragEnd={handleDragEnd}
-              />
+              <div key={step.id} className="relative group/step">
+                <StepDuplicateButton nodeId={id} stepId={step.id} />
+                <StepRow
+                  step={step}
+                  index={i}
+                  nodeId={id}
+                  isDragging={dragIndex === i}
+                  isDropTarget={overIndex === i && dragIndex !== null && dragIndex !== i}
+                  onDragStart={handleDragStart}
+                  onDragEnter={handleDragEnter}
+                  onDragEnd={handleDragEnd}
+                />
+              </div>
             ))
           ) : (
             <div className="px-4 py-6 text-center text-[12px] text-muted-foreground">
