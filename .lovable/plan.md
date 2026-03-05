@@ -1,40 +1,24 @@
 
 
-## Organizar regras de "Aguardar Mensagem" e "Aguardar Clique" dentro de grupos
+## Corrigir saídas e botão "Adicionar ação" no GroupNode
 
-Os steps `waitForReply` e `waitForClick` devem ser tratados como "finalizadores" de grupo: sempre ficam na última posição, no máximo 1 por grupo, e determinam as saídas (2 handles: sucesso + timeout).
+### Problemas identificados
 
-### Mudanças
+1. **3 saídas aparecendo**: A variável `hasTimeoutOutputs` exige `timeout > 0` para mostrar as 2 saídas. Mas o handle padrão (único) sempre renderiza quando `hasTimeoutOutputs` é false. Quando o timeout está configurado, as 2 saídas aparecem, mas o handle padrão também pode estar visível. O correto é usar `hasFinalizerStep` (que já existe) para decidir entre 1 ou 2 saídas.
 
-#### 1. `src/components/chatbot/GroupNode.tsx` — UI do popover e rodapé
+2. **Botão "Adicionar ação" visível após finalizador**: O popover filtra os tipos `waitForReply`/`waitForClick` da lista, mas o botão continua aparecendo. Deve ser **completamente escondido** quando o grupo tem um finalizador.
 
-- **Filtrar tipos no popover "Adicionar ação"**: se o grupo já contém um step `waitForReply` ou `waitForClick`, remover ambos da lista `addableTypes` exibida no popover.
-- **Remover bolinhas decorativas** do rodapé (os `div` com `w-2.5 h-2.5 rounded-full`) que criam confusão visual com os handles reais. Manter apenas os textos "Continuou ✓" e o label de timeout.
+### Mudanças em `src/components/chatbot/GroupNode.tsx`
 
-#### 2. `src/components/chatbot/FlowEditor.tsx` — Lógica de posicionamento e validação
+1. **Usar `hasFinalizerStep` em vez de `hasTimeoutOutputs`** para:
+   - Decidir a largura do nó (`w-[320px]` vs `w-[280px]`)
+   - Renderizar o rodapé com labels "Continuou ✓" / "Se não respondeu/clicou ⏱"
+   - Escolher entre 2 handles de saída ou 1 handle padrão
 
-**a) No handler `group-add-step`** (~linha 392):
-- Se `stepType` é `waitForReply` ou `waitForClick`, verificar se o grupo já tem um. Se sim, mostrar toast de erro e retornar.
-- Caso contrário, adicionar normalmente (já vai para o final).
+2. **Esconder o botão "Adicionar ação"** completamente quando `hasFinalizerStep` é true (o `div` com o Popover inteiro).
 
-**b) No handler `group-reorder-step`** (~linha 382):
-- Após reordenar, verificar se o último step é um `waitForReply`/`waitForClick`. Se a reordenação moveu ele para fora da última posição, bloquear a operação (não aplicar) e mostrar toast informativo.
+3. **Ajustar label do timeout** para usar `hasFinalizerStep` e buscar o tipo do finalizador diretamente.
 
-**c) No handler de docking `onNodeDragStop`** (~linha 262):
-- Ao montar `mergedSteps`, verificar se já existe um finalizador nos `existingSteps`. Se o `newSteps` contém outro finalizador, bloquear o merge (toast de erro, retornar sem agrupar).
-- Após montar `mergedSteps`, garantir que qualquer step `waitForReply`/`waitForClick` fique na última posição (mover automaticamente para o final do array).
-
-**d) No handler `group-receive-step`** (~linha 467):
-- Mesma validação: se o grupo destino já tem um finalizador e o step sendo recebido é outro finalizador, bloquear com toast.
-- Se o step recebido é um finalizador, colocá-lo na última posição.
-
-### Resultado
-- Máximo 1 finalizador por grupo, sempre na última posição
-- O grupo ganha 2 saídas quando tem finalizador (já implementado)
-- Não é possível adicionar steps depois do finalizador
-- Bolinhas decorativas removidas para evitar confusão com os handles reais
-
-### Arquivos alterados
+### Arquivo alterado
 - `src/components/chatbot/GroupNode.tsx`
-- `src/components/chatbot/FlowEditor.tsx`
 
