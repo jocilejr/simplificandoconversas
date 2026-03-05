@@ -7,11 +7,13 @@ import {
   Settings,
   Zap,
   LogOut,
+  Send,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import {
@@ -38,6 +40,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path;
   const [unreadCount, setUnreadCount] = useState(0);
+  const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
   const { profile } = useProfile();
 
@@ -147,6 +150,15 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
+                  className="h-10 rounded-lg transition-all duration-200 cursor-pointer hover:bg-sidebar-accent/80"
+                  onClick={() => setTriggerOpen(true)}
+                >
+                  <Send className="h-5 w-5" />
+                  {!collapsed && <span className="text-sm">Disparar Fluxo</span>}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
                   asChild
                   isActive={isActive("/settings")}
                   className="h-10 rounded-lg transition-all duration-200"
@@ -192,6 +204,7 @@ export function AppSidebar() {
           )}
         </div>
       </SidebarFooter>
+      <ManualFlowTrigger open={triggerOpen} onOpenChange={setTriggerOpen} />
     </Sidebar>
   );
 }
