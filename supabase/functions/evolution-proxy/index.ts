@@ -6,6 +6,30 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const ALL_WEBHOOK_EVENTS = [
+  "APPLICATION_STARTUP",
+  "QRCODE_UPDATED",
+  "CONNECTION_UPDATE",
+  "MESSAGES_SET",
+  "MESSAGES_UPSERT",
+  "MESSAGES_UPDATE",
+  "MESSAGES_DELETE",
+  "SEND_MESSAGE",
+  "CONTACTS_SET",
+  "CONTACTS_UPSERT",
+  "CONTACTS_UPDATE",
+  "PRESENCE_UPDATE",
+  "CHATS_SET",
+  "CHATS_DELETE",
+  "CHATS_UPDATE",
+  "LABELS_EDIT",
+  "LABELS_ASSOCIATION",
+  "CALL",
+  "TYPEBOT_CHANGE_STATUS",
+  "LOGOUT_INSTANCE",
+  "REMOVE_INSTANCE",
+];
+
 async function downloadAndUploadMedia(
   storageClient: any,
   apiUrl: string,
