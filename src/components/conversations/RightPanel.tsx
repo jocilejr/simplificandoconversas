@@ -110,7 +110,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
     enabled: !!contactNumber && !!conversation.id,
   });
 
-  const assignedLabelIds = new Set((convLabels || []).map(cl => cl.label_id));
 
   const handleCreateQR = async () => {
     if (!qrTitle.trim() || !qrContent.trim()) return;
@@ -120,15 +119,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
       setQrContent("");
       setShowQRForm(false);
     } catch { toast.error("Erro ao criar resposta rápida"); }
-  };
-
-  const handleCreateLabel = async () => {
-    if (!labelName.trim()) return;
-    try {
-      await createLabel.mutateAsync({ name: labelName, color: labelColor });
-      setLabelName("");
-      setShowLabelForm(false);
-    } catch { toast.error("Erro ao criar etiqueta"); }
   };
 
   const startEditQR = (qr: { id: string; title: string; content: string }) => {
