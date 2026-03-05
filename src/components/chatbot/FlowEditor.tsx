@@ -847,6 +847,30 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onClose={() => { setSelectedNodeId(null); setSelectedStepId(null); }}
         />
       )}
+
+      <AlertDialog open={!!deleteGroupId} onOpenChange={(open) => { if (!open) setDeleteGroupId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar grupo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você tem certeza que deseja apagar o grupo? Todos os steps dentro dele serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteGroupId) {
+                  deleteNode(deleteGroupId);
+                }
+                setDeleteGroupId(null);
+              }}
+            >
+              Apagar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
