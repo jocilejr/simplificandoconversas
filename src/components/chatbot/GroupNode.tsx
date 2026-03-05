@@ -468,9 +468,29 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
 
         {hasFinalizerStep && (
-          <div className="border-t border-border/40" style={{ height: '48px' }} />
+          <div className="border-t border-border/40">
+            <div className="relative flex items-center justify-end pr-5 h-6">
+              <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id="output-0"
+                className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-0"
+                style={{ background: accentColor }}
+              />
+            </div>
+            <div className="relative flex items-center justify-end pr-5 h-6">
+              <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id="output-1"
+                className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-1"
+                style={{ background: "#f97316" }}
+              />
+            </div>
+          </div>
         )}
-
         {isDockTarget && (
           <div className="px-3 py-2 bg-blue-500/10 border-t border-blue-500/30">
             <p className="text-[11px] text-blue-500 text-center font-medium animate-pulse">
@@ -480,30 +500,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
       </div>
 
-      {hasFinalizerStep ? (
-        <>
-          <div className="absolute right-8 flex items-center" style={{ top: 'calc(100% - 42px)', transform: 'translateY(-50%)' }}>
-            <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
-          </div>
-          <div className="absolute right-8 flex items-center" style={{ top: 'calc(100% - 18px)', transform: 'translateY(-50%)' }}>
-            <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
-          </div>
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="output-0"
-            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-0"
-            style={{ background: accentColor }}
-          />
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="output-1"
-            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-output-1"
-            style={{ background: "#f97316" }}
-          />
-        </>
-      ) : (
+      {hasFinalizerStep ? null : (
         <Handle
           type="source"
           position={Position.Right}
