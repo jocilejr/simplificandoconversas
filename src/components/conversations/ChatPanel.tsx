@@ -191,10 +191,9 @@ export function ChatPanel({
                       "max-w-[85%] text-sm shadow-sm",
                       msg.message_type === "audio" ? "px-2 py-1.5" : "px-4 py-2.5",
                       isOutbound
-                        ? "bg-[#075e54] rounded-2xl rounded-br-sm"
-                        : "bg-[#1f2c34] rounded-2xl rounded-bl-sm"
+                        ? "bg-[#075e54] text-white rounded-2xl rounded-br-sm"
+                        : "bg-[#1f2c34] text-white rounded-2xl rounded-bl-sm"
                     )}
-                    style={{ color: '#ffffff' }}
                   >
                     {msg.media_url && (
                       <div className={cn("mb-2", !msg.content && "-mx-1 -mt-1")}>
