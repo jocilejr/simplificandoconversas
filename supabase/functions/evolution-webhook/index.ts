@@ -195,7 +195,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Skip outbound messages sent via our proxy (already saved by proxy)
+    // Skip send.message from proxy (already saved by proxy)
+    // But allow fromMe messages.upsert (sent from phone directly)
     if (fromMe && event === "send.message") {
       await supabase
         .from("conversations")
@@ -212,6 +213,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, updated: "conversation" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // For fromMe messages.upsert, check if already saved by proxy (dedup by external_id)
+    if (fromMe && event === "messages.upsert" && externalId) {
+      const { data: existing } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("external_id", externalId)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        console.log("Outbound message already saved by proxy, skipping:", externalId);
+        return new Response(JSON.stringify({ ok: true, skipped: "already_saved" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Download and upload media if applicable
