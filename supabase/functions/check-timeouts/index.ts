@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               flowId: timeout.flow_id,
               remoteJid: timeout.remote_jid,
-              conversationId: timeout.conversation_id,
+              conversationId: resolvedConvId,
               userId: timeout.user_id,
               resumeFromNodeId: timeout.timeout_node_id,
               instanceName: execution.instance_name || undefined,
