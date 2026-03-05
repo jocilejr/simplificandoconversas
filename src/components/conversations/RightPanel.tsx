@@ -11,8 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  X, Plus, Trash2, Pencil, Check, Tag, Zap, Square, Loader2, Clock, Phone,
-  MessageSquare, Globe, Calendar, ChevronDown, ChevronUp,
+  X, Tag, Zap, Square, Loader2, Clock, Phone,
+  Globe, Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
