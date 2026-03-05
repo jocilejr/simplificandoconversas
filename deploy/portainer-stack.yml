@@ -1,0 +1,164 @@
+version: "3.8"
+
+# ══════════════════════════════════════════════════════════════
+# Portainer Stack — Deploy via Git Repository
+# ══════════════════════════════════════════════════════════════
+# No Portainer: Stacks > Add Stack > Repository
+# Repository URL: seu repo Git
+# Compose path: deploy/portainer-stack.yml
+# Preencha as Environment Variables abaixo
+# ══════════════════════════════════════════════════════════════
+
+services:
+  # ─── PostgreSQL ───
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    labels:
+      - "com.simplificando.service=database"
+
+  # ─── GoTrue (Auth) ───
+  gotrue:
+    image: supabase/gotrue:v2.158.1
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: "0.0.0.0"
+      GOTRUE_API_PORT: "9999"
+      API_EXTERNAL_URL: ${APP_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app?sslmode=disable
+      GOTRUE_SITE_URL: ${APP_URL}
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_SMTP_ADMIN_EMAIL: "admin@example.com"
+      GOTRUE_SMTP_HOST: ""
+      GOTRUE_SMTP_PORT: ""
+      GOTRUE_SMTP_USER: ""
+      GOTRUE_SMTP_PASS: ""
+    labels:
+      - "com.simplificando.service=auth"
+
+  # ─── PostgREST ───
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
+      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    labels:
+      - "com.simplificando.service=api"
+
+  # ─── Supabase Storage ───
+  storage:
+    image: supabase/storage-api:v1.11.13
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://postgrest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
+      FILE_SIZE_LIMIT: "52428800"
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: local
+      GLOBAL_S3_BUCKET: stub
+      IS_MULTITENANT: "false"
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      AUTH_JWT_ALGORITHM: HS256
+    volumes:
+      - storagedata:/var/lib/storage
+    labels:
+      - "com.simplificando.service=storage"
+
+  # ─── Baileys Service (WhatsApp) ───
+  baileys:
+    build: ./baileys-service
+    restart: always
+    environment:
+      PORT: "8084"
+      WEBHOOK_URL: http://backend:3001/api/webhook
+      API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
+    volumes:
+      - baileys_sessions:/app/sessions
+    labels:
+      - "com.simplificando.service=whatsapp"
+
+  # ─── Backend Express ───
+  backend:
+    build: ./backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "3001"
+      SUPABASE_URL: http://postgrest:3000
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_URL: http://gotrue:9999
+      STORAGE_URL: http://storage:5000
+      BAILEYS_URL: http://baileys:8084
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
+      APP_URL: ${APP_URL}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    labels:
+      - "com.simplificando.service=backend"
+
+  # ─── Nginx ───
+  nginx:
+    image: nginx:alpine
+    restart: always
+    depends_on:
+      - postgrest
+      - gotrue
+      - storage
+      - backend
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - frontend_data:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    labels:
+      - "com.simplificando.service=proxy"
+
+volumes:
+  pgdata:
+  storagedata:
+  baileys_sessions:
+  frontend_data:
+    external: true
+    name: ${STACK_NAME:-simplificando}_frontend
