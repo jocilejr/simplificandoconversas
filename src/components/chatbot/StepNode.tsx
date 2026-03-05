@@ -172,18 +172,61 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
 
         {/* Body */}
         <div className="px-3 py-2.5">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
-            >
-              {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+          {d.type === "condition" ? (
+            <div className="space-y-2">
+              {d.conditionField && d.conditionValue ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-red-500/10 text-[11px] font-semibold text-red-400 border border-red-500/20">
+                    {d.conditionField}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    {d.conditionOperator === "equals" ? "=" : d.conditionOperator === "starts_with" ? "começa com" : d.conditionOperator === "regex" ? "regex" : "contém"}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-foreground/5 text-[11px] font-medium text-foreground/70 border border-border/40">
+                    "{d.conditionValue}"
+                  </span>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground/60 italic px-1">Configurar condição...</p>
+              )}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-medium text-foreground truncate">{d.label || config.label}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{renderDescription(d)}</p>
+          ) : d.type === "action" ? (() => {
+            const actionLabels: Record<string, { label: string; color: string }> = {
+              add_tag: { label: "Tag", color: "#f97316" },
+              remove_tag: { label: "Remover Tag", color: "#ef4444" },
+              add_to_list: { label: "Lista", color: "#3b82f6" },
+              set_variable: { label: "Variável", color: "#8b5cf6" },
+            };
+            const info = actionLabels[d.actionType || "add_tag"] || actionLabels.add_tag;
+            return (
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold border"
+                  style={{ backgroundColor: `${info.color}15`, color: info.color, borderColor: `${info.color}30` }}
+                >
+                  {info.label}
+                </span>
+                {d.actionValue ? (
+                  <span className="text-[12px] text-foreground/70 font-medium truncate">{d.actionValue}</span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground/60 italic">Sem valor</span>
+                )}
+              </div>
+            );
+          })() : (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
+              >
+                {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium text-foreground truncate">{d.label || config.label}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{renderDescription(d)}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Timeout indicator */}
