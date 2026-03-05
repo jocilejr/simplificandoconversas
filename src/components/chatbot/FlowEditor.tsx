@@ -20,7 +20,9 @@ import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Plus, History, Check, Loader2, icons } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Plus, History, Check, Loader2, icons, Radio } from "lucide-react";
+import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
 import {
   AlertDialog,
   AlertDialogAction,
