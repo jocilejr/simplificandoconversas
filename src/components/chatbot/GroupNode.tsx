@@ -359,7 +359,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
       />
 
       <div
-        className={`${hasFinalizerStep ? "w-[320px]" : "w-[280px]"} rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
+        className={`${hasFinalizerStep ? "w-[320px]" : "w-[280px]"} rounded-xl overflow-visible transition-all duration-200 bg-card border ${
           isDockTarget
             ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
             : selected
@@ -467,6 +467,17 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           </div>
         )}
 
+        {hasFinalizerStep && (
+          <div className="px-3 py-2 border-t border-border/40 space-y-1.5">
+            <div className="flex items-center justify-end">
+              <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
+            </div>
+            <div className="flex items-center justify-end">
+              <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
+            </div>
+          </div>
+        )}
+
         {isDockTarget && (
           <div className="px-3 py-2 bg-blue-500/10 border-t border-blue-500/30">
             <p className="text-[11px] text-blue-500 text-center font-medium animate-pulse">
@@ -475,17 +486,6 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           </div>
         )}
       </div>
-
-      {hasFinalizerStep && (
-        <div className="px-3 py-2 bg-card border-x border-b border-border rounded-b-xl space-y-1.5">
-          <div className="flex items-center justify-end">
-            <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
-          </div>
-          <div className="flex items-center justify-end">
-            <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
-          </div>
-        </div>
-      )}
 
       {hasFinalizerStep ? (
         <>
