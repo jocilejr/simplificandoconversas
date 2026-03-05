@@ -456,15 +456,18 @@ Deno.serve(async (req) => {
       if (visited.has(node.id)) continue;
       visited.add(node.id);
 
-      const { data: statusCheck } = await serviceClient
-        .from("flow_executions")
-        .select("status")
-        .eq("id", executionId)
-        .single();
+      // Check cancellation every 3 nodes instead of every node to reduce DB calls
+      if (nodeIndex > 0 && nodeIndex % 3 === 0) {
+        const { data: statusCheck } = await serviceClient
+          .from("flow_executions")
+          .select("status")
+          .eq("id", executionId)
+          .single();
 
-      if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
-        results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
-        break;
+        if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
+          results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
+          break;
+        }
       }
 
       await serviceClient
