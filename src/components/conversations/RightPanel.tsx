@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ContactAvatar } from "./ContactAvatar";
 import { Conversation } from "@/hooks/useConversations";
-import { useQuickReplies } from "@/hooks/useQuickReplies";
+
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
