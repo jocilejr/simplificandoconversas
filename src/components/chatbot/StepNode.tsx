@@ -76,6 +76,12 @@ function StepNode({ data, selected }: StepNodeProps) {
   const timeoutLabel =
     d.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
 
+  const dispatchDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId: (data as any).__nodeId || "" }, bubbles: true }));
+  };
+
   // ─── Trigger: special gradient card ───
   if (isTrigger) {
     return (
