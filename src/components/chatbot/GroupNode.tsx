@@ -1,6 +1,96 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Mic, Clock, Link } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link } from "lucide-react";
+
+/* ---- Mini player customizado para dentro do React Flow ---- */
+function AudioPreviewPlayer({ src }: { src: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    const audio = new Audio(src);
+    audio.preload = "metadata";
+    audioRef.current = audio;
+
+    const onLoaded = () => setDuration(audio.duration || 0);
+    const onTime = () => setCurrentTime(audio.currentTime);
+    const onEnded = () => { setIsPlaying(false); setCurrentTime(0); };
+
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [src]);
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) { audio.pause(); } else { audio.play(); }
+    setIsPlaying(!isPlaying);
+  };
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = pct * duration;
+    setCurrentTime(pct * duration);
+  };
+
+  const fmt = (s: number) => {
+    if (!s || isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div
+      className="flex items-center gap-2 px-2.5 py-2 nopan nodrag nowheel"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={toggle}
+        className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 hover:bg-primary/25 transition-colors"
+      >
+        {isPlaying ? (
+          <Pause className="w-3 h-3 text-primary" />
+        ) : (
+          <Play className="w-3 h-3 text-primary fill-primary ml-0.5" />
+        )}
+      </button>
+      <div
+        className="flex-1 h-1.5 rounded-full bg-muted-foreground/20 cursor-pointer relative"
+        onClick={seek}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-primary/60 transition-all"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0 min-w-[32px] text-right">
+        {fmt(isPlaying ? currentTime : duration)}
+      </span>
+    </div>
+  );
+}
 import { nodeTypeConfig, parseWhatsAppFormatting, type FlowNodeData, type FlowNodeType, type FlowStepData } from "@/types/chatbot";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -91,39 +181,13 @@ function StepRow({
       }
       case "sendAudio": {
         return (
-          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30 nopan nodrag nowheel">
+          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30">
             {d.mediaUrl ? (
-              <div
-                className="p-2 nopan nodrag nowheel"
-                style={{ pointerEvents: 'all' }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-              >
-                <audio
-                  controls
-                  preload="metadata"
-                  src={d.mediaUrl}
-                  className="w-full"
-                  style={{ height: '44px', minHeight: '44px', pointerEvents: 'all' }}
-                />
-              </div>
+              <AudioPreviewPlayer src={d.mediaUrl as string} />
             ) : (
-              <div className="flex items-center gap-2.5 px-2.5 py-2.5">
-                <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-                  <Play className="w-3 h-3 text-primary fill-primary" />
-                </div>
-                <div className="flex items-center gap-[2px] flex-1">
-                  {Array.from({ length: 28 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-[2.5px] rounded-full bg-primary/40"
-                      style={{ height: `${4 + Math.sin(i * 0.7) * 8 + Math.sin(i * 1.3) * 3}px` }}
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">0:00</span>
+              <div className="flex items-center gap-2 px-2.5 py-2.5">
+                <Mic className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[11px] text-muted-foreground">Nenhum áudio</span>
               </div>
             )}
             {d.simulateRecording && (
