@@ -60,8 +60,9 @@ interface FlowEditorProps {
   flowName: string;
   initialNodes?: any[];
   initialEdges?: any[];
+  initialInstanceNames?: string[];
   onBack: () => void;
-  onSave?: (name: string, nodes: any[], edges: any[]) => Promise<void>;
+  onSave?: (name: string, nodes: any[], edges: any[], instanceNames: string[]) => Promise<void>;
 }
 
 function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack, onSave }: FlowEditorProps) {
