@@ -1,42 +1,26 @@
 
 
-## Bug: Timeout não funciona para waitForClick dentro de groupBlock
+## Bug: "Capturar Resposta" (waitForReply) não funciona dentro de groupBlock
 
 ### Causa raiz
 
-O código de inserção de timeout na tabela `flow_timeouts` (linhas 480-496) só existe no handler de nós **standalone** `waitForClick`. Quando o `waitForClick` está dentro de um **groupBlock** (linhas 535-609), o fluxo é pausado corretamente (status `waiting_click`), mas **nenhum timeout é criado**. Por isso o `check-timeouts` nunca encontra nada para processar e o fluxo fica preso para sempre.
+No handler de `groupBlock` (linha 629-632 do `execute-flow`), apenas `waitForClick` tem tratamento especial para pausar o fluxo. O `waitForReply` cai no `else` genérico e é executado como um step comum via `executeStep()`, que não sabe pausar — o fluxo simplesmente passa direto.
 
-Confirmação: a query `SELECT * FROM flow_timeouts` retorna vazio, mesmo com a execução em `waiting_click` há mais de 20 segundos.
+Além disso, o código de retomada no `evolution-webhook` (função `checkAndResumeWaitingReply`) só procura nós standalone do tipo `waitForReply`. Se o nó está dentro de um grupo, ele nunca é encontrado.
 
 ### Solução
 
-Adicionar a lógica de inserção de timeout dentro do handler de `waitForClick` no groupBlock (após a linha 605), replicando a mesma lógica que já existe no handler standalone (linhas 480-496).
+**1. `supabase/functions/execute-flow/index.ts`** — Adicionar handler para `waitForReply` dentro de grupos, similar ao que já existe para `waitForClick`:
+- Antes do `else` genérico (linha 629), adicionar `else if (step.data.type === "waitForReply")`
+- Pausar a execução com status `waiting_reply`
+- Inserir timeout se configurado
+- Marcar `groupPaused = true` e dar `break`
 
-**Arquivo: `supabase/functions/execute-flow/index.ts`** — Após a linha 605 (onde marca `waiting_click` no groupBlock), inserir:
-
-```typescript
-// Insert timeout if configured (inside group)
-const clickTimeout = step.data.clickTimeout || 0;
-if (clickTimeout > 0) {
-  const timeoutNodeId = timeoutEdgeMap.get(node.id) || null;
-  const unit = step.data.clickTimeoutUnit || "minutes";
-  const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
-  const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
-  await serviceClient.from("flow_timeouts").insert({
-    execution_id: executionId,
-    flow_id: flowId,
-    user_id: userId,
-    remote_jid: jid,
-    conversation_id: conversationId || null,
-    timeout_node_id: timeoutNodeId,
-    timeout_at: timeoutAt,
-  });
-  console.log(`[execute-flow] Timeout set for group waitForClick: ${timeoutAt} -> node ${timeoutNodeId || '(end flow)'}`);
-}
-```
-
-O mesmo problema pode existir para `waitForReply` dentro de groups, mas no fluxo atual o `waitForReply` parece estar em grupo e ter timeout 0 — mesmo assim, seria prudente adicionar a mesma lógica para consistência futura.
+**2. `supabase/functions/evolution-webhook/index.ts`** — Atualizar `checkAndResumeWaitingReply` para encontrar `waitForReply` dentro de groupBlocks:
+- Além de procurar nós com `data.type === "waitForReply"`, iterar sobre nós com `data.type === "groupBlock"` e verificar se algum step interno é `waitForReply`
+- Usar a saída correta do grupo (output-0) como `nextNodeId`
 
 ### Arquivos alterados
-- `supabase/functions/execute-flow/index.ts` — adicionar inserção de timeout para waitForClick (e opcionalmente waitForReply) dentro de groupBlock
+- `supabase/functions/execute-flow/index.ts` — handler de waitForReply em groupBlock
+- `supabase/functions/evolution-webhook/index.ts` — busca de waitForReply em grupos na retomada
 
