@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare, Send, Loader2, Check, CheckCheck,
-  Bot, PanelRight, Zap, X,
+  Bot, PanelRight, X,
 } from "lucide-react";
 import { Message } from "@/hooks/useMessages";
 import { Conversation } from "@/hooks/useConversations";
@@ -57,6 +57,7 @@ export function ChatPanel({
   const [text, setText] = useState("");
   const [executingFlow, setExecutingFlow] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { data: flows } = useChatbotFlows();
   const { data: quickReplies } = useQuickReplies();
@@ -319,43 +320,47 @@ export function ChatPanel({
           </PopoverContent>
         </Popover>
 
-        {/* Quick replies */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
-            >
-              <Zap className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-64 p-1.5 rounded-xl">
-            <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Respostas Rápidas</p>
-            {(!quickReplies || quickReplies.length === 0) ? (
-              <p className="text-xs text-muted-foreground px-2 py-3 text-center">Nenhuma resposta salva</p>
-            ) : (
-              quickReplies.map((qr) => (
-                <button
-                  key={qr.id}
-                  className="flex flex-col w-full px-2.5 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
-                  onClick={() => setText(qr.content)}
-                >
-                  <span className="text-sm font-medium truncate">{qr.title}</span>
-                  <span className="text-xs text-muted-foreground truncate">{qr.content}</span>
-                </button>
-              ))
-            )}
-          </PopoverContent>
-        </Popover>
-
-        <Input
-          placeholder="Digite uma mensagem..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          className="h-10 bg-secondary/50 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full px-4 text-sm"
-        />
+        <div className="relative flex-1">
+          {showQuickReplies && quickReplies && quickReplies.length > 0 && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 bg-popover border border-border rounded-xl shadow-lg p-1.5 max-h-48 overflow-y-auto z-10">
+              <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Respostas Rápidas</p>
+              {quickReplies
+                .filter((qr) => {
+                  const search = text.slice(1).toLowerCase();
+                  return !search || qr.title.toLowerCase().includes(search) || qr.content.toLowerCase().includes(search);
+                })
+                .map((qr) => (
+                  <button
+                    key={qr.id}
+                    className="flex flex-col w-full px-2.5 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setText(qr.content);
+                      setShowQuickReplies(false);
+                    }}
+                  >
+                    <span className="text-sm font-medium truncate">{qr.title}</span>
+                    <span className="text-xs text-muted-foreground truncate">{qr.content}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+          <Input
+            placeholder="Digite uma mensagem... (/ para respostas rápidas)"
+            value={text}
+            onChange={(e) => {
+              const val = e.target.value;
+              setText(val);
+              setShowQuickReplies(val.startsWith("/"));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setShowQuickReplies(false);
+              if (e.key === "Enter" && !e.shiftKey && !showQuickReplies) handleSend();
+            }}
+            onBlur={() => setTimeout(() => setShowQuickReplies(false), 150)}
+            className="h-10 bg-secondary/50 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full px-4 text-sm"
+          />
+        </div>
         <Button
           size="icon"
           className="h-9 w-9 rounded-full shrink-0 shadow-sm"

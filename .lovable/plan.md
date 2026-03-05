@@ -1,27 +1,9 @@
+## ✅ Concluído: Corrigir fluxo não continuando após "Capturar Resposta"
 
+### Correções aplicadas
 
-## Plano: 3 alterações
-
-### 1. Histórico de mensagens — mostrar apenas recebidas
-
-**Arquivo:** `src/hooks/useMessages.ts` (linha 30)
-
-Adicionar filtro `.eq("direction", "inbound")` na query para retornar apenas mensagens recebidas.
-
-### 2. PDF enviado como "arquivo" em vez de PDF
-
-**Arquivo:** `supabase/functions/execute-flow/index.ts` (linha 182)
-
-O `sendFile` envia com `mediatype: "document"` mas não inclui o campo `mimetype`. A Evolution API precisa de `mimetype: "application/pdf"` para que o WhatsApp renderize como PDF e não como arquivo genérico.
-
-Alteração: adicionar `mimetype: "application/pdf"` no body do fetch quando o fileName terminar em `.pdf`.
-
-### 3. Respostas rápidas — ativar com "/" em vez de botão na sidebar
-
-**Arquivo:** `src/components/conversations/ChatPanel.tsx`
-
-- Remover o botão `<Zap>` e o `<Popover>` de respostas rápidas (linhas 322-350)
-- Adicionar estado `showQuickReplies` que fica `true` quando o texto começa com `/`
-- Renderizar um dropdown flutuante acima do input (posição absolute) que filtra as respostas pelo texto após `/`
-- Ao selecionar uma resposta, substituir o texto inteiro pelo conteúdo da resposta e fechar o dropdown
-
+1. **Migração**: Adicionada coluna `waiting_node_id` (text) na tabela `flow_executions`
+2. **execute-flow**: Agora grava `waiting_node_id: node.id` ao pausar em waitForReply/waitForClick (standalone e grupo)
+3. **webhook**: `checkAndResumeWaitingReply` usa `waiting_node_id` para encontrar a edge correta e retorna `true/false`
+4. **webhook**: Se retomou fluxo, pula `checkAndTriggerFlows`
+5. **webhook**: `checkAndTriggerFlows` bloqueia em status `running`, `waiting_click` E `waiting_reply`
