@@ -5,14 +5,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ContactAvatar } from "./ContactAvatar";
 import { Conversation } from "@/hooks/useConversations";
-import { useQuickReplies } from "@/hooks/useQuickReplies";
+
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  X, Plus, Trash2, Pencil, Check, Tag, Zap, Square, Loader2, Clock, Phone,
-  MessageSquare, Globe, Calendar, ChevronDown, ChevronUp,
+  X, Tag, Zap, Square, Loader2, Clock, Phone,
+  Globe, Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -38,13 +38,6 @@ function formatPhone(jid: string) {
 }
 
 export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelProps) {
-  const { data: quickReplies, create: createQR, remove: removeQR, update: updateQR } = useQuickReplies();
-  const [qrTitle, setQrTitle] = useState("");
-  const [qrContent, setQrContent] = useState("");
-  const [editingQR, setEditingQR] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
-  const [showQRForm, setShowQRForm] = useState(false);
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
   const { user } = useAuth();
@@ -107,29 +100,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   });
 
 
-  const handleCreateQR = async () => {
-    if (!qrTitle.trim() || !qrContent.trim()) return;
-    try {
-      await createQR.mutateAsync({ title: qrTitle, content: qrContent });
-      setQrTitle("");
-      setQrContent("");
-      setShowQRForm(false);
-    } catch { toast.error("Erro ao criar resposta rápida"); }
-  };
-
-  const startEditQR = (qr: { id: string; title: string; content: string }) => {
-    setEditingQR(qr.id);
-    setEditTitle(qr.title);
-    setEditContent(qr.content);
-  };
-
-  const saveEditQR = async () => {
-    if (!editingQR || !editTitle.trim() || !editContent.trim()) return;
-    try {
-      await updateQR.mutateAsync({ id: editingQR, title: editTitle, content: editContent });
-      setEditingQR(null);
-    } catch { toast.error("Erro ao atualizar"); }
-  };
 
   return (
     <div className="w-[340px] border-l border-border/60 bg-background flex flex-col h-full">
@@ -293,86 +263,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           </div>
 
 
-          {/* ── Quick Replies ── */}
-          <div className="bg-secondary/40 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 text-warning" />
-                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Respostas Rápidas</span>
-              </div>
-              <button
-                onClick={() => setShowQRForm(!showQRForm)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showQRForm ? <ChevronUp className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              </button>
-            </div>
-
-            <div className="space-y-2 mb-3">
-              {(quickReplies || []).map(qr => (
-                <div key={qr.id} className="bg-background rounded-xl p-3 group border border-border/30">
-                  {editingQR === qr.id ? (
-                    <div className="space-y-1.5">
-                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-7 text-xs rounded-lg" />
-                      <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-7 text-xs rounded-lg" />
-                      <div className="flex gap-1">
-                        <Button size="sm" className="h-6 text-[10px] rounded-full" onClick={saveEditQR}>
-                          <Check className="h-3 w-3 mr-1" /> Salvar
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-6 text-[10px] rounded-full" onClick={() => setEditingQR(null)}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-start justify-between">
-                        <p className="text-xs font-medium text-foreground">{qr.title}</p>
-                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => startEditQR(qr)}>
-                            <Pencil className="h-2.5 w-2.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => removeQR.mutate(qr.id)}>
-                            <Trash2 className="h-2.5 w-2.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{qr.content}</p>
-                    </>
-                  )}
-                </div>
-              ))}
-              {(!quickReplies || quickReplies.length === 0) && (
-                <p className="text-xs text-muted-foreground text-center py-3">Nenhuma resposta salva</p>
-              )}
-            </div>
-
-            {showQRForm && (
-              <div className="space-y-1.5 border-t border-border/30 pt-3">
-                <Input
-                  placeholder="Título..."
-                  value={qrTitle}
-                  onChange={e => setQrTitle(e.target.value)}
-                  className="h-8 text-xs rounded-lg"
-                />
-                <Input
-                  placeholder="Conteúdo da resposta..."
-                  value={qrContent}
-                  onChange={e => setQrContent(e.target.value)}
-                  className="h-8 text-xs rounded-lg"
-                  onKeyDown={e => e.key === "Enter" && handleCreateQR()}
-                />
-                <Button
-                  size="sm"
-                  className="w-full h-8 text-xs rounded-lg"
-                  onClick={handleCreateQR}
-                  disabled={!qrTitle.trim() || !qrContent.trim()}
-                >
-                  <Plus className="h-3 w-3 mr-1" /> Adicionar
-                </Button>
-              </div>
-            )}
-          </div>
 
         </div>
       </ScrollArea>

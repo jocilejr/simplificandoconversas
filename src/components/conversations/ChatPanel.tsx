@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare, Send, Loader2, Check, CheckCheck,
-  Bot, PanelRight, X,
+  Bot, PanelRight, X, Plus, Search, Settings,
 } from "lucide-react";
 import { Message } from "@/hooks/useMessages";
 import { Conversation } from "@/hooks/useConversations";
@@ -58,9 +58,16 @@ export function ChatPanel({
   const [executingFlow, setExecutingFlow] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [selectedQR, setSelectedQR] = useState<string | null>(null);
+  const [qrSearch, setQrSearch] = useState("");
+  const [showNewQRForm, setShowNewQRForm] = useState(false);
+  const [newQRTitle, setNewQRTitle] = useState("");
+  const [newQRContent, setNewQRContent] = useState("");
+  const [managingQR, setManagingQR] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const qrSearchRef = useRef<HTMLInputElement>(null);
   const { data: flows } = useChatbotFlows();
-  const { data: quickReplies } = useQuickReplies();
+  const { data: quickReplies, create: createQR, remove: removeQR } = useQuickReplies();
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation?.id);
   const savedFlows = flows?.filter(f => (f.nodes as any[])?.length > 0) || [];
   const hasActiveFlow = (activeExecutions?.length || 0) > 0;
@@ -321,28 +328,196 @@ export function ChatPanel({
         </Popover>
 
         <div className="relative flex-1">
-          {showQuickReplies && quickReplies && quickReplies.length > 0 && (
-            <div className="absolute bottom-full mb-2 left-0 right-0 bg-popover border border-border rounded-xl shadow-lg p-1.5 max-h-48 overflow-y-auto z-10">
-              <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Respostas Rápidas</p>
-              {quickReplies
-                .filter((qr) => {
-                  const search = text.slice(1).toLowerCase();
-                  return !search || qr.title.toLowerCase().includes(search) || qr.content.toLowerCase().includes(search);
-                })
-                .map((qr) => (
-                  <button
-                    key={qr.id}
-                    className="flex flex-col w-full px-2.5 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      setText(qr.content);
-                      setShowQuickReplies(false);
-                    }}
-                  >
-                    <span className="text-sm font-medium truncate">{qr.title}</span>
-                    <span className="text-xs text-muted-foreground truncate">{qr.content}</span>
-                  </button>
-                ))}
+          {showQuickReplies && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 bg-popover border border-border rounded-xl shadow-xl z-10 flex overflow-hidden" style={{ maxHeight: 340 }}>
+              {/* Left: list */}
+              <div className="flex flex-col w-[220px] border-r border-border/40">
+                {/* Header */}
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/40">
+                  <span className="text-sm font-semibold text-foreground">Respostas prontas</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="text-xs text-primary hover:underline font-medium"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setManagingQR(!managingQR);
+                      }}
+                    >
+                      {managingQR ? "Voltar" : "Gerenciar"}
+                    </button>
+                    <button
+                      className="text-xs text-primary hover:underline font-medium"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setShowNewQRForm(true);
+                        setManagingQR(false);
+                      }}
+                    >
+                      + Novo
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search */}
+                <div className="px-2 py-1.5 border-b border-border/40">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                      ref={qrSearchRef}
+                      type="text"
+                      placeholder="Pesquisar"
+                      value={qrSearch}
+                      onChange={(e) => setQrSearch(e.target.value)}
+                      className="w-full h-8 pl-7 pr-2 text-sm bg-secondary/50 border border-border/40 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30 text-foreground placeholder:text-muted-foreground"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+
+                {/* New QR form */}
+                {showNewQRForm && (
+                  <div className="p-2.5 border-b border-border/40 space-y-1.5">
+                    <input
+                      placeholder="Título..."
+                      value={newQRTitle}
+                      onChange={(e) => setNewQRTitle(e.target.value)}
+                      className="w-full h-7 px-2 text-xs bg-secondary/50 border border-border/40 rounded-md focus:outline-none focus:ring-1 focus:ring-primary/30 text-foreground placeholder:text-muted-foreground"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                    <textarea
+                      placeholder="Conteúdo..."
+                      value={newQRContent}
+                      onChange={(e) => setNewQRContent(e.target.value)}
+                      rows={2}
+                      className="w-full px-2 py-1 text-xs bg-secondary/50 border border-border/40 rounded-md focus:outline-none focus:ring-1 focus:ring-primary/30 text-foreground placeholder:text-muted-foreground resize-none"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        className="flex-1 h-6 text-[10px] bg-primary text-primary-foreground rounded-md font-medium hover:opacity-90 disabled:opacity-50"
+                        disabled={!newQRTitle.trim() || !newQRContent.trim()}
+                        onMouseDown={async (e) => {
+                          e.preventDefault();
+                          try {
+                            await createQR.mutateAsync({ title: newQRTitle, content: newQRContent });
+                            setNewQRTitle("");
+                            setNewQRContent("");
+                            setShowNewQRForm(false);
+                            toast.success("Resposta rápida criada");
+                          } catch {
+                            toast.error("Erro ao criar");
+                          }
+                        }}
+                      >
+                        Salvar
+                      </button>
+                      <button
+                        className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground rounded-md"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setShowNewQRForm(false);
+                          setNewQRTitle("");
+                          setNewQRContent("");
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* List */}
+                <div className="flex-1 overflow-y-auto">
+                  {(quickReplies || [])
+                    .filter((qr) => {
+                      const s = qrSearch.toLowerCase();
+                      return !s || qr.title.toLowerCase().includes(s) || qr.content.toLowerCase().includes(s);
+                    })
+                    .map((qr) => (
+                      <div
+                        key={qr.id}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 cursor-pointer transition-colors text-left text-sm border-b border-border/20",
+                          selectedQR === qr.id ? "bg-secondary" : "hover:bg-secondary/50"
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (managingQR) return;
+                          setSelectedQR(qr.id);
+                        }}
+                        onDoubleClick={() => {
+                          if (managingQR) return;
+                          setText(qr.content);
+                          setShowQuickReplies(false);
+                          setSelectedQR(null);
+                          setQrSearch("");
+                        }}
+                      >
+                        <span className="truncate text-foreground">{qr.title}</span>
+                        {managingQR && (
+                          <button
+                            className="ml-2 text-destructive hover:text-destructive/80 shrink-0"
+                            onMouseDown={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              removeQR.mutate(qr.id);
+                              if (selectedQR === qr.id) setSelectedQR(null);
+                            }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  {(!quickReplies || quickReplies.length === 0) && !showNewQRForm && (
+                    <div className="px-3 py-6 text-center">
+                      <p className="text-xs text-muted-foreground mb-2">Nenhuma resposta salva</p>
+                      <button
+                        className="text-xs text-primary hover:underline font-medium"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setShowNewQRForm(true);
+                        }}
+                      >
+                        + Criar primeira resposta
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: preview */}
+              <div className="flex-1 p-3 flex flex-col min-w-0">
+                {(() => {
+                  const selected = quickReplies?.find(qr => qr.id === selectedQR);
+                  if (!selected) {
+                    return (
+                      <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">
+                        Selecione uma resposta para ver o conteúdo
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <p className="text-sm font-medium text-foreground mb-2">{selected.title}</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap flex-1 overflow-y-auto">{selected.content}</p>
+                      <Button
+                        size="sm"
+                        className="mt-2 rounded-lg self-end"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setText(selected.content);
+                          setShowQuickReplies(false);
+                          setSelectedQR(null);
+                          setQrSearch("");
+                        }}
+                      >
+                        Usar resposta
+                      </Button>
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           )}
           <Input
@@ -351,13 +526,31 @@ export function ChatPanel({
             onChange={(e) => {
               const val = e.target.value;
               setText(val);
-              setShowQuickReplies(val.startsWith("/"));
+              if (val.startsWith("/") && !showQuickReplies) {
+                setShowQuickReplies(true);
+                setQrSearch("");
+                setSelectedQR(null);
+                setShowNewQRForm(false);
+                setManagingQR(false);
+              } else if (val.startsWith("/")) {
+                setQrSearch(val.slice(1));
+              } else {
+                setShowQuickReplies(false);
+              }
             }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") setShowQuickReplies(false);
+              if (e.key === "Escape") {
+                setShowQuickReplies(false);
+                setSelectedQR(null);
+                setQrSearch("");
+              }
               if (e.key === "Enter" && !e.shiftKey && !showQuickReplies) handleSend();
             }}
-            onBlur={() => setTimeout(() => setShowQuickReplies(false), 150)}
+            onBlur={() => setTimeout(() => {
+              setShowQuickReplies(false);
+              setSelectedQR(null);
+              setQrSearch("");
+            }, 200)}
             className="h-10 bg-secondary/50 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-full px-4 text-sm"
           />
         </div>
