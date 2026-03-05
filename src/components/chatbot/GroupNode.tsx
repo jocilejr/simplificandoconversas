@@ -1,6 +1,41 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2, Copy, GripVertical, FileText } from "lucide-react";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+/* ---- PDF Thumbnail ---- */
+function PdfThumbnail({ src }: { src: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!src) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pdf = await pdfjsLib.getDocument(src).promise;
+        const page = await pdf.getPage(1);
+        const canvas = canvasRef.current;
+        if (!canvas || cancelled) return;
+        const vp = page.getViewport({ scale: 1 });
+        const scale = 200 / vp.width;
+        const viewport = page.getViewport({ scale });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d")!;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [src]);
+
+  if (error) return null;
+  return <canvas ref={canvasRef} className="w-full rounded-t-lg" style={{ maxHeight: 140, objectFit: "contain" }} />;
+}
 
 /* ---- Mini player customizado para dentro do React Flow ---- */
 function AudioPreviewPlayer({ src }: { src: string }) {
@@ -274,17 +309,16 @@ function StepRow({
       case "sendFile": {
         const fName = d.fileName || (d.fileUrl ? d.fileUrl.split("/").pop() : null);
         return (
-          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30">
+          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30 overflow-hidden">
             {d.fileUrl ? (
-              <div className="flex items-center gap-2 px-2.5 py-2">
-                <div className="w-8 h-10 rounded bg-red-500/15 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-4 h-4 text-red-500" />
+              <>
+                <PdfThumbnail src={d.fileUrl as string} />
+                <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-border/20">
+                  <FileText className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                  <p className="text-[10px] font-medium text-foreground truncate flex-1">{fName || "documento.pdf"}</p>
+                  <span className="text-[9px] text-muted-foreground uppercase flex-shrink-0">PDF</span>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium text-foreground truncate">{fName || "documento.pdf"}</p>
-                  <p className="text-[9px] text-muted-foreground uppercase">PDF</p>
-                </div>
-              </div>
+              </>
             ) : (
               <div className="flex items-center gap-2 px-2.5 py-2.5">
                 <FileText className="w-4 h-4 text-muted-foreground" />
