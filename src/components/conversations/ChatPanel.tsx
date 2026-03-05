@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare, Send, Loader2, Check, CheckCheck,
-  Bot, PanelRight, X,
+  Bot, PanelRight, X, Plus, Search, Settings,
 } from "lucide-react";
 import { Message } from "@/hooks/useMessages";
 import { Conversation } from "@/hooks/useConversations";
