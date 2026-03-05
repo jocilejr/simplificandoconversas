@@ -141,7 +141,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [nodes, edges, name]);
+  }, [nodes, edges, name, instanceNames]);
 
   const handleRestore = useCallback((entry: FlowHistoryEntry) => {
     setNodes(entry.nodes as any[]);
