@@ -58,6 +58,7 @@ export type Database = {
           created_at: string
           edges: Json
           id: string
+          instance_names: string[]
           name: string
           nodes: Json
           updated_at: string
@@ -68,6 +69,7 @@ export type Database = {
           created_at?: string
           edges?: Json
           id?: string
+          instance_names?: string[]
           name: string
           nodes?: Json
           updated_at?: string
@@ -78,6 +80,7 @@ export type Database = {
           created_at?: string
           edges?: Json
           id?: string
+          instance_names?: string[]
           name?: string
           nodes?: Json
           updated_at?: string

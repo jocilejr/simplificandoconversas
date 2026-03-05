@@ -20,7 +20,9 @@ import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Plus, History, Check, Loader2, icons } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Plus, History, Check, Loader2, icons, Radio } from "lucide-react";
+import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,11 +62,12 @@ interface FlowEditorProps {
   flowName: string;
   initialNodes?: any[];
   initialEdges?: any[];
+  initialInstanceNames?: string[];
   onBack: () => void;
-  onSave?: (name: string, nodes: any[], edges: any[]) => Promise<void>;
+  onSave?: (name: string, nodes: any[], edges: any[], instanceNames: string[]) => Promise<void>;
 }
 
-function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack, onSave }: FlowEditorProps) {
+function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initialInstanceNames, onBack, onSave }: FlowEditorProps) {
   const migratedNodes = useMemo(() => {
     const raw = initialNodes || [];
     return raw.map((n: any) => {
@@ -91,6 +94,8 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [name, setName] = useState(flowName);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [instanceNames, setInstanceNames] = useState<string[]>(initialInstanceNames || []);
+  const { instances } = useEvolutionInstances();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,7 +121,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        await onSave(name, nodes, edges);
+        await onSave(name, nodes, edges, instanceNames);
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 2000);
       } catch {
@@ -136,7 +141,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [nodes, edges, name]);
+  }, [nodes, edges, name, instanceNames]);
 
   const handleRestore = useCallback((entry: FlowHistoryEntry) => {
     setNodes(entry.nodes as any[]);
@@ -866,6 +871,41 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-48 text-sm bg-card border-border" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+                  <Radio className="h-3 w-3" />
+                  {instanceNames.length === 0 ? "Todas instâncias" : `${instanceNames.length} instância(s)`}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 p-3">
+                <p className="text-xs font-medium mb-2">Instâncias vinculadas</p>
+                {instances.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">Nenhuma instância cadastrada</p>
+                ) : (
+                  <div className="space-y-2">
+                    {instances.map((inst) => (
+                      <label key={inst.instance_name} className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={instanceNames.includes(inst.instance_name)}
+                          onCheckedChange={(checked) => {
+                            setInstanceNames((prev) =>
+                              checked
+                                ? [...prev, inst.instance_name]
+                                : prev.filter((n) => n !== inst.instance_name)
+                            );
+                          }}
+                        />
+                        <span className="text-xs truncate">{inst.instance_name}</span>
+                      </label>
+                    ))}
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {instanceNames.length === 0 ? "Nenhuma selecionada = todas" : "Fluxo só dispara nas selecionadas"}
+                    </p>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">

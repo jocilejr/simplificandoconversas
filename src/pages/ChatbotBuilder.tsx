@@ -34,9 +34,10 @@ const ChatbotBuilder = () => {
           flowName={flow?.name || "Novo Fluxo"}
           initialNodes={flow?.nodes || []}
           initialEdges={flow?.edges || []}
+          initialInstanceNames={flow?.instance_names || []}
           onBack={() => setEditingFlowId(null)}
-          onSave={async (name, nodes, edges) => {
-            await updateFlow.mutateAsync({ id: editingFlowId, name, nodes, edges });
+          onSave={async (name, nodes, edges, instanceNames) => {
+            await updateFlow.mutateAsync({ id: editingFlowId, name, nodes, edges, instance_names: instanceNames });
           }}
         />
       </div>
@@ -124,7 +125,7 @@ const ChatbotBuilder = () => {
                 </div>
 
                 {/* Metadata */}
-                <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
                   <span className="flex items-center gap-1.5">
                     <Layers className="h-3 w-3" />
                     {(flow.nodes as any[])?.length || 0} nós
@@ -132,6 +133,9 @@ const ChatbotBuilder = () => {
                   <span className="flex items-center gap-1.5">
                     <Calendar className="h-3 w-3" />
                     {new Date(flow.updated_at).toLocaleDateString("pt-BR")}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    📡 {(flow.instance_names as string[])?.length ? (flow.instance_names as string[]).join(", ") : "Todas"}
                   </span>
                 </div>
 

@@ -298,7 +298,7 @@ async function checkAndTriggerFlows(
   // 1. Fetch all active flows for this user
   const { data: flows, error: flowsErr } = await supabase
     .from("chatbot_flows")
-    .select("id, nodes")
+    .select("id, nodes, instance_names")
     .eq("user_id", userId)
     .eq("active", true);
 
@@ -341,6 +341,13 @@ async function checkAndTriggerFlows(
     }
 
     if (!matched) continue;
+
+    // Filter by instance_names
+    const allowedInstances = (flow as any).instance_names || [];
+    if (allowedInstances.length > 0 && !allowedInstances.includes(instanceName)) {
+      console.log(`Flow ${flow.id} not allowed for instance ${instanceName}, skipping`);
+      continue;
+    }
 
     // 3. Check if there's already a running execution for this jid + flow
     const { data: existing } = await supabase
