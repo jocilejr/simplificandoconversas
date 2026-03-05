@@ -8,11 +8,15 @@ import { Conversation } from "@/hooks/useConversations";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { useLabels, useConversationLabels } from "@/hooks/useLabels";
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import {
   X, Plus, Trash2, Pencil, Check, Tag, Zap, Square, Loader2, Clock, Phone,
+  MessageSquare, Globe, Calendar, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { format } from "date-fns";
 
 interface RightPanelProps {
   conversation: Conversation;
@@ -29,6 +33,14 @@ function formatJid(jid: string) {
   return jid.split("@")[0];
 }
 
+function formatPhone(jid: string) {
+  const num = jid.split("@")[0];
+  if (num.length >= 12) {
+    return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
+  }
+  return `+${num}`;
+}
+
 export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelProps) {
   const { data: quickReplies, create: createQR, remove: removeQR, update: updateQR } = useQuickReplies();
   const [qrTitle, setQrTitle] = useState("");
@@ -36,6 +48,8 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   const [editingQR, setEditingQR] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
+  const [showLabelForm, setShowLabelForm] = useState(false);
+  const [showQRForm, setShowQRForm] = useState(false);
 
   const { data: allLabels, create: createLabel, remove: removeLabel } = useLabels();
   const { data: convLabels, assign, unassign } = useConversationLabels(conversation.id);
@@ -44,7 +58,51 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
 
+  // Fetch cross-instance conversations for this contact
+  const contactNumber = conversation.remote_jid;
+  const { data: crossInstanceConvs } = useQuery({
+    queryKey: ["cross-instance", contactNumber],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("conversations")
+        .select("id, instance_name, last_message, last_message_at, unread_count")
+        .eq("remote_jid", contactNumber)
+        .order("last_message_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!contactNumber,
+  });
+
+  // Count messages for this conversation
+  const { data: messageStats } = useQuery({
+    queryKey: ["message-stats", conversation.id],
+    queryFn: async () => {
+      const { count: totalCount } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("conversation_id", conversation.id);
+      const { count: inboundCount } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("conversation_id", conversation.id)
+        .eq("direction", "inbound");
+      const { count: outboundCount } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("conversation_id", conversation.id)
+        .eq("direction", "outbound");
+      return {
+        total: totalCount || 0,
+        inbound: inboundCount || 0,
+        outbound: outboundCount || 0,
+      };
+    },
+    enabled: !!conversation.id,
+  });
+
   const assignedLabelIds = new Set((convLabels || []).map(cl => cl.label_id));
+  const otherInstances = (crossInstanceConvs || []).filter(c => c.id !== conversation.id);
 
   const handleCreateQR = async () => {
     if (!qrTitle.trim() || !qrContent.trim()) return;
@@ -52,6 +110,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
       await createQR.mutateAsync({ title: qrTitle, content: qrContent });
       setQrTitle("");
       setQrContent("");
+      setShowQRForm(false);
     } catch { toast.error("Erro ao criar resposta rápida"); }
   };
 
@@ -60,6 +119,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
     try {
       await createLabel.mutateAsync({ name: labelName, color: labelColor });
       setLabelName("");
+      setShowLabelForm(false);
     } catch { toast.error("Erro ao criar etiqueta"); }
   };
 
@@ -78,36 +138,105 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   };
 
   return (
-    <div className="w-80 border-l border-[#2a3942] bg-[#111b21] flex flex-col h-full">
+    <div className="w-[340px] border-l border-[#2a3942] bg-[#111b21] flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-[#2a3942] flex items-center justify-between">
-        <span className="text-sm font-semibold text-foreground">Detalhes</span>
-        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={onClose}>
+      <div className="px-5 py-3 border-b border-[#2a3942] flex items-center justify-between">
+        <span className="text-sm font-semibold text-[#e9edef]">Detalhes do Lead</span>
+        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-[#aebac1] hover:text-[#e9edef] hover:bg-[#202c33]" onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4">
-          {/* Contact Info Card */}
-          <div className="bg-[#202c33] rounded-xl p-5 flex flex-col items-center text-center gap-3">
+        <div className="p-4 space-y-3">
+
+          {/* ── Contact Card ── */}
+          <div className="bg-[#202c33] rounded-2xl p-5 flex flex-col items-center text-center">
             <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="xl" />
-            <div>
-              <p className="font-semibold text-base text-foreground">
-                {conversation.contact_name || formatJid(conversation.remote_jid)}
-              </p>
-              <div className="flex items-center gap-1.5 justify-center mt-1">
-                <Phone className="h-3 w-3 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">{formatJid(conversation.remote_jid)}</p>
+            <h2 className="mt-3 font-bold text-base text-[#e9edef]">
+              {conversation.contact_name || formatJid(conversation.remote_jid)}
+            </h2>
+            <div className="flex items-center gap-1.5 mt-1 text-[#8696a0]">
+              <Phone className="h-3 w-3" />
+              <span className="text-xs">{formatPhone(conversation.remote_jid)}</span>
+            </div>
+            {conversation.instance_name && (
+              <div className="flex items-center gap-1.5 mt-1.5 text-[#8696a0]">
+                <Globe className="h-3 w-3" />
+                <span className="text-xs">{conversation.instance_name}</span>
               </div>
+            )}
+            <div className="flex items-center gap-1.5 mt-1.5 text-[#8696a0]">
+              <Calendar className="h-3 w-3" />
+              <span className="text-xs">
+                Desde {format(new Date(conversation.created_at), "dd/MM/yyyy")}
+              </span>
             </div>
           </div>
 
-          {/* Active Flow Executions */}
-          <div className="bg-[#202c33] rounded-xl p-4">
+          {/* ── Message Stats ── */}
+          {messageStats && (
+            <div className="bg-[#202c33] rounded-2xl p-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <MessageSquare className="h-3.5 w-3.5 text-[#00a884]" />
+                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Estatísticas</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-[#111b21] rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-[#e9edef]">{messageStats.total}</p>
+                  <p className="text-[10px] text-[#8696a0] mt-0.5">Total</p>
+                </div>
+                <div className="bg-[#111b21] rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-[#00a884]">{messageStats.inbound}</p>
+                  <p className="text-[10px] text-[#8696a0] mt-0.5">Recebidas</p>
+                </div>
+                <div className="bg-[#111b21] rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-[#53bdeb]">{messageStats.outbound}</p>
+                  <p className="text-[10px] text-[#8696a0] mt-0.5">Enviadas</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Cross-Instance Conversations ── */}
+          {otherInstances.length > 0 && (
+            <div className="bg-[#202c33] rounded-2xl p-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <Globe className="h-3.5 w-3.5 text-[#53bdeb]" />
+                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">
+                  Outras Instâncias ({otherInstances.length})
+                </span>
+              </div>
+              <div className="space-y-2">
+                {otherInstances.map((conv) => (
+                  <div key={conv.id} className="bg-[#111b21] rounded-xl p-3 flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-[#2a3942] flex items-center justify-center shrink-0">
+                      <Globe className="h-3.5 w-3.5 text-[#53bdeb]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-[#e9edef] truncate">
+                        {conv.instance_name || "Sem nome"}
+                      </p>
+                      <p className="text-[10px] text-[#8696a0] truncate mt-0.5">
+                        {conv.last_message || "Sem mensagens"}
+                      </p>
+                    </div>
+                    {conv.last_message_at && (
+                      <span className="text-[10px] text-[#8696a0] shrink-0">
+                        {format(new Date(conv.last_message_at), "dd/MM")}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Active Flow ── */}
+          <div className="bg-[#202c33] rounded-2xl p-4">
             <div className="flex items-center gap-1.5 mb-3">
-              <Zap className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Fluxo Ativo</span>
+              <Zap className="h-3.5 w-3.5 text-[#00a884]" />
+              <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Fluxo Ativo</span>
             </div>
 
             {activeExecutions && activeExecutions.length > 0 ? (
@@ -116,20 +245,20 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   const isWaiting = exec.status === "waiting_click";
                   return (
                     <div key={exec.id} className={cn(
-                      "flex items-center justify-between rounded-lg p-3 border",
-                      isWaiting ? "border-primary/20 bg-primary/5" : "border-destructive/20 bg-destructive/5"
+                      "flex items-center justify-between rounded-xl p-3",
+                      isWaiting ? "bg-[#00a884]/10 border border-[#00a884]/20" : "bg-red-500/10 border border-red-500/20"
                     )}>
                       <div className="flex items-center gap-2 min-w-0">
                         {isWaiting ? (
-                          <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <Clock className="h-3.5 w-3.5 text-[#00a884] shrink-0" />
                         ) : (
-                          <Loader2 className="h-3.5 w-3.5 text-destructive animate-spin shrink-0" />
+                          <Loader2 className="h-3.5 w-3.5 text-red-400 animate-spin shrink-0" />
                         )}
                         <div className="min-w-0">
-                          <span className="text-xs font-medium truncate block text-foreground">
+                          <span className="text-xs font-medium truncate block text-[#e9edef]">
                             {exec.chatbot_flows?.name || "Fluxo"}
                           </span>
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-[10px] text-[#8696a0]">
                             {isWaiting ? "Aguardando clique" : "Executando"}
                           </span>
                         </div>
@@ -151,104 +280,132 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                 })}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground text-center py-2">Nenhum fluxo em execução</p>
+              <p className="text-xs text-[#8696a0] text-center py-2">Nenhum fluxo em execução</p>
             )}
           </div>
 
-          {/* Labels Section */}
-          <div className="bg-[#202c33] rounded-xl p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <Tag className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Etiquetas</span>
+          {/* ── Labels ── */}
+          <div className="bg-[#202c33] rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-[#00a884]" />
+                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Etiquetas</span>
+              </div>
+              <button
+                onClick={() => setShowLabelForm(!showLabelForm)}
+                className="text-[#8696a0] hover:text-[#e9edef] transition-colors"
+              >
+                {showLabelForm ? <ChevronUp className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              </button>
             </div>
 
+            {/* Assigned labels */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {(convLabels || []).map(cl => (
                 <Badge
                   key={cl.id}
-                  className="text-[11px] gap-1 cursor-pointer hover:opacity-80 border-0 rounded-full px-2.5"
-                  style={{ backgroundColor: cl.labels.color, color: "#fff" }}
+                  className="text-[11px] gap-1.5 cursor-pointer hover:opacity-80 border-0 rounded-full px-3 py-1 font-medium"
+                  style={{ backgroundColor: cl.labels.color + "22", color: cl.labels.color, border: `1px solid ${cl.labels.color}44` }}
                   onClick={() => unassign.mutate(cl.label_id)}
                 >
+                  <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: cl.labels.color }} />
                   {cl.labels.name}
-                  <X className="h-2.5 w-2.5" />
+                  <X className="h-2.5 w-2.5 opacity-60" />
                 </Badge>
               ))}
               {(!convLabels || convLabels.length === 0) && (
-                <span className="text-xs text-muted-foreground">Nenhuma etiqueta</span>
+                <span className="text-xs text-[#8696a0]">Nenhuma etiqueta atribuída</span>
               )}
             </div>
 
-            <div className="space-y-1 mb-3">
-              {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).map(label => (
-                <div key={label.id} className="flex items-center justify-between group">
-                  <button
-                    className="flex items-center gap-2 text-xs py-1.5 hover:text-foreground text-muted-foreground transition-colors"
-                    onClick={() => assign.mutate(label.id)}
-                  >
-                    <span className="h-3 w-3 rounded-full shrink-0 ring-1 ring-border/30" style={{ backgroundColor: label.color }} />
-                    {label.name}
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 rounded-full"
-                    onClick={() => removeLabel.mutate(label.id)}
-                  >
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-border/30">
-              <div className="flex gap-1.5">
-                <Input
-                  placeholder="Nova etiqueta..."
-                  value={labelName}
-                  onChange={e => setLabelName(e.target.value)}
-                  className="h-8 text-xs rounded-lg"
-                  onKeyDown={e => e.key === "Enter" && handleCreateLabel()}
-                />
-                <Button size="icon" className="h-8 w-8 shrink-0 rounded-lg" onClick={handleCreateLabel} disabled={!labelName.trim()}>
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
-              <div className="flex gap-1.5">
-                {PRESET_COLORS.map(c => (
-                  <button
-                    key={c}
-                    className={cn(
-                      "h-5 w-5 rounded-full transition-all",
-                      labelColor === c ? "ring-2 ring-offset-1 ring-ring scale-110" : "hover:scale-110"
-                    )}
-                    style={{ backgroundColor: c }}
-                    onClick={() => setLabelColor(c)}
-                  />
+            {/* Available labels to assign */}
+            {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).length > 0 && (
+              <div className="space-y-1 mb-3 border-t border-[#2a3942] pt-3">
+                <p className="text-[10px] text-[#8696a0] uppercase tracking-wider mb-1.5">Disponíveis</p>
+                {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).map(label => (
+                  <div key={label.id} className="flex items-center justify-between group">
+                    <button
+                      className="flex items-center gap-2 text-xs py-1.5 hover:text-[#e9edef] text-[#8696a0] transition-colors"
+                      onClick={() => assign.mutate(label.id)}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                      {label.name}
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 rounded-full text-[#8696a0] hover:text-red-400 hover:bg-red-400/10"
+                      onClick={() => removeLabel.mutate(label.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 ))}
               </div>
-            </div>
+            )}
+
+            {/* Create label form */}
+            {showLabelForm && (
+              <div className="space-y-2 border-t border-[#2a3942] pt-3">
+                <Input
+                  placeholder="Nome da etiqueta..."
+                  value={labelName}
+                  onChange={e => setLabelName(e.target.value)}
+                  className="h-8 text-xs rounded-lg bg-[#111b21] border-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]"
+                  onKeyDown={e => e.key === "Enter" && handleCreateLabel()}
+                />
+                <div className="flex gap-1.5">
+                  {PRESET_COLORS.map(c => (
+                    <button
+                      key={c}
+                      className={cn(
+                        "h-5 w-5 rounded-full transition-all",
+                        labelColor === c ? "ring-2 ring-offset-1 ring-offset-[#202c33] ring-[#e9edef] scale-110" : "hover:scale-110"
+                      )}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setLabelColor(c)}
+                    />
+                  ))}
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full h-8 text-xs rounded-lg bg-[#00a884] hover:bg-[#00a884]/80 text-white"
+                  onClick={handleCreateLabel}
+                  disabled={!labelName.trim()}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Criar Etiqueta
+                </Button>
+              </div>
+            )}
           </div>
 
-          {/* Quick Replies Section */}
-          <div className="bg-[#202c33] rounded-xl p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <Zap className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Respostas Rápidas</span>
+          {/* ── Quick Replies ── */}
+          <div className="bg-[#202c33] rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 text-[#f59e0b]" />
+                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Respostas Rápidas</span>
+              </div>
+              <button
+                onClick={() => setShowQRForm(!showQRForm)}
+                className="text-[#8696a0] hover:text-[#e9edef] transition-colors"
+              >
+                {showQRForm ? <ChevronUp className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              </button>
             </div>
 
             <div className="space-y-2 mb-3">
               {(quickReplies || []).map(qr => (
-                <div key={qr.id} className="bg-background/60 rounded-lg p-3 group border border-border/30">
+                <div key={qr.id} className="bg-[#111b21] rounded-xl p-3 group border border-[#2a3942]">
                   {editingQR === qr.id ? (
                     <div className="space-y-1.5">
-                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-7 text-xs rounded-lg" />
-                      <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-7 text-xs rounded-lg" />
+                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-7 text-xs rounded-lg bg-[#202c33] border-[#2a3942] text-[#e9edef]" />
+                      <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-7 text-xs rounded-lg bg-[#202c33] border-[#2a3942] text-[#e9edef]" />
                       <div className="flex gap-1">
-                        <Button size="sm" className="h-6 text-[10px] rounded-full" onClick={saveEditQR}>
+                        <Button size="sm" className="h-6 text-[10px] rounded-full bg-[#00a884] hover:bg-[#00a884]/80" onClick={saveEditQR}>
                           <Check className="h-3 w-3 mr-1" /> Salvar
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-6 text-[10px] rounded-full" onClick={() => setEditingQR(null)}>
+                        <Button size="sm" variant="ghost" className="h-6 text-[10px] rounded-full text-[#8696a0]" onClick={() => setEditingQR(null)}>
                           Cancelar
                         </Button>
                       </div>
@@ -256,50 +413,53 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   ) : (
                     <>
                       <div className="flex items-start justify-between">
-                        <p className="text-xs font-medium text-foreground">{qr.title}</p>
+                        <p className="text-xs font-medium text-[#e9edef]">{qr.title}</p>
                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => startEditQR(qr)}>
+                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full text-[#8696a0] hover:text-[#e9edef] hover:bg-[#2a3942]" onClick={() => startEditQR(qr)}>
                             <Pencil className="h-2.5 w-2.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => removeQR.mutate(qr.id)}>
-                            <Trash2 className="h-2.5 w-2.5 text-destructive" />
+                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full text-[#8696a0] hover:text-red-400 hover:bg-red-400/10" onClick={() => removeQR.mutate(qr.id)}>
+                            <Trash2 className="h-2.5 w-2.5" />
                           </Button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{qr.content}</p>
+                      <p className="text-[11px] text-[#8696a0] mt-1 line-clamp-2">{qr.content}</p>
                     </>
                   )}
                 </div>
               ))}
               {(!quickReplies || quickReplies.length === 0) && (
-                <p className="text-xs text-muted-foreground text-center py-3">Nenhuma resposta salva</p>
+                <p className="text-xs text-[#8696a0] text-center py-3">Nenhuma resposta salva</p>
               )}
             </div>
 
-            <div className="space-y-1.5 pt-2 border-t border-border/30">
-              <Input
-                placeholder="Título..."
-                value={qrTitle}
-                onChange={e => setQrTitle(e.target.value)}
-                className="h-8 text-xs rounded-lg"
-              />
-              <Input
-                placeholder="Conteúdo da resposta..."
-                value={qrContent}
-                onChange={e => setQrContent(e.target.value)}
-                className="h-8 text-xs rounded-lg"
-                onKeyDown={e => e.key === "Enter" && handleCreateQR()}
-              />
-              <Button
-                size="sm"
-                className="w-full h-8 text-xs rounded-lg"
-                onClick={handleCreateQR}
-                disabled={!qrTitle.trim() || !qrContent.trim()}
-              >
-                <Plus className="h-3 w-3 mr-1" /> Adicionar
-              </Button>
-            </div>
+            {showQRForm && (
+              <div className="space-y-1.5 border-t border-[#2a3942] pt-3">
+                <Input
+                  placeholder="Título..."
+                  value={qrTitle}
+                  onChange={e => setQrTitle(e.target.value)}
+                  className="h-8 text-xs rounded-lg bg-[#111b21] border-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]"
+                />
+                <Input
+                  placeholder="Conteúdo da resposta..."
+                  value={qrContent}
+                  onChange={e => setQrContent(e.target.value)}
+                  className="h-8 text-xs rounded-lg bg-[#111b21] border-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]"
+                  onKeyDown={e => e.key === "Enter" && handleCreateQR()}
+                />
+                <Button
+                  size="sm"
+                  className="w-full h-8 text-xs rounded-lg bg-[#00a884] hover:bg-[#00a884]/80 text-white"
+                  onClick={handleCreateQR}
+                  disabled={!qrTitle.trim() || !qrContent.trim()}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Adicionar
+                </Button>
+              </div>
+            )}
           </div>
+
         </div>
       </ScrollArea>
     </div>
