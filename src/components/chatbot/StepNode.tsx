@@ -252,16 +252,47 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
       </div>
 
       {hasMultipleOutputs ? (
-        Array.from({ length: pathCount }).map((_, i) => (
-          <Handle
-            key={`output-${i}`}
-            type="source"
-            position={Position.Right}
-            id={`output-${i}`}
-            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
-            style={{ background: accentColor, top: `${((i + 1) / (pathCount + 1)) * 100}%` }}
-          />
-        ))
+        d.type === "condition" ? (
+          <>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="output-0"
+              className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+              style={{ background: "#22c55e", top: "35%" }}
+            />
+            <span
+              className="absolute text-[9px] font-medium whitespace-nowrap pointer-events-none"
+              style={{ left: "calc(100% + 14px)", top: "35%", transform: "translateY(-50%)", color: "#22c55e" }}
+            >
+              Sim ✓
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="output-1"
+              className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+              style={{ background: "#ef4444", top: "70%" }}
+            />
+            <span
+              className="absolute text-[9px] font-medium whitespace-nowrap pointer-events-none"
+              style={{ left: "calc(100% + 14px)", top: "70%", transform: "translateY(-50%)", color: "#ef4444" }}
+            >
+              Não ✗
+            </span>
+          </>
+        ) : (
+          Array.from({ length: pathCount }).map((_, i) => (
+            <Handle
+              key={`output-${i}`}
+              type="source"
+              position={Position.Right}
+              id={`output-${i}`}
+              className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+              style={{ background: accentColor, top: `${((i + 1) / (pathCount + 1)) * 100}%` }}
+            />
+          ))
+        )
       ) : hasTimeoutOutputs ? (
         <>
           <Handle
