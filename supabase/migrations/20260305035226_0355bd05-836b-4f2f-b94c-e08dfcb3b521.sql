@@ -1,0 +1,1 @@
+ALTER TABLE public.flow_timeouts ALTER COLUMN timeout_node_id DROP NOT NULL;

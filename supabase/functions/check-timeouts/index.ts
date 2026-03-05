@@ -59,24 +59,29 @@ Deno.serve(async (req) => {
           .update({ processed: true })
           .eq("id", timeout.id);
 
-        // Resume the flow from the timeout node (fire-and-forget)
-        fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({
-            flowId: timeout.flow_id,
-            remoteJid: timeout.remote_jid,
-            conversationId: timeout.conversation_id,
-            userId: timeout.user_id,
-            resumeFromNodeId: timeout.timeout_node_id,
-          }),
-        })
-          .then((r) => r.json())
-          .then((r) => console.log(`[check-timeouts] Resume result for ${timeout.id}:`, r))
-          .catch((e) => console.error(`[check-timeouts] Resume error for ${timeout.id}:`, e));
+        // Only resume the flow if there's a connected timeout node
+        if (timeout.timeout_node_id) {
+          // Resume the flow from the timeout node (fire-and-forget)
+          fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({
+              flowId: timeout.flow_id,
+              remoteJid: timeout.remote_jid,
+              conversationId: timeout.conversation_id,
+              userId: timeout.user_id,
+              resumeFromNodeId: timeout.timeout_node_id,
+            }),
+          })
+            .then((r) => r.json())
+            .then((r) => console.log(`[check-timeouts] Resume result for ${timeout.id}:`, r))
+            .catch((e) => console.error(`[check-timeouts] Resume error for ${timeout.id}:`, e));
+        } else {
+          console.log(`[check-timeouts] Timeout ${timeout.id} has no target node - flow ended`);
+        }
 
         processedCount++;
       } catch (err: any) {
