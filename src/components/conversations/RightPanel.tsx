@@ -38,13 +38,6 @@ function formatPhone(jid: string) {
 }
 
 export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelProps) {
-  const { data: quickReplies, create: createQR, remove: removeQR, update: updateQR } = useQuickReplies();
-  const [qrTitle, setQrTitle] = useState("");
-  const [qrContent, setQrContent] = useState("");
-  const [editingQR, setEditingQR] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
-  const [showQRForm, setShowQRForm] = useState(false);
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
   const { user } = useAuth();
