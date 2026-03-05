@@ -1,28 +1,56 @@
 
 
-## Fix: TypeScript `unknown` type errors no backend
+## Plano: Migrar para deploy direto com Docker Compose + Corrigir erros de build
 
-Todos os 16 erros são do mesmo tipo: acessar propriedades em valores tipados como `unknown` (retorno de `fetch().json()` e `baileysRequest`).
+### Problema atual
+Os arquivos de deploy possuem dois problemas que impedem o build:
+1. **`deploy/baileys-service/Dockerfile`** -- falta `RUN apk add --no-cache git` (o pacote `@whiskeysockets/baileys` requer git para instalar)
+2. **`deploy/backend/src/routes/evolution-proxy.ts`** -- `@types/node@22` faz `Response.json()` retornar `unknown`, causando 5 erros de TypeScript
 
-### Causa raiz
+Além disso, o deploy usa formato Portainer que será substituído por Docker Compose direto.
 
-No TypeScript 4.9+, `Response.json()` retorna `Promise<any>` **apenas** quando `"DOM"` está no `lib`. Porém a função `baileysRequest` retorna `resp.json()` sem tipo explícito, e o TS infere `unknown` em alguns contextos.
+---
 
-### Correções (3 arquivos)
+### Alterações
 
-1. **`deploy/backend/src/routes/evolution-proxy.ts`** — Tipar retorno de `baileysRequest` como `Promise<any>`:
-   ```typescript
-   async function baileysRequest(path: string, method: string = "POST", body?: any): Promise<any> {
-   ```
+**1. Corrigir `deploy/baileys-service/Dockerfile`**
+Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`.
 
-2. **`deploy/backend/src/routes/execute-flow.ts`** — Mesmo padrão: localizar a função `baileysRequest` (se duplicada) e tipar como `Promise<any>`. Adicionar `as any` nos `.json()` restantes:
-   - Linha 195: `const userData: any = await userResp.json();`
-   - Linha 393: `const aiData: any = await aiResp.json();`
+**2. Corrigir erros TS em `deploy/backend/src/routes/evolution-proxy.ts`**
+- Linha 16: `return resp.json() as Promise<any>;`
+- Linha 70: `const userData: any = await userResp.json();`
 
-3. **`deploy/backend/src/routes/webhook.ts`** — Cast no `.json()` da linha 36:
-   - `const result: any = await resp.json();`
+Essas duas mudanças resolvem todos os 5 erros (linhas 29, 71, 102, 195, 221) porque `baileysRequest` já retorna `Promise<any>` e `userData` passa a ser `any`.
 
-### Resultado
+**3. Simplificar `deploy/docker-compose.yml`**
+- Remover atributo `version` (obsoleto)
+- O nginx monta `./frontend` como volume local (sem volume externo do Portainer)
+- Já está correto no arquivo atual
 
-Zero erros de compilação. Nenhuma mudança de lógica — apenas anotações de tipo.
+**4. Remover `deploy/portainer-stack.yml` e `deploy/PORTAINER.md`**
+Não são mais necessários.
+
+**5. Atualizar `deploy/install.sh`**
+- Remover referências ao Portainer
+- Manter o fluxo: gerar secrets, buildar frontend, `docker compose up -d`
+- Já está correto para Docker direto
+
+**6. Criar `deploy/README.md`** (substituindo PORTAINER.md)
+Documentação simples para deploy direto na VPS com Docker Compose:
+- Pré-requisitos: Docker, Docker Compose, Node.js 20+
+- Rodar `./install.sh` (faz tudo automaticamente)
+- Comandos úteis: logs, restart, update
+- Arquitetura da stack
+
+---
+
+### Resumo dos arquivos
+| Arquivo | Ação |
+|---------|------|
+| `deploy/baileys-service/Dockerfile` | Adicionar `git` |
+| `deploy/backend/src/routes/evolution-proxy.ts` | Cast `any` em 2 pontos |
+| `deploy/docker-compose.yml` | Remover `version` |
+| `deploy/portainer-stack.yml` | Deletar |
+| `deploy/PORTAINER.md` | Deletar |
+| `deploy/README.md` | Criar (docs de deploy direto) |
 
