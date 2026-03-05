@@ -178,6 +178,7 @@ function StepRow({
   const d = step.data;
   const config = nodeTypeConfig[d.type];
   if (!config) return null;
+  const containerRef = useRef<HTMLDivElement>(null!);
 
   const LucideIcon = icons[config.icon as keyof typeof icons];
 
