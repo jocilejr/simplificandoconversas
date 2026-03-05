@@ -604,6 +604,25 @@ Deno.serve(async (req) => {
                 .update({ status: "waiting_click", current_node_index: nodeIndex })
                 .eq("id", executionId);
 
+              // Insert timeout if configured (inside group)
+              const clickTimeout = step.data.clickTimeout || 0;
+              if (clickTimeout > 0) {
+                const timeoutNodeId = timeoutEdgeMap.get(node.id) || null;
+                const unit = step.data.clickTimeoutUnit || "minutes";
+                const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+                const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
+                await serviceClient.from("flow_timeouts").insert({
+                  execution_id: executionId,
+                  flow_id: flowId,
+                  user_id: userId,
+                  remote_jid: jid,
+                  conversation_id: conversationId || null,
+                  timeout_node_id: timeoutNodeId,
+                  timeout_at: timeoutAt,
+                });
+                console.log(`[execute-flow] Timeout set for group waitForClick: ${timeoutAt} -> node ${timeoutNodeId || '(end flow)'}`);
+              }
+
               results.push(`group.${step.id}: waitForClick: paused (code=${shortCode})`);
               groupPaused = true;
               break;
