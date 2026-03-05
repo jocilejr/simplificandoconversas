@@ -169,10 +169,11 @@
    Background: #0B141A | Pattern: #182229
    ═══════════════════════════════════════ */
 .chat-bg-pattern {
-  background-color: #0b141a;
+  background-color: #080f14;
   background-image: url('/images/chat-bg-pattern.png');
   background-size: 200px;
   background-repeat: repeat;
+  filter: brightness(0.7);
 }
 
 /* ═══════════════════════════════════════
