@@ -6,6 +6,7 @@ export type FlowNodeType =
   | "sendAudio"
   | "sendVideo"
   | "sendImage"
+  | "sendFile"
   | "condition"
   | "randomizer"
   | "waitDelay"
