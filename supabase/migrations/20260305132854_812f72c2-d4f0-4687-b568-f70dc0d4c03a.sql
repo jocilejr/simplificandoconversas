@@ -1,0 +1,1 @@
+ALTER TABLE public.flow_executions ADD COLUMN waiting_node_id text;

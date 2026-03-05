@@ -258,16 +258,17 @@ Deno.serve(async (req) => {
     });
 
     // === CHECK FOR WAITING_REPLY: Resume flow if contact responded ===
+    let flowResumed = false;
     if (!fromMe && messageContent) {
       try {
-        await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id, instance);
+        flowResumed = await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id, instance);
       } catch (resumeErr) {
         console.error("Resume waiting_reply error (non-fatal):", resumeErr);
       }
     }
 
-    // === AUTO-TRIGGER: Check keyword matching for inbound messages ===
-    if (!fromMe && messageContent) {
+    // === AUTO-TRIGGER: Check keyword matching for inbound messages (skip if we just resumed) ===
+    if (!fromMe && messageContent && !flowResumed) {
       try {
         await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance);
       } catch (triggerErr) {
@@ -349,18 +350,18 @@ async function checkAndTriggerFlows(
       continue;
     }
 
-    // 3. Check if there's already a running execution for this jid + flow
+    // 3. Check if there's already a running/waiting execution for this jid + flow
     const { data: existing } = await supabase
       .from("flow_executions")
       .select("id")
       .eq("user_id", userId)
       .eq("flow_id", flow.id)
       .eq("remote_jid", remoteJid)
-      .eq("status", "running")
+      .in("status", ["running", "waiting_click", "waiting_reply"])
       .limit(1);
 
     if (existing && existing.length > 0) {
-      console.log(`Flow ${flow.id} already running for ${remoteJid}, skipping`);
+      console.log(`Flow ${flow.id} already active for ${remoteJid} (id=${existing[0].id}), skipping`);
       continue;
     }
 
@@ -396,21 +397,22 @@ async function checkAndResumeWaitingReply(
   remoteJid: string,
   conversationId: string,
   instanceName: string
-) {
+): Promise<boolean> {
   // Find active execution waiting for reply from this contact
   const { data: waitingExecs } = await supabase
     .from("flow_executions")
-    .select("id, flow_id")
+    .select("id, flow_id, waiting_node_id")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
     .eq("status", "waiting_reply")
     .order("created_at", { ascending: false })
     .limit(1);
 
-  if (!waitingExecs || waitingExecs.length === 0) return;
+  if (!waitingExecs || waitingExecs.length === 0) return false;
 
   const exec = waitingExecs[0];
-  console.log(`[webhook] Contact ${remoteJid} replied, resuming execution ${exec.id}`);
+  const waitingNodeId = exec.waiting_node_id;
+  console.log(`[webhook] Contact ${remoteJid} replied, resuming execution ${exec.id}, waiting_node_id=${waitingNodeId}`);
 
   // Cancel any pending timeouts for this execution
   await supabase
@@ -425,53 +427,33 @@ async function checkAndResumeWaitingReply(
     .update({ status: "completed" })
     .eq("id", exec.id);
 
-  // Find the flow to get edges and determine the normal path (output-0)
+  if (!waitingNodeId) {
+    console.log(`[webhook] No waiting_node_id stored for execution ${exec.id}, cannot resume`);
+    return true; // Still return true to prevent re-trigger
+  }
+
+  // Find the flow to get edges
   const { data: flow } = await supabase
     .from("chatbot_flows")
-    .select("nodes, edges")
+    .select("edges")
     .eq("id", exec.flow_id)
     .single();
 
-  if (!flow) return;
+  if (!flow) return true;
 
   const edges = (flow.edges || []) as any[];
-  const nodes = (flow.nodes || []) as any[];
 
-  // Find the waitForReply node that was being waited on
-  // Check both standalone waitForReply nodes AND waitForReply steps inside groupBlocks
-  let nextNodeId: string | null = null;
-  for (const node of nodes) {
-    const data = node.data || {};
-    if (data.type === "waitForReply") {
-      // Standalone waitForReply node
-      const normalEdge = edges.find(
-        (e: any) => e.source === node.id && (e.sourceHandle === "output-0" || !e.sourceHandle)
-      );
-      if (normalEdge) {
-        nextNodeId = normalEdge.target;
-        break;
-      }
-    }
-    // Check inside groupBlock steps
-    if ((data.type === "group" || data.type === "groupBlock") && data.steps) {
-      const hasWaitForReply = data.steps.some((s: any) => s.data?.type === "waitForReply");
-      if (hasWaitForReply) {
-        // Group output edge (output-0)
-        const groupEdge = edges.find(
-          (e: any) => e.source === node.id && (e.sourceHandle === "output-0" || !e.sourceHandle)
-        );
-        if (groupEdge) {
-          nextNodeId = groupEdge.target;
-          break;
-        }
-      }
-    }
+  // Find the output-0 edge from the waiting node
+  const normalEdge = edges.find(
+    (e: any) => e.source === waitingNodeId && (e.sourceHandle === "output-0" || !e.sourceHandle)
+  );
+
+  if (!normalEdge) {
+    console.log(`[webhook] No next node found for waiting_node_id=${waitingNodeId}`);
+    return true;
   }
 
-  if (!nextNodeId) {
-    console.log(`[webhook] No next node found for waiting_reply execution ${exec.id}`);
-    return;
-  }
+  const nextNodeId = normalEdge.target;
 
   // Resume flow from the next node
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -495,4 +477,6 @@ async function checkAndResumeWaitingReply(
     .then((r) => r.json())
     .then((r) => console.log(`[webhook] Resume waiting_reply result:`, r))
     .catch((e) => console.error(`[webhook] Resume waiting_reply error:`, e));
+
+  return true;
 }

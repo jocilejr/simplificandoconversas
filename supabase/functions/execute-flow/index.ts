@@ -610,7 +610,7 @@ Deno.serve(async (req) => {
             // Pause execution - waiting for click
             await serviceClient
               .from("flow_executions")
-              .update({ status: "waiting_click", current_node_index: nodeIndex })
+              .update({ status: "waiting_click", current_node_index: nodeIndex, waiting_node_id: node.id })
               .eq("id", executionId);
 
             // Insert timeout if configured
@@ -640,7 +640,7 @@ Deno.serve(async (req) => {
           // Pause execution - waiting for reply
           await serviceClient
             .from("flow_executions")
-            .update({ status: "waiting_reply", current_node_index: nodeIndex })
+            .update({ status: "waiting_reply", current_node_index: nodeIndex, waiting_node_id: node.id })
             .eq("id", executionId);
 
           // Insert timeout if configured
@@ -738,7 +738,7 @@ Deno.serve(async (req) => {
 
               await serviceClient
                 .from("flow_executions")
-                .update({ status: "waiting_click", current_node_index: nodeIndex })
+                .update({ status: "waiting_click", current_node_index: nodeIndex, waiting_node_id: node.id })
                 .eq("id", executionId);
 
               // Insert timeout if configured (inside group)
@@ -768,7 +768,7 @@ Deno.serve(async (req) => {
               console.log(`[execute-flow] Group waitForReply: pausing execution ${executionId}`);
               await serviceClient
                 .from("flow_executions")
-                .update({ status: "waiting_reply", current_node_index: nodeIndex })
+                .update({ status: "waiting_reply", current_node_index: nodeIndex, waiting_node_id: node.id })
                 .eq("id", executionId);
 
               // Insert timeout if configured (inside group)
