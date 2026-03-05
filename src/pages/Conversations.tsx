@@ -5,10 +5,12 @@ import { useContactPhotos } from "@/hooks/useContactPhoto";
 import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import { ChatPanel } from "@/components/conversations/ChatPanel";
 import { RightPanel } from "@/components/conversations/RightPanel";
+import { useAuth } from "@/hooks/useAuth";
+import { Label } from "@/hooks/useLabels";
 
 const Conversations = () => {
   const queryClient = useQueryClient();
@@ -19,6 +21,29 @@ const Conversations = () => {
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
   const { instances } = useEvolutionInstances();
+  const { user } = useAuth();
+
+  // Fetch all conversation labels with label details for the sidebar
+  const { data: allConversationLabels } = useQuery({
+    queryKey: ["all_conversation_labels"],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("conversation_labels")
+        .select("*, labels(*)");
+      if (error) throw error;
+      return data as ({ conversation_id: string; label_id: string; labels: Label })[];
+    },
+  });
+
+  const conversationLabelsMap = useMemo(() => {
+    const map: Record<string, Label[]> = {};
+    (allConversationLabels || []).forEach((cl) => {
+      if (!map[cl.conversation_id]) map[cl.conversation_id] = [];
+      if (cl.labels) map[cl.conversation_id].push(cl.labels);
+    });
+    return map;
+  }, [allConversationLabels]);
 
   const remoteJids = useMemo(
     () => (conversations || []).map((c) => c.remote_jid),
@@ -96,6 +121,7 @@ const Conversations = () => {
           instances={instanceTabs}
           selectedInstance={selectedInstance}
           onSelectInstance={setSelectedInstance}
+          conversationLabels={conversationLabelsMap}
         />
       </div>
 

@@ -16,6 +16,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Conversation } from "@/hooks/useConversations";
+import { Label } from "@/hooks/useLabels";
 import { ContactAvatar } from "./ContactAvatar";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
@@ -37,6 +38,7 @@ interface ConversationListProps {
   instances?: InstanceTab[];
   selectedInstance: string | null;
   onSelectInstance: (name: string | null) => void;
+  conversationLabels?: Record<string, Label[]>;
 }
 
 function formatTime(dateStr: string | null) {
@@ -63,6 +65,7 @@ export function ConversationList({
   instances = [],
   selectedInstance,
   onSelectInstance,
+  conversationLabels = {},
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
 
@@ -188,6 +191,22 @@ export function ConversationList({
                           )}>
                             {conv.last_message || "..."}
                           </p>
+                          {/* Label dots */}
+                          {conversationLabels[conv.id]?.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              {conversationLabels[conv.id].slice(0, 4).map((label) => (
+                                <span
+                                  key={label.id}
+                                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: label.color }}
+                                  title={label.name}
+                                />
+                              ))}
+                              {conversationLabels[conv.id].length > 4 && (
+                                <span className="text-[9px] text-muted-foreground">+{conversationLabels[conv.id].length - 4}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Right column: time + unread badge */}
