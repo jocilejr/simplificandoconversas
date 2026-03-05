@@ -312,13 +312,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: flow, error: flowErr } = await serviceClient
-      .from("chatbot_flows")
-      .select("*")
-      .eq("id", flowId)
-      .eq("user_id", userId)
-      .single();
+    const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
+    // Run all initial queries in parallel for faster startup
+    const [flowResult, profileResult, activeExecsResult] = await Promise.all([
+      serviceClient
+        .from("chatbot_flows")
+        .select("*")
+        .eq("id", flowId)
+        .eq("user_id", userId)
+        .single(),
+      serviceClient
+        .from("profiles")
+        .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url")
+        .eq("user_id", userId)
+        .single(),
+      // Only check active executions if not resuming
+      !resumeFromNodeId
+        ? serviceClient
+            .from("flow_executions")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("remote_jid", jid)
+            .in("status", ["running", "waiting_click", "waiting_reply"])
+            .limit(1)
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const { data: flow, error: flowErr } = flowResult;
     if (flowErr || !flow) {
       return new Response(JSON.stringify({ error: "Flow not found" }), {
         status: 404,
@@ -326,12 +347,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url")
-      .eq("user_id", userId)
-      .single();
-
+    const { data: profile } = profileResult;
     if (!profile?.evolution_api_url || !profile?.evolution_api_key || !profile?.evolution_instance_name) {
       return new Response(JSON.stringify({ error: "Evolution API not configured" }), {
         status: 400,
@@ -340,25 +356,24 @@ Deno.serve(async (req) => {
     }
 
     const { evolution_api_url, evolution_api_key } = profile;
-    // Use instance from webhook if provided, fallback to profile default (manual execution)
     const evolution_instance_name = bodyInstanceName || profile.evolution_instance_name;
     const baseUrl = evolution_api_url.replace(/\/$/, "");
-    const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
-    // Block new executions if there's already an active flow for this contact
-    // (but allow resuming from waitForClick or timeout)
+    // Check active executions result (with instance_name filter if needed)
     if (!resumeFromNodeId) {
-      let activeExecQuery = serviceClient
-        .from("flow_executions")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("remote_jid", jid)
-        .in("status", ["running", "waiting_click", "waiting_reply"]);
-      if (evolution_instance_name) {
-        activeExecQuery = activeExecQuery.eq("instance_name", evolution_instance_name);
+      let activeExecs = activeExecsResult.data;
+      // If we need instance filtering, re-query only if we have results (rare path)
+      if (activeExecs && activeExecs.length > 0 && evolution_instance_name) {
+        const { data: filteredExecs } = await serviceClient
+          .from("flow_executions")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("remote_jid", jid)
+          .eq("instance_name", evolution_instance_name)
+          .in("status", ["running", "waiting_click", "waiting_reply"])
+          .limit(1);
+        activeExecs = filteredExecs;
       }
-      const { data: activeExecs } = await activeExecQuery.limit(1);
-
       if (activeExecs && activeExecs.length > 0) {
         console.log(`[execute-flow] Blocked: active execution ${activeExecs[0].id} already exists for ${jid}`);
         return new Response(JSON.stringify({ ok: false, error: "active_flow_exists", message: "Já existe um fluxo ativo para este contato." }), {
@@ -441,15 +456,18 @@ Deno.serve(async (req) => {
       if (visited.has(node.id)) continue;
       visited.add(node.id);
 
-      const { data: statusCheck } = await serviceClient
-        .from("flow_executions")
-        .select("status")
-        .eq("id", executionId)
-        .single();
+      // Check cancellation every 3 nodes instead of every node to reduce DB calls
+      if (nodeIndex > 0 && nodeIndex % 3 === 0) {
+        const { data: statusCheck } = await serviceClient
+          .from("flow_executions")
+          .select("status")
+          .eq("id", executionId)
+          .single();
 
-      if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
-        results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
-        break;
+        if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
+          results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
+          break;
+        }
       }
 
       await serviceClient
