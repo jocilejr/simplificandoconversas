@@ -37,6 +37,8 @@ import { useFlowHistory, type FlowHistoryEntry } from "@/hooks/useFlowHistory";
 import { FlowHistoryPanel } from "@/components/chatbot/FlowHistoryPanel";
 
 const DOCK_THRESHOLD = 80;
+const FINALIZER_TYPES: FlowNodeType[] = ["waitForReply", "waitForClick"];
+const isFinalizer = (type: string) => FINALIZER_TYPES.includes(type as FlowNodeType);
 
 const nodeTypes: NodeTypes = {
   step: StepNode,
@@ -298,7 +300,23 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
         newSteps = [{ id: draggedNode.id, data: { ...draggedData } }];
       }
 
-      const mergedSteps = [...existingSteps, ...newSteps];
+      // Validate finalizer conflicts
+      const existingHasFinalizer = existingSteps.some((s) => isFinalizer(s.data.type));
+      const newHasFinalizer = newSteps.some((s) => isFinalizer(s.data.type));
+      if (existingHasFinalizer && newHasFinalizer) {
+        toast.error("Só é permitido um step de aguardar por grupo");
+        // Clear dock indicators
+        setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, isDockTarget: false } })));
+        return;
+      }
+
+      // Merge and ensure finalizer is last
+      let mergedSteps = [...existingSteps, ...newSteps];
+      const finalizerIndex = mergedSteps.findIndex((s) => isFinalizer(s.data.type));
+      if (finalizerIndex !== -1 && finalizerIndex !== mergedSteps.length - 1) {
+        const [fin] = mergedSteps.splice(finalizerIndex, 1);
+        mergedSteps.push(fin);
+      }
 
       // Transfer edges from dragged node to target
       setEdges((eds) => {
@@ -382,28 +400,63 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   useEffect(() => {
     const handler = (e: Event) => {
       const { nodeId, fromIndex, toIndex } = (e as CustomEvent).detail;
-      reorderStepByIndex(nodeId, fromIndex, toIndex);
+      
+      // Block reorder if it would move a finalizer away from last position
+      setNodes((nds) => {
+        const node = nds.find((n) => n.id === nodeId);
+        if (!node) return nds;
+        const data = node.data as FlowNodeData;
+        if (!data.steps) return nds;
+        
+        const steps = [...data.steps];
+        const [moved] = steps.splice(fromIndex, 1);
+        steps.splice(toIndex, 0, moved);
+        
+        // Check if finalizer ended up not at the end
+        const finIdx = steps.findIndex((s) => isFinalizer(s.data.type));
+        if (finIdx !== -1 && finIdx !== steps.length - 1) {
+          toast.error("O step de aguardar deve ser o último do grupo");
+          return nds;
+        }
+        
+        return nds.map((n) => n.id === nodeId ? { ...n, data: { ...data, steps } } : n);
+      });
     };
     document.addEventListener("group-reorder-step", handler);
     return () => document.removeEventListener("group-reorder-step", handler);
-  }, [reorderStepByIndex]);
+  }, [setNodes]);
 
   // Listen for add-step events from GroupNode
   useEffect(() => {
     const handler = (e: Event) => {
       const { nodeId, stepType } = (e as CustomEvent).detail as { nodeId: string; stepType: FlowNodeType };
       const config = nodeTypeConfig[stepType];
-      const newStep: FlowStepData = {
-        id: crypto.randomUUID(),
-        data: { label: config.label, type: stepType, ...defaultNodeData[stepType] } as FlowNodeData,
-      };
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id !== nodeId) return n;
-          const data = n.data as FlowNodeData;
-          return { ...n, data: { ...data, steps: [...(data.steps || []), newStep] } };
-        })
-      );
+      
+      setNodes((nds) => {
+        const node = nds.find((n) => n.id === nodeId);
+        if (!node) return nds;
+        const data = node.data as FlowNodeData;
+        const steps = data.steps || [];
+        
+        // Block if group already has a finalizer and we're adding another
+        if (isFinalizer(stepType) && steps.some((s) => isFinalizer(s.data.type))) {
+          toast.error("Só é permitido um step de aguardar por grupo");
+          return nds;
+        }
+        
+        // Block adding any step after a finalizer (finalizer must be last)
+        if (!isFinalizer(stepType) && steps.length > 0 && isFinalizer(steps[steps.length - 1].data.type)) {
+          toast.error("Não é possível adicionar ações após o step de aguardar");
+          return nds;
+        }
+        
+        const newStep: FlowStepData = {
+          id: crypto.randomUUID(),
+          data: { label: config.label, type: stepType, ...defaultNodeData[stepType] } as FlowNodeData,
+        };
+        
+        return nds.map((n) => n.id === nodeId ? { ...n, data: { ...data, steps: [...steps, newStep] } } : n);
+      });
       toast.success(`${config.label} adicionado ao grupo`);
     };
     document.addEventListener("group-add-step", handler);
@@ -479,6 +532,45 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
 
         const movedStep = sourceData.steps.find((s) => s.id === stepId);
         if (!movedStep) return nds;
+        
+        // Validate: target already has finalizer and moved step is also finalizer
+        const targetNode = nds.find((n) => n.id === targetNodeId);
+        if (!targetNode) return nds;
+        const targetData = targetNode.data as FlowNodeData;
+        const targetSteps = targetData.steps || [];
+        
+        const targetHasFinalizer = targetSteps.some((s) => isFinalizer(s.data.type));
+        const movedIsFinalizer = isFinalizer(movedStep.data.type);
+        
+        if (targetHasFinalizer && movedIsFinalizer) {
+          toast.error("Só é permitido um step de aguardar por grupo");
+          return nds;
+        }
+        
+        // Block if target has finalizer and we're adding a non-finalizer (it would go after)
+        if (targetHasFinalizer && !movedIsFinalizer) {
+          // Insert before the finalizer
+          const finIdx = targetSteps.findIndex((s) => isFinalizer(s.data.type));
+          const newTargetSteps = [...targetSteps];
+          newTargetSteps.splice(finIdx, 0, movedStep);
+          
+          const remainingSteps = sourceData.steps.filter((s) => s.id !== stepId);
+          let result = nds;
+          
+          if (remainingSteps.length === 0) {
+            result = result.filter((n) => n.id !== sourceNodeId);
+          } else if (remainingSteps.length === 1) {
+            const lastStep = remainingSteps[0];
+            result = result.map((n) => n.id === sourceNodeId ? { ...n, type: "step", data: { ...lastStep.data } as FlowNodeData } : n);
+          } else {
+            result = result.map((n) => n.id === sourceNodeId ? { ...n, data: { ...sourceData, steps: remainingSteps } } : n);
+          }
+          
+          result = result.map((n) => n.id === targetNodeId ? { ...n, data: { ...targetData, steps: newTargetSteps } } : n);
+          toast.success("Step movido para o grupo");
+          return result;
+        }
+
         const remainingSteps = sourceData.steps.filter((s) => s.id !== stepId);
 
         let result = nds;
@@ -493,17 +585,17 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           result = result.map((n) => n.id === sourceNodeId ? { ...n, data: { ...sourceData, steps: remainingSteps } } : n);
         }
 
-        // Add step to target group
+        // Add step to target group (finalizer goes to end automatically)
         result = result.map((n) => {
           if (n.id !== targetNodeId) return n;
-          const targetData = n.data as FlowNodeData;
-          const targetSteps = targetData.steps || [];
-          return { ...n, data: { ...targetData, steps: [...targetSteps, movedStep] } };
+          const tData = n.data as FlowNodeData;
+          const tSteps = tData.steps || [];
+          return { ...n, data: { ...tData, steps: [...tSteps, movedStep] } };
         });
 
+        toast.success("Step movido para o grupo");
         return result;
       });
-      toast.success("Step movido para o grupo");
     };
     document.addEventListener("group-receive-step", handler);
     return () => document.removeEventListener("group-receive-step", handler);
