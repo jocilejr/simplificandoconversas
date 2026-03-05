@@ -204,6 +204,7 @@ export function ChatPanel({
                             isOutbound={isOutbound}
                             contactPhoto={!isOutbound ? contactPhoto : undefined}
                             contactName={!isOutbound ? conversation.contact_name : undefined}
+                            timestamp={format(new Date(msg.created_at), "HH:mm")}
                           />
                         ) : msg.message_type === "video" ? (
                           <video
