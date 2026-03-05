@@ -37,6 +37,9 @@ export interface FlowNodeData {
   // Send Video/Image
   mediaUrl?: string;
   caption?: string;
+  // Send File (PDF)
+  fileUrl?: string;
+  fileName?: string;
   // Condition
   conditionField?: string;
   conditionOperator?: "equals" | "contains" | "starts_with" | "regex";
