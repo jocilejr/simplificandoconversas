@@ -329,7 +329,9 @@ export function ChatPanel({
 
         <div className="relative flex-1">
           {showQuickReplies && (
-            <div className="absolute bottom-full mb-2 left-0 right-0 bg-popover border border-border rounded-xl shadow-xl z-10 flex overflow-hidden" style={{ maxHeight: 340 }}>
+            <div
+              onMouseDown={(e) => e.preventDefault()}
+              className="absolute bottom-full mb-2 left-0 right-0 bg-popover border border-border rounded-xl shadow-xl z-10 flex overflow-hidden" style={{ maxHeight: 340 }}>
               {/* Left: list */}
               <div className="flex flex-col w-[220px] border-r border-border/40">
                 {/* Header */}
