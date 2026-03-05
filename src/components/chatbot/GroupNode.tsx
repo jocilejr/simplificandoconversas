@@ -269,21 +269,15 @@ function StepRow({
   if (d.type === "waitDelay") {
     return (
       <div
+        ref={containerRef}
         data-step-id={step.id}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("application/step-id", step.id);
-          e.dataTransfer.setData("application/source-node-id", nodeId);
-          onDragStart(index);
-        }}
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
-        onDragEnd={(e) => onDragEnd(e)}
-        className={`relative flex items-center my-2 mx-3 cursor-pointer active:cursor-grabbing nopan nodrag ${
+        className={`relative flex items-center my-2 mx-3 cursor-pointer nopan nodrag ${
           isDragging ? "opacity-30 scale-95" : isDropTarget ? "scale-[1.02]" : ""
         }`}
       >
+        <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
         <div className="flex-1 h-px bg-border/60" />
         <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-muted-foreground transition-colors ${
           isDropTarget ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/50 hover:bg-muted/70"
