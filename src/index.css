@@ -71,11 +71,11 @@
 .group-handle-target {
   top: 24px !important;
 }
-.group-handle-output-0 {
-  top: calc(100% - 42px) !important;
-}
+.group-handle-output-0,
 .group-handle-output-1 {
-  top: calc(100% - 18px) !important;
+  top: 50% !important;
+  right: -6px !important;
+  transform: translateY(-50%) !important;
 }
 .group-handle-source {
   top: auto !important;
