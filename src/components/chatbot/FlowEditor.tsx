@@ -1002,7 +1002,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
             </div>
           ))}
         </div>
-      )}
+      </>)}
     </div>
   );
 }
