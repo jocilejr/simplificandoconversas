@@ -1,41 +1,43 @@
 
 
-## Bug: Fluxo permanece ativo após timeout quando saída de timeout não está conectada
+## Bug: Link clicado retoma fluxo já encerrado e pela instância errada
 
-### Causa raiz
+### Causa raiz (2 problemas)
 
-No `execute-flow`, o timeout só é registrado na tabela `flow_timeouts` quando existe um nó conectado à saída de timeout (`output-1`). Se a saída "Se não clicou" não está conectada a nada, **nenhum timeout é criado**, e a execução fica presa com status `waiting_click` para sempre.
+**Problema 1: Fluxo retoma mesmo já tendo sido encerrado pelo timeout**
 
-Código atual (linhas 480-497):
-```javascript
-if (clickTimeout > 0) {
-  const timeoutNodeId = timeoutEdgeMap.get(node.id);
-  if (timeoutNodeId) {  // ← só cria timeout se tiver nó conectado
-    // ...insert timeout
-  }
-}
+No `link-redirect`, a unica verificacao e `if (!link.clicked)` (linha 92). Ele nao verifica se a execucao original ainda esta ativa. Se o timeout ja marcou a execucao como `completed`, o clique no link ainda assim chama `execute-flow` com `resumeFromNodeId`, criando uma **nova execucao** do zero a partir daquele no.
+
+**Problema 2: Link nao armazena `instance_name`, entao o resume usa a instancia errada**
+
+A tabela `tracked_links` nao tem coluna `instance_name`. Quando o `link-redirect` chama `execute-flow`, nao passa `instanceName`. O `execute-flow` faz fallback para `profile.evolution_instance_name` (Meire Rosana - Entregas), mesmo que o link tenha sido gerado pelo FunilPrincipal.
+
+### Solucao
+
+**1. Migration SQL** -- Adicionar coluna `instance_name` na tabela `tracked_links`:
+```sql
+ALTER TABLE public.tracked_links ADD COLUMN instance_name text;
 ```
 
-### Solução
+**2. `supabase/functions/execute-flow/index.ts`** -- Salvar `instance_name` ao criar tracked_links:
+- No insert de `tracked_links` (standalone e dentro de grupo), adicionar `instance_name: evolution_instance_name`
 
-Dois arquivos precisam de alteração:
-
-**1. `supabase/functions/execute-flow/index.ts`** — Registrar timeout mesmo sem nó conectado:
-- No `waitForClick` (linha ~482): remover a condição `if (timeoutNodeId)` e inserir o timeout com `timeout_node_id: timeoutNodeId || null`
-- No `waitForReply` (linha ~514): mesma alteração
-
-**2. `supabase/functions/check-timeouts/index.ts`** — Tratar timeout sem nó de destino:
-- Quando `timeout_node_id` é `null`, apenas marcar a execução como `completed` e o timeout como `processed`, sem chamar `execute-flow` para retomar
+**3. `supabase/functions/link-redirect/index.ts`** -- 2 alteracoes:
+- Passar `instanceName: link.instance_name` no body do fetch para `execute-flow`
+- Antes de resumir o fluxo, verificar se a execucao original ainda esta em status `waiting_click`. Se ja foi `completed`/`cancelled`, nao chamar execute-flow (apenas redirecionar)
 
 ```text
 Antes:
-  timeout=20s + sem conexão → nenhum timeout criado → fluxo preso em waiting_click
+  click no link → link-redirect nao verifica status da execucao → resume sempre
+  link-redirect nao passa instanceName → execute-flow usa instancia do perfil
 
 Depois:
-  timeout=20s + sem conexão → timeout criado com node_id=null → check-timeouts completa a execução
+  click no link → link-redirect verifica se execucao esta waiting_click → so resume se ativa
+  link-redirect passa instanceName do tracked_link → execute-flow usa instancia correta
 ```
 
 ### Arquivos alterados
-- `supabase/functions/execute-flow/index.ts` — inserir timeout independente de haver nó conectado
-- `supabase/functions/check-timeouts/index.ts` — completar execução quando `timeout_node_id` é null
+- Migration SQL: adicionar coluna `instance_name` em `tracked_links`
+- `supabase/functions/execute-flow/index.ts`: salvar `instance_name` nos inserts de tracked_links
+- `supabase/functions/link-redirect/index.ts`: verificar status da execucao + passar instanceName
 
