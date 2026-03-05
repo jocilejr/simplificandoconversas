@@ -202,7 +202,7 @@ function StepNode({ data, selected }: StepNodeProps) {
           />
           <span
             className="absolute text-[9px] font-medium text-muted-foreground pointer-events-none"
-            style={{ right: -68, top: "calc(35% - 6px)" }}
+            style={{ right: -68, top: "35%", transform: "translateY(-50%)" }}
           >
             Respondeu ✓
           </span>
@@ -216,7 +216,7 @@ function StepNode({ data, selected }: StepNodeProps) {
           />
           <span
             className="absolute text-[9px] font-medium pointer-events-none"
-            style={{ right: -90, top: "calc(70% - 6px)", color: "#f97316" }}
+            style={{ right: -90, top: "70%", transform: "translateY(-50%)", color: "#f97316" }}
           >
             {timeoutLabel} ⏱
           </span>
