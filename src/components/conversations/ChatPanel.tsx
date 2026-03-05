@@ -182,7 +182,8 @@ export function ChatPanel({
                 <div className={cn("flex mb-1", isOutbound ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[75%] px-3 py-2 text-[13px] shadow-sm",
+                      "max-w-[75%] text-[13px] shadow-sm",
+                      msg.message_type === "audio" ? "px-2 py-1" : "px-3 py-2",
                       isOutbound
                         ? "bg-[#005c4b] text-white rounded-2xl rounded-br-sm"
                         : "bg-[#202c33] text-[#e9edef] rounded-2xl rounded-bl-sm"
