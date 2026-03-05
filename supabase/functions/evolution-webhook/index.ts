@@ -258,16 +258,17 @@ Deno.serve(async (req) => {
     });
 
     // === CHECK FOR WAITING_REPLY: Resume flow if contact responded ===
+    let flowResumed = false;
     if (!fromMe && messageContent) {
       try {
-        await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id, instance);
+        flowResumed = await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id, instance);
       } catch (resumeErr) {
         console.error("Resume waiting_reply error (non-fatal):", resumeErr);
       }
     }
 
-    // === AUTO-TRIGGER: Check keyword matching for inbound messages ===
-    if (!fromMe && messageContent) {
+    // === AUTO-TRIGGER: Check keyword matching for inbound messages (skip if we just resumed) ===
+    if (!fromMe && messageContent && !flowResumed) {
       try {
         await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance);
       } catch (triggerErr) {
