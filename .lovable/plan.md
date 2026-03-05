@@ -1,29 +1,28 @@
 
 
-## Corrigir exibição de timeout nos steps dentro do GroupNode
+## Melhorar layout do GroupNode com saídas de timeout
 
-O problema: quando `waitForClick` ou `waitForReply` estão acoplados dentro de um grupo, o step row renderiza como um pill simples sem mostrar o indicador de timeout (ex: "Timeout: 1min" com ícone de relógio). O nó standalone mostra isso corretamente.
+O problema: os labels das saídas ("Continuou ✓" e "Se não clicou ⏱") usam posicionamento absoluto com `right: -68px` / `right: -90px`, ficando cortados ou invisíveis. O grupo também é estreito demais (280px) para acomodar bem os handles e labels.
 
-### Mudança
+### Mudanças em `src/components/chatbot/GroupNode.tsx`
 
-**`src/components/chatbot/GroupNode.tsx`** — Nos blocos de renderização do `waitForClick` e no bloco default (que renderiza `waitForReply`), adicionar o indicador de timeout abaixo do conteúdo do step:
+1. **Aumentar largura do grupo** de `w-[280px]` para `w-[320px]` quando `hasTimeoutOutputs`, dando mais espaço visual.
 
-1. **waitForClick (linhas 149-177)**: Mudar de layout `flex` horizontal para `flex-col` vertical. Manter o pill com ícone de link + URL na primeira linha. Adicionar abaixo uma linha com `Clock` + texto "Timeout: Xmin/s/h" em laranja, visível apenas quando `clickTimeout > 0`.
+2. **Adicionar rodapé interno** com os labels de saída dentro do card (não mais fora com posição absoluta):
+   - Quando `hasTimeoutOutputs`, renderizar um rodapé com duas linhas:
+     - Linha verde: `● Continuou ✓` alinhado à direita
+     - Linha laranja: `● Se não respondeu/clicou ⏱` alinhado à direita
+   - Cada linha terá um pequeno círculo colorido que corresponde visualmente ao handle
 
-2. **Bloco default (renderiza waitForReply e outros)**: No final do bloco, após o `renderPreview()`, adicionar o mesmo indicador de timeout quando `d.type === "waitForReply"` e `replyTimeout > 0`.
+3. **Remover os `<span>` externos** com posição absoluta (`right: -68`, `right: -90`) que causam o clipping.
 
-O indicador visual será idêntico ao do `StepNode` standalone:
-```tsx
-{hasTimeout && (
-  <div className="flex items-center gap-1.5 px-1 mt-1">
-    <Clock className="w-3 h-3 text-orange-500" />
-    <span className="text-[10px] text-orange-500 font-medium">
-      Timeout: {timeoutValue}{unitLabel}
-    </span>
-  </div>
-)}
-```
+4. **Ajustar posição dos handles** para alinhar com o rodapé interno — mover para posições mais baixas no nó (ex: últimos 25% do card) para que fiquem ao lado das labels internas.
 
-### Arquivos alterados
-- `src/components/chatbot/GroupNode.tsx` — adicionar indicador de timeout nos step rows de waitForClick e waitForReply
+### Resultado
+- Labels de saída visíveis dentro do card, nunca cortados
+- Handles alinhados verticalmente com as labels internas
+- Design mais limpo e consistente
+
+### Arquivo alterado
+- `src/components/chatbot/GroupNode.tsx`
 
