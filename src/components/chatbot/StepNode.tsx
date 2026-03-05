@@ -192,12 +192,6 @@ function StepNode({ data, selected }: StepNodeProps) {
         ))
       ) : hasTimeoutOutputs ? (
         <>
-          {/* Normal path — handle + label at same vertical pos */}
-          <div className="absolute flex items-center gap-1.5" style={{ right: 0, top: "35%", transform: "translateY(-50%)" }}>
-            <span className="text-[9px] font-medium text-muted-foreground whitespace-nowrap order-1" style={{ marginRight: -80 }}>
-              Respondeu ✓
-            </span>
-          </div>
           <Handle
             type="source"
             position={Position.Right}
@@ -205,12 +199,12 @@ function StepNode({ data, selected }: StepNodeProps) {
             className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
             style={{ background: accentColor, top: "35%" }}
           />
-          {/* Timeout path — handle + label at same vertical pos */}
-          <div className="absolute flex items-center gap-1.5" style={{ right: 0, top: "70%", transform: "translateY(-50%)" }}>
-            <span className="text-[9px] font-medium whitespace-nowrap order-1" style={{ marginRight: -100, color: "#f97316" }}>
-              {timeoutLabel} ⏱
-            </span>
-          </div>
+          <span
+            className="absolute text-[9px] font-medium text-muted-foreground whitespace-nowrap pointer-events-none"
+            style={{ left: "calc(100% + 14px)", top: "35%", transform: "translateY(-50%)" }}
+          >
+            Respondeu ✓
+          </span>
           <Handle
             type="source"
             position={Position.Right}
@@ -218,6 +212,12 @@ function StepNode({ data, selected }: StepNodeProps) {
             className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
             style={{ background: "#f97316", top: "70%" }}
           />
+          <span
+            className="absolute text-[9px] font-medium whitespace-nowrap pointer-events-none"
+            style={{ left: "calc(100% + 14px)", top: "70%", transform: "translateY(-50%)", color: "#f97316" }}
+          >
+            {timeoutLabel} ⏱
+          </span>
         </>
       ) : (
         <Handle
