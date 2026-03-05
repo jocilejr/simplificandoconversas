@@ -306,14 +306,8 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
   const headerConfig = firstStep ? nodeTypeConfig[firstStep.data.type] : null;
   const accentColor = headerConfig?.color || "hsl(142, 70%, 45%)";
 
-  // Check if any step in the group has timeout configured
-  const timeoutStep = steps.find(
-    (s) =>
-      (s.data.type === "waitForReply" && (s.data.replyTimeout || 0) > 0) ||
-      (s.data.type === "waitForClick" && (s.data.clickTimeout || 0) > 0)
-  );
-  const hasTimeoutOutputs = !!timeoutStep;
-  const timeoutLabel = timeoutStep?.data.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
+  const finalizerStep = steps.find((s) => finalizerTypes.includes(s.data.type as FlowNodeType));
+  const timeoutLabel = finalizerStep?.data.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
 
   const handleDragStart = useCallback((i: number) => {
     setDragIndex(i);
@@ -365,7 +359,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
       />
 
       <div
-        className={`${hasTimeoutOutputs ? "w-[320px]" : "w-[280px]"} rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
+        className={`${hasFinalizerStep ? "w-[320px]" : "w-[280px]"} rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
           isDockTarget
             ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
             : selected
@@ -431,47 +425,49 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           )}
         </div>
 
-        <div className="px-3 pb-2.5 nopan nodrag">
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-                <span className="text-[11px] font-medium">Adicionar ação</span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-52 p-1.5" side="bottom" align="center">
-              <div className="space-y-0.5 max-h-60 overflow-y-auto">
-                {addableTypes.map((type) => {
-                  const config = nodeTypeConfig[type];
-                  const LucideIcon = icons[config.icon as keyof typeof icons];
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        const event = new CustomEvent("group-add-step", {
-                          detail: { nodeId: id, stepType: type },
-                          bubbles: true,
-                        });
-                        document.dispatchEvent(event);
-                      }}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md hover:bg-secondary transition-colors text-left"
-                    >
-                      <div
-                        className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: `${config.color}18`, color: config.color }}
+        {!hasFinalizerStep && (
+          <div className="px-3 pb-2.5 nopan nodrag">
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors">
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="text-[11px] font-medium">Adicionar ação</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-52 p-1.5" side="bottom" align="center">
+                <div className="space-y-0.5 max-h-60 overflow-y-auto">
+                  {addableTypes.map((type) => {
+                    const config = nodeTypeConfig[type];
+                    const LucideIcon = icons[config.icon as keyof typeof icons];
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          const event = new CustomEvent("group-add-step", {
+                            detail: { nodeId: id, stepType: type },
+                            bubbles: true,
+                          });
+                          document.dispatchEvent(event);
+                        }}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md hover:bg-secondary transition-colors text-left"
                       >
-                        {LucideIcon && <LucideIcon className="w-3 h-3" />}
-                      </div>
-                      <span className="text-[12px] font-medium text-foreground">{config.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+                        <div
+                          className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${config.color}18`, color: config.color }}
+                        >
+                          {LucideIcon && <LucideIcon className="w-3 h-3" />}
+                        </div>
+                        <span className="text-[12px] font-medium text-foreground">{config.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
 
-        {hasTimeoutOutputs && (
+        {hasFinalizerStep && (
           <div className="px-3 py-2 border-t border-border/40 space-y-1.5">
             <div className="flex items-center justify-end">
               <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
@@ -491,7 +487,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
       </div>
 
-      {hasTimeoutOutputs ? (
+      {hasFinalizerStep ? (
         <>
           <Handle
             type="source"
