@@ -383,11 +383,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Auto-lookup conversation_id if not provided
+    let resolvedConversationId = conversationId || null;
+    if (!resolvedConversationId && jid && evolution_instance_name) {
+      const { data: convLookup } = await serviceClient
+        .from("conversations")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("remote_jid", jid)
+        .eq("instance_name", evolution_instance_name)
+        .limit(1)
+        .single();
+      if (convLookup) {
+        resolvedConversationId = convLookup.id;
+        console.log(`[execute-flow] Auto-resolved conversation_id: ${resolvedConversationId}`);
+      }
+    }
+
     console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({ user_id: userId, conversation_id: conversationId || null, flow_id: flowId, remote_jid: jid, status: "running", instance_name: evolution_instance_name || null })
+      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: evolution_instance_name || null })
       .select("id")
       .single();
 

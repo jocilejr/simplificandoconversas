@@ -79,6 +79,22 @@ Deno.serve(async (req) => {
 
         // Only resume the flow if there's a connected timeout node
         if (timeout.timeout_node_id) {
+          // Resolve conversation_id if null
+          let resolvedConvId = timeout.conversation_id;
+          if (!resolvedConvId && timeout.remote_jid && timeout.user_id) {
+            const { data: convLookup } = await supabase
+              .from("conversations")
+              .select("id")
+              .eq("user_id", timeout.user_id)
+              .eq("remote_jid", timeout.remote_jid)
+              .limit(1)
+              .single();
+            if (convLookup) {
+              resolvedConvId = convLookup.id;
+              console.log(`[check-timeouts] Auto-resolved conversation_id: ${resolvedConvId}`);
+            }
+          }
+
           // Bug fix #2: Pass instanceName from the execution
           fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
             method: "POST",
@@ -89,7 +105,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               flowId: timeout.flow_id,
               remoteJid: timeout.remote_jid,
-              conversationId: timeout.conversation_id,
+              conversationId: resolvedConvId,
               userId: timeout.user_id,
               resumeFromNodeId: timeout.timeout_node_id,
               instanceName: execution.instance_name || undefined,

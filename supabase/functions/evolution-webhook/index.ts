@@ -427,12 +427,18 @@ async function checkAndResumeWaitingReply(
   instanceName: string
 ): Promise<boolean> {
   // Find active execution waiting for reply from this contact
-  const { data: waitingExecs } = await supabase
+  let query = supabase
     .from("flow_executions")
     .select("id, flow_id, waiting_node_id")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
-    .eq("status", "waiting_reply")
+    .eq("status", "waiting_reply");
+  
+  if (instanceName) {
+    query = query.eq("instance_name", instanceName);
+  }
+
+  const { data: waitingExecs } = await query
     .order("created_at", { ascending: false })
     .limit(1);
 
