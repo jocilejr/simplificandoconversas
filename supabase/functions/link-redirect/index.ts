@@ -98,6 +98,15 @@ Deno.serve(async (req) => {
           .update({ clicked: true, clicked_at: new Date().toISOString() })
           .eq("id", link.id);
 
+        // Bug fix #3: Cancel pending timeouts for this execution
+        if (link.execution_id) {
+          await serviceClient
+            .from("flow_timeouts")
+            .update({ processed: true })
+            .eq("execution_id", link.execution_id)
+            .eq("processed", false);
+        }
+
         // Check if the execution is still waiting for this click
         let executionActive = false;
         if (link.execution_id) {

@@ -47,6 +47,24 @@ Deno.serve(async (req) => {
 
     for (const timeout of pendingTimeouts) {
       try {
+        // Bug fix #1: Verify execution is still active before processing
+        const { data: execution } = await supabase
+          .from("flow_executions")
+          .select("status, instance_name")
+          .eq("id", timeout.execution_id)
+          .single();
+
+        if (!execution || !["waiting_click", "waiting_reply"].includes(execution.status)) {
+          console.log(`[check-timeouts] Skipping timeout ${timeout.id} — execution status is '${execution?.status ?? "not found"}', not active`);
+          // Mark as processed so we don't check again
+          await supabase
+            .from("flow_timeouts")
+            .update({ processed: true })
+            .eq("id", timeout.id);
+          processedCount++;
+          continue;
+        }
+
         // Mark the original execution as completed
         await supabase
           .from("flow_executions")
@@ -61,7 +79,7 @@ Deno.serve(async (req) => {
 
         // Only resume the flow if there's a connected timeout node
         if (timeout.timeout_node_id) {
-          // Resume the flow from the timeout node (fire-and-forget)
+          // Bug fix #2: Pass instanceName from the execution
           fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
             method: "POST",
             headers: {
@@ -74,6 +92,7 @@ Deno.serve(async (req) => {
               conversationId: timeout.conversation_id,
               userId: timeout.user_id,
               resumeFromNodeId: timeout.timeout_node_id,
+              instanceName: execution.instance_name || undefined,
             }),
           })
             .then((r) => r.json())
