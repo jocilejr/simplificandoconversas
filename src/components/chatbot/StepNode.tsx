@@ -80,7 +80,7 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
   const dispatchDuplicate = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId: (data as any).__nodeId || "" }, bubbles: true }));
+    document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId }, bubbles: true }));
   };
 
   // ─── Trigger: special gradient card ───
