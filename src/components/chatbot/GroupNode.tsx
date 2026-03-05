@@ -231,8 +231,9 @@ function StepRow({
         <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-muted-foreground transition-colors ${
           isDropTarget ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/50 hover:bg-muted/70"
         }`}>
-          <Clock className="w-3.5 h-3.5" />
-          <span className="text-[11px] font-semibold tabular-nums">{d.delaySeconds || 0}s</span>
+          <span className="text-[11px] font-semibold tabular-nums">
+            {d.delayRandomMode ? `${d.delayMinSeconds || 0}s–${d.delayMaxSeconds || 0}s` : `${d.delaySeconds || 0}s`}
+          </span>
         </div>
         <div className="flex-1 h-px bg-border/60" />
       </div>
