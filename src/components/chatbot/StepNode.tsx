@@ -114,7 +114,7 @@ function StepNode({ data, selected }: StepNodeProps) {
 
   // ─── Regular node — GroupNode-style card ───
   return (
-    <div className="relative">
+    <div className="relative group/node">
       <Handle
         type="target"
         position={Position.Left}
