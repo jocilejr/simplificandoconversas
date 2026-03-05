@@ -459,7 +459,98 @@ Deno.serve(async (req) => {
       console.log(`[execute-flow] Processing node ${node.id}, type: ${nodeType}`);
 
       try {
-        if (nodeType === "aiAgent") {
+        // === CONDITION NODE: evaluate and route ===
+        if (nodeType === "condition") {
+          const conditionEdges = conditionEdgeMap.get(node.id);
+          let conditionResult = false;
+
+          if (data.conditionOperator === "has_tag") {
+            // Check if contact has the tag
+            const tagName = (data.conditionValue || "").trim().toLowerCase();
+            if (tagName) {
+              const { data: tagRecord } = await serviceClient
+                .from("contact_tags")
+                .select("id")
+                .eq("user_id", userId)
+                .eq("remote_jid", jid)
+                .ilike("tag_name", tagName)
+                .limit(1);
+              conditionResult = !!(tagRecord && tagRecord.length > 0);
+            }
+            console.log(`[execute-flow] Condition has_tag "${data.conditionValue}": ${conditionResult}`);
+          } else {
+            // Text-based conditions - get last inbound message
+            const { data: lastMsg } = await serviceClient
+              .from("messages")
+              .select("content")
+              .eq("remote_jid", jid)
+              .eq("user_id", userId)
+              .eq("direction", "inbound")
+              .order("created_at", { ascending: false })
+              .limit(1);
+            const msgText = (lastMsg?.[0]?.content || "").toLowerCase();
+            const condValue = (data.conditionValue || "").toLowerCase();
+
+            switch (data.conditionOperator) {
+              case "equals":
+                conditionResult = msgText === condValue;
+                break;
+              case "contains":
+                conditionResult = msgText.includes(condValue);
+                break;
+              case "starts_with":
+                conditionResult = msgText.startsWith(condValue);
+                break;
+              case "regex":
+                try { conditionResult = new RegExp(data.conditionValue || "", "i").test(msgText); } catch { conditionResult = false; }
+                break;
+              default:
+                conditionResult = msgText.includes(condValue);
+            }
+            console.log(`[execute-flow] Condition ${data.conditionOperator} "${data.conditionValue}" on "${msgText.substring(0, 30)}": ${conditionResult}`);
+          }
+
+          results.push(`condition: ${conditionResult ? "true" : "false"}`);
+
+          // Route to correct output
+          const targetId = conditionResult ? conditionEdges?.trueTarget : conditionEdges?.falseTarget;
+          if (targetId) {
+            const targetNode = nodes.find((n: any) => n.id === targetId);
+            if (targetNode) queue.push(targetNode);
+          }
+          nodeIndex++;
+          continue; // Skip default outgoing logic
+        }
+
+        // === ACTION NODE: execute action ===
+        if (nodeType === "action") {
+          const actionType = data.actionType || "add_tag";
+          const actionValue = (data.actionValue || "").trim();
+
+          if (actionType === "add_tag" && actionValue) {
+            await serviceClient
+              .from("contact_tags")
+              .upsert(
+                { user_id: userId, remote_jid: jid, tag_name: actionValue.toLowerCase() },
+                { onConflict: "user_id,remote_jid,tag_name" }
+              );
+            results.push(`action: add_tag "${actionValue}"`);
+            console.log(`[execute-flow] Added tag "${actionValue}" to ${jid}`);
+          } else if (actionType === "remove_tag" && actionValue) {
+            await serviceClient
+              .from("contact_tags")
+              .delete()
+              .eq("user_id", userId)
+              .eq("remote_jid", jid)
+              .ilike("tag_name", actionValue.toLowerCase());
+            results.push(`action: remove_tag "${actionValue}"`);
+            console.log(`[execute-flow] Removed tag "${actionValue}" from ${jid}`);
+          } else {
+            results.push(`action: ${actionType} "${actionValue}" (no-op)`);
+          }
+
+          // Continue to next nodes normally (don't skip)
+        } else if (nodeType === "aiAgent") {
           // AI Agent: call OpenAI with conversation history
           if (!profile.openai_api_key) {
             results.push("aiAgent: error - OpenAI API Key não configurada");
