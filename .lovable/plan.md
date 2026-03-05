@@ -2,28 +2,36 @@
 
 ## Problem
 
-The `!text-white` Tailwind class sets `color: rgb(255, 255, 255) !important`, but the `antialiased` class on `body` (via `-webkit-font-smoothing: antialiased`) can make white text appear slightly muted on dark backgrounds. Additionally, Tailwind's `!important` modifier may not be winning against inherited styles in all cases.
+The `.chat-bg-pattern` CSS class has `filter: brightness(0.7)` which applies to the entire messages container, including all child elements. This darkens everything — text, bubbles, timestamps — by 30%. No amount of `!important` or inline styles can override a parent's CSS filter.
 
 ## Solution
 
-Use inline `style` to set the color directly on the bubble `div`, which has the highest CSS specificity and cannot be overridden by any class-based rule:
+Remove `filter: brightness(0.7)` from `.chat-bg-pattern` and instead darken only the background by using a darker `background-color` value directly.
 
-**File**: `src/components/conversations/ChatPanel.tsx` (lines 189-196)
+**File**: `src/index.css` (line 172-177)
 
-Replace the bubble `div` to include `style={{ color: '#ffffff' }}` and remove the `!text-white` class:
-
-```tsx
-<div
-  className={cn(
-    "max-w-[85%] text-sm shadow-sm",
-    msg.message_type === "audio" ? "px-2 py-1.5" : "px-4 py-2.5",
-    isOutbound
-      ? "bg-[#075e54] rounded-2xl rounded-br-sm"
-      : "bg-[#1f2c34] rounded-2xl rounded-bl-sm"
-  )}
-  style={{ color: '#ffffff' }}
->
+Replace:
+```css
+.chat-bg-pattern {
+  background-color: #080f14;
+  background-image: url('/images/chat-bg-pattern.png');
+  background-size: 200px;
+  background-repeat: repeat;
+  filter: brightness(0.7);
+}
 ```
 
-This guarantees pure white `#ffffff` regardless of any theme variable or CSS specificity issue.
+With:
+```css
+.chat-bg-pattern {
+  background-color: #060a0e;
+  background-image: url('/images/chat-bg-pattern.png');
+  background-size: 200px;
+  background-repeat: repeat;
+}
+```
+
+The darker `background-color` (`#060a0e`) compensates for removing the brightness filter, keeping the background dark while allowing text and bubbles to render at full brightness with true white `#ffffff`.
+
+Also remove the now-unnecessary inline `style={{ color: '#ffffff' }}` from `ChatPanel.tsx` and revert to a simple `text-white` class, since without the filter override it will work correctly.
 
