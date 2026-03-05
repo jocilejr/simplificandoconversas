@@ -298,18 +298,11 @@ function StepRow({
       : "URL não definida";
     return (
       <div
+        ref={containerRef}
         data-step-id={step.id}
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("application/step-id", step.id);
-          e.dataTransfer.setData("application/source-node-id", nodeId);
-          onDragStart(index);
-        }}
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
-        onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-pointer nopan nodrag ${
           isDragging ? "opacity-30 scale-95"
             : isDropTarget ? "ring-1 ring-primary/30 scale-[1.02]"
             : ""
@@ -317,6 +310,7 @@ function StepRow({
       >
         {/* Header bar */}
         <div className="flex items-center gap-2.5 px-3 py-2 bg-sky-500/10 border-b border-sky-500/20">
+          <DragHandle index={index} stepId={step.id} nodeId={nodeId} onDragStart={onDragStart} onDragEnd={onDragEnd} containerRef={containerRef} />
           <div className="w-6 h-6 rounded-md bg-sky-500/20 flex items-center justify-center flex-shrink-0">
             <Link className="w-3.5 h-3.5 text-sky-400" />
           </div>
