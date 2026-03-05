@@ -1,35 +1,34 @@
 
 
-## Corrigir player de áudio no GroupNode
+## Plano: Aprimorar nos de Condição e Ação
 
-### Problema raiz
-O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
+Os nos de condição e ação atualmente usam o template generico (icone + label + descrição em texto). Vou dar a cada um um design visual distinto e informativo.
 
-### Solução
-Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
+### Condição — Design ramificado
 
-O player terá:
-- Botão play/pause (ícone)
-- Barra de progresso simples (div com width percentual)
-- Duração e tempo atual em texto
-- Sem waves, sem controles nativos
+**StepNode (no avulso):**
+- Manter o card com header, mas redesenhar o body para mostrar a regra de forma visual: pill com campo, operador e valor separados por badges coloridos
+- Labels nos handles de saída: "Sim ✓" (verde) e "Não ✗" (vermelho)
 
-### Preview sem URL
-Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
+**GroupNode (dentro de grupo):**
+- Render customizado similar ao waitForClick: header com fundo vermelho/coral sutil, icone GitBranch
+- Body mostrando a regra em formato visual: `[campo] [operador] [valor]` em badges/pills separados
+- Se sem valor definido, mostrar placeholder "Configurar condição..."
 
-### Alterações em `src/components/chatbot/GroupNode.tsx`
+### Ação — Design com badge de tipo
 
-1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
-   - `useRef` para `new Audio(src)` 
-   - `useState` para `isPlaying`, `currentTime`, `duration`
-   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
-   - Barra de progresso visual (div bg com width%)
-   - Display de tempo `currentTime / duration`
+**StepNode (no avulso):**
+- Body redesenhado: badge colorido indicando o tipo de ação (Tag, Lista, Variável) + valor ao lado
+- Icone contextual: Tag para add/remove_tag, List para add_to_list, Variable para set_variable
 
-2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+**GroupNode (dentro de grupo):**
+- Render customizado: header com fundo laranja sutil, icone Settings
+- Body com badge pill colorido do tipo de ação + valor
+- Icones contextuais por actionType
 
-3. **Manter** badge "Gravando" se `simulateRecording`
+### Arquivos alterados
 
-### Arquivo alterado
-- `src/components/chatbot/GroupNode.tsx`
+1. **`src/components/chatbot/GroupNode.tsx`** — Adicionar renders customizados para `condition` e `action` no `StepRow` (antes do fallback generico), similar ao pattern usado em `waitForClick` e `waitDelay`
+
+2. **`src/components/chatbot/StepNode.tsx`** — Redesenhar o body section para condition e action com layout visual mais rico (pills/badges para regras e tipos de ação)
 
