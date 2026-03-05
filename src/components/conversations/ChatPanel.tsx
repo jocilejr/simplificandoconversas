@@ -57,6 +57,7 @@ export function ChatPanel({
   const [text, setText] = useState("");
   const [executingFlow, setExecutingFlow] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { data: flows } = useChatbotFlows();
   const { data: quickReplies } = useQuickReplies();
