@@ -146,9 +146,11 @@ function StepRow({
     );
   }
 
-  // For waitForClick, render a compact pill with link icon
+  // For waitForClick, render a styled card with link icon
   if (d.type === "waitForClick") {
-    const truncatedUrl = d.clickUrl ? (d.clickUrl.length > 30 ? d.clickUrl.substring(0, 30) + "..." : d.clickUrl) : "URL não definida";
+    const displayUrl = d.clickUrl
+      ? (d.clickUrl.length > 35 ? d.clickUrl.substring(0, 35) + "..." : d.clickUrl)
+      : "URL não definida";
     return (
       <div
         data-step-id={step.id}
@@ -162,20 +164,31 @@ function StepRow({
         onDragEnter={(e) => { e.preventDefault(); onDragEnter(index); }}
         onDragOver={(e) => { e.preventDefault(); }}
         onDragEnd={(e) => onDragEnd(e)}
-        className={`mx-1 mb-1 px-3 py-2 rounded-lg flex flex-col gap-1 transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
+        className={`mx-1 mb-1 rounded-xl overflow-hidden transition-all cursor-grab active:cursor-grabbing nopan nodrag ${
           isDragging ? "opacity-30 scale-95"
-            : isDropTarget ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
-            : "bg-muted/50 hover:bg-muted/70"
+            : isDropTarget ? "ring-1 ring-primary/30 scale-[1.02]"
+            : ""
         }`}
       >
-        <div className="flex items-center justify-center gap-2">
-          <Link className="w-3.5 h-3.5 text-sky-500 flex-shrink-0" />
-          <span className="text-[11px] font-medium text-muted-foreground truncate">
-            {truncatedUrl}
-          </span>
+        {/* Header bar */}
+        <div className="flex items-center gap-2.5 px-3 py-2 bg-sky-500/10 border-b border-sky-500/20">
+          <div className="w-6 h-6 rounded-md bg-sky-500/20 flex items-center justify-center flex-shrink-0">
+            <Link className="w-3.5 h-3.5 text-sky-400" />
+          </div>
+          <span className="text-[11px] font-semibold text-sky-400">Aguardar Clique</span>
         </div>
+        {/* URL display */}
+        <div className="px-3 py-2.5 bg-muted/30">
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-background/60 border border-border/30">
+            <Link className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" />
+            <span className={`text-[11px] font-mono truncate ${d.clickUrl ? "text-sky-400/80" : "text-muted-foreground/50 italic"}`}>
+              {displayUrl}
+            </span>
+          </div>
+        </div>
+        {/* Timeout indicator */}
         {(d.clickTimeout || 0) > 0 && (
-          <div className="flex items-center gap-1.5 px-1">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/5 border-t border-orange-500/10">
             <Clock className="w-3 h-3 text-orange-500" />
             <span className="text-[10px] text-orange-500 font-medium">
               Timeout: {d.clickTimeout}{d.clickTimeoutUnit === "minutes" ? "min" : d.clickTimeoutUnit === "hours" ? "h" : "s"}
