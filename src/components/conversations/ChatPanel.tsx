@@ -199,7 +199,12 @@ export function ChatPanel({
                             onClick={() => setLightboxUrl(msg.media_url!)}
                           />
                         ) : msg.message_type === "audio" ? (
-                          <WhatsAppAudioPlayer src={msg.media_url} isOutbound={isOutbound} />
+                          <WhatsAppAudioPlayer
+                            src={msg.media_url}
+                            isOutbound={isOutbound}
+                            contactPhoto={!isOutbound ? contactPhoto : undefined}
+                            contactName={!isOutbound ? conversation.contact_name : undefined}
+                          />
                         ) : msg.message_type === "video" ? (
                           <video
                             controls
