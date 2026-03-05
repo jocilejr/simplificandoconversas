@@ -1,38 +1,46 @@
 
 
-## Fix: Handles posicionados pelo nó inteiro, não pela row
+## Fix: Labels desalinhados — StepNode.tsx (componente correto)
 
-### Causa raiz confirmada
+### Causa raiz
 
-React Flow posiciona handles com `position: absolute` relativo ao **wrapper do nó** (`.react-flow__node-groupBlock`), e NÃO relativo ao `div.relative` pai que colocamos. A regra CSS `top: 50%` resolve para 50% da altura total do nó, jogando os handles para o meio do card em vez de alinhá-los com as rows do footer.
+Todas as 6 tentativas anteriores editaram `GroupNode.tsx`. O screenshot mostra um **StepNode** ("Aguardar Clique" autônomo com header, body e timeout indicator) — componente `StepNode.tsx`.
+
+O desalinhamento vem da diferença entre como handles e labels calculam sua posição vertical:
+
+- **Handles**: `top: "35%"` + CSS `transform: translate(50%, -50%)` → centrado em Y=35%
+- **Labels**: `top: "calc(35% - 6px)"` sem transform → topo do texto a 35%-6px, NÃO centrado
+
+A aproximação de -6px não funciona porque depende da altura do texto e do handle serem constantes.
 
 ### Solução
 
-Usar `bottom` em vez de `top` no CSS, com valores calculados a partir da estrutura fixa do footer:
+Corrigir os spans de label no StepNode para usar o MESMO sistema de posicionamento dos handles: `top` percentual + `translateY(-50%)` para centralizar.
 
-- Footer = 2 rows de `h-6` (24px cada) + 1px border-top = ~49px total
-- Row 1 (output-0) center = 48 - 12 = **36px** do fundo
-- Row 2 (output-1) center = 24 - 12 = **12px** do fundo
+**`src/components/chatbot/StepNode.tsx`** — linhas 203-208 e 217-222:
 
-**`src/index.css`** — separar e usar `bottom`:
+```tsx
+// Label "Respondeu ✓" (linha 203-208)
+<span
+  className="absolute text-[9px] font-medium text-muted-foreground pointer-events-none"
+  style={{ right: -68, top: "35%", transform: "translateY(-50%)" }}
+>
+  Respondeu ✓
+</span>
 
-```css
-.group-handle-output-0 {
-  top: auto !important;
-  bottom: 36px !important;
-  right: -6px !important;
-  transform: translateY(50%) !important;
-}
-.group-handle-output-1 {
-  top: auto !important;
-  bottom: 12px !important;
-  right: -6px !important;
-  transform: translateY(50%) !important;
-}
+// Label timeout (linhas 217-222)
+<span
+  className="absolute text-[9px] font-medium pointer-events-none"
+  style={{ right: -90, top: "70%", transform: "translateY(-50%)", color: "#f97316" }}
+>
+  {timeoutLabel} ⏱
+</span>
 ```
 
-Nenhuma mudança no TSX — a estrutura com handles dentro do footer permanece (para organização), mas o posicionamento real é controlado 100% pelo CSS `!important`.
+### Por que funciona
+
+Handles e labels agora usam a mesma fórmula: `top: X%` + `translateY(-50%)`. Ambos são `position: absolute` relativo ao mesmo `div.relative` (o container raiz do StepNode). O centro vertical dos dois elementos coincide exatamente.
 
 ### Arquivos alterados
-- `src/index.css`
+- `src/components/chatbot/StepNode.tsx` (2 spans corrigidos)
 
