@@ -508,3 +508,48 @@ async function checkAndResumeWaitingReply(
 
   return true;
 }
+
+async function handleMessageStatusUpdate(data: any, instance: string) {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // data can be a single update or array
+  const updates = Array.isArray(data) ? data : [data];
+
+  for (const update of updates) {
+    const key = update.key || update.keyId ? { id: update.keyId } : null;
+    const externalId = key?.id || update.key?.id;
+    const status = update.status;
+
+    if (!externalId || !status) continue;
+
+    // Map Evolution status codes to readable statuses
+    const statusMap: Record<string, string> = {
+      "DELIVERY_ACK": "delivered",
+      "READ": "read",
+      "PLAYED": "read",
+      "SERVER_ACK": "sent",
+      "ERROR": "error",
+      "2": "delivered",
+      "3": "read",
+      "4": "read",
+      "1": "sent",
+      "0": "error",
+    };
+
+    const mappedStatus = statusMap[String(status)] || String(status).toLowerCase();
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ status: mappedStatus })
+      .eq("external_id", externalId);
+
+    if (error) {
+      console.error(`Failed to update status for ${externalId}:`, error.message);
+    } else {
+      console.log(`Message ${externalId} status -> ${mappedStatus}`);
+    }
+  }
+}
