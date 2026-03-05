@@ -1,6 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { ThemeToggle } from "@/components/ThemeToggle";
+
 import { Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,7 @@ export function AppLayout() {
         <div className="flex-1 flex flex-col">
           <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card/50 backdrop-blur-sm">
             <SidebarTrigger />
-            <ThemeToggle />
+            <div />
           </header>
           <main className={cn(
             "flex-1 overflow-hidden",
