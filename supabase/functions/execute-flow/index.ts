@@ -175,9 +175,17 @@ async function executeStep(
   }
 
   if (nodeType === "waitDelay") {
-    const delay = (stepData.delaySeconds || 3) * 1000;
+    let delaySec: number;
+    if (stepData.delayRandomMode && stepData.delayMinSeconds != null && stepData.delayMaxSeconds != null) {
+      const min = stepData.delayMinSeconds;
+      const max = stepData.delayMaxSeconds;
+      delaySec = min + Math.random() * (max - min);
+    } else {
+      delaySec = stepData.delaySeconds || 3;
+    }
+    const delay = delaySec * 1000;
     await sleep(Math.min(delay, 30000));
-    return `waitDelay: ${stepData.delaySeconds}s`;
+    return `waitDelay: ${delaySec.toFixed(1)}s`;
   }
 
   if (nodeType === "aiAgent") {

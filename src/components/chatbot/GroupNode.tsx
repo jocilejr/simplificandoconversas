@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link } from "lucide-react";
+import { icons, CheckCircle2, Plus, Play, Pause, Mic, Clock, Link, Trash2 } from "lucide-react";
 
 /* ---- Mini player customizado para dentro do React Flow ---- */
 function AudioPreviewPlayer({ src }: { src: string }) {
@@ -231,8 +231,9 @@ function StepRow({
         <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-muted-foreground transition-colors ${
           isDropTarget ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/50 hover:bg-muted/70"
         }`}>
-          <Clock className="w-3.5 h-3.5" />
-          <span className="text-[11px] font-semibold tabular-nums">{d.delaySeconds || 0}s</span>
+          <span className="text-[11px] font-semibold tabular-nums">
+            {d.delayRandomMode ? `${d.delayMinSeconds || 0}s–${d.delayMaxSeconds || 0}s` : `${d.delaySeconds || 0}s`}
+          </span>
         </div>
         <div className="flex-1 h-px bg-border/60" />
       </div>
@@ -459,7 +460,25 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
   }, [dragIndex, overIndex, id, steps]);
 
   return (
-    <div className="relative" style={{ background: "transparent" }}>
+    <div className="relative group/card" style={{ background: "transparent" }}>
+      {/* External trash button — visible on hover */}
+      <button
+        className="absolute -top-3 -right-3 z-50 w-7 h-7 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const event = new CustomEvent("group-delete", {
+            detail: { nodeId: id },
+            bubbles: true,
+          });
+          document.dispatchEvent(event);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+
       <Handle
         type="target"
         position={Position.Left}
@@ -471,8 +490,6 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         className={`${hasFinalizerStep ? "w-[320px]" : "w-[280px]"} rounded-xl overflow-visible transition-all duration-200 bg-card border ${
           isDockTarget
             ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
-            : selected
-            ? "border-primary/40 shadow-xl"
             : "border-border shadow-md hover:shadow-lg"
         }`}
       >

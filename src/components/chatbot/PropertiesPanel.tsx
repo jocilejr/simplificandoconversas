@@ -142,10 +142,26 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
       {/* Wait/Delay */}
       {d.type === "waitDelay" && (
         <>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Tempo de espera (segundos)</Label>
-            <Input type="number" value={d.delaySeconds || 0} onChange={(e) => update({ delaySeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Modo aleatório</Label>
+            <Switch checked={d.delayRandomMode || false} onCheckedChange={(v) => update({ delayRandomMode: v })} />
           </div>
+          {d.delayRandomMode ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Intervalo aleatório (segundos)</Label>
+              <div className="flex gap-2 items-center">
+                <Input type="number" value={d.delayMinSeconds || 0} onChange={(e) => update({ delayMinSeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} placeholder="Mín" />
+                <span className="text-xs text-muted-foreground">a</span>
+                <Input type="number" value={d.delayMaxSeconds || 0} onChange={(e) => update({ delayMaxSeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} placeholder="Máx" />
+              </div>
+              <p className="text-[10px] text-muted-foreground">O tempo será sorteado entre o mínimo e o máximo a cada execução</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tempo de espera (segundos)</Label>
+              <Input type="number" value={d.delaySeconds || 0} onChange={(e) => update({ delaySeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <Label className="text-xs">Simular "digitando..."</Label>
             <Switch checked={d.simulateTyping !== false} onCheckedChange={(v) => update({ simulateTyping: v })} />

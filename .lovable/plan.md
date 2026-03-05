@@ -1,29 +1,35 @@
-## Remover seleção/opções do grupo e adicionar lixeira externa
 
-### Alterações
 
-**1. `src/components/chatbot/FlowEditor.tsx**`
+## Corrigir player de áudio no GroupNode
 
-- No `onNodeClick`, quando o nó clicado for `groupBlock`, abrir o painel de propriedades apenas se um step interno (`data-step-id`) foi clicado. Se clicou no grupo em si (header, área vazia), não selecionar o nó — manter `selectedNodeId` como `null`.
-- Adicionar listener para evento customizado `group-delete` que remove o grupo e suas edges, com confirmação via `AlertDialog` ou `window.confirm`.
+### Problema raiz
+O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
 
-**2. `src/components/chatbot/GroupNode.tsx**`
+### Solução
+Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
 
-- Remover o comportamento de seleção visual do grupo (border `selected`). O grupo só deve ser arrastável pelo header.
-- Adicionar um botão de lixeira (`Trash2`) posicionado **fora** da box, no canto superior direito (`absolute -top-3 -right-3`), visível apenas no hover do grupo.
-- Ao clicar na lixeira, disparar evento customizado `group-delete` com o `nodeId`.
-- No `FlowEditor`, capturar esse evento e mostrar um `AlertDialog` de confirmação com "Você tem certeza que deseja apagar o grupo?" antes de deletar.
+O player terá:
+- Botão play/pause (ícone)
+- Barra de progresso simples (div com width percentual)
+- Duração e tempo atual em texto
+- Sem waves, sem controles nativos
 
-### Detalhes técnicos
+### Preview sem URL
+Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
 
-- O botão da lixeira fica em `position: absolute` fora do card, usando classes como `-top-3 -right-3` com `opacity-0 group-hover/card:opacity-100` (usando um grupo Tailwind no container).
-- A confirmação será implementada com estado `deleteGroupId` no `FlowEditor` e o componente `AlertDialog` já existente no projeto.
-- Ao confirmar, remove o nó e todas as edges conectadas a ele.
-- Remover a lógica que marca o grupo como `selected` visualmente (sem border highlight ao clicar).  
-  
-O Nó de aguardar deve ter uma versão avançada, onde consigo estipular por exmeplo: 3 a 9 segundos aleatoriamente. Isso para ter uma randomização de timing e evitar bloqueios
+### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-### Arquivos alterados
+1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
+   - `useRef` para `new Audio(src)` 
+   - `useState` para `isPlaying`, `currentTime`, `duration`
+   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
+   - Barra de progresso visual (div bg com width%)
+   - Display de tempo `currentTime / duration`
 
+2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+
+3. **Manter** badge "Gravando" se `simulateRecording`
+
+### Arquivo alterado
 - `src/components/chatbot/GroupNode.tsx`
-- `src/components/chatbot/FlowEditor.tsx`
+

@@ -21,6 +21,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowLeft, Plus, History, Check, Loader2, icons } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PropertiesPanel } from "@/components/chatbot/PropertiesPanel";
 import StepNode from "@/components/chatbot/StepNode";
 import GroupNode from "@/components/chatbot/GroupNode";
@@ -87,6 +97,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialMount = useRef(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useReactFlow();
   const { saveSnapshot } = useFlowHistory(flowId);
@@ -352,17 +363,22 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
-    setSelectedNodeId(node.id);
-    setSelectedStepId(null);
-    
-    // If clicking a group, check if a specific step was clicked
+    // For groups: only open properties if a step was clicked
     if (node.type === "groupBlock") {
       const target = (_ as any).target as HTMLElement;
       const stepEl = target?.closest?.("[data-step-id]");
       if (stepEl) {
+        setSelectedNodeId(node.id);
         setSelectedStepId(stepEl.getAttribute("data-step-id"));
+      } else {
+        // Clicked on group container/header — don't select
+        setSelectedNodeId(null);
+        setSelectedStepId(null);
       }
+      return;
     }
+    setSelectedNodeId(node.id);
+    setSelectedStepId(null);
   }, []);
 
   const onPaneClick = useCallback(() => {
@@ -601,6 +617,16 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => document.removeEventListener("group-receive-step", handler);
   }, [setNodes]);
 
+  // Listen for group-delete events from GroupNode
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      setDeleteGroupId(nodeId);
+    };
+    document.addEventListener("group-delete", handler);
+    return () => document.removeEventListener("group-delete", handler);
+  }, []);
+
   const updateNodeData = useCallback(
     (nodeId: string, changes: Partial<FlowNodeData>) => {
       setNodes((nds) =>
@@ -821,6 +847,30 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           onClose={() => { setSelectedNodeId(null); setSelectedStepId(null); }}
         />
       )}
+
+      <AlertDialog open={!!deleteGroupId} onOpenChange={(open) => { if (!open) setDeleteGroupId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar grupo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você tem certeza que deseja apagar o grupo? Todos os steps dentro dele serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteGroupId) {
+                  deleteNode(deleteGroupId);
+                }
+                setDeleteGroupId(null);
+              }}
+            >
+              Apagar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
