@@ -10,13 +10,16 @@ interface WhatsAppAudioPlayerProps {
   contactName?: string | null;
 }
 
+const SPEEDS = [1, 1.5, 2];
+
 export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName }: WhatsAppAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [speedIdx, setSpeedIdx] = useState(0);
   const [waveform] = useState(() =>
-    Array.from({ length: 40 }, () => Math.random() * 0.7 + 0.3)
+    Array.from({ length: 45 }, () => Math.random() * 0.7 + 0.3)
   );
 
   useEffect(() => {
@@ -24,7 +27,7 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
     if (!audio) return;
     const onLoaded = () => setDuration(audio.duration || 0);
     const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onEnded = () => { setPlaying(false); setCurrentTime(0); };
+    const onEnded = () => { setPlaying(false); setCurrentTime(0); setSpeedIdx(0); };
     audio.addEventListener("loadedmetadata", onLoaded);
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("ended", onEnded);
@@ -38,9 +41,15 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) audio.pause(); else audio.play();
+    if (playing) { audio.pause(); } else { audio.play(); }
     setPlaying(!playing);
   }, [playing]);
+
+  const cycleSpeed = useCallback(() => {
+    const next = (speedIdx + 1) % SPEEDS.length;
+    setSpeedIdx(next);
+    if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next];
+  }, [speedIdx]);
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
@@ -60,26 +69,25 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  const speedLabel = SPEEDS[speedIdx] === 1.5 ? "1,5x" : `${SPEEDS[speedIdx]}x`;
+
   return (
-    <div className="flex items-center gap-2.5 min-w-[260px] max-w-[340px] py-0.5">
+    <div className="flex items-center gap-2 min-w-[270px] max-w-[370px]">
       <audio ref={audioRef} src={src} preload="metadata" />
 
       {/* Play/Pause */}
-      <button
-        onClick={togglePlay}
-        className="shrink-0 flex items-center justify-center h-8 w-8"
-      >
+      <button onClick={togglePlay} className="shrink-0 flex items-center justify-center h-9 w-9">
         {playing ? (
-          <Pause className={cn("h-5 w-5", isOutbound ? "text-white/80" : "text-[#00a884]")} />
+          <Pause className={cn("h-6 w-6", isOutbound ? "text-white/80" : "text-[#00a884]")} />
         ) : (
-          <Play className={cn("h-5 w-5 ml-0.5", isOutbound ? "text-white/80" : "text-[#00a884]")} fill="currentColor" />
+          <Play className={cn("h-6 w-6 ml-0.5", isOutbound ? "text-white/80" : "text-[#00a884]")} fill="currentColor" />
         )}
       </button>
 
       {/* Waveform + time */}
       <div className="flex-1 min-w-0">
         <div
-          className="relative flex items-center gap-[1.5px] h-7 cursor-pointer"
+          className="relative flex items-center gap-[1.5px] h-8 cursor-pointer"
           onClick={handleSeek}
         >
           {waveform.map((h, i) => {
@@ -94,7 +102,7 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
                     ? isOutbound ? "bg-white/80" : "bg-[#00a884]"
                     : isOutbound ? "bg-white/25" : "bg-[#8696a0]/50"
                 )}
-                style={{ height: `${h * 24}px` }}
+                style={{ height: `${h * 28}px` }}
               />
             );
           })}
@@ -105,22 +113,34 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
           />
         </div>
         <span className={cn(
-          "text-[10px] leading-none -mt-0.5 block",
+          "text-[10px] leading-none block",
           isOutbound ? "text-white/45" : "text-[#8696a0]"
         )}>
           {formatTime(playing ? currentTime : duration)}
         </span>
       </div>
 
-      {/* Contact avatar for inbound */}
-      {!isOutbound && (
+      {/* Speed button (when playing) or Contact avatar (inbound) */}
+      {playing ? (
+        <button
+          onClick={cycleSpeed}
+          className={cn(
+            "shrink-0 h-[34px] min-w-[34px] px-1 rounded-full text-[11px] font-bold flex items-center justify-center transition-colors",
+            isOutbound
+              ? "bg-white/15 text-white/80 hover:bg-white/25"
+              : "bg-[#00a884]/15 text-[#00a884] hover:bg-[#00a884]/25"
+          )}
+        >
+          {speedLabel}
+        </button>
+      ) : !isOutbound ? (
         <ContactAvatar
           photoUrl={contactPhoto}
           name={contactName}
           size="sm"
           className="h-[34px] w-[34px] shrink-0"
         />
-      )}
+      ) : null}
     </div>
   );
 }
