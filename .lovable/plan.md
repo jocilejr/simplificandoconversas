@@ -1,22 +1,28 @@
 
 
-## Plan: Use WhatsApp Doodle Background Image
+## Plan: WhatsApp-Style Audio Player with Contact Avatar
 
-The current SVG pattern doesn't match the WhatsApp aesthetic. The uploaded image shows the actual WhatsApp-style doodle pattern with animal/nature illustrations (cats, birds, cacti, etc.) in subtle outline style on a dark background.
-
-### Approach
-Instead of trying to recreate the pattern with inline SVG (which always looks off), copy the uploaded image directly into the project and use it as a repeating `background-image`.
+Based on the reference image (image-78), the audio player needs:
+1. **Play button** on the left (green triangle, no background circle)
+2. **Blue progress dot** sliding over the waveform bar
+3. **Time display** below the waveform on the left
+4. **Contact avatar** (circular photo) on the right side of the player
 
 ### Changes
 
-**1. Copy the uploaded image to `public/images/chat-bg-pattern.png`**
+**1. `src/components/conversations/WhatsAppAudioPlayer.tsx`** — Redesign the component:
+- Accept new props: `contactPhoto` and `contactName` for the avatar on the right
+- Replace the circular button background with a plain icon (green for inbound, white for outbound)
+- Add a **draggable blue dot** (`bg-[#53bdeb]`) overlaid on the waveform at the current progress position
+- Waveform bars: thinner (`2px`), more bars (~40) for denser look matching WhatsApp
+- Time label positioned below waveform on the left
+- Add `ContactAvatar` component on the right side (small, ~34px) for inbound messages
 
-**2. `src/index.css`** — Replace the `.chat-bg-pattern` class:
-- Dark mode: `background-color: #0B141A` with `background-image: url('/images/chat-bg-pattern.png')` repeating
-- Light mode: same image with adjusted brightness/opacity via CSS filter or a separate light variant
-- `background-size` tuned to match the natural tile size of the image (~300-400px)
+**2. `src/components/conversations/ChatPanel.tsx`** — Pass contact info to audio player:
+- Pass `contactPhoto` and `contactName` props when rendering `<WhatsAppAudioPlayer>` for inbound messages
+- For outbound, no avatar needed
 
 ### Files
-1. Copy `user-uploads://image-74.png` to `public/images/chat-bg-pattern.png`
-2. Edit `src/index.css` — replace `.chat-bg-pattern` CSS with the image-based background
+1. `src/components/conversations/WhatsAppAudioPlayer.tsx` — rewrite UI layout
+2. `src/components/conversations/ChatPanel.tsx` — pass avatar props to audio player
 
