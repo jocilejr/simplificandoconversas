@@ -122,15 +122,19 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
   // ─── Regular node — GroupNode-style card ───
   return (
     <div className="relative group/node">
-      {/* Duplicate button — visible on hover */}
-      <button
-        className="absolute -top-3 -right-3 z-50 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/node:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
-        onClick={dispatchDuplicate}
+      {/* ManyChat-style floating toolbar */}
+      <div
+        className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 bg-card border border-border rounded-lg shadow-lg p-1 opacity-0 group-hover/node:opacity-100 transition-opacity nopan nodrag"
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <Copy className="w-3.5 h-3.5" />
-      </button>
+        <button onClick={dispatchDuplicate} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-secondary transition-colors" title="Duplicar">
+          <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+        <button onClick={dispatchDelete} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-destructive/15 transition-colors" title="Apagar">
+          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+        </button>
+      </div>
 
       <Handle
         type="target"
