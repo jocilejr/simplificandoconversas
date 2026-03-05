@@ -1,21 +1,17 @@
 
 
-## Plan: Adjust Audio Player Box Size and Layout
+## Problem
 
-Based on the reference image (image-83), I need to:
+The text inside chat bubbles is not pure white. Even though `text-white` is applied, the color appears muted. This is likely because Tailwind's `text-white` is being overridden by the global `body { @apply text-foreground }` rule (which sets color to `hsl(210, 15%, 95%)` — an off-white), and CSS specificity or inheritance is winning.
 
-### Changes to `src/components/conversations/WhatsAppAudioPlayer.tsx`
+## Solution
 
-1. **Increase min-width** to `320px` and **max-width** to `420px` — make the box visibly larger
-2. **Add timestamp on the right** below the waveform (matching "20:37" position in the reference image) — show duration on left, message time on right
-3. **Reduce gap between avatar/speed button and the timestamp row** — tighten the bottom area
-4. **Make time row a flex with justify-between** for duration (left) and timestamp (right)
+Force pure white text on both inbound and outbound message bubble content using inline style or `!important` via Tailwind's `!` prefix. Specifically in `ChatPanel.tsx`:
 
-### Changes to `src/components/conversations/ChatPanel.tsx`
+1. Change outbound bubble class from `text-[#ffffff]` to `!text-white`
+2. Change inbound bubble class from `text-white` to `!text-white`
 
-1. **Pass the message timestamp** to `WhatsAppAudioPlayer` so it can display "20:37" style time on the right side below the waveform (matching the reference exactly)
+This ensures the white color overrides any inherited theme values. Both bubble types will render with `rgb(255, 255, 255)` pure white text.
 
-### Files
-1. `src/components/conversations/WhatsAppAudioPlayer.tsx` — increase dimensions, add timestamp layout
-2. `src/components/conversations/ChatPanel.tsx` — pass `timestamp` prop to audio player
+**File**: `src/components/conversations/ChatPanel.tsx` — line ~192-194, update the `cn()` classes for the message bubble `div`.
 
