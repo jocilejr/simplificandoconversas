@@ -309,17 +309,16 @@ function StepRow({
       case "sendFile": {
         const fName = d.fileName || (d.fileUrl ? d.fileUrl.split("/").pop() : null);
         return (
-          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30">
+          <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30 overflow-hidden">
             {d.fileUrl ? (
-              <div className="flex items-center gap-2 px-2.5 py-2">
-                <div className="w-8 h-10 rounded bg-red-500/15 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-4 h-4 text-red-500" />
+              <>
+                <PdfThumbnail src={d.fileUrl as string} />
+                <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-border/20">
+                  <FileText className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                  <p className="text-[10px] font-medium text-foreground truncate flex-1">{fName || "documento.pdf"}</p>
+                  <span className="text-[9px] text-muted-foreground uppercase flex-shrink-0">PDF</span>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium text-foreground truncate">{fName || "documento.pdf"}</p>
-                  <p className="text-[9px] text-muted-foreground uppercase">PDF</p>
-                </div>
-              </div>
+              </>
             ) : (
               <div className="flex items-center gap-2 px-2.5 py-2.5">
                 <FileText className="w-4 h-4 text-muted-foreground" />
