@@ -298,7 +298,7 @@ async function checkAndTriggerFlows(
   // 1. Fetch all active flows for this user
   const { data: flows, error: flowsErr } = await supabase
     .from("chatbot_flows")
-    .select("id, nodes")
+    .select("id, nodes, instance_names")
     .eq("user_id", userId)
     .eq("active", true);
 
