@@ -1,18 +1,21 @@
 
 
-## Plan: Refine Audio Player to Match WhatsApp Reference
+## Plan: Adjust Audio Player Box Size and Layout
 
-Based on images 81 and 82, the changes needed are:
+Based on the reference image (image-83), I need to:
 
 ### Changes to `src/components/conversations/WhatsAppAudioPlayer.tsx`
 
-1. **Add playback speed control**: When audio is playing, show a speed button (1x → 1.5x → 2x) on the right side (replacing/beside the avatar area), matching image 82
-2. **Reduce internal padding**: Remove excess vertical space — tighter `py-0` or minimal padding, reduce gap between waveform and time label
-3. **Make the player wider**: Increase `max-w` to `~370px` so it fills more of the chat bubble
-4. **Waveform adjustments**: Make bars slightly taller to fill vertical space better, matching the denser look in image 81
-5. **Time layout**: Show duration on the left and message timestamp on the right below the waveform, matching image 81 layout
-6. **Speed button**: Small rounded button showing "1x" / "1,5x" / "2x" that cycles on click, positioned to the right of the waveform area when playing (as in image 82)
+1. **Increase min-width** to `320px` and **max-width** to `420px` — make the box visibly larger
+2. **Add timestamp on the right** below the waveform (matching "20:37" position in the reference image) — show duration on left, message time on right
+3. **Reduce gap between avatar/speed button and the timestamp row** — tighten the bottom area
+4. **Make time row a flex with justify-between** for duration (left) and timestamp (right)
+
+### Changes to `src/components/conversations/ChatPanel.tsx`
+
+1. **Pass the message timestamp** to `WhatsAppAudioPlayer` so it can display "20:37" style time on the right side below the waveform (matching the reference exactly)
 
 ### Files
-1. `src/components/conversations/WhatsAppAudioPlayer.tsx` — all UI and logic changes
+1. `src/components/conversations/WhatsAppAudioPlayer.tsx` — increase dimensions, add timestamp layout
+2. `src/components/conversations/ChatPanel.tsx` — pass `timestamp` prop to audio player
 
