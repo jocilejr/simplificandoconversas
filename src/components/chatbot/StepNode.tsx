@@ -4,6 +4,7 @@ import { icons, Clock, Copy } from "lucide-react";
 import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
 interface StepNodeProps {
+  id: string;
   data: Record<string, unknown>;
   selected?: boolean;
 }
