@@ -183,8 +183,39 @@ async function executeStep(
     } else {
       delaySec = stepData.delaySeconds || 3;
     }
+
+    // Send presence indicator (composing or recording)
+    const presenceType = (stepData as any).delayPresenceType;
+    if (presenceType === "composing" || presenceType === "recording" || stepData.simulateTyping) {
+      const presence = presenceType === "recording" ? "recording" : "composing";
+      try {
+        await fetch(`${baseUrl}/message/sendPresence/${evolution_instance_name}`, {
+          method: "POST",
+          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          body: JSON.stringify({ number: jid, presence }),
+        });
+      } catch (e) {
+        console.log(`[execute-flow] sendPresence error:`, e);
+      }
+    }
+
     const delay = delaySec * 1000;
     await sleep(Math.min(delay, 30000));
+
+    // Stop presence indicator
+    const presenceTypeAfter = (stepData as any).delayPresenceType;
+    if (presenceTypeAfter === "composing" || presenceTypeAfter === "recording" || stepData.simulateTyping) {
+      try {
+        await fetch(`${baseUrl}/message/sendPresence/${evolution_instance_name}`, {
+          method: "POST",
+          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          body: JSON.stringify({ number: jid, presence: "paused" }),
+        });
+      } catch (e) {
+        console.log(`[execute-flow] sendPresence paused error:`, e);
+      }
+    }
+
     return `waitDelay: ${delaySec.toFixed(1)}s`;
   }
 

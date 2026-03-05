@@ -1,26 +1,35 @@
 
 
-## Adicionar seleção de tipo de presença no nó "Aguardar"
+## Corrigir player de áudio no GroupNode
 
-### Alterações
+### Problema raiz
+O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
 
-**`src/types/chatbot.ts`**
-- Adicionar campo `delayPresenceType?: "composing" | "recording"` ao `FlowNodeData`
-- Atualizar `defaultNodeData.waitDelay` com `delayPresenceType: "composing"`
+### Solução
+Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
 
-**`src/components/chatbot/PropertiesPanel.tsx`**
-- Substituir o switch "Simular digitando..." (linhas 165-168) por um `Select` com 3 opções:
-  - `none` → Nenhuma simulação
-  - `composing` → Digitando...
-  - `recording` → Gravando áudio...
-- Manter o campo `simulateTyping` sincronizado (true quando não for "none")
+O player terá:
+- Botão play/pause (ícone)
+- Barra de progresso simples (div com width percentual)
+- Duração e tempo atual em texto
+- Sem waves, sem controles nativos
 
-**`src/components/chatbot/StepNode.tsx`**
-- Atualizar `renderDescription` do `waitDelay` para exibir "digitando..." ou "gravando..." conforme `delayPresenceType`
+### Preview sem URL
+Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
 
-**`src/components/chatbot/GroupNode.tsx`**
-- Atualizar a descrição inline do step waitDelay para refletir o tipo de presença selecionado
+### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-**`supabase/functions/execute-flow/index.ts`**
-- Na execução do `waitDelay`, enviar `sendPresence` com `"composing"` ou `"recording"` conforme `delayPresenceType`, seguido de `"paused"` ao final do delay
+1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
+   - `useRef` para `new Audio(src)` 
+   - `useState` para `isPlaying`, `currentTime`, `duration`
+   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
+   - Barra de progresso visual (div bg com width%)
+   - Display de tempo `currentTime / duration`
+
+2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+
+3. **Manter** badge "Gravando" se `simulateRecording`
+
+### Arquivo alterado
+- `src/components/chatbot/GroupNode.tsx`
 
