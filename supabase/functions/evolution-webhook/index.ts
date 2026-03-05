@@ -94,6 +94,18 @@ Deno.serve(async (req) => {
     const data = body.data;
     const instance = body.instance;
 
+    // Handle message status updates (delivered, read, etc.)
+    if (event === "messages.update" && data) {
+      try {
+        await handleMessageStatusUpdate(data, instance);
+      } catch (e) {
+        console.error("Status update error (non-fatal):", e.message);
+      }
+      return new Response(JSON.stringify({ ok: true, statusUpdated: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Process new messages (inbound and outbound)
     if (!["messages.upsert", "send.message"].includes(event) || !data) {
       return new Response(JSON.stringify({ ok: true, skipped: event }), {
