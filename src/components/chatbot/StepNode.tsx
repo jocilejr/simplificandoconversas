@@ -115,6 +115,16 @@ function StepNode({ data, selected }: StepNodeProps) {
   // ─── Regular node — GroupNode-style card ───
   return (
     <div className="relative group/node">
+      {/* Duplicate button — visible on hover */}
+      <button
+        className="absolute -top-3 -right-3 z-50 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover/node:opacity-100 transition-opacity shadow-lg hover:scale-110 nopan nodrag"
+        onClick={dispatchDuplicate}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <Copy className="w-3.5 h-3.5" />
+      </button>
+
       <Handle
         type="target"
         position={Position.Left}
