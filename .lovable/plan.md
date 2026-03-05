@@ -1,43 +1,42 @@
 
 
-## Bug: Link clicado retoma fluxo já encerrado e pela instância errada
+## Bug: Timeout não funciona para waitForClick dentro de groupBlock
 
-### Causa raiz (2 problemas)
+### Causa raiz
 
-**Problema 1: Fluxo retoma mesmo já tendo sido encerrado pelo timeout**
+O código de inserção de timeout na tabela `flow_timeouts` (linhas 480-496) só existe no handler de nós **standalone** `waitForClick`. Quando o `waitForClick` está dentro de um **groupBlock** (linhas 535-609), o fluxo é pausado corretamente (status `waiting_click`), mas **nenhum timeout é criado**. Por isso o `check-timeouts` nunca encontra nada para processar e o fluxo fica preso para sempre.
 
-No `link-redirect`, a unica verificacao e `if (!link.clicked)` (linha 92). Ele nao verifica se a execucao original ainda esta ativa. Se o timeout ja marcou a execucao como `completed`, o clique no link ainda assim chama `execute-flow` com `resumeFromNodeId`, criando uma **nova execucao** do zero a partir daquele no.
+Confirmação: a query `SELECT * FROM flow_timeouts` retorna vazio, mesmo com a execução em `waiting_click` há mais de 20 segundos.
 
-**Problema 2: Link nao armazena `instance_name`, entao o resume usa a instancia errada**
+### Solução
 
-A tabela `tracked_links` nao tem coluna `instance_name`. Quando o `link-redirect` chama `execute-flow`, nao passa `instanceName`. O `execute-flow` faz fallback para `profile.evolution_instance_name` (Meire Rosana - Entregas), mesmo que o link tenha sido gerado pelo FunilPrincipal.
+Adicionar a lógica de inserção de timeout dentro do handler de `waitForClick` no groupBlock (após a linha 605), replicando a mesma lógica que já existe no handler standalone (linhas 480-496).
 
-### Solucao
+**Arquivo: `supabase/functions/execute-flow/index.ts`** — Após a linha 605 (onde marca `waiting_click` no groupBlock), inserir:
 
-**1. Migration SQL** -- Adicionar coluna `instance_name` na tabela `tracked_links`:
-```sql
-ALTER TABLE public.tracked_links ADD COLUMN instance_name text;
+```typescript
+// Insert timeout if configured (inside group)
+const clickTimeout = step.data.clickTimeout || 0;
+if (clickTimeout > 0) {
+  const timeoutNodeId = timeoutEdgeMap.get(node.id) || null;
+  const unit = step.data.clickTimeoutUnit || "minutes";
+  const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+  const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
+  await serviceClient.from("flow_timeouts").insert({
+    execution_id: executionId,
+    flow_id: flowId,
+    user_id: userId,
+    remote_jid: jid,
+    conversation_id: conversationId || null,
+    timeout_node_id: timeoutNodeId,
+    timeout_at: timeoutAt,
+  });
+  console.log(`[execute-flow] Timeout set for group waitForClick: ${timeoutAt} -> node ${timeoutNodeId || '(end flow)'}`);
+}
 ```
 
-**2. `supabase/functions/execute-flow/index.ts`** -- Salvar `instance_name` ao criar tracked_links:
-- No insert de `tracked_links` (standalone e dentro de grupo), adicionar `instance_name: evolution_instance_name`
-
-**3. `supabase/functions/link-redirect/index.ts`** -- 2 alteracoes:
-- Passar `instanceName: link.instance_name` no body do fetch para `execute-flow`
-- Antes de resumir o fluxo, verificar se a execucao original ainda esta em status `waiting_click`. Se ja foi `completed`/`cancelled`, nao chamar execute-flow (apenas redirecionar)
-
-```text
-Antes:
-  click no link → link-redirect nao verifica status da execucao → resume sempre
-  link-redirect nao passa instanceName → execute-flow usa instancia do perfil
-
-Depois:
-  click no link → link-redirect verifica se execucao esta waiting_click → so resume se ativa
-  link-redirect passa instanceName do tracked_link → execute-flow usa instancia correta
-```
+O mesmo problema pode existir para `waitForReply` dentro de groups, mas no fluxo atual o `waitForReply` parece estar em grupo e ter timeout 0 — mesmo assim, seria prudente adicionar a mesma lógica para consistência futura.
 
 ### Arquivos alterados
-- Migration SQL: adicionar coluna `instance_name` em `tracked_links`
-- `supabase/functions/execute-flow/index.ts`: salvar `instance_name` nos inserts de tracked_links
-- `supabase/functions/link-redirect/index.ts`: verificar status da execucao + passar instanceName
+- `supabase/functions/execute-flow/index.ts` — adicionar inserção de timeout para waitForClick (e opcionalmente waitForReply) dentro de groupBlock
 
