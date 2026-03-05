@@ -13,7 +13,7 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
     },
     {
       label: "Mensagens",
-      types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[],
+      types: ["sendText", "sendAudio", "sendVideo", "sendImage", "sendFile"] as FlowNodeType[],
     },
     {
       label: "Lógica",

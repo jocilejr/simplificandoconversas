@@ -190,6 +190,7 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   sendAudio: { audioUrl: "", simulateRecording: false },
   sendVideo: { mediaUrl: "", caption: "" },
   sendImage: { mediaUrl: "", caption: "" },
+  sendFile: { fileUrl: "", fileName: "" },
   condition: { conditionField: "mensagem", conditionOperator: "contains", conditionValue: "" },
   randomizer: { paths: 2 },
   waitDelay: { delaySeconds: 3, simulateTyping: true, delayRandomMode: false, delayMinSeconds: 3, delayMaxSeconds: 9, delayPresenceType: "composing" },
