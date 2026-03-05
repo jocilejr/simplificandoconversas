@@ -489,4 +489,3 @@ async function checkAndResumeWaitingReply(
     .then((r) => console.log(`[webhook] Resume waiting_reply result:`, r))
     .catch((e) => console.error(`[webhook] Resume waiting_reply error:`, e));
 }
-}
