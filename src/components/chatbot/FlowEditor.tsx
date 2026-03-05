@@ -755,6 +755,16 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     [setNodes, setEdges]
   );
 
+  // Listen for node-delete events from StepNode toolbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      deleteNode(nodeId);
+    };
+    document.addEventListener("node-delete", handler);
+    return () => document.removeEventListener("node-delete", handler);
+  }, [deleteNode]);
+
   const removeStepFromGroup = useCallback(
     (nodeId: string, stepId: string) => {
       setNodes((nds) => {
