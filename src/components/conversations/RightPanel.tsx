@@ -58,8 +58,34 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   const [labelColor, setLabelColor] = useState(PRESET_COLORS[0]);
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const contactNumber = conversation.remote_jid;
+
+  // Fetch contact tags
+  const { data: contactTags } = useQuery({
+    queryKey: ["contact-tags", contactNumber],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("contact_tags")
+        .select("id, tag_name, created_at")
+        .eq("remote_jid", contactNumber)
+        .order("created_at", { ascending: false });
+      return data || [];
+    },
+    enabled: !!contactNumber,
+  });
+
+  const handleRemoveTag = async (tagId: string) => {
+    const { error } = await supabase.from("contact_tags").delete().eq("id", tagId);
+    if (error) {
+      toast.error("Erro ao remover tag");
+    } else {
+      toast.success("Tag removida");
+      queryClient.invalidateQueries({ queryKey: ["contact-tags", contactNumber] });
+    }
+  };
   // Fetch last messages from ALL instances for this contact
   const { data: allInstanceMessages } = useQuery({
     queryKey: ["all-instance-messages", contactNumber, conversation.id],
