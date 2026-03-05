@@ -38,8 +38,14 @@ function formatJid(jid: string) {
 }
 
 function StatusIcon({ status }: { status: string }) {
+  if (status === "failed" || status === "error") {
+    return <X className="h-3 w-3 text-red-500" />;
+  }
   if (status === "delivered" || status === "read") {
     return <CheckCheck className={cn("h-3 w-3", status === "read" ? "text-info" : "text-white/40")} />;
+  }
+  if (status === "sending") {
+    return <Loader2 className="h-3 w-3 text-white/40 animate-spin" />;
   }
   return <Check className="h-3 w-3 text-white/40" />;
 }
