@@ -82,29 +82,95 @@ async function executeStep(
   }
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
-    await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
       method: "POST",
       headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
+    const r = await resp.json();
+    const { data: conv } = await serviceClient
+      .from("conversations")
+      .upsert(
+        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { onConflict: "user_id,remote_jid,instance_name" }
+      )
+      .select("id")
+      .single();
+    if (conv) {
+      await serviceClient.from("messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        remote_jid: jid,
+        content: stepData.caption || "",
+        message_type: "image",
+        direction: "outbound",
+        status: "sent",
+        external_id: r?.key?.id || null,
+        media_url: stepData.mediaUrl,
+      });
+    }
     return "sendImage: ok";
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
       method: "POST",
       headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, audio: stepData.audioUrl }),
     });
+    const r = await resp.json();
+    const { data: conv } = await serviceClient
+      .from("conversations")
+      .upsert(
+        { user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { onConflict: "user_id,remote_jid,instance_name" }
+      )
+      .select("id")
+      .single();
+    if (conv) {
+      await serviceClient.from("messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        remote_jid: jid,
+        content: "",
+        message_type: "audio",
+        direction: "outbound",
+        status: "sent",
+        external_id: r?.key?.id || null,
+        media_url: stepData.audioUrl,
+      });
+    }
     return "sendAudio: ok";
   }
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
-    await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
       method: "POST",
       headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
+    const r = await resp.json();
+    const { data: conv } = await serviceClient
+      .from("conversations")
+      .upsert(
+        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { onConflict: "user_id,remote_jid,instance_name" }
+      )
+      .select("id")
+      .single();
+    if (conv) {
+      await serviceClient.from("messages").insert({
+        conversation_id: conv.id,
+        user_id: userId,
+        remote_jid: jid,
+        content: stepData.caption || "",
+        message_type: "video",
+        direction: "outbound",
+        status: "sent",
+        external_id: r?.key?.id || null,
+        media_url: stepData.mediaUrl,
+      });
+    }
     return "sendVideo: ok";
   }
 
