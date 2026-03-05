@@ -1,29 +1,35 @@
 
 
-## Plano: Redesign dos cards de Fluxos Automaticos
+## Corrigir player de áudio no GroupNode
 
-O layout atual tem problemas visuais: o emoji de antena quebra a sobriedade, o botao de ativar/parar ocupa muito espaco, e o card geral parece generico. Vou redesenhar seguindo a estetica corporativa escura do projeto.
+### Problema raiz
+O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
 
-### Alteracoes em `src/pages/ChatbotBuilder.tsx`
+### Solução
+Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
 
-**Card do fluxo:**
-- Remover o emoji e usar icone Lucide `Radio` para instancias
-- Barra de acento superior com gradiente sutil ao inves de cor solida
-- Separar visualmente o header (icone + nome + status) do metadata
-- Botao de ativar/parar mais compacto: pill no canto ao inves de full-width
-- Adicionar um separador sutil entre metadata e acoes
-- Icone do fluxo com borda e fundo mais refinados (circular ao inves de quadrado)
-- Status badge inline com dot colorido mais visivel
-- Metadata em linha unica com separadores visuais (dot separator)
-- Menu de tres pontos sempre visivel (nao so no hover) com opacidade reduzida
-- Card "Novo Fluxo" com icone mais discreto e borda pontilhada mais sutil
+O player terá:
+- Botão play/pause (ícone)
+- Barra de progresso simples (div com width percentual)
+- Duração e tempo atual em texto
+- Sem waves, sem controles nativos
 
-**Header da pagina:**
-- Adicionar subtitulo descritivo abaixo do titulo
-- Botao "Novo Fluxo" com variante outline ao inves de filled para menos peso visual
+### Preview sem URL
+Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
 
-**Estilo geral:**
-- Cards com `rounded-xl` para bordas mais suaves
-- Hover com elevacao e borda primary sutil
-- Transicoes mais suaves em todos os elementos interativos
+### Alterações em `src/components/chatbot/GroupNode.tsx`
+
+1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
+   - `useRef` para `new Audio(src)` 
+   - `useState` para `isPlaying`, `currentTime`, `duration`
+   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
+   - Barra de progresso visual (div bg com width%)
+   - Display de tempo `currentTime / duration`
+
+2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+
+3. **Manter** badge "Gravando" se `simulateRecording`
+
+### Arquivo alterado
+- `src/components/chatbot/GroupNode.tsx`
 
