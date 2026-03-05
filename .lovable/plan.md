@@ -1,35 +1,39 @@
 
 
-## Corrigir player de áudio no GroupNode
+## Plano: Vincular fluxos a instâncias específicas
 
-### Problema raiz
-O elemento `<audio controls>` nativo do browser **não funciona dentro de nós do React Flow** porque o React Flow intercepta todos os eventos de pointer no nível do nó, mesmo com `stopPropagation`. Isso é uma limitação conhecida. Nenhuma combinação de `nopan/nodrag/nowheel/pointerEvents` resolve completamente.
+### Resumo
+Adicionar um campo `instance_names` (array de texto) na tabela `chatbot_flows` para que cada fluxo possa ser vinculado a uma ou mais instâncias. Se o array estiver vazio/nulo, o fluxo responde em todas as instâncias (comportamento atual). Se tiver instâncias selecionadas, só dispara nelas.
 
-### Solução
-Substituir o `<audio controls>` nativo por um **player customizado simples** usando a API JavaScript `new Audio()`. Isso contorna completamente o problema porque o playback é controlado por código JS, não por controles nativos do browser.
+### Alterações
 
-O player terá:
-- Botão play/pause (ícone)
-- Barra de progresso simples (div com width percentual)
-- Duração e tempo atual em texto
-- Sem waves, sem controles nativos
+**1. Migração de banco de dados**
+- Adicionar coluna `instance_names text[] default '{}'` na tabela `chatbot_flows`.
 
-### Preview sem URL
-Quando não há `mediaUrl`, mostrar apenas ícone de áudio + texto "Nenhum áudio", sem waves.
+**2. UI — Card do fluxo (`ChatbotBuilder.tsx`)**
+- Exibir badges com os nomes das instâncias vinculadas no card do fluxo (ou "Todas" se vazio).
 
-### Alterações em `src/components/chatbot/GroupNode.tsx`
+**3. UI — Seletor de instâncias no FlowEditor**
+- Adicionar um botão/popover no header do FlowEditor (ao lado do nome do fluxo) que lista as instâncias do usuário com checkboxes.
+- O estado é salvo junto com o fluxo via `onSave`.
+- Usar o hook `useEvolutionInstances` já existente para listar as instâncias disponíveis.
 
-1. **Remover `<audio controls>`** — substituir por um mini componente `AudioPreviewPlayer` interno com:
-   - `useRef` para `new Audio(src)` 
-   - `useState` para `isPlaying`, `currentTime`, `duration`
-   - Botão play/pause que chama `audio.play()` / `audio.pause()` via onClick com stopPropagation
-   - Barra de progresso visual (div bg com width%)
-   - Display de tempo `currentTime / duration`
+**4. Hook `useChatbotFlows.ts`**
+- Incluir `instance_names` no tipo `ChatbotFlow` e no `updateFlow`.
 
-2. **Sem URL** — Mostrar ícone + "Nenhum áudio" (sem waves estáticas)
+**5. Webhook (`evolution-webhook/index.ts`)**
+- Na função `checkAndTriggerFlows`, após encontrar um fluxo ativo com keyword match, verificar se `flow.instance_names` é vazio (aceita tudo) ou se contém o `instanceName` atual. Se não contiver, pular o fluxo.
 
-3. **Manter** badge "Gravando" se `simulateRecording`
+### Detalhes técnicos
 
-### Arquivo alterado
-- `src/components/chatbot/GroupNode.tsx`
+Filtro no webhook (pseudocódigo):
+```typescript
+// Após keyword match, antes de executar:
+const allowedInstances = flow.instance_names || [];
+if (allowedInstances.length > 0 && !allowedInstances.includes(instanceName)) {
+  continue; // skip this flow for this instance
+}
+```
+
+Seletor de instâncias no FlowEditor: Popover com lista de checkboxes das instâncias ativas do usuário. Se nenhuma selecionada, texto indica "Todas as instâncias".
 
