@@ -1,26 +1,22 @@
 
 
-## Bug: "Capturar Resposta" (waitForReply) não funciona dentro de groupBlock
+## Bug: `checkAndResumeWaitingReply` não é encontrada — erro de escopo
 
 ### Causa raiz
 
-No handler de `groupBlock` (linha 629-632 do `execute-flow`), apenas `waitForClick` tem tratamento especial para pausar o fluxo. O `waitForReply` cai no `else` genérico e é executado como um step comum via `executeStep()`, que não sabe pausar — o fluxo simplesmente passa direto.
-
-Além disso, o código de retomada no `evolution-webhook` (função `checkAndResumeWaitingReply`) só procura nós standalone do tipo `waitForReply`. Se o nó está dentro de um grupo, ele nunca é encontrado.
+O log confirma: `ReferenceError: checkAndResumeWaitingReply is not defined`. A função `checkAndResumeWaitingReply` está **dentro** de `checkAndTriggerFlows` por causa de uma chave `}` faltando. A linha 383 fecha o `for` loop, mas não fecha a função `checkAndTriggerFlows`. Resultado: `checkAndResumeWaitingReply` é uma função local inacessível do escopo principal.
 
 ### Solução
 
-**1. `supabase/functions/execute-flow/index.ts`** — Adicionar handler para `waitForReply` dentro de grupos, similar ao que já existe para `waitForClick`:
-- Antes do `else` genérico (linha 629), adicionar `else if (step.data.type === "waitForReply")`
-- Pausar a execução com status `waiting_reply`
-- Inserir timeout se configurado
-- Marcar `groupPaused = true` e dar `break`
+**Arquivo: `supabase/functions/evolution-webhook/index.ts`** — Adicionar `}` na linha 383 para fechar a função `checkAndTriggerFlows` antes da definição de `checkAndResumeWaitingReply`:
 
-**2. `supabase/functions/evolution-webhook/index.ts`** — Atualizar `checkAndResumeWaitingReply` para encontrar `waitForReply` dentro de groupBlocks:
-- Além de procurar nós com `data.type === "waitForReply"`, iterar sobre nós com `data.type === "groupBlock"` e verificar se algum step interno é `waitForReply`
-- Usar a saída correta do grupo (output-0) como `nextNodeId`
+```
+}  // fecha for loop
+}  // fecha checkAndTriggerFlows
+
+async function checkAndResumeWaitingReply(...)
+```
 
 ### Arquivos alterados
-- `supabase/functions/execute-flow/index.ts` — handler de waitForReply em groupBlock
-- `supabase/functions/evolution-webhook/index.ts` — busca de waitForReply em grupos na retomada
+- `supabase/functions/evolution-webhook/index.ts` — corrigir escopo da função
 
