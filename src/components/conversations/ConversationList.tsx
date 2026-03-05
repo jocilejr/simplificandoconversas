@@ -38,6 +38,7 @@ interface ConversationListProps {
   instances?: InstanceTab[];
   selectedInstance: string | null;
   onSelectInstance: (name: string | null) => void;
+  conversationLabels?: Record<string, Label[]>;
 }
 
 function formatTime(dateStr: string | null) {
