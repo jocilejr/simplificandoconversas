@@ -1,9 +1,39 @@
-## ✅ Concluído: Corrigir fluxo não continuando após "Capturar Resposta"
 
-### Correções aplicadas
 
-1. **Migração**: Adicionada coluna `waiting_node_id` (text) na tabela `flow_executions`
-2. **execute-flow**: Agora grava `waiting_node_id: node.id` ao pausar em waitForReply/waitForClick (standalone e grupo)
-3. **webhook**: `checkAndResumeWaitingReply` usa `waiting_node_id` para encontrar a edge correta e retorna `true/false`
-4. **webhook**: Se retomou fluxo, pula `checkAndTriggerFlows`
-5. **webhook**: `checkAndTriggerFlows` bloqueia em status `running`, `waiting_click` E `waiting_reply`
+## Plano: Ativar todos os eventos de webhook da Evolution API
+
+### Problema
+Atualmente, apenas 8 eventos estão configurados nos webhooks (`MESSAGES_UPSERT`, `MESSAGES_UPDATE`, `SEND_MESSAGE`, `CONTACTS_SET`, `CONTACTS_UPSERT`, `CONTACTS_UPDATE`, `QRCODE_UPDATED`, `CONNECTION_UPDATE`). Eventos importantes como `MESSAGES_SET`, `MESSAGES_DELETE`, `CHATS_SET`, `CHATS_DELETE`, `PRESENCE_UPDATE`, `LABELS_ASSOCIATION`, `LABELS_EDIT`, `CALL`, `LOGOUT_INSTANCE`, `REMOVE_INSTANCE` e `APPLICATION_STARTUP` estão faltando.
+
+### Correção
+
+**Arquivo:** `supabase/functions/evolution-proxy/index.ts`
+
+Atualizar a lista de eventos em **3 locais** (set-webhook, sync-webhooks, sync-chats) para incluir todos os eventos disponíveis da Evolution API:
+
+```
+"APPLICATION_STARTUP",
+"QRCODE_UPDATED",
+"CONNECTION_UPDATE",
+"MESSAGES_SET",
+"MESSAGES_UPSERT",
+"MESSAGES_UPDATE",
+"MESSAGES_DELETE",
+"SEND_MESSAGE",
+"CONTACTS_SET",
+"CONTACTS_UPSERT",
+"CONTACTS_UPDATE",
+"PRESENCE_UPDATE",
+"CHATS_SET",
+"CHATS_DELETE",
+"CHATS_UPDATE",
+"LABELS_EDIT",
+"LABELS_ASSOCIATION",
+"CALL",
+"TYPEBOT_CHANGE_STATUS",
+"LOGOUT_INSTANCE",
+"REMOVE_INSTANCE"
+```
+
+Extrair a lista para uma constante `ALL_WEBHOOK_EVENTS` no topo do arquivo para evitar duplicação e facilitar manutenção futura.
+
