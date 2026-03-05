@@ -1,36 +1,23 @@
 
 
-## Bug: Fluxo responde pela instância errada
+## Bug: Mesmo contato não pode ter conversas em instâncias diferentes
 
 ### Causa raiz
 
-Quando o webhook recebe uma mensagem na instância "FunilPrincipal" e dispara um fluxo, o `execute-flow` **ignora a instância de origem** e usa `profile.evolution_instance_name` (a instância padrão/ativa do perfil — "Meire Rosana - Entregas") para enviar todas as mensagens do fluxo.
+Existe um **índice único antigo** `idx_conversations_user_jid` na tabela `conversations` com colunas `(user_id, remote_jid)` — **sem incluir `instance_name`**. Isso impede a criação de uma segunda conversa para o mesmo contato em outra instância, mesmo que o constraint mais novo `(user_id, remote_jid, instance_name)` permita.
 
-O problema está em dois pontos:
-
-1. **`evolution-webhook/index.ts`** — `checkAndTriggerFlows` e `checkAndResumeWaitingReply` não passam o `instance` (nome da instância que recebeu a mensagem) para o `execute-flow`.
-
-2. **`execute-flow/index.ts`** — Não aceita um parâmetro `instanceName` no body; sempre lê `profile.evolution_instance_name`.
+Quando o webhook tenta fazer upsert com `onConflict: "user_id,remote_jid,instance_name"`, a operação INSERT subjacente viola o índice antigo `idx_conversations_user_jid`, causando o erro "Failed to upsert conversation" nos logs.
 
 ### Solução
 
-**`evolution-webhook/index.ts`** (2 alterações):
-- Em `checkAndTriggerFlows`: adicionar `instanceName: instance` no body do fetch para `execute-flow`.
-- Em `checkAndResumeWaitingReply`: adicionar parâmetro `instanceName` e passá-lo no fetch. Atualizar a chamada para incluir o `instance`.
+Uma única migration SQL:
 
-**`execute-flow/index.ts`** (1 alteração):
-- Ler `instanceName` do body da request.
-- Se fornecido, usar esse valor em vez de `profile.evolution_instance_name` para enviar mensagens e salvar conversas.
-- Manter o fallback para `profile.evolution_instance_name` quando não fornecido (execução manual pelo usuário).
-
-```text
-Webhook recebe msg na instância "FunilPrincipal"
-  → checkAndTriggerFlows(..., instance="FunilPrincipal")
-    → fetch execute-flow { instanceName: "FunilPrincipal" }
-      → execute-flow usa "FunilPrincipal" para enviar (não mais o padrão do perfil)
+```sql
+DROP INDEX IF EXISTS idx_conversations_user_jid;
 ```
 
+Isso remove o índice antigo que bloqueia conversas multi-instância. O constraint `conversations_user_id_remote_jid_instance_key` (que inclui `instance_name`) permanece e garante a unicidade correta.
+
 ### Arquivos alterados
-- `supabase/functions/evolution-webhook/index.ts` — passar `instanceName` nas chamadas ao execute-flow
-- `supabase/functions/execute-flow/index.ts` — aceitar e usar `instanceName` do body
+- Apenas uma migration SQL (nenhum arquivo de código precisa mudar)
 
