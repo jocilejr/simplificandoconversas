@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { ContactAvatar } from "./ContactAvatar";
 import { Conversation } from "@/hooks/useConversations";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
-import { useLabels, useConversationLabels } from "@/hooks/useLabels";
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,10 +24,6 @@ interface RightPanelProps {
   onClose: () => void;
 }
 
-const PRESET_COLORS = [
-  "#3b82f6", "#ef4444", "#f59e0b", "#10b981",
-  "#8b5cf6", "#ec4899", "#06b6d4", "#f97316",
-];
 
 function formatJid(jid: string) {
   return jid.split("@")[0];
@@ -49,13 +44,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   const [editingQR, setEditingQR] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
-  const [showLabelForm, setShowLabelForm] = useState(false);
   const [showQRForm, setShowQRForm] = useState(false);
-
-  const { data: allLabels, create: createLabel, remove: removeLabel } = useLabels();
-  const { data: convLabels, assign, unassign } = useConversationLabels(conversation.id);
-  const [labelName, setLabelName] = useState("");
-  const [labelColor, setLabelColor] = useState(PRESET_COLORS[0]);
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
   const { user } = useAuth();
@@ -117,7 +106,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
     enabled: !!contactNumber && !!conversation.id,
   });
 
-  const assignedLabelIds = new Set((convLabels || []).map(cl => cl.label_id));
 
   const handleCreateQR = async () => {
     if (!qrTitle.trim() || !qrContent.trim()) return;
@@ -127,15 +115,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
       setQrContent("");
       setShowQRForm(false);
     } catch { toast.error("Erro ao criar resposta rápida"); }
-  };
-
-  const handleCreateLabel = async () => {
-    if (!labelName.trim()) return;
-    try {
-      await createLabel.mutateAsync({ name: labelName, color: labelColor });
-      setLabelName("");
-      setShowLabelForm(false);
-    } catch { toast.error("Erro ao criar etiqueta"); }
   };
 
   const startEditQR = (qr: { id: string; title: string; content: string }) => {
@@ -313,106 +292,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             )}
           </div>
 
-          {/* ── Labels ── */}
-          <div className="bg-secondary/40 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Tag className="h-3.5 w-3.5 text-primary" />
-                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Etiquetas</span>
-              </div>
-              <button
-                onClick={() => setShowLabelForm(!showLabelForm)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showLabelForm ? <ChevronUp className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              </button>
-            </div>
-
-            {/* Assigned labels */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {(convLabels || []).map(cl => (
-                <Badge
-                  key={cl.id}
-                  className="text-[11px] gap-1.5 cursor-pointer hover:opacity-80 border-0 rounded-full px-3 py-1 font-medium"
-                  style={{ backgroundColor: cl.labels.color + "22", color: cl.labels.color, border: `1px solid ${cl.labels.color}44` }}
-                  onClick={() => unassign.mutate(cl.label_id, {
-                    onSuccess: () => toast.success("Etiqueta removida"),
-                    onError: (err: any) => toast.error("Erro ao remover etiqueta: " + err.message),
-                  })}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: cl.labels.color }} />
-                  {cl.labels.name}
-                  <X className="h-2.5 w-2.5 opacity-60" />
-                </Badge>
-              ))}
-              {(!convLabels || convLabels.length === 0) && (
-                <span className="text-xs text-muted-foreground">Nenhuma etiqueta atribuída</span>
-              )}
-            </div>
-
-            {/* Available labels to assign */}
-            {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).length > 0 && (
-              <div className="space-y-1 mb-3 border-t border-border/30 pt-3">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Disponíveis</p>
-                {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).map(label => (
-                  <div key={label.id} className="flex items-center justify-between group">
-                    <button
-                      className="flex items-center gap-2 text-xs py-1.5 hover:text-foreground text-muted-foreground transition-colors"
-                      onClick={() => assign.mutate(label.id, {
-                        onSuccess: () => toast.success("Etiqueta atribuída"),
-                        onError: (err: any) => toast.error("Erro ao atribuir etiqueta: " + err.message),
-                      })}
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
-                      {label.name}
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 rounded-full"
-                      onClick={() => removeLabel.mutate(label.id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Create label form */}
-            {showLabelForm && (
-              <div className="space-y-2 border-t border-border/30 pt-3">
-                <Input
-                  placeholder="Nome da etiqueta..."
-                  value={labelName}
-                  onChange={e => setLabelName(e.target.value)}
-                  className="h-8 text-xs rounded-lg"
-                  onKeyDown={e => e.key === "Enter" && handleCreateLabel()}
-                />
-                <div className="flex gap-1.5">
-                  {PRESET_COLORS.map(c => (
-                    <button
-                      key={c}
-                      className={cn(
-                        "h-5 w-5 rounded-full transition-all",
-                        labelColor === c ? "ring-2 ring-offset-1 ring-offset-background ring-ring scale-110" : "hover:scale-110"
-                      )}
-                      style={{ backgroundColor: c }}
-                      onClick={() => setLabelColor(c)}
-                    />
-                  ))}
-                </div>
-                <Button
-                  size="sm"
-                  className="w-full h-8 text-xs rounded-lg"
-                  onClick={handleCreateLabel}
-                  disabled={!labelName.trim()}
-                >
-                  <Plus className="h-3 w-3 mr-1" /> Criar Etiqueta
-                </Button>
-              </div>
-            )}
-          </div>
 
           {/* ── Quick Replies ── */}
           <div className="bg-secondary/40 rounded-2xl p-4">
