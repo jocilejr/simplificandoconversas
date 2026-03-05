@@ -409,7 +409,7 @@ function StepRow({
     desc = `Salvar em {{${d.replyVariable || "resposta"}}}`;
   }
 
-  const hasRichPreview = ["sendText", "sendImage", "sendVideo", "sendAudio"].includes(d.type);
+  const hasRichPreview = ["sendText", "sendImage", "sendVideo", "sendAudio", "sendFile"].includes(d.type);
 
   return (
     <div
