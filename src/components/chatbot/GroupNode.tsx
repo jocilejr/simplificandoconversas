@@ -57,35 +57,46 @@ function AudioPreviewPlayer({ src }: { src: string }) {
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const [bars] = useState(() => Array.from({ length: 28 }, () => Math.random() * 0.7 + 0.3));
 
   return (
     <div
-      className="flex items-center gap-2 px-2.5 py-2 nopan nodrag nowheel"
+      className="flex items-center gap-1.5 px-2 py-1.5 nopan nodrag nowheel"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <button
         onClick={toggle}
-        className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 hover:bg-primary/25 transition-colors"
+        className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0 hover:bg-primary/25 transition-colors"
       >
         {isPlaying ? (
-          <Pause className="w-3 h-3 text-primary" />
+          <Pause className="w-2.5 h-2.5 text-primary" />
         ) : (
-          <Play className="w-3 h-3 text-primary fill-primary ml-0.5" />
+          <Play className="w-2.5 h-2.5 text-primary fill-primary ml-px" />
         )}
       </button>
       <div
-        className="flex-1 h-1.5 rounded-full bg-muted-foreground/20 cursor-pointer relative"
+        className="flex-1 flex items-center gap-px h-[14px] cursor-pointer"
         onClick={seek}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div
-          className="absolute inset-y-0 left-0 rounded-full bg-primary/60 transition-all"
-          style={{ width: `${progress}%` }}
-        />
+        {bars.map((h, i) => {
+          const barPos = (i / bars.length) * 100;
+          const isPlayed = barPos < progress;
+          return (
+            <div
+              key={i}
+              className="flex-1 rounded-sm transition-colors"
+              style={{
+                height: `${h * 14}px`,
+                backgroundColor: isPlayed ? "hsl(var(--primary) / 0.7)" : "hsl(var(--muted-foreground) / 0.2)",
+              }}
+            />
+          );
+        })}
       </div>
-      <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0 min-w-[32px] text-right">
+      <span className="text-[9px] text-muted-foreground font-mono flex-shrink-0 min-w-[28px] text-right">
         {fmt(isPlaying ? currentTime : duration)}
       </span>
     </div>
