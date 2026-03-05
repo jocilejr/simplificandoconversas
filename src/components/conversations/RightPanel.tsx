@@ -219,7 +219,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             {activeExecutions && activeExecutions.length > 0 ? (
               <div className="space-y-2">
                 {activeExecutions.map((exec: any) => {
-                  const isWaiting = exec.status === "waiting_click";
+                  const isWaiting = exec.status === "waiting_click" || exec.status === "waiting_reply";
                   return (
                     <div key={exec.id} className={cn(
                       "flex items-center justify-between rounded-xl p-3",
@@ -236,7 +236,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                             {exec.chatbot_flows?.name || "Fluxo"}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
-                            {isWaiting ? "Aguardando clique" : "Executando"}
+                            {exec.status === "waiting_click" ? "Aguardando clique" : exec.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
                           </span>
                         </div>
                       </div>
@@ -283,7 +283,10 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   key={cl.id}
                   className="text-[11px] gap-1.5 cursor-pointer hover:opacity-80 border-0 rounded-full px-3 py-1 font-medium"
                   style={{ backgroundColor: cl.labels.color + "22", color: cl.labels.color, border: `1px solid ${cl.labels.color}44` }}
-                  onClick={() => unassign.mutate(cl.label_id)}
+                  onClick={() => unassign.mutate(cl.label_id, {
+                    onSuccess: () => toast.success("Etiqueta removida"),
+                    onError: (err: any) => toast.error("Erro ao remover etiqueta: " + err.message),
+                  })}
                 >
                   <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: cl.labels.color }} />
                   {cl.labels.name}
@@ -303,7 +306,10 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   <div key={label.id} className="flex items-center justify-between group">
                     <button
                       className="flex items-center gap-2 text-xs py-1.5 hover:text-foreground text-muted-foreground transition-colors"
-                      onClick={() => assign.mutate(label.id)}
+                      onClick={() => assign.mutate(label.id, {
+                        onSuccess: () => toast.success("Etiqueta atribuída"),
+                        onError: (err: any) => toast.error("Erro ao atribuir etiqueta: " + err.message),
+                      })}
                     >
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
                       {label.name}
