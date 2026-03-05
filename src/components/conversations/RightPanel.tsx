@@ -84,6 +84,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             .from("messages")
             .select("id, content, direction, message_type, created_at")
             .eq("conversation_id", conv.id)
+            .eq("direction", "inbound")
             .order("created_at", { ascending: false })
             .limit(5);
           return {
