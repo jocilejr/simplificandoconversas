@@ -468,7 +468,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
 
         {hasFinalizerStep && (
-          <div className="px-3 py-2 border-t border-border/40 space-y-1.5">
+          <div className="pl-3 pr-5 py-2 border-t border-border/40 space-y-1.5">
             <div className="flex items-center justify-end">
               <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
             </div>
