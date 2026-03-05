@@ -120,25 +120,36 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
       {d.type === "condition" && (
         <>
           <div className="space-y-1.5">
-            <Label className="text-xs">Campo</Label>
-            <Input value={d.conditionField || ""} onChange={(e) => update({ conditionField: e.target.value })} placeholder="Ex: mensagem" className="h-8 text-xs" />
-          </div>
-          <div className="space-y-1.5">
             <Label className="text-xs">Operador</Label>
-            <Select value={d.conditionOperator || "contains"} onValueChange={(v) => update({ conditionOperator: v as any })}>
+            <Select value={d.conditionOperator || "contains"} onValueChange={(v) => update({ conditionOperator: v as any, ...(v === "has_tag" ? { conditionField: "tag" } : {}) })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="equals">É igual a</SelectItem>
                 <SelectItem value="contains">Contém</SelectItem>
                 <SelectItem value="starts_with">Começa com</SelectItem>
                 <SelectItem value="regex">Regex</SelectItem>
+                <SelectItem value="has_tag">Tem tag</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Valor</Label>
-            <Input value={d.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Valor para comparar" className="h-8 text-xs" />
-          </div>
+          {d.conditionOperator === "has_tag" ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome da tag</Label>
+              <Input value={d.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Ex: passou-pelo-funil-principal" className="h-8 text-xs" />
+              <p className="text-[10px] text-muted-foreground">Verifica se o contato possui essa tag (adicionada via nó de Ação)</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Campo</Label>
+                <Input value={d.conditionField || ""} onChange={(e) => update({ conditionField: e.target.value })} placeholder="Ex: mensagem" className="h-8 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Valor</Label>
+                <Input value={d.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Valor para comparar" className="h-8 text-xs" />
+              </div>
+            </>
+          )}
         </>
       )}
 

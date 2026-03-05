@@ -34,8 +34,12 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
       return d.mediaUrl ? "Mídia carregada" : "Sem mídia";
     case "sendFile":
       return d.fileUrl ? (d.fileName || "Arquivo carregado") : "Sem arquivo";
-    case "condition":
+    case "condition": {
+      if (d.conditionOperator === "has_tag") {
+        return `Tag: "${d.conditionValue || "..."}"`;
+      }
       return `Se ${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
+    }
     case "randomizer":
       return `${d.paths || 2} caminhos`;
     case "waitDelay":
@@ -172,9 +176,18 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
 
         {/* Body */}
         <div className="px-3 py-2.5">
-          {d.type === "condition" ? (
+        {d.type === "condition" ? (
             <div className="space-y-2">
-              {d.conditionField && d.conditionValue ? (
+              {d.conditionOperator === "has_tag" ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-500/10 text-[11px] font-semibold text-purple-400 border border-purple-500/20">
+                    🏷️ Tem tag
+                  </span>
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-foreground/5 text-[11px] font-medium text-foreground/70 border border-border/40">
+                    "{d.conditionValue || "..."}"
+                  </span>
+                </div>
+              ) : d.conditionField && d.conditionValue ? (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="inline-flex items-center px-2 py-1 rounded-md bg-red-500/10 text-[11px] font-semibold text-red-400 border border-red-500/20">
                     {d.conditionField}

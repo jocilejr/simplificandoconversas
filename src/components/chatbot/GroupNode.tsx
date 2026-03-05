@@ -409,8 +409,9 @@ function StepRow({
 
   // For condition, render a styled card with rule pills
   if (d.type === "condition") {
-    const operatorLabels: Record<string, string> = { equals: "=", contains: "contém", starts_with: "começa com", regex: "regex" };
-    const hasRule = d.conditionField && d.conditionValue;
+    const operatorLabels: Record<string, string> = { equals: "=", contains: "contém", starts_with: "começa com", regex: "regex", has_tag: "tem tag" };
+    const isTagCondition = d.conditionOperator === "has_tag";
+    const hasRule = isTagCondition ? !!d.conditionValue : (d.conditionField && d.conditionValue);
     return (
       <div
         ref={containerRef}
@@ -430,17 +431,28 @@ function StepRow({
         </div>
         <div className="px-3 py-2.5 bg-muted/30">
           {hasRule ? (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-500/10 text-[10px] font-semibold text-red-400 border border-red-500/20">
-                {d.conditionField}
-              </span>
-              <span className="text-[10px] text-muted-foreground font-medium">
-                {operatorLabels[d.conditionOperator || "contains"] || d.conditionOperator}
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-foreground/5 text-[10px] font-medium text-foreground/70 border border-border/40">
-                "{d.conditionValue}"
-              </span>
-            </div>
+            isTagCondition ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-500/10 text-[10px] font-semibold text-purple-400 border border-purple-500/20">
+                  🏷️ Tem tag
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-foreground/5 text-[10px] font-medium text-foreground/70 border border-border/40">
+                  "{d.conditionValue}"
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-500/10 text-[10px] font-semibold text-red-400 border border-red-500/20">
+                  {d.conditionField}
+                </span>
+                <span className="text-[10px] text-muted-foreground font-medium">
+                  {operatorLabels[d.conditionOperator || "contains"] || d.conditionOperator}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-foreground/5 text-[10px] font-medium text-foreground/70 border border-border/40">
+                  "{d.conditionValue}"
+                </span>
+              </div>
+            )
           ) : (
             <p className="text-[10px] text-muted-foreground/60 italic">Configurar condição...</p>
           )}

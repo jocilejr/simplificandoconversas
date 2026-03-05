@@ -42,7 +42,7 @@ export interface FlowNodeData {
   fileName?: string;
   // Condition
   conditionField?: string;
-  conditionOperator?: "equals" | "contains" | "starts_with" | "regex";
+  conditionOperator?: "equals" | "contains" | "starts_with" | "regex" | "has_tag";
   conditionValue?: string;
   // Randomizer
   paths?: number;
