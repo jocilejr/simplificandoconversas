@@ -48,13 +48,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   const [editingQR, setEditingQR] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
-  const [showLabelForm, setShowLabelForm] = useState(false);
   const [showQRForm, setShowQRForm] = useState(false);
-
-  const { data: allLabels, create: createLabel, remove: removeLabel } = useLabels();
-  const { data: convLabels, assign, unassign } = useConversationLabels(conversation.id);
-  const [labelName, setLabelName] = useState("");
-  const [labelColor, setLabelColor] = useState(PRESET_COLORS[0]);
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
   const { user } = useAuth();
