@@ -27,7 +27,6 @@ export function useMessages(conversationId: string | null) {
         .from("messages")
         .select("*")
         .eq("conversation_id", conversationId!)
-        .eq("direction", "inbound")
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -43,7 +42,7 @@ export function useMessages(conversationId: string | null) {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,

@@ -94,6 +94,18 @@ Deno.serve(async (req) => {
     const data = body.data;
     const instance = body.instance;
 
+    // Handle message status updates (delivered, read, etc.)
+    if (event === "messages.update" && data) {
+      try {
+        await handleMessageStatusUpdate(data, instance);
+      } catch (e) {
+        console.error("Status update error (non-fatal):", e.message);
+      }
+      return new Response(JSON.stringify({ ok: true, statusUpdated: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Process new messages (inbound and outbound)
     if (!["messages.upsert", "send.message"].includes(event) || !data) {
       return new Response(JSON.stringify({ ok: true, skipped: event }), {
@@ -183,7 +195,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Skip outbound messages sent via our proxy (already saved by proxy)
+    // Skip send.message from proxy (already saved by proxy)
+    // But allow fromMe messages.upsert (sent from phone directly)
     if (fromMe && event === "send.message") {
       await supabase
         .from("conversations")
@@ -200,6 +213,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, updated: "conversation" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // For fromMe messages.upsert, check if already saved by proxy (dedup by external_id)
+    if (fromMe && event === "messages.upsert" && externalId) {
+      const { data: existing } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("external_id", externalId)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        console.log("Outbound message already saved by proxy, skipping:", externalId);
+        return new Response(JSON.stringify({ ok: true, skipped: "already_saved" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Download and upload media if applicable
@@ -479,4 +507,49 @@ async function checkAndResumeWaitingReply(
     .catch((e) => console.error(`[webhook] Resume waiting_reply error:`, e));
 
   return true;
+}
+
+async function handleMessageStatusUpdate(data: any, instance: string) {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // data can be a single update or array
+  const updates = Array.isArray(data) ? data : [data];
+
+  for (const update of updates) {
+    const key = update.key || update.keyId ? { id: update.keyId } : null;
+    const externalId = key?.id || update.key?.id;
+    const status = update.status;
+
+    if (!externalId || !status) continue;
+
+    // Map Evolution status codes to readable statuses
+    const statusMap: Record<string, string> = {
+      "DELIVERY_ACK": "delivered",
+      "READ": "read",
+      "PLAYED": "read",
+      "SERVER_ACK": "sent",
+      "ERROR": "error",
+      "2": "delivered",
+      "3": "read",
+      "4": "read",
+      "1": "sent",
+      "0": "error",
+    };
+
+    const mappedStatus = statusMap[String(status)] || String(status).toLowerCase();
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ status: mappedStatus })
+      .eq("external_id", externalId);
+
+    if (error) {
+      console.error(`Failed to update status for ${externalId}:`, error.message);
+    } else {
+      console.log(`Message ${externalId} status -> ${mappedStatus}`);
+    }
+  }
 }
