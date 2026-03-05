@@ -34,8 +34,12 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
       return d.mediaUrl ? "Mídia carregada" : "Sem mídia";
     case "sendFile":
       return d.fileUrl ? (d.fileName || "Arquivo carregado") : "Sem arquivo";
-    case "condition":
+    case "condition": {
+      if (d.conditionOperator === "has_tag") {
+        return `Tag: "${d.conditionValue || "..."}"`;
+      }
       return `Se ${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
+    }
     case "randomizer":
       return `${d.paths || 2} caminhos`;
     case "waitDelay":
