@@ -234,3 +234,125 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
 }
+
+/* ═══════════════════════════════════════
+   WhatsApp Audio Player
+   ═══════════════════════════════════════ */
+.wa-audio-player {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px 4px 4px;
+}
+
+.wa-audio-player__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-audio-player__play-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wa-audio-player__waveform-container {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+
+.wa-audio-player__waveform {
+  display: flex;
+  align-items: center;
+  gap: 1.5px;
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
+}
+
+.wa-audio-player__bar {
+  width: 2.5px;
+  border-radius: 9999px;
+  transition: background-color 0.1s;
+  flex-shrink: 0;
+}
+
+.wa-audio-player__slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+  z-index: 2;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.wa-audio-player__avatar-area {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-audio-player__contact-photo {
+  position: relative;
+}
+
+.wa-audio-player__mic-badge {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #00a884;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #005c4b;
+}
+
+.wa-audio-player__speed-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s;
+}
+
+.wa-audio-player__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 42px;
+}
+
+.wa-audio-player__time,
+.wa-audio-player__timestamp {
+  font-size: 11px;
+  line-height: 1;
+}

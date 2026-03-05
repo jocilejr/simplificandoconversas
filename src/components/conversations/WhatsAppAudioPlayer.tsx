@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ContactAvatar } from "./ContactAvatar";
 
@@ -20,7 +20,7 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
   const [currentTime, setCurrentTime] = useState(0);
   const [speedIdx, setSpeedIdx] = useState(0);
   const [waveform] = useState(() =>
-    Array.from({ length: 45 }, () => Math.random() * 0.7 + 0.3)
+    Array.from({ length: 40 }, () => Math.random() * 0.7 + 0.3)
   );
 
   useEffect(() => {
@@ -52,16 +52,15 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
     if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next];
   }, [speedIdx]);
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * duration;
-    setCurrentTime(ratio * duration);
+    const val = parseFloat(e.target.value);
+    audio.currentTime = val;
+    setCurrentTime(val);
   };
 
-  const progress = duration > 0 ? currentTime / duration : 0;
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const formatTime = (s: number) => {
     if (!s || isNaN(s)) return "0:00";
@@ -72,86 +71,111 @@ export function WhatsAppAudioPlayer({ src, isOutbound, contactPhoto, contactName
 
   const speedLabel = SPEEDS[speedIdx] === 1.5 ? "1,5x" : `${SPEEDS[speedIdx]}x`;
 
+  // Colors based on direction
+  const playedColor = isOutbound ? "rgba(255,255,255,0.8)" : "#00a884";
+  const unplayedColor = isOutbound ? "rgba(255,255,255,0.25)" : "rgba(134,150,160,0.5)";
+  const dotColor = "#53bdeb";
+
+  // Build gradient for the range track
+  const sliderBackground = `linear-gradient(to right, ${playedColor} 0%, ${playedColor} ${progress}%, ${unplayedColor} ${progress}%, ${unplayedColor} 100%)`;
+
   return (
-    <div className="flex flex-col min-w-[320px] max-w-[420px]">
+    <div className="wa-audio-player" style={{ minWidth: 280, maxWidth: 400 }}>
       <audio ref={audioRef} src={src} preload="metadata" />
 
-      <div className="flex items-center gap-2">
+      <div className="wa-audio-player__top">
         {/* Play/Pause */}
-        <button onClick={togglePlay} className="shrink-0 flex items-center justify-center h-9 w-9">
+        <button
+          onClick={togglePlay}
+          className="wa-audio-player__play-btn"
+          style={{ color: isOutbound ? "rgba(255,255,255,0.85)" : "#00a884" }}
+        >
           {playing ? (
-            <Pause className={cn("h-6 w-6", isOutbound ? "text-white/80" : "text-[#00a884]")} />
+            <Pause className="h-7 w-7" />
           ) : (
-            <Play className={cn("h-6 w-6 ml-0.5", isOutbound ? "text-white/80" : "text-[#00a884]")} fill="currentColor" />
+            <Play className="h-7 w-7 ml-0.5" fill="currentColor" />
           )}
         </button>
 
-        {/* Waveform */}
-        <div className="flex-1 min-w-0">
-          <div
-            className="relative flex items-center gap-[1.5px] h-8 cursor-pointer"
-            onClick={handleSeek}
-          >
+        {/* Waveform + Slider */}
+        <div className="wa-audio-player__waveform-container">
+          {/* Visual waveform bars */}
+          <div className="wa-audio-player__waveform">
             {waveform.map((h, i) => {
-              const barProgress = i / waveform.length;
-              const isPlayed = barProgress < progress;
+              const barPos = (i / waveform.length) * 100;
+              const isPlayed = barPos < progress;
               return (
                 <div
                   key={i}
-                  className={cn(
-                    "w-[2px] rounded-full transition-colors duration-100",
-                    isPlayed
-                      ? isOutbound ? "bg-white/80" : "bg-[#00a884]"
-                      : isOutbound ? "bg-white/25" : "bg-[#8696a0]/50"
-                  )}
-                  style={{ height: `${h * 28}px` }}
+                  className="wa-audio-player__bar"
+                  style={{
+                    height: `${h * 26}px`,
+                    backgroundColor: isPlayed ? playedColor : unplayedColor,
+                  }}
                 />
               );
             })}
-            {/* Blue progress dot */}
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-[#53bdeb] shadow-sm border-[1.5px] border-white/30 pointer-events-none z-10"
-              style={{ left: `${progress * 100}%`, marginLeft: "-6px" }}
-            />
           </div>
+
+          {/* Range slider overlay */}
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.01}
+            value={currentTime}
+            onChange={handleSeek}
+            className="wa-audio-player__slider"
+            style={{
+              background: "transparent",
+              // Thumb color via CSS variable
+              ["--thumb-color" as any]: dotColor,
+            }}
+          />
         </div>
 
-        {/* Speed button (when playing) or Contact avatar (inbound) */}
-        {playing ? (
-          <button
-            onClick={cycleSpeed}
-            className={cn(
-              "shrink-0 h-[34px] min-w-[34px] px-1 rounded-full text-[11px] font-bold flex items-center justify-center transition-colors",
-              isOutbound
-                ? "bg-white/15 text-white/80 hover:bg-white/25"
-                : "bg-[#00a884]/15 text-[#00a884] hover:bg-[#00a884]/25"
-            )}
-          >
-            {speedLabel}
-          </button>
-        ) : !isOutbound ? (
-          <ContactAvatar
-            photoUrl={contactPhoto}
-            name={contactName}
-            size="sm"
-            className="h-[34px] w-[34px] shrink-0"
-          />
-        ) : null}
+        {/* Avatar / Speed button */}
+        <div className="wa-audio-player__avatar-area">
+          {playing ? (
+            <button
+              onClick={cycleSpeed}
+              className="wa-audio-player__speed-btn"
+              style={{
+                backgroundColor: isOutbound ? "rgba(255,255,255,0.15)" : "rgba(0,168,132,0.15)",
+                color: isOutbound ? "rgba(255,255,255,0.85)" : "#00a884",
+              }}
+            >
+              {speedLabel}
+            </button>
+          ) : !isOutbound ? (
+            <div className="wa-audio-player__contact-photo">
+              <ContactAvatar
+                photoUrl={contactPhoto}
+                name={contactName}
+                size="sm"
+                className="h-[42px] w-[42px]"
+              />
+              <div className="wa-audio-player__mic-badge">
+                <Mic className="h-2.5 w-2.5 text-white" />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {/* Duration + Timestamp row */}
-      <div className="flex items-center justify-between px-1 -mt-0.5">
-        <span className={cn(
-          "text-[10px] leading-none",
-          isOutbound ? "text-white/45" : "text-[#8696a0]"
-        )}>
+      {/* Bottom: duration + timestamp */}
+      <div className="wa-audio-player__bottom">
+        <span
+          className="wa-audio-player__time"
+          style={{ color: isOutbound ? "rgba(255,255,255,0.45)" : "#8696a0" }}
+        >
           {formatTime(playing ? currentTime : duration)}
         </span>
         {timestamp && (
-          <span className={cn(
-            "text-[10px] leading-none",
-            isOutbound ? "text-white/45" : "text-[#8696a0]"
-          )}>
+          <span
+            className="wa-audio-player__timestamp"
+            style={{ color: isOutbound ? "rgba(255,255,255,0.45)" : "#8696a0" }}
+          >
             {timestamp}
           </span>
         )}
