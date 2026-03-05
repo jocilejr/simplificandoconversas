@@ -100,29 +100,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   });
 
 
-  const handleCreateQR = async () => {
-    if (!qrTitle.trim() || !qrContent.trim()) return;
-    try {
-      await createQR.mutateAsync({ title: qrTitle, content: qrContent });
-      setQrTitle("");
-      setQrContent("");
-      setShowQRForm(false);
-    } catch { toast.error("Erro ao criar resposta rápida"); }
-  };
-
-  const startEditQR = (qr: { id: string; title: string; content: string }) => {
-    setEditingQR(qr.id);
-    setEditTitle(qr.title);
-    setEditContent(qr.content);
-  };
-
-  const saveEditQR = async () => {
-    if (!editingQR || !editTitle.trim() || !editContent.trim()) return;
-    try {
-      await updateQR.mutateAsync({ id: editingQR, title: editTitle, content: editContent });
-      setEditingQR(null);
-    } catch { toast.error("Erro ao atualizar"); }
-  };
 
   return (
     <div className="w-[340px] border-l border-border/60 bg-background flex flex-col h-full">
