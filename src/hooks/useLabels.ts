@@ -91,12 +91,15 @@ export function useConversationLabels(conversationId: string | null) {
 
   const assign = useMutation({
     mutationFn: async (labelId: string) => {
+      if (!conversationId || !user) throw new Error("Sem conversa ou usuário");
       const { error } = await supabase
         .from("conversation_labels")
-        .insert({ conversation_id: conversationId!, label_id: labelId, user_id: user!.id });
+        .insert({ conversation_id: conversationId, label_id: labelId, user_id: user.id });
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation_labels", conversationId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversation_labels", conversationId] });
+    },
   });
 
   const unassign = useMutation({
