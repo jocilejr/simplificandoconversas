@@ -175,11 +175,12 @@ async function executeStep(
   }
 
   if (nodeType === "sendFile" && stepData.fileUrl) {
-    const fileName = (stepData as any).fileName || "documento.pdf";
+    let fileName = (stepData as any).fileName || "documento.pdf";
+    if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
     const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
       method: "POST",
       headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, mediatype: "document", media: stepData.fileUrl, fileName, ...(fileName.toLowerCase().endsWith(".pdf") ? { mimetype: "application/pdf" } : {}) }),
+      body: JSON.stringify({ number: jid, mediatype: "document", media: stepData.fileUrl, fileName, mimetype: "application/pdf" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
