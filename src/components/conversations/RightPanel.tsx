@@ -288,6 +288,31 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             )}
           </div>
 
+          {/* ── Contact Tags (from flows) ── */}
+          <div className="bg-secondary/40 rounded-2xl p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <Tag className="h-3.5 w-3.5 text-violet-500" />
+              <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Tags do Contato</span>
+            </div>
+            {contactTags && contactTags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {contactTags.map(tag => (
+                  <Badge
+                    key={tag.id}
+                    variant="secondary"
+                    className="text-[11px] gap-1.5 cursor-pointer hover:opacity-80 rounded-full px-3 py-1 font-medium bg-violet-500/15 text-violet-600 dark:text-violet-400 border border-violet-500/30"
+                    onClick={() => handleRemoveTag(tag.id)}
+                  >
+                    {tag.tag_name}
+                    <X className="h-2.5 w-2.5 opacity-60" />
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">Nenhuma tag atribuída</p>
+            )}
+          </div>
+
           {/* ── Labels ── */}
           <div className="bg-secondary/40 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
