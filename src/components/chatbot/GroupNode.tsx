@@ -596,7 +596,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
 
         {!hasFinalizerStep && (
           <div className="px-3 pb-2.5 nopan nodrag">
-            <Popover>
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
               <PopoverTrigger asChild>
                 <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/60 text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors">
                   <Plus className="w-3.5 h-3.5" />
@@ -612,6 +612,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
                       <button
                         key={type}
                         onClick={() => {
+                          setPopoverOpen(false);
                           const event = new CustomEvent("group-add-step", {
                             detail: { nodeId: id, stepType: type },
                             bubbles: true,
