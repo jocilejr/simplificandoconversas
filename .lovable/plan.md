@@ -1,19 +1,23 @@
 
 
-## Melhorar aparência dos steps dentro do GroupNode
+## Melhorar aparência dos nós no GroupNode
 
-### Alterações no `src/components/chatbot/GroupNode.tsx` (StepRow)
+### Problemas identificados
+1. **waitDelay pill** — visual amador, precisa ser mais refinado e profissional
+2. **Audio** — não reproduz áudio inline; mostra apenas waveform estática. Precisa de `<audio>` real com controles
+3. **Cursor** — todos os steps usam `cursor-grab`, mostrando mãozinha de arrastar em vez de pointer para clique. O clique em step já funciona (via `data-step-id` + `onNodeClick`), mas o cursor não indica isso
+4. **Visual geral** — refinamentos para aspecto mais profissional
 
-**1. Imagem (`sendImage`)** — Remover `max-h-[80px]` e `object-cover` para mostrar a imagem inteira com aspect ratio natural. Usar `object-contain` e `max-h-[140px]` com fundo escuro para manter proporção.
+### Alterações em `src/components/chatbot/GroupNode.tsx`
 
-**2. Texto (`sendText`)** — Aumentar o box: remover `line-clamp-5`, aumentar padding, usar `line-clamp-8` para textos longos. Aumentar font para `text-[13px]`.
+**1. waitDelay** — Redesenhar como uma linha separadora horizontal elegante com ícone de relógio centralizado e duração, estilo "divider with icon" (linha fina horizontal com pill minimalista no centro, sem bordas grossas).
 
-**3. Timer (`waitDelay`)** — Redesenhar como pill compacta centralizada: fundo com cor accent sutil, ícone de relógio + texto "Xs" lado a lado, bordas arredondadas full, tamanho menor.
+**2. sendAudio** — Substituir waveform estática por um `<audio>` element real com controles nativos, permitindo ouvir o áudio diretamente do grupo. Manter o badge REC se `simulateRecording`. Adicionar `e.stopPropagation()` no play para não acionar seleção do nó.
 
-**4. Áudio (`sendAudio`)** — Melhorar o preview: adicionar botão play circular, waveform com mais barras e cores mais vivas, exibir indicador de duração. Se `simulateRecording`, mostrar badge REC mais estilizado.
+**3. Cursor** — Trocar `cursor-grab` por `cursor-pointer` em todos os StepRow wrappers. O drag continua funcionando (HTML5 draggable não depende do cursor CSS). Manter `active:cursor-grabbing` para feedback durante arrasto.
 
-**5. Geral** — Refinar espaçamentos, bordas e transições para aspecto mais profissional e consistente.
+**4. Refinamentos gerais** — Melhorar bordas, sombras internas, e transições hover para aspecto mais polido e profissional em todos os tipos de step.
 
 ### Arquivo alterado
-- `src/components/chatbot/GroupNode.tsx` — Redesenhar `renderPreview` para image/audio e os blocos especiais de sendText e waitDelay no StepRow.
+- `src/components/chatbot/GroupNode.tsx`
 
