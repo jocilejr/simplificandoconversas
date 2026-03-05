@@ -65,6 +65,7 @@ export function ConversationList({
   instances = [],
   selectedInstance,
   onSelectInstance,
+  conversationLabels = {},
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
 
