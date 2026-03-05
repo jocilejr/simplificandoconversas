@@ -8,7 +8,8 @@ import { Conversation } from "@/hooks/useConversations";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { useLabels, useConversationLabels } from "@/hooks/useLabels";
 import { useFlowExecutions } from "@/hooks/useFlowExecutions";
-import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   X, Plus, Trash2, Pencil, Check, Tag, Zap, Square, Loader2, Clock, Phone,
