@@ -288,11 +288,16 @@ function StepRow({
   );
 }
 
-const addableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "waitForClick", "action"];
+const allAddableTypes: FlowNodeType[] = ["sendText", "sendAudio", "sendVideo", "sendImage", "condition", "waitDelay", "waitForReply", "waitForClick", "action"];
+const finalizerTypes: FlowNodeType[] = ["waitForReply", "waitForClick"];
 
 function GroupNode({ id, data, selected }: GroupNodeProps) {
   const d = data as FlowNodeData;
   const steps = (d.steps || []) as FlowStepData[];
+  const hasFinalizerStep = steps.some((s) => finalizerTypes.includes(s.data.type as FlowNodeType));
+  const addableTypes = hasFinalizerStep
+    ? allAddableTypes.filter((t) => !finalizerTypes.includes(t))
+    : allAddableTypes;
   const isDockTarget = d.isDockTarget === true;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -468,13 +473,11 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
 
         {hasTimeoutOutputs && (
           <div className="px-3 py-2 border-t border-border/40 space-y-1.5">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end">
               <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accentColor }} />
             </div>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end">
               <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
-              <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
             </div>
           </div>
         )}
