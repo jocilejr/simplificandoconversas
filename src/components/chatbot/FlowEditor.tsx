@@ -655,6 +655,16 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
     return () => document.removeEventListener("group-delete", handler);
   }, []);
 
+  // Listen for node-delete events from StepNode toolbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nodeId } = (e as CustomEvent).detail;
+      deleteNode(nodeId);
+    };
+    document.addEventListener("node-delete", handler);
+    return () => document.removeEventListener("node-delete", handler);
+  }, [deleteNode]);
+
   // Listen for node-duplicate events (standalone nodes and groups)
   useEffect(() => {
     const handler = (e: Event) => {
