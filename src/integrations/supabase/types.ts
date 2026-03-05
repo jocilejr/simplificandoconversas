@@ -231,6 +231,7 @@ export type Database = {
           status: string
           updated_at: string
           user_id: string
+          waiting_node_id: string | null
         }
         Insert: {
           conversation_id?: string | null
@@ -242,6 +243,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id: string
+          waiting_node_id?: string | null
         }
         Update: {
           conversation_id?: string | null
@@ -253,6 +255,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+          waiting_node_id?: string | null
         }
         Relationships: [
           {
