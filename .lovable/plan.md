@@ -1,22 +1,19 @@
 
 
-## Bug: `checkAndResumeWaitingReply` não é encontrada — erro de escopo
+## Melhorar aparência dos steps dentro do GroupNode
 
-### Causa raiz
+### Alterações no `src/components/chatbot/GroupNode.tsx` (StepRow)
 
-O log confirma: `ReferenceError: checkAndResumeWaitingReply is not defined`. A função `checkAndResumeWaitingReply` está **dentro** de `checkAndTriggerFlows` por causa de uma chave `}` faltando. A linha 383 fecha o `for` loop, mas não fecha a função `checkAndTriggerFlows`. Resultado: `checkAndResumeWaitingReply` é uma função local inacessível do escopo principal.
+**1. Imagem (`sendImage`)** — Remover `max-h-[80px]` e `object-cover` para mostrar a imagem inteira com aspect ratio natural. Usar `object-contain` e `max-h-[140px]` com fundo escuro para manter proporção.
 
-### Solução
+**2. Texto (`sendText`)** — Aumentar o box: remover `line-clamp-5`, aumentar padding, usar `line-clamp-8` para textos longos. Aumentar font para `text-[13px]`.
 
-**Arquivo: `supabase/functions/evolution-webhook/index.ts`** — Adicionar `}` na linha 383 para fechar a função `checkAndTriggerFlows` antes da definição de `checkAndResumeWaitingReply`:
+**3. Timer (`waitDelay`)** — Redesenhar como pill compacta centralizada: fundo com cor accent sutil, ícone de relógio + texto "Xs" lado a lado, bordas arredondadas full, tamanho menor.
 
-```
-}  // fecha for loop
-}  // fecha checkAndTriggerFlows
+**4. Áudio (`sendAudio`)** — Melhorar o preview: adicionar botão play circular, waveform com mais barras e cores mais vivas, exibir indicador de duração. Se `simulateRecording`, mostrar badge REC mais estilizado.
 
-async function checkAndResumeWaitingReply(...)
-```
+**5. Geral** — Refinar espaçamentos, bordas e transições para aspecto mais profissional e consistente.
 
-### Arquivos alterados
-- `supabase/functions/evolution-webhook/index.ts` — corrigir escopo da função
+### Arquivo alterado
+- `src/components/chatbot/GroupNode.tsx` — Redesenhar `renderPreview` para image/audio e os blocos especiais de sendText e waitDelay no StepRow.
 
