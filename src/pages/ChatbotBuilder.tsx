@@ -125,7 +125,7 @@ const ChatbotBuilder = () => {
                 </div>
 
                 {/* Metadata */}
-                <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
                   <span className="flex items-center gap-1.5">
                     <Layers className="h-3 w-3" />
                     {(flow.nodes as any[])?.length || 0} nós
@@ -133,6 +133,9 @@ const ChatbotBuilder = () => {
                   <span className="flex items-center gap-1.5">
                     <Calendar className="h-3 w-3" />
                     {new Date(flow.updated_at).toLocaleDateString("pt-BR")}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    📡 {(flow.instance_names as string[])?.length ? (flow.instance_names as string[]).join(", ") : "Todas"}
                   </span>
                 </div>
 

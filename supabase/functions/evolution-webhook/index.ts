@@ -342,6 +342,13 @@ async function checkAndTriggerFlows(
 
     if (!matched) continue;
 
+    // Filter by instance_names
+    const allowedInstances = (flow as any).instance_names || [];
+    if (allowedInstances.length > 0 && !allowedInstances.includes(instanceName)) {
+      console.log(`Flow ${flow.id} not allowed for instance ${instanceName}, skipping`);
+      continue;
+    }
+
     // 3. Check if there's already a running execution for this jid + flow
     const { data: existing } = await supabase
       .from("flow_executions")
