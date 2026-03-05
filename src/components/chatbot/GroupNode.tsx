@@ -468,11 +468,11 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
         )}
 
         {hasFinalizerStep && (
-          <div className="pl-3 pr-5 py-1.5 border-t border-border/40 space-y-3">
-            <div className="flex items-center justify-end">
+          <div className="relative border-t border-border/40" style={{ height: '52px' }}>
+            <div className="absolute right-5 flex items-center" style={{ bottom: '32px' }}>
               <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
             </div>
-            <div className="flex items-center justify-end">
+            <div className="absolute right-5 flex items-center" style={{ bottom: '8px' }}>
               <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
             </div>
           </div>
