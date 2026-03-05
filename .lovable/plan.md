@@ -2,16 +2,28 @@
 
 ## Problem
 
-The text inside chat bubbles is not pure white. Even though `text-white` is applied, the color appears muted. This is likely because Tailwind's `text-white` is being overridden by the global `body { @apply text-foreground }` rule (which sets color to `hsl(210, 15%, 95%)` — an off-white), and CSS specificity or inheritance is winning.
+The `!text-white` Tailwind class sets `color: rgb(255, 255, 255) !important`, but the `antialiased` class on `body` (via `-webkit-font-smoothing: antialiased`) can make white text appear slightly muted on dark backgrounds. Additionally, Tailwind's `!important` modifier may not be winning against inherited styles in all cases.
 
 ## Solution
 
-Force pure white text on both inbound and outbound message bubble content using inline style or `!important` via Tailwind's `!` prefix. Specifically in `ChatPanel.tsx`:
+Use inline `style` to set the color directly on the bubble `div`, which has the highest CSS specificity and cannot be overridden by any class-based rule:
 
-1. Change outbound bubble class from `text-[#ffffff]` to `!text-white`
-2. Change inbound bubble class from `text-white` to `!text-white`
+**File**: `src/components/conversations/ChatPanel.tsx` (lines 189-196)
 
-This ensures the white color overrides any inherited theme values. Both bubble types will render with `rgb(255, 255, 255)` pure white text.
+Replace the bubble `div` to include `style={{ color: '#ffffff' }}` and remove the `!text-white` class:
 
-**File**: `src/components/conversations/ChatPanel.tsx` — line ~192-194, update the `cn()` classes for the message bubble `div`.
+```tsx
+<div
+  className={cn(
+    "max-w-[85%] text-sm shadow-sm",
+    msg.message_type === "audio" ? "px-2 py-1.5" : "px-4 py-2.5",
+    isOutbound
+      ? "bg-[#075e54] rounded-2xl rounded-br-sm"
+      : "bg-[#1f2c34] rounded-2xl rounded-bl-sm"
+  )}
+  style={{ color: '#ffffff' }}
+>
+```
+
+This guarantees pure white `#ffffff` regardless of any theme variable or CSS specificity issue.
 
