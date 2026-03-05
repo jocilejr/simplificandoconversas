@@ -1,27 +1,24 @@
 
 
-## Fix: Group node showing only 1 output handle instead of 2
+## Fix: Layout e 2 saídas do GroupNode
 
-### Root Cause
+### Problema
+O `overflow-hidden` no card corta os handles do React Flow. Mover o footer para fora do card criou um layout quebrado — o footer fica desconectado visualmente e os handles continuam não aparecendo corretamente.
 
-The card div has `overflow-hidden` (line 362 in GroupNode.tsx), and the React Flow Handle components positioned with custom `top` styles are being clipped or obscured. While the footer labels ("Continuou ✓" / "Se não clicou ⏱") render correctly inside the card, the actual connection handles on the right edge are not both visible.
+### Solução
 
-The `top: "calc(100% - 52px)"` and `top: "calc(100% - 24px)"` positioning relies on the outer wrapper's height, but React Flow's internal node wrapper may interfere with handle visibility when they overlap with the card boundary.
+Abordagem simples: **remover `overflow-hidden` do card** e colocar o footer de volta dentro dele. Sem `overflow-hidden`, os handles (que estão no wrapper externo `relative`) ficam visíveis normalmente. Para manter cantos arredondados no conteúdo interno (imagens, etc.), aplicar `rounded-xl` apenas nos elementos internos que precisam.
 
-### Fix in `src/components/chatbot/GroupNode.tsx`
+### Mudanças em `src/components/chatbot/GroupNode.tsx`
 
-**Remove `overflow-hidden` from the card div** (line 362) and replace with `overflow-visible` so handles can extend beyond the card boundary. Also add explicit `clip-path` or adjust the rounding only on inner content to keep the visual rounded corners without clipping the handles.
+1. **Trocar `overflow-hidden` por `overflow-visible`** na classe do card div (linha 362).
 
-Alternatively (simpler approach): Keep the footer section OUTSIDE the card div, alongside the handles, so both the labels and handles are in the outer `relative` div and not subject to `overflow-hidden`. This way the handles and their corresponding labels are guaranteed to be visible and properly aligned.
+2. **Mover o footer de volta para dentro do card** (antes do `isDockTarget`), removendo o bloco externo (linhas 479-488).
 
-### Specific changes
+3. **Garantir que o footer tenha borda superior** (`border-t`) para separar visualmente dos steps.
 
-1. **Move the finalizer footer (`"Continuou ✓"` / `"Se não clicou ⏱"`) outside the card div** — place it after the closing `</div>` of the card (line 488), before the handles, so it's a sibling of the handles in the outer `relative` wrapper.
+4. **Ajustar posição dos handles** — como o footer agora está dentro do card, os valores de `top` dos handles devem alinhar com as labels "Continuou ✓" e "Se não clicou ⏱" que estarão no final do card.
 
-2. **Adjust footer positioning** to visually align with the handles on the right edge, using `absolute` or relative positioning that matches the handle `top` values.
-
-3. **Keep `overflow-hidden` on the card** for clean rounded corners on the card content, but ensure handles and footer labels are outside it.
-
-### File changed
+### Arquivo alterado
 - `src/components/chatbot/GroupNode.tsx`
 
