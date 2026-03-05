@@ -94,17 +94,19 @@ function StepRow({
           <div className="mx-1 mt-1 rounded-lg bg-muted/60 border border-border/30 nopan nodrag nowheel">
             {d.mediaUrl ? (
               <div
-                className="p-1.5 nopan nodrag"
+                className="p-2 nopan nodrag nowheel"
+                style={{ pointerEvents: 'all' }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
               >
                 <audio
                   controls
                   preload="metadata"
                   src={d.mediaUrl}
                   className="w-full"
-                  style={{ height: '40px', minHeight: '40px' }}
+                  style={{ height: '44px', minHeight: '44px', pointerEvents: 'all' }}
                 />
               </div>
             ) : (
@@ -288,13 +290,16 @@ function StepRow({
         e.preventDefault();
       }}
       onDragEnd={(e) => onDragEnd(e)}
-      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer active:cursor-grabbing nopan nodrag ${
+      className={`px-2 pb-1.5 pt-1 mx-1 mb-1 rounded-lg transition-all cursor-pointer active:cursor-grabbing nopan nodrag nowheel ${
         isDragging
           ? "opacity-30 scale-95"
           : isDropTarget
           ? "bg-primary/12 ring-1 ring-primary/30 scale-[1.02]"
           : "bg-secondary/40 hover:bg-secondary/60"
       }`}
+      onMouseDown={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
+      onPointerDown={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
+      onTouchStart={d.type === "sendAudio" ? (e) => e.stopPropagation() : undefined}
     >
       {/* Header row: icon + label */}
       <div className="flex items-center gap-2.5 py-1.5 px-1">
