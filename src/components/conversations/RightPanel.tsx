@@ -102,7 +102,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
 
   return (
-    <div className="w-[340px] border-l border-border/60 bg-background flex flex-col h-full">
+    <div className="w-[340px] border-l border-border/60 bg-background flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="px-5 py-3 border-b border-border/60 flex items-center justify-between bg-card/80 backdrop-blur-sm">
         <span className="text-sm font-semibold text-foreground">Detalhes do Lead</span>
