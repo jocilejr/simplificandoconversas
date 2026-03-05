@@ -1,25 +1,9 @@
+## ✅ Concluído: Corrigir fluxo não continuando após "Capturar Resposta"
 
+### Correções aplicadas
 
-## Correção: Forçar mimetype PDF sempre no envio de arquivos
-
-### Arquivo: `supabase/functions/execute-flow/index.ts` (linha 178-182)
-
-Simplificar a lógica removendo a condicional de extensão. Sempre:
-1. Forçar `mimetype: "application/pdf"`
-2. Garantir que `fileName` termine com `.pdf` (append automático se necessário)
-
-```typescript
-// De:
-const fileName = (stepData as any).fileName || "documento.pdf";
-// ...
-...(fileName.toLowerCase().endsWith(".pdf") ? { mimetype: "application/pdf" } : {})
-
-// Para:
-let fileName = (stepData as any).fileName || "documento.pdf";
-if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
-// ...
-mimetype: "application/pdf"  // sempre
-```
-
-Uma alteração de 2 linhas. Nenhum outro arquivo precisa mudar.
-
+1. **Migração**: Adicionada coluna `waiting_node_id` (text) na tabela `flow_executions`
+2. **execute-flow**: Agora grava `waiting_node_id: node.id` ao pausar em waitForReply/waitForClick (standalone e grupo)
+3. **webhook**: `checkAndResumeWaitingReply` usa `waiting_node_id` para encontrar a edge correta e retorna `true/false`
+4. **webhook**: Se retomou fluxo, pula `checkAndTriggerFlows`
+5. **webhook**: `checkAndTriggerFlows` bloqueia em status `running`, `waiting_click` E `waiting_reply`
