@@ -320,35 +320,6 @@ export function ChatPanel({
           </PopoverContent>
         </Popover>
 
-        {/* Quick replies */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
-            >
-              <Zap className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-64 p-1.5 rounded-xl">
-            <p className="text-xs font-semibold text-muted-foreground px-2 py-1.5">Respostas Rápidas</p>
-            {(!quickReplies || quickReplies.length === 0) ? (
-              <p className="text-xs text-muted-foreground px-2 py-3 text-center">Nenhuma resposta salva</p>
-            ) : (
-              quickReplies.map((qr) => (
-                <button
-                  key={qr.id}
-                  className="flex flex-col w-full px-2.5 py-2 rounded-lg hover:bg-secondary transition-colors text-left"
-                  onClick={() => setText(qr.content)}
-                >
-                  <span className="text-sm font-medium truncate">{qr.title}</span>
-                  <span className="text-xs text-muted-foreground truncate">{qr.content}</span>
-                </button>
-              ))
-            )}
-          </PopoverContent>
-        </Popover>
 
         <Input
           placeholder="Digite uma mensagem..."
