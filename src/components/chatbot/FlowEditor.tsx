@@ -139,7 +139,18 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
   const onConnect = useCallback(
     (params: Connection) =>
       setEdges((eds) =>
-        addEdge({ ...params, type: "default", animated: true, style: { stroke: "hsl(142 70% 45% / 0.45)", strokeWidth: 2, strokeDasharray: "6 4" } }, eds)
+        addEdge({
+          ...params,
+          type: "default",
+          animated: true,
+          style: {
+            stroke: params.sourceHandle === "output-1"
+              ? "hsl(25 95% 53% / 0.6)"
+              : "hsl(142 70% 45% / 0.45)",
+            strokeWidth: 2,
+            strokeDasharray: "6 4",
+          },
+        }, eds)
       ),
     [setEdges]
   );
@@ -664,7 +675,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
                   {[
                     { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
                     { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
-                    { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply"] as FlowNodeType[] },
+                    { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[] },
                     { label: "Ações", types: ["action"] as FlowNodeType[] },
                     { label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] },
                   ].map((cat) => (

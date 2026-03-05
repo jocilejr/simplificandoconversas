@@ -207,14 +207,14 @@ Deno.serve(async (req) => {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
     // Block new executions if there's already an active flow for this contact
-    // (but allow resuming from waitForClick)
+    // (but allow resuming from waitForClick or timeout)
     if (!resumeFromNodeId) {
       const { data: activeExecs } = await serviceClient
         .from("flow_executions")
         .select("id")
         .eq("user_id", userId)
         .eq("remote_jid", jid)
-        .in("status", ["running", "waiting_click"])
+        .in("status", ["running", "waiting_click", "waiting_reply"])
         .limit(1);
 
       if (activeExecs && activeExecs.length > 0) {
@@ -246,10 +246,18 @@ Deno.serve(async (req) => {
     const nodes = (flow.nodes || []) as any[];
     const edges = (flow.edges || []) as any[];
 
+    // Build outgoing map: nodeId -> [targetIds] (for default/output-0 handles)
+    // Also build a separate map for timeout edges (output-1)
     const outgoingMap = new Map<string, string[]>();
+    const timeoutEdgeMap = new Map<string, string>(); // sourceNodeId -> targetNodeId for timeout path
     for (const edge of edges) {
-      if (!outgoingMap.has(edge.source)) outgoingMap.set(edge.source, []);
-      outgoingMap.get(edge.source)!.push(edge.target);
+      if (edge.sourceHandle === "output-1") {
+        // This is a timeout edge
+        timeoutEdgeMap.set(edge.source, edge.target);
+      } else {
+        if (!outgoingMap.has(edge.source)) outgoingMap.set(edge.source, []);
+        outgoingMap.get(edge.source)!.push(edge.target);
+      }
     }
 
     const targetsSet = new Set(edges.map((e: any) => e.target));
@@ -465,10 +473,61 @@ Deno.serve(async (req) => {
               .update({ status: "waiting_click", current_node_index: nodeIndex })
               .eq("id", executionId);
 
+            // Insert timeout if configured
+            const clickTimeout = data.clickTimeout || 0;
+            if (clickTimeout > 0) {
+              const timeoutNodeId = timeoutEdgeMap.get(node.id);
+              if (timeoutNodeId) {
+                const unit = data.clickTimeoutUnit || "minutes";
+                const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+                const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
+                await serviceClient.from("flow_timeouts").insert({
+                  execution_id: executionId,
+                  flow_id: flowId,
+                  user_id: userId,
+                  remote_jid: jid,
+                  conversation_id: conversationId || null,
+                  timeout_node_id: timeoutNodeId,
+                  timeout_at: timeoutAt,
+                });
+                console.log(`[execute-flow] Timeout set for waitForClick: ${timeoutAt} -> node ${timeoutNodeId}`);
+              }
+            }
+
             results.push(`waitForClick: paused (code=${shortCode})`);
             // Stop processing further nodes
             break;
           }
+        } else if (nodeType === "waitForReply") {
+          // Pause execution - waiting for reply
+          await serviceClient
+            .from("flow_executions")
+            .update({ status: "waiting_reply", current_node_index: nodeIndex })
+            .eq("id", executionId);
+
+          // Insert timeout if configured
+          const replyTimeout = data.replyTimeout || 0;
+          if (replyTimeout > 0) {
+            const timeoutNodeId = timeoutEdgeMap.get(node.id);
+            if (timeoutNodeId) {
+              const unit = data.replyTimeoutUnit || "minutes";
+              const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
+              const timeoutAt = new Date(Date.now() + replyTimeout * multiplier).toISOString();
+              await serviceClient.from("flow_timeouts").insert({
+                execution_id: executionId,
+                flow_id: flowId,
+                user_id: userId,
+                remote_jid: jid,
+                conversation_id: conversationId || null,
+                timeout_node_id: timeoutNodeId,
+                timeout_at: timeoutAt,
+              });
+              console.log(`[execute-flow] Timeout set for waitForReply: ${timeoutAt} -> node ${timeoutNodeId}`);
+            }
+          }
+
+          results.push(`waitForReply: paused (var=${data.replyVariable || "resposta"})`);
+          break;
         } else if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
           // Execute all steps in group sequentially - handle waitForClick inside groups
           let groupPaused = false;

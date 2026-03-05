@@ -257,6 +257,15 @@ Deno.serve(async (req) => {
       media_url: mediaUrl,
     });
 
+    // === CHECK FOR WAITING_REPLY: Resume flow if contact responded ===
+    if (!fromMe && messageContent) {
+      try {
+        await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id);
+      } catch (resumeErr) {
+        console.error("Resume waiting_reply error (non-fatal):", resumeErr);
+      }
+    }
+
     // === AUTO-TRIGGER: Check keyword matching for inbound messages ===
     if (!fromMe && messageContent) {
       try {
@@ -369,5 +378,97 @@ async function checkAndTriggerFlows(
       .then(r => r.json())
       .then(r => console.log(`Flow ${flow.id} trigger result:`, r))
       .catch(e => console.error(`Flow ${flow.id} call error:`, e));
+}
+
+async function checkAndResumeWaitingReply(
+  supabase: any,
+  userId: string,
+  remoteJid: string,
+  conversationId: string
+) {
+  // Find active execution waiting for reply from this contact
+  const { data: waitingExecs } = await supabase
+    .from("flow_executions")
+    .select("id, flow_id")
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .eq("status", "waiting_reply")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (!waitingExecs || waitingExecs.length === 0) return;
+
+  const exec = waitingExecs[0];
+  console.log(`[webhook] Contact ${remoteJid} replied, resuming execution ${exec.id}`);
+
+  // Cancel any pending timeouts for this execution
+  await supabase
+    .from("flow_timeouts")
+    .update({ processed: true })
+    .eq("execution_id", exec.id)
+    .eq("processed", false);
+
+  // Mark execution as completed (the resume will create a new one)
+  await supabase
+    .from("flow_executions")
+    .update({ status: "completed" })
+    .eq("id", exec.id);
+
+  // Find the flow to get edges and determine the normal path (output-0)
+  const { data: flow } = await supabase
+    .from("chatbot_flows")
+    .select("nodes, edges")
+    .eq("id", exec.flow_id)
+    .single();
+
+  if (!flow) return;
+
+  const edges = (flow.edges || []) as any[];
+  const nodes = (flow.nodes || []) as any[];
+
+  // Find the waitForReply node that was being waited on
+  // It's the node at current_node_index, but we can find it by looking for
+  // waitForReply nodes that have output-0 edges
+  let nextNodeId: string | null = null;
+  for (const node of nodes) {
+    const data = node.data || {};
+    if (data.type === "waitForReply") {
+      // Find the normal path edge (output-0 or default)
+      const normalEdge = edges.find(
+        (e: any) => e.source === node.id && (e.sourceHandle === "output-0" || !e.sourceHandle)
+      );
+      if (normalEdge) {
+        nextNodeId = normalEdge.target;
+        break;
+      }
+    }
   }
+
+  if (!nextNodeId) {
+    console.log(`[webhook] No next node found for waiting_reply execution ${exec.id}`);
+    return;
+  }
+
+  // Resume flow from the next node
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  fetch(`${supabaseUrl}/functions/v1/execute-flow`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({
+      flowId: exec.flow_id,
+      remoteJid,
+      conversationId,
+      userId,
+      resumeFromNodeId: nextNodeId,
+    }),
+  })
+    .then((r) => r.json())
+    .then((r) => console.log(`[webhook] Resume waiting_reply result:`, r))
+    .catch((e) => console.error(`[webhook] Resume waiting_reply error:`, e));
+}
 }

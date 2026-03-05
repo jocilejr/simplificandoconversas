@@ -15,7 +15,7 @@ export function useFlowExecutions(conversationId?: string) {
         .from("flow_executions")
         .select("*, chatbot_flows(name)")
         .eq("conversation_id", conversationId!)
-        .in("status", ["running", "waiting_click"])
+        .in("status", ["running", "waiting_click", "waiting_reply"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;

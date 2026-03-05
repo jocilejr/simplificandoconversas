@@ -48,6 +48,7 @@ export interface FlowNodeData {
   // Wait for Reply
   replyVariable?: string;
   replyTimeout?: number;
+  replyTimeoutUnit?: "seconds" | "minutes" | "hours";
   replyFallback?: string;
   // Action
   actionType?: "add_tag" | "remove_tag" | "add_to_list" | "set_variable";
@@ -65,6 +66,7 @@ export interface FlowNodeData {
   clickUrl?: string;
   clickMessage?: string;
   clickTimeout?: number;
+  clickTimeoutUnit?: "seconds" | "minutes" | "hours";
   clickPreviewTitle?: string;
   clickPreviewDescription?: string;
   clickPreviewImage?: string;
@@ -177,7 +179,7 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
   condition: { conditionField: "mensagem", conditionOperator: "contains", conditionValue: "" },
   randomizer: { paths: 2 },
   waitDelay: { delaySeconds: 3, simulateTyping: true },
-  waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyFallback: "" },
+  waitForReply: { replyVariable: "resposta", replyTimeout: 0, replyTimeoutUnit: "minutes", replyFallback: "" },
   action: { actionType: "add_tag", actionValue: "" },
   groupBlock: { steps: [] },
   aiAgent: {
@@ -194,5 +196,6 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
     clickUrl: "",
     clickMessage: "Clique no link para continuar: {{link}}",
     clickTimeout: 0,
+    clickTimeoutUnit: "minutes",
   },
 };

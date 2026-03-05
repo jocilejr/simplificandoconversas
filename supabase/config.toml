@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.link-redirect]
 verify_jwt = false
+
+[functions.check-timeouts]
+verify_jwt = false
