@@ -60,7 +60,7 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
   }
 }
 
-function StepNode({ data, selected }: StepNodeProps) {
+function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
   const d = data as FlowNodeData;
   const config = nodeTypeConfig[d.type];
   const LucideIcon = icons[config.icon as keyof typeof icons];
