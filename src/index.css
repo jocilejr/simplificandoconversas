@@ -348,7 +348,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px 0 42px;
+  padding: 0 48px 0 42px;
+  margin-top: -2px;
 }
 
 .wa-audio-player__time,
