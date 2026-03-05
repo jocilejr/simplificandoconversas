@@ -37,7 +37,7 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
     case "randomizer":
       return `${d.paths || 2} caminhos`;
     case "waitDelay":
-      return `Aguardar ${d.delaySeconds || 0}s${d.delayPresenceType === "recording" ? " · gravando..." : d.delayPresenceType === "composing" || d.simulateTyping ? " · digitando..." : ""}`;
+      return `Aguardar ${d.delaySeconds || 0}s${d.delayPresenceType === "recording" ? " · gravando..." : d.delayPresenceType === "composing" ? " · digitando..." : ""}`;
     case "waitForReply":
       return `Salvar em {{${d.replyVariable || "resposta"}}}${d.replyTimeout ? ` · ${d.replyTimeout}s` : ""}`;
     case "action":
