@@ -1,28 +1,18 @@
 
 
-## Plan: WhatsApp-Style Audio Player with Contact Avatar
+## Plan: Refine Audio Player to Match WhatsApp Reference
 
-Based on the reference image (image-78), the audio player needs:
-1. **Play button** on the left (green triangle, no background circle)
-2. **Blue progress dot** sliding over the waveform bar
-3. **Time display** below the waveform on the left
-4. **Contact avatar** (circular photo) on the right side of the player
+Based on images 81 and 82, the changes needed are:
 
-### Changes
+### Changes to `src/components/conversations/WhatsAppAudioPlayer.tsx`
 
-**1. `src/components/conversations/WhatsAppAudioPlayer.tsx`** — Redesign the component:
-- Accept new props: `contactPhoto` and `contactName` for the avatar on the right
-- Replace the circular button background with a plain icon (green for inbound, white for outbound)
-- Add a **draggable blue dot** (`bg-[#53bdeb]`) overlaid on the waveform at the current progress position
-- Waveform bars: thinner (`2px`), more bars (~40) for denser look matching WhatsApp
-- Time label positioned below waveform on the left
-- Add `ContactAvatar` component on the right side (small, ~34px) for inbound messages
-
-**2. `src/components/conversations/ChatPanel.tsx`** — Pass contact info to audio player:
-- Pass `contactPhoto` and `contactName` props when rendering `<WhatsAppAudioPlayer>` for inbound messages
-- For outbound, no avatar needed
+1. **Add playback speed control**: When audio is playing, show a speed button (1x → 1.5x → 2x) on the right side (replacing/beside the avatar area), matching image 82
+2. **Reduce internal padding**: Remove excess vertical space — tighter `py-0` or minimal padding, reduce gap between waveform and time label
+3. **Make the player wider**: Increase `max-w` to `~370px` so it fills more of the chat bubble
+4. **Waveform adjustments**: Make bars slightly taller to fill vertical space better, matching the denser look in image 81
+5. **Time layout**: Show duration on the left and message timestamp on the right below the waveform, matching image 81 layout
+6. **Speed button**: Small rounded button showing "1x" / "1,5x" / "2x" that cycles on click, positioned to the right of the waveform area when playing (as in image 82)
 
 ### Files
-1. `src/components/conversations/WhatsAppAudioPlayer.tsx` — rewrite UI layout
-2. `src/components/conversations/ChatPanel.tsx` — pass avatar props to audio player
+1. `src/components/conversations/WhatsAppAudioPlayer.tsx` — all UI and logic changes
 
