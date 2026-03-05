@@ -545,87 +545,10 @@ Deno.serve(async (req) => {
           }
           console.log(`[sync-chats] Total messages fetched across pages: ${allMessages.length} for ${currentInstanceName}`);
 
-          // Fallback: try findChats if no messages found
+          // Always call findChats as complement to fill gaps from paginated findMessages
+          const existingJidsFromMessages = new Set<string>();
           if (allMessages.length === 0) {
-            console.log(`[sync-chats] No messages for ${currentInstanceName}, trying findChats...`);
-            try {
-              const chatsResp = await fetch(
-                `${baseUrl}/chat/findChats/${encodeURIComponent(currentInstanceName)}`,
-                {
-                  method: "POST",
-                  headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-                  body: JSON.stringify({}),
-                }
-              );
-              const chatsBody = await chatsResp.text();
-              console.log(`[sync-chats] findChats ${currentInstanceName} status: ${chatsResp.status}, body length: ${chatsBody.length}, preview: ${chatsBody.substring(0, 300)}`);
-              
-              const chats = JSON.parse(chatsBody);
-              if (Array.isArray(chats) && chats.length > 0) {
-                // Convert chats to conversation rows directly
-                const chatRows = chats
-                  .filter((ch: any) => {
-                    const rid = ch.id || ch.remoteJid || "";
-                    return !rid.includes("@g.us") && rid !== "status@broadcast";
-                  })
-                  .map((ch: any) => ({
-                    user_id: userId,
-                    remote_jid: ch.id || ch.remoteJid,
-                    ...(ch.name || ch.pushName ? { contact_name: ch.name || ch.pushName } : {}),
-                    last_message: ch.lastMessage?.message?.conversation || ch.lastMessage?.message?.extendedTextMessage?.text || ch.lastMsgContent || null,
-                    last_message_at: ch.updatedAt || ch.lastMessage?.messageTimestamp ? new Date(Number(ch.lastMessage?.messageTimestamp || 0) * 1000).toISOString() : new Date().toISOString(),
-                    instance_name: currentInstanceName,
-                  }));
-
-                if (chatRows.length > 0) {
-                  console.log(`[sync-chats] Found ${chatRows.length} chats from findChats for ${currentInstanceName}`);
-                  for (let i = 0; i < chatRows.length; i += 100) {
-                    const chunk = chatRows.slice(i, i + 100);
-                    const { error: err } = await serviceClient.from("conversations").upsert(chunk, { onConflict: "user_id,remote_jid,instance_name" });
-                    if (!err) totalSynced += chunk.length;
-                  }
-
-                  // Also create message entries from lastMessage data so chat panel shows content
-                  const jidsToLookup = chatRows.map((r: any) => r.remote_jid);
-                  const { data: convRecordsFC } = await serviceClient
-                    .from("conversations")
-                    .select("id, remote_jid")
-                    .eq("user_id", userId)
-                    .eq("instance_name", currentInstanceName)
-                    .in("remote_jid", jidsToLookup);
-                  const convIdMapFC = new Map((convRecordsFC || []).map((r: any) => [r.remote_jid, r.id]));
-
-                  const msgInserts: any[] = [];
-                  for (const ch of chats) {
-                    const rid = ch.id || ch.remoteJid || "";
-                    if (rid.includes("@g.us") || rid === "status@broadcast") continue;
-                    const convId = convIdMapFC.get(rid);
-                    if (!convId) continue;
-                    const lastMsg = ch.lastMessage;
-                    if (!lastMsg) continue;
-                    const content = lastMsg.message?.conversation || lastMsg.message?.extendedTextMessage?.text || null;
-                    if (!content) continue;
-                    const extId = lastMsg.key?.id || `findchats-${rid}-${Date.now()}`;
-                    const ts = lastMsg.messageTimestamp ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
-                    const direction = lastMsg.key?.fromMe ? "outbound" : "inbound";
-                    msgInserts.push({
-                      conversation_id: convId, user_id: userId, remote_jid: rid,
-                      content, message_type: "text", direction, status: "delivered",
-                      external_id: extId, media_url: null, created_at: ts,
-                    });
-                  }
-                  if (msgInserts.length > 0) {
-                    console.log(`[sync-chats] Inserting ${msgInserts.length} messages from findChats for ${currentInstanceName}`);
-                    for (let i = 0; i < msgInserts.length; i += 100) {
-                      await serviceClient.from("messages").upsert(msgInserts.slice(i, i + 100), { onConflict: "external_id" });
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              console.error(`[sync-chats] findChats error for ${currentInstanceName}:`, e.message);
-            }
-            continue;
+            console.log(`[sync-chats] No messages for ${currentInstanceName}, will rely on findChats`);
           }
 
           console.log(`[sync-chats] Found ${allMessages.length} messages for ${currentInstanceName}`);
