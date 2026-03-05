@@ -94,6 +94,8 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [name, setName] = useState(flowName);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [instanceNames, setInstanceNames] = useState<string[]>(initialInstanceNames || []);
+  const { instances } = useEvolutionInstances();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
