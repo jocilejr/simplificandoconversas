@@ -1,15 +1,9 @@
+## ✅ Concluído: Corrigir fluxo não continuando após "Capturar Resposta"
 
+### Correções aplicadas
 
-## Plano: Mostrar status "Aguardando resposta" no banner de fluxo ativo
-
-O banner no `ChatPanel.tsx` (linha 267) só trata `waiting_click`, e qualquer outro status cai para "Executando". Precisa adicionar o caso `waiting_reply`.
-
-### Alteração
-
-**`src/components/conversations/ChatPanel.tsx`** — Linha 267: trocar o ternário simples por uma cadeia que cubra os 3 estados:
-- `waiting_click` → "Aguardando clique"
-- `waiting_reply` → "Aguardando resposta"
-- default → "Executando"
-
-Alteração de 1 linha, sem impacto em outros arquivos.
-
+1. **Migração**: Adicionada coluna `waiting_node_id` (text) na tabela `flow_executions`
+2. **execute-flow**: Agora grava `waiting_node_id: node.id` ao pausar em waitForReply/waitForClick (standalone e grupo)
+3. **webhook**: `checkAndResumeWaitingReply` usa `waiting_node_id` para encontrar a edge correta e retorna `true/false`
+4. **webhook**: Se retomou fluxo, pula `checkAndTriggerFlows`
+5. **webhook**: `checkAndTriggerFlows` bloqueia em status `running`, `waiting_click` E `waiting_reply`
