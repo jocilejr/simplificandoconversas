@@ -48,6 +48,7 @@ export interface FlowNodeData {
   delayMinSeconds?: number;
   delayMaxSeconds?: number;
   simulateTyping?: boolean;
+  delayPresenceType?: "composing" | "recording";
   // Wait for Reply
   replyVariable?: string;
   replyTimeout?: number;
