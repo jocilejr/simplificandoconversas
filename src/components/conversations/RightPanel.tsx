@@ -58,7 +58,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
   const { data: activeExecutions, cancel: cancelExecution } = useFlowExecutions(conversation.id);
 
-  // Fetch cross-instance conversations for this contact
   const contactNumber = conversation.remote_jid;
   const { data: crossInstanceConvs } = useQuery({
     queryKey: ["cross-instance", contactNumber],
@@ -74,7 +73,6 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
     enabled: !!contactNumber,
   });
 
-  // Count messages for this conversation
   const { data: messageStats } = useQuery({
     queryKey: ["message-stats", conversation.id],
     queryFn: async () => {
@@ -138,11 +136,11 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
   };
 
   return (
-    <div className="w-[340px] border-l border-[#2a3942] bg-[#111b21] flex flex-col h-full">
+    <div className="w-[340px] border-l border-border/60 bg-background flex flex-col h-full">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-[#2a3942] flex items-center justify-between">
-        <span className="text-sm font-semibold text-[#e9edef]">Detalhes do Lead</span>
-        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-[#aebac1] hover:text-[#e9edef] hover:bg-[#202c33]" onClick={onClose}>
+      <div className="px-5 py-3 border-b border-border/60 flex items-center justify-between bg-card/80 backdrop-blur-sm">
+        <span className="text-sm font-semibold text-foreground">Detalhes do Lead</span>
+        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -151,22 +149,22 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
         <div className="p-4 space-y-3">
 
           {/* ── Contact Card ── */}
-          <div className="bg-[#202c33] rounded-2xl p-5 flex flex-col items-center text-center">
+          <div className="bg-secondary/40 rounded-2xl p-5 flex flex-col items-center text-center">
             <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="xl" />
-            <h2 className="mt-3 font-bold text-base text-[#e9edef]">
+            <h2 className="mt-3 font-bold text-base text-foreground">
               {conversation.contact_name || formatJid(conversation.remote_jid)}
             </h2>
-            <div className="flex items-center gap-1.5 mt-1 text-[#8696a0]">
+            <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
               <Phone className="h-3 w-3" />
               <span className="text-xs">{formatPhone(conversation.remote_jid)}</span>
             </div>
             {conversation.instance_name && (
-              <div className="flex items-center gap-1.5 mt-1.5 text-[#8696a0]">
+              <div className="flex items-center gap-1.5 mt-1.5 text-muted-foreground">
                 <Globe className="h-3 w-3" />
                 <span className="text-xs">{conversation.instance_name}</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5 mt-1.5 text-[#8696a0]">
+            <div className="flex items-center gap-1.5 mt-1.5 text-muted-foreground">
               <Calendar className="h-3 w-3" />
               <span className="text-xs">
                 Desde {format(new Date(conversation.created_at), "dd/MM/yyyy")}
@@ -176,23 +174,23 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
           {/* ── Message Stats ── */}
           {messageStats && (
-            <div className="bg-[#202c33] rounded-2xl p-4">
+            <div className="bg-secondary/40 rounded-2xl p-4">
               <div className="flex items-center gap-1.5 mb-3">
-                <MessageSquare className="h-3.5 w-3.5 text-[#00a884]" />
-                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Estatísticas</span>
+                <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Estatísticas</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <div className="bg-[#111b21] rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-[#e9edef]">{messageStats.total}</p>
-                  <p className="text-[10px] text-[#8696a0] mt-0.5">Total</p>
+                <div className="bg-background rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-foreground">{messageStats.total}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
                 </div>
-                <div className="bg-[#111b21] rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-[#00a884]">{messageStats.inbound}</p>
-                  <p className="text-[10px] text-[#8696a0] mt-0.5">Recebidas</p>
+                <div className="bg-background rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-primary">{messageStats.inbound}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Recebidas</p>
                 </div>
-                <div className="bg-[#111b21] rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-[#53bdeb]">{messageStats.outbound}</p>
-                  <p className="text-[10px] text-[#8696a0] mt-0.5">Enviadas</p>
+                <div className="bg-background rounded-xl p-3 text-center">
+                  <p className="text-lg font-bold text-info">{messageStats.outbound}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Enviadas</p>
                 </div>
               </div>
             </div>
@@ -200,29 +198,29 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
           {/* ── Cross-Instance Conversations ── */}
           {otherInstances.length > 0 && (
-            <div className="bg-[#202c33] rounded-2xl p-4">
+            <div className="bg-secondary/40 rounded-2xl p-4">
               <div className="flex items-center gap-1.5 mb-3">
-                <Globe className="h-3.5 w-3.5 text-[#53bdeb]" />
-                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">
+                <Globe className="h-3.5 w-3.5 text-info" />
+                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
                   Outras Instâncias ({otherInstances.length})
                 </span>
               </div>
               <div className="space-y-2">
                 {otherInstances.map((conv) => (
-                  <div key={conv.id} className="bg-[#111b21] rounded-xl p-3 flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-[#2a3942] flex items-center justify-center shrink-0">
-                      <Globe className="h-3.5 w-3.5 text-[#53bdeb]" />
+                  <div key={conv.id} className="bg-background rounded-xl p-3 flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
+                      <Globe className="h-3.5 w-3.5 text-info" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-[#e9edef] truncate">
+                      <p className="text-xs font-medium text-foreground truncate">
                         {conv.instance_name || "Sem nome"}
                       </p>
-                      <p className="text-[10px] text-[#8696a0] truncate mt-0.5">
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                         {conv.last_message || "Sem mensagens"}
                       </p>
                     </div>
                     {conv.last_message_at && (
-                      <span className="text-[10px] text-[#8696a0] shrink-0">
+                      <span className="text-[10px] text-muted-foreground shrink-0">
                         {format(new Date(conv.last_message_at), "dd/MM")}
                       </span>
                     )}
@@ -233,10 +231,10 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           )}
 
           {/* ── Active Flow ── */}
-          <div className="bg-[#202c33] rounded-2xl p-4">
+          <div className="bg-secondary/40 rounded-2xl p-4">
             <div className="flex items-center gap-1.5 mb-3">
-              <Zap className="h-3.5 w-3.5 text-[#00a884]" />
-              <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Fluxo Ativo</span>
+              <Zap className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Fluxo Ativo</span>
             </div>
 
             {activeExecutions && activeExecutions.length > 0 ? (
@@ -246,19 +244,19 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   return (
                     <div key={exec.id} className={cn(
                       "flex items-center justify-between rounded-xl p-3",
-                      isWaiting ? "bg-[#00a884]/10 border border-[#00a884]/20" : "bg-red-500/10 border border-red-500/20"
+                      isWaiting ? "bg-primary/10 border border-primary/20" : "bg-destructive/10 border border-destructive/20"
                     )}>
                       <div className="flex items-center gap-2 min-w-0">
                         {isWaiting ? (
-                          <Clock className="h-3.5 w-3.5 text-[#00a884] shrink-0" />
+                          <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
                         ) : (
-                          <Loader2 className="h-3.5 w-3.5 text-red-400 animate-spin shrink-0" />
+                          <Loader2 className="h-3.5 w-3.5 text-destructive animate-spin shrink-0" />
                         )}
                         <div className="min-w-0">
-                          <span className="text-xs font-medium truncate block text-[#e9edef]">
+                          <span className="text-xs font-medium truncate block text-foreground">
                             {exec.chatbot_flows?.name || "Fluxo"}
                           </span>
-                          <span className="text-[10px] text-[#8696a0]">
+                          <span className="text-[10px] text-muted-foreground">
                             {isWaiting ? "Aguardando clique" : "Executando"}
                           </span>
                         </div>
@@ -280,20 +278,20 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                 })}
               </div>
             ) : (
-              <p className="text-xs text-[#8696a0] text-center py-2">Nenhum fluxo em execução</p>
+              <p className="text-xs text-muted-foreground text-center py-2">Nenhum fluxo em execução</p>
             )}
           </div>
 
           {/* ── Labels ── */}
-          <div className="bg-[#202c33] rounded-2xl p-4">
+          <div className="bg-secondary/40 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
-                <Tag className="h-3.5 w-3.5 text-[#00a884]" />
-                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Etiquetas</span>
+                <Tag className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Etiquetas</span>
               </div>
               <button
                 onClick={() => setShowLabelForm(!showLabelForm)}
-                className="text-[#8696a0] hover:text-[#e9edef] transition-colors"
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showLabelForm ? <ChevronUp className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               </button>
@@ -314,18 +312,18 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                 </Badge>
               ))}
               {(!convLabels || convLabels.length === 0) && (
-                <span className="text-xs text-[#8696a0]">Nenhuma etiqueta atribuída</span>
+                <span className="text-xs text-muted-foreground">Nenhuma etiqueta atribuída</span>
               )}
             </div>
 
             {/* Available labels to assign */}
             {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).length > 0 && (
-              <div className="space-y-1 mb-3 border-t border-[#2a3942] pt-3">
-                <p className="text-[10px] text-[#8696a0] uppercase tracking-wider mb-1.5">Disponíveis</p>
+              <div className="space-y-1 mb-3 border-t border-border/30 pt-3">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Disponíveis</p>
                 {(allLabels || []).filter(l => !assignedLabelIds.has(l.id)).map(label => (
                   <div key={label.id} className="flex items-center justify-between group">
                     <button
-                      className="flex items-center gap-2 text-xs py-1.5 hover:text-[#e9edef] text-[#8696a0] transition-colors"
+                      className="flex items-center gap-2 text-xs py-1.5 hover:text-foreground text-muted-foreground transition-colors"
                       onClick={() => assign.mutate(label.id)}
                     >
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
@@ -334,10 +332,10 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 rounded-full text-[#8696a0] hover:text-red-400 hover:bg-red-400/10"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 rounded-full"
                       onClick={() => removeLabel.mutate(label.id)}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
                 ))}
@@ -346,12 +344,12 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
             {/* Create label form */}
             {showLabelForm && (
-              <div className="space-y-2 border-t border-[#2a3942] pt-3">
+              <div className="space-y-2 border-t border-border/30 pt-3">
                 <Input
                   placeholder="Nome da etiqueta..."
                   value={labelName}
                   onChange={e => setLabelName(e.target.value)}
-                  className="h-8 text-xs rounded-lg bg-[#111b21] border-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]"
+                  className="h-8 text-xs rounded-lg"
                   onKeyDown={e => e.key === "Enter" && handleCreateLabel()}
                 />
                 <div className="flex gap-1.5">
@@ -360,7 +358,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                       key={c}
                       className={cn(
                         "h-5 w-5 rounded-full transition-all",
-                        labelColor === c ? "ring-2 ring-offset-1 ring-offset-[#202c33] ring-[#e9edef] scale-110" : "hover:scale-110"
+                        labelColor === c ? "ring-2 ring-offset-1 ring-offset-background ring-ring scale-110" : "hover:scale-110"
                       )}
                       style={{ backgroundColor: c }}
                       onClick={() => setLabelColor(c)}
@@ -369,7 +367,7 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                 </div>
                 <Button
                   size="sm"
-                  className="w-full h-8 text-xs rounded-lg bg-[#00a884] hover:bg-[#00a884]/80 text-white"
+                  className="w-full h-8 text-xs rounded-lg"
                   onClick={handleCreateLabel}
                   disabled={!labelName.trim()}
                 >
@@ -380,15 +378,15 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
           </div>
 
           {/* ── Quick Replies ── */}
-          <div className="bg-[#202c33] rounded-2xl p-4">
+          <div className="bg-secondary/40 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 text-[#f59e0b]" />
-                <span className="text-[11px] font-semibold text-[#e9edef] uppercase tracking-wider">Respostas Rápidas</span>
+                <Zap className="h-3.5 w-3.5 text-warning" />
+                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Respostas Rápidas</span>
               </div>
               <button
                 onClick={() => setShowQRForm(!showQRForm)}
-                className="text-[#8696a0] hover:text-[#e9edef] transition-colors"
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showQRForm ? <ChevronUp className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               </button>
@@ -396,16 +394,16 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
 
             <div className="space-y-2 mb-3">
               {(quickReplies || []).map(qr => (
-                <div key={qr.id} className="bg-[#111b21] rounded-xl p-3 group border border-[#2a3942]">
+                <div key={qr.id} className="bg-background rounded-xl p-3 group border border-border/30">
                   {editingQR === qr.id ? (
                     <div className="space-y-1.5">
-                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-7 text-xs rounded-lg bg-[#202c33] border-[#2a3942] text-[#e9edef]" />
-                      <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-7 text-xs rounded-lg bg-[#202c33] border-[#2a3942] text-[#e9edef]" />
+                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="h-7 text-xs rounded-lg" />
+                      <Input value={editContent} onChange={e => setEditContent(e.target.value)} className="h-7 text-xs rounded-lg" />
                       <div className="flex gap-1">
-                        <Button size="sm" className="h-6 text-[10px] rounded-full bg-[#00a884] hover:bg-[#00a884]/80" onClick={saveEditQR}>
+                        <Button size="sm" className="h-6 text-[10px] rounded-full" onClick={saveEditQR}>
                           <Check className="h-3 w-3 mr-1" /> Salvar
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-6 text-[10px] rounded-full text-[#8696a0]" onClick={() => setEditingQR(null)}>
+                        <Button size="sm" variant="ghost" className="h-6 text-[10px] rounded-full" onClick={() => setEditingQR(null)}>
                           Cancelar
                         </Button>
                       </div>
@@ -413,44 +411,44 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
                   ) : (
                     <>
                       <div className="flex items-start justify-between">
-                        <p className="text-xs font-medium text-[#e9edef]">{qr.title}</p>
+                        <p className="text-xs font-medium text-foreground">{qr.title}</p>
                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full text-[#8696a0] hover:text-[#e9edef] hover:bg-[#2a3942]" onClick={() => startEditQR(qr)}>
+                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => startEditQR(qr)}>
                             <Pencil className="h-2.5 w-2.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full text-[#8696a0] hover:text-red-400 hover:bg-red-400/10" onClick={() => removeQR.mutate(qr.id)}>
-                            <Trash2 className="h-2.5 w-2.5" />
+                          <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => removeQR.mutate(qr.id)}>
+                            <Trash2 className="h-2.5 w-2.5 text-destructive" />
                           </Button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-[#8696a0] mt-1 line-clamp-2">{qr.content}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{qr.content}</p>
                     </>
                   )}
                 </div>
               ))}
               {(!quickReplies || quickReplies.length === 0) && (
-                <p className="text-xs text-[#8696a0] text-center py-3">Nenhuma resposta salva</p>
+                <p className="text-xs text-muted-foreground text-center py-3">Nenhuma resposta salva</p>
               )}
             </div>
 
             {showQRForm && (
-              <div className="space-y-1.5 border-t border-[#2a3942] pt-3">
+              <div className="space-y-1.5 border-t border-border/30 pt-3">
                 <Input
                   placeholder="Título..."
                   value={qrTitle}
                   onChange={e => setQrTitle(e.target.value)}
-                  className="h-8 text-xs rounded-lg bg-[#111b21] border-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]"
+                  className="h-8 text-xs rounded-lg"
                 />
                 <Input
                   placeholder="Conteúdo da resposta..."
                   value={qrContent}
                   onChange={e => setQrContent(e.target.value)}
-                  className="h-8 text-xs rounded-lg bg-[#111b21] border-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]"
+                  className="h-8 text-xs rounded-lg"
                   onKeyDown={e => e.key === "Enter" && handleCreateQR()}
                 />
                 <Button
                   size="sm"
-                  className="w-full h-8 text-xs rounded-lg bg-[#00a884] hover:bg-[#00a884]/80 text-white"
+                  className="w-full h-8 text-xs rounded-lg"
                   onClick={handleCreateQR}
                   disabled={!qrTitle.trim() || !qrContent.trim()}
                 >
