@@ -191,6 +191,22 @@ export function ConversationList({
                           )}>
                             {conv.last_message || "..."}
                           </p>
+                          {/* Label dots */}
+                          {conversationLabels[conv.id]?.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              {conversationLabels[conv.id].slice(0, 4).map((label) => (
+                                <span
+                                  key={label.id}
+                                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: label.color }}
+                                  title={label.name}
+                                />
+                              ))}
+                              {conversationLabels[conv.id].length > 4 && (
+                                <span className="text-[9px] text-muted-foreground">+{conversationLabels[conv.id].length - 4}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Right column: time + unread badge */}
