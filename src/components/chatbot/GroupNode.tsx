@@ -360,7 +360,7 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
       />
 
       <div
-        className={`w-[280px] rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
+        className={`${hasTimeoutOutputs ? "w-[320px]" : "w-[280px]"} rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
           isDockTarget
             ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
             : selected
@@ -466,6 +466,19 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
           </Popover>
         </div>
 
+        {hasTimeoutOutputs && (
+          <div className="px-3 py-2 border-t border-border/40 space-y-1.5">
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-[10px] font-medium text-emerald-500">Continuou ✓</span>
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accentColor }} />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-[10px] font-medium text-orange-500">{timeoutLabel} ⏱</span>
+              <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+            </div>
+          </div>
+        )}
+
         {isDockTarget && (
           <div className="px-3 py-2 bg-blue-500/10 border-t border-blue-500/30">
             <p className="text-[11px] text-blue-500 text-center font-medium animate-pulse">
@@ -482,27 +495,15 @@ function GroupNode({ id, data, selected }: GroupNodeProps) {
             position={Position.Right}
             id="output-0"
             className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
-            style={{ background: accentColor, top: "35%" }}
+            style={{ background: accentColor, top: "calc(100% - 52px)" }}
           />
-          <span
-            className="absolute text-[9px] font-medium text-muted-foreground pointer-events-none"
-            style={{ right: -68, top: "calc(35% - 6px)" }}
-          >
-            Continuou ✓
-          </span>
           <Handle
             type="source"
             position={Position.Right}
             id="output-1"
             className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full group-handle-source"
-            style={{ background: "#f97316", top: "70%" }}
+            style={{ background: "#f97316", top: "calc(100% - 24px)" }}
           />
-          <span
-            className="absolute text-[9px] font-medium pointer-events-none"
-            style={{ right: -90, top: "calc(70% - 6px)", color: "#f97316" }}
-          >
-            {timeoutLabel} ⏱
-          </span>
         </>
       ) : (
         <Handle
