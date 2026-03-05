@@ -898,6 +898,29 @@ Deno.serve(async (req) => {
               results.push(`group.${step.id}: waitForReply: paused`);
               groupPaused = true;
               break;
+            } else if (step.data.type === "action") {
+              // Handle action steps inside groups
+              const actionType = step.data.actionType || "add_tag";
+              const actionValue = (step.data.actionValue || "").trim();
+              if (actionType === "add_tag" && actionValue) {
+                await serviceClient
+                  .from("contact_tags")
+                  .upsert(
+                    { user_id: userId, remote_jid: jid, tag_name: actionValue.toLowerCase() },
+                    { onConflict: "user_id,remote_jid,tag_name" }
+                  );
+                results.push(`group.${step.id}: action: add_tag "${actionValue}"`);
+              } else if (actionType === "remove_tag" && actionValue) {
+                await serviceClient
+                  .from("contact_tags")
+                  .delete()
+                  .eq("user_id", userId)
+                  .eq("remote_jid", jid)
+                  .ilike("tag_name", actionValue.toLowerCase());
+                results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
+              } else {
+                results.push(`group.${step.id}: action: ${actionType} (no-op)`);
+              }
             } else {
               const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
               results.push(`group.${step.id}: ${stepResult}`);
