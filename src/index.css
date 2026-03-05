@@ -74,8 +74,8 @@
 .group-handle-output-0,
 .group-handle-output-1 {
   top: 50% !important;
-  right: -6px !important;
-  transform: translate(50%, -50%) !important;
+  right: -7px !important;
+  transform: translate(0, -50%) !important;
 }
 .group-handle-source {
   top: auto !important;
