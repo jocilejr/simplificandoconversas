@@ -1,34 +1,35 @@
 
 
-## Fix: 2 saídas do GroupNode
+## Fix: Linha bugada ao puxar do handle
 
 ### Causa raiz
 
-Em `src/index.css`, a classe `.group-handle-source` define:
-```css
-top: auto !important;
-bottom: 16px !important;
-```
+O React Flow aplica `top: 50%` nos handles via CSS interno. Os inline styles `top: "calc(100% - 42px)"` **não vencem** essa regra por especificidade. Resultado: o React Flow calcula a posição da aresta a partir do centro do nó (50%), mas o handle está visualmente em outro lugar — causando a curva estranha.
 
-Isso sobrescreve os valores de `top` inline (`calc(100% - 42px)` e `calc(100% - 18px)`) dos dois handles, forçando ambos para a mesma posição (`bottom: 16px`). Resultado: os dois handles ficam empilhados e parecem ser apenas um.
+Prova: o `.group-handle-target` funciona corretamente porque usa `top: 24px !important` via CSS. Os handles de saída perderam o `!important` quando removemos as regras do `.group-handle-source`.
 
 ### Solução
 
-1. **`src/index.css`**: Remover as regras `top` e `bottom` com `!important` da classe `.group-handle-source`. O posicionamento dos handles será controlado exclusivamente pelo inline `style` no componente React.
+Criar classes CSS dedicadas para os dois handles de saída, com posicionamento via `!important` (igual ao `.group-handle-target`):
 
-2. **`src/components/chatbot/GroupNode.tsx`**: Usar classes CSS distintas para os handles quando `hasFinalizerStep` é true (ex: `group-handle-output-0` e `group-handle-output-1`), ou simplesmente não usar a classe `group-handle-source` nos handles com `top` customizado. O handle padrão (sem finalizer) pode manter a classe com `bottom: 16px`.
+**`src/index.css`**:
+```css
+.group-handle-output-0 {
+  top: calc(100% - 42px) !important;
+}
+.group-handle-output-1 {
+  top: calc(100% - 18px) !important;
+}
+.group-handle-source {
+  top: auto !important;
+  bottom: 16px !important;
+}
+```
 
-### Abordagem concreta
-
-- Criar duas novas classes em `index.css`: nenhuma regra de posicionamento — deixar o `style` inline do componente controlar.
-- Ou mais simples: **remover `!important` de `top` e `bottom`** na `.group-handle-source`, e usar `!important` apenas nos inline styles via Tailwind/style prop.
-- A abordagem mais limpa: remover a regra CSS global de posicionamento da `.group-handle-source` e deixar cada handle definir sua posição via `style` prop.
-
-### Mudanças
-
-**`src/index.css`**: Remover `top: auto !important` e `bottom: 16px !important` de `.group-handle-source`.
-
-**`src/components/chatbot/GroupNode.tsx`**: No handle padrão (single output, sem finalizer), adicionar `bottom: "16px"` no inline style para manter o comportamento atual. Os dois handles do finalizer já têm seus `top` values corretos — sem o `!important` do CSS, eles vão funcionar.
+**`src/components/chatbot/GroupNode.tsx`**:
+- `output-0`: adicionar classe `group-handle-output-0`, remover `top` do inline style
+- `output-1`: adicionar classe `group-handle-output-1`, remover `top` do inline style
+- Handle default (sem finalizer): restaurar classe `group-handle-source` com as regras `!important` de volta
 
 ### Arquivos alterados
 - `src/index.css`
