@@ -1,73 +1,94 @@
 
 
-## Situação
+## Plano: Conta admin única no instalador + bloquear cadastro público
 
-O compose do Traefik **não foi encontrado** em nenhum arquivo YAML do Portainer (`find` retornou vazio). Os diretórios não inspecionados são **1, 10 e 19**. O Traefik provavelmente foi deployado via Portainer UI (editor inline) e o compose pode estar em um desses diretórios, ou foi criado diretamente sem arquivo persistido.
+### Resumo
 
-## Próximo passo: Inspecionar os 3 diretórios restantes
+O instalador pedirá email e senha do admin. Após subir os serviços, criará a conta via GoTrue API. O cadastro público será desabilitado (GoTrue + frontend).
 
-Execute:
+### Mudanças
 
-```bash
-for i in 1 10 19; do
-  echo "=== compose/$i ==="
-  head -15 /var/lib/docker/volumes/portainer_data/_data/compose/$i/docker-compose.yml
-  echo ""
-done
+**1. `deploy/install.sh`** — Adicionar prompt de email/senha e criação da conta
+
+No passo [2/7], após pedir os domínios, pedir também:
+```
+  Email do administrador: 
+  Senha do administrador: (input oculto com -s)
 ```
 
-Se nenhum deles contiver o Traefik, o compose original foi provavelmente criado inline no Portainer e **não existe mais em disco**. Nesse caso, precisaremos recriar o stack do Traefik manualmente com base nas labels existentes nos outros stacks. Execute também:
+Salvar `ADMIN_EMAIL` e `ADMIN_PASSWORD` no `.env`.
 
+Após aguardar o PostgreSQL (passo 6/7), adicionar um novo passo que:
+- Espera o GoTrue ficar pronto (curl em loop no `http://gotrue:9999/health`)
+- Cria o usuário admin via GoTrue Admin API:
 ```bash
-# Ver se há algum compose com "traefik" no nome (não só no conteúdo)
-find /var/lib/docker/volumes/portainer_data/_data -name "*traefik*" 2>/dev/null
-
-# Ver a config que o Traefik usava (pode ter pistas)
-ls -la /etc/traefik/
-find /etc/traefik -type f 2>/dev/null
+curl -X POST http://localhost:9999/admin/users \
+  -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"...","password":"...","email_confirm":true,"user_metadata":{"full_name":"Admin"}}'
 ```
+- Usa `docker compose exec` para acessar o GoTrue internamente
 
-## Se não encontrarmos o compose original
-
-Baseado nas labels dos outros stacks (que usam `letsencryptresolver`, `websecure`, rede `PrincipalNet`), o compose do Traefik seria algo como:
+**2. `deploy/docker-compose.yml`** — Desabilitar cadastro público
 
 ```yaml
-version: "3.7"
-services:
-  traefik:
-    image: traefik:v2.11
-    command:
-      - "--api.dashboard=true"
-      - "--providers.docker.swarmMode=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=PrincipalNet"
-      - "--providers.file.directory=/etc/traefik/dynamic"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencryptresolver.acme.email=SEU_EMAIL"
-      - "--certificatesresolvers.letsencryptresolver.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_certs:/letsencrypt
-      - /etc/traefik/dynamic:/etc/traefik/dynamic:ro
-    networks:
-      - PrincipalNet
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
-
-networks:
-  PrincipalNet:
-    external: true
-
-volumes:
-  traefik_certs:
+GOTRUE_DISABLE_SIGNUP: "true"   # era "false"
 ```
 
-Precisaremos confirmar o **email do ACME** e a **versão exata do Traefik** antes de deployar. Os certificados provavelmente ainda estão em um volume Docker existente.
+**3. `src/pages/Auth.tsx`** — Remover opção de cadastro
+
+- Remover o toggle "Não tem conta? Cadastre-se"
+- Remover os campos de cadastro (nome, etc.)
+- Manter apenas o formulário de login
+- Título: "Entre na sua conta"
+
+**4. `deploy/init-db.sql`** — Adicionar tabela `user_roles` e trigger de admin
+
+Após a criação das tabelas, adicionar:
+```sql
+CREATE TYPE public.app_role AS ENUM ('admin', 'user');
+
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  role app_role NOT NULL DEFAULT 'user',
+  UNIQUE (user_id, role)
+);
+
+-- Trigger: ao criar profile, inserir role baseado no email
+CREATE OR REPLACE FUNCTION public.assign_admin_role()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (NEW.user_id, 'admin');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_profile_created_assign_admin
+  AFTER INSERT ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.assign_admin_role();
+```
+
+Como o cadastro está desabilitado, apenas o admin criado pelo instalador terá conta — o trigger atribui `admin` para qualquer profile criado (que só será o do instalador).
+
+### Fluxo final do `bash install.sh`
+
+```text
+[1/8] Verificar Docker + Compose
+[2/8] Pedir: APP_DOMAIN, API_DOMAIN, ADMIN_EMAIL, ADMIN_PASSWORD
+[3/8] Gerar .env com secrets
+[4/8] Buildar frontend (sem tela de cadastro, só login)
+[5/8] Buildar + subir containers
+[6/8] Aguardar PostgreSQL + GoTrue
+[7/8] Criar conta admin via GoTrue API
+[8/8] Resumo final
+```
+
+O resumo final mostrará:
+```
+  Admin: jocilejun@gmail.com
+  Frontend: https://app.dominio.com
+  API: https://api.dominio.com
+```
 
