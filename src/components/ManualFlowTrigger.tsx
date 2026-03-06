@@ -18,7 +18,7 @@ interface ManualFlowTriggerProps {
 export function ManualFlowTrigger({ open, onOpenChange }: ManualFlowTriggerProps) {
   const { toast } = useToast();
   const { data: flows = [] } = useChatbotFlows();
-  const { instances = [] } = useEvolutionInstances();
+  const { instances = [] } = useWhatsAppInstances();
 
   const [phone, setPhone] = useState("");
   const [flowId, setFlowId] = useState("");

@@ -20,7 +20,7 @@ const Conversations = () => {
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
-  const { instances } = useEvolutionInstances();
+  const { instances } = useWhatsAppInstances();
   const { user } = useAuth();
 
   // Fetch all conversation labels with label details for the sidebar

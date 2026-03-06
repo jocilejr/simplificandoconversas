@@ -95,7 +95,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
   const [name, setName] = useState(flowName);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [instanceNames, setInstanceNames] = useState<string[]>(initialInstanceNames || []);
-  const { instances } = useEvolutionInstances();
+  const { instances } = useWhatsAppInstances();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
