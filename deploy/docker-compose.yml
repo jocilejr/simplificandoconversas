@@ -130,8 +130,24 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./frontend:/usr/share/nginx/html:ro
-    ports:
-      - "8080:80"
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.simplificando-app.rule=Host(`app.chatbotsimples.cloud`)"
+      - "traefik.http.routers.simplificando-app.entrypoints=websecure"
+      - "traefik.http.routers.simplificando-app.tls.certresolver=letsencryptresolver"
+      - "traefik.http.routers.simplificando-api.rule=Host(`api.chatbotsimples.cloud`)"
+      - "traefik.http.routers.simplificando-api.entrypoints=websecure"
+      - "traefik.http.routers.simplificando-api.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.simplificando-nginx.loadbalancer.server.port=80"
+
+networks:
+  default:
+  traefik:
+    external: true
+    name: PrincipalNet
 
 volumes:
   pgdata:
