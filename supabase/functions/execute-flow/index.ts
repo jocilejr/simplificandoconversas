@@ -239,9 +239,9 @@ async function executeStep(
     const presenceTypeAfter = (stepData as any).delayPresenceType;
     if (presenceTypeAfter === "composing" || presenceTypeAfter === "recording" || stepData.simulateTyping) {
       try {
-        await fetch(`${baseUrl}/message/sendPresence/${evolution_instance_name}`, {
+        await fetch(`${baseUrl}/message/sendPresence/${instanceName}`, {
           method: "POST",
-          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          headers: { apikey: apiKey, "Content-Type": "application/json" },
           body: JSON.stringify({ number: jid, presence: "paused" }),
         });
       } catch (e) {
