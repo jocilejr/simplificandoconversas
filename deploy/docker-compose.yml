@@ -106,6 +106,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      gotrue:
+        condition: service_healthy
     environment:
       PORT: "3001"
       SUPABASE_URL: http://postgrest:3000
