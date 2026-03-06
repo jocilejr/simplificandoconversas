@@ -11,7 +11,6 @@ psql -U postgres <<-EOSQL
     END IF;
   END \$\$;
   ALTER ROLE supabase_auth_admin WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';
-  GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
 EOSQL
 
 echo "supabase_auth_admin role configured successfully"
