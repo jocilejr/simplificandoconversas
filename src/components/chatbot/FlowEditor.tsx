@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Plus, History, Check, Loader2, icons, Radio } from "lucide-react";
-import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
+import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   AlertDialog,
   AlertDialogAction,

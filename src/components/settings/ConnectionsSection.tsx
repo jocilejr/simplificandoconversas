@@ -24,7 +24,7 @@ export function ConnectionsSection() {
     connectInstance,
     deleteInstance,
     setActiveInstance,
-  } = useEvolutionInstances();
+  } = useWhatsAppInstances();
 
   const [showBrowseDialog, setShowBrowseDialog] = useState(false);
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);

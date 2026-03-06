@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
-import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
+import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
