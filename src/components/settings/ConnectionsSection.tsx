@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   Loader2,
@@ -11,46 +10,29 @@ import {
   WifiOff,
   Trash2,
   Star,
-  RefreshCw,
-  Search,
   Link2,
+  ServerCrash,
 } from "lucide-react";
 
 export function ConnectionsSection() {
   const {
     instances,
-    fetchRemoteInstances,
+    remoteInstances,
+    isLoading,
+    isRemoteLoading,
+    isServerConnected,
     createInstance,
     connectInstance,
     deleteInstance,
     setActiveInstance,
   } = useWhatsAppInstances();
 
-  const [showBrowseDialog, setShowBrowseDialog] = useState(false);
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);
-  const [remoteInstances, setRemoteInstances] = useState<any[]>([]);
-
-  // Auto-fetch remote instances to get real connection status
-  useEffect(() => {
-    if (instances.length > 0) {
-      fetchRemoteInstances.mutateAsync().then((result) => {
-        if (Array.isArray(result)) setRemoteInstances(result);
-        else if (result?.instances) setRemoteInstances(result.instances);
-      }).catch(() => {});
-    }
-  }, [instances.length]);
-
-  const handleFetchInstances = async () => {
-    const result = await fetchRemoteInstances.mutateAsync();
-    if (Array.isArray(result)) setRemoteInstances(result);
-    else if (result?.instances) setRemoteInstances(result.instances);
-  };
 
   const handleCreateInstance = async () => {
     const result = await createInstance.mutateAsync();
     if (result?.qrcode?.base64) {
       setQrCode({ instanceName: result.instanceName, base64: result.qrcode.base64 });
-      setShowBrowseDialog(false);
     }
   };
 
@@ -63,7 +45,6 @@ export function ConnectionsSection() {
 
   const handleLinkInstance = async (name: string) => {
     await setActiveInstance.mutateAsync(name);
-    setShowBrowseDialog(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -82,134 +63,79 @@ export function ConnectionsSection() {
     }
   };
 
-  const linkedInstances = instances.map(i => {
-    const remote = remoteInstances.find((ri: any) => (ri.name || ri.instanceName || ri.instance?.instanceName) === i.instance_name);
-    const status = remote ? (remote.connectionStatus || remote.instance?.state || remote.state || i.status) : i.status;
-    return { ...i, status };
-  });
+  // Remote instances not yet linked locally
+  const unlinkedRemote = remoteInstances.filter(
+    (ri) => !instances.some((i) => i.instance_name === ri.name)
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Instâncias WhatsApp</h3>
-          <p className="text-sm text-muted-foreground">Suas conexões WhatsApp vinculadas</p>
+          <h3 className="text-lg font-semibold">Conexões WhatsApp</h3>
+          <p className="text-sm text-muted-foreground">Gerencie suas instâncias do WhatsApp</p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Browse / Link Dialog */}
-          <Dialog open={showBrowseDialog} onOpenChange={setShowBrowseDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Search className="h-4 w-4 mr-2" />
-                Buscar Instâncias
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Instâncias no Servidor</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleFetchInstances}
-                    disabled={fetchRemoteInstances.isPending}
-                  >
-                    {fetchRemoteInstances.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Atualizar Lista
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleCreateInstance}
-                    disabled={createInstance.isPending}
-                  >
-                    {createInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Nova Instância
-                  </Button>
-                </div>
-
-                {remoteInstances.length === 0 && !fetchRemoteInstances.isPending && (
-                  <div className="text-center py-6 text-muted-foreground text-sm">
-                    Clique em "Atualizar Lista" para buscar instâncias do servidor
-                  </div>
-                )}
-
-                {fetchRemoteInstances.isPending && (
-                  <div className="text-center py-6">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                  </div>
-                )}
-
-                {remoteInstances.map((ri: any) => {
-                  const name = ri.name || ri.instanceName || ri.instance?.instanceName;
-                  const status = ri.connectionStatus || ri.instance?.state || ri.state || "close";
-                  const isLinked = instances.some(i => i.instance_name === name);
-                  const profileName = ri.profileName || "";
-
-                  return (
-                    <div key={name} className="flex items-center justify-between rounded-lg border border-border p-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                          status === "open" ? "bg-green-500" : status === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-red-500"
-                        }`} />
-                        <div>
-                          <p className="text-sm font-medium">{name}</p>
-                          {profileName && <p className="text-xs text-muted-foreground">{profileName}</p>}
-                        </div>
-                        <Badge variant="outline" className={`text-[10px] ${getStatusColor(status)}`}>
-                          {getStatusLabel(status)}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {isLinked ? (
-                          <Badge variant="secondary" className="text-[10px]">Vinculada</Badge>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs"
-                            onClick={() => handleLinkInstance(name)}
-                            disabled={setActiveInstance.isPending}
-                          >
-                            <Link2 className="h-3.5 w-3.5 mr-1" />
-                            Vincular
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-destructive hover:text-destructive"
-                          onClick={() => deleteInstance.mutate(name)}
-                          disabled={deleteInstance.isPending}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </DialogContent>
-          </Dialog>
+        <div className="flex items-center gap-3">
+          {/* Server status indicator */}
+          <div className="flex items-center gap-1.5">
+            <div className={`h-2 w-2 rounded-full ${
+              isRemoteLoading ? "bg-yellow-500 animate-pulse" :
+              isServerConnected ? "bg-green-500" : "bg-red-500"
+            }`} />
+            <span className="text-xs text-muted-foreground">
+              {isRemoteLoading ? "Verificando..." :
+               isServerConnected ? "Servidor online" : "Servidor offline"}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleCreateInstance}
+            disabled={createInstance.isPending || !isServerConnected}
+          >
+            {createInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+            Nova Instância
+          </Button>
         </div>
       </div>
 
+      {/* Server offline warning */}
+      {!isServerConnected && !isRemoteLoading && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="py-4 flex items-center gap-3">
+            <ServerCrash className="h-5 w-5 text-destructive shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-destructive">Servidor não acessível</p>
+              <p className="text-xs text-muted-foreground">
+                O backend Baileys não está respondendo. Verifique se os containers estão rodando na VPS.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
       {/* Empty state */}
-      {linkedInstances.length === 0 && (
+      {!isLoading && instances.length === 0 && unlinkedRemote.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
             <WifiOff className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">Nenhuma instância vinculada</p>
+            <p className="text-sm text-muted-foreground">Nenhuma instância encontrada</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Clique em "Buscar Instâncias" para vincular ou criar uma nova
+              Clique em "Nova Instância" para criar e conectar seu WhatsApp
             </p>
           </CardContent>
         </Card>
       )}
 
-      {linkedInstances.map((inst) => (
+      {/* Linked instances */}
+      {instances.map((inst) => (
         <div
           key={inst.id}
           className={`rounded-xl border p-4 transition-all ${
@@ -250,6 +176,36 @@ export function ConnectionsSection() {
         </div>
       ))}
 
+      {/* Unlinked remote instances */}
+      {unlinkedRemote.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Instâncias disponíveis no servidor</h4>
+          {unlinkedRemote.map((ri) => (
+            <div key={ri.name} className="flex items-center justify-between rounded-lg border border-dashed border-border p-3">
+              <div className="flex items-center gap-3">
+                <div className={`h-2.5 w-2.5 rounded-full ${
+                  ri.status === "open" ? "bg-green-500" : "bg-red-500"
+                }`} />
+                <span className="text-sm">{ri.name}</span>
+                {ri.profileName && <span className="text-xs text-muted-foreground">{ri.profileName}</span>}
+                <Badge variant="outline" className={`text-[10px] ${getStatusColor(ri.status)}`}>
+                  {getStatusLabel(ri.status)}
+                </Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => handleLinkInstance(ri.name)}
+                disabled={setActiveInstance.isPending}
+              >
+                <Link2 className="h-3.5 w-3.5 mr-1" /> Vincular
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* QR Code */}
       {qrCode && (
         <Card className="border-primary/30">
@@ -259,7 +215,7 @@ export function ConnectionsSection() {
             </p>
             <img
               src={qrCode.base64.startsWith("data:") ? qrCode.base64 : `data:image/png;base64,${qrCode.base64}`}
-              alt="QR Code"
+              alt="QR Code WhatsApp"
               className="mx-auto w-64 h-64 rounded-lg"
             />
             <Button variant="ghost" size="sm" className="mt-4" onClick={() => setQrCode(null)}>
