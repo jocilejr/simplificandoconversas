@@ -1,43 +1,39 @@
 
 
-## Root Cause Analysis
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-The `supabase/postgres:15.8.1.060` image includes its own initialization scripts baked into `/docker-entrypoint-initdb.d/` that create the `auth` schema, roles, and extensions. Your `init-db.sql` is mounted as `01-init.sql`, which likely runs **before** the image's own scripts. This creates a race condition where:
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-1. `01-init.sql` runs first, creates a bare `auth` schema
-2. The image's own init scripts see `auth` already exists and skip their full setup (or conflict)
-3. GoTrue connects and finds the schema incomplete/misconfigured for its migrations
+### Correções
 
-## Fix
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-Two changes to `docker-compose.yml` and `init-db.sql`:
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-### 1. Rename the mount to run LAST
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
-Change the mount from `01-init.sql` to `99-init.sql` so the image's built-in scripts run first:
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
 
-```yaml
-# In docker-compose.yml (and portainer-stack.yml)
-- ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
-```
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
 
-### 2. Remove auth schema creation from init-db.sql
+### Total: ~7 linhas alteradas em 5 arquivos
 
-Remove the line `CREATE SCHEMA IF NOT EXISTS auth;` from `init-db.sql`. The supabase/postgres image handles this internally. Also remove the storage schema/tables creation since the storage service handles that too.
-
-### 3. Full redeploy
-
-After these changes:
+Após o push, rodar no servidor:
 ```bash
-docker compose down -v
-docker compose up -d
-sleep 20
-docker compose logs gotrue --tail=10
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
-
-## Technical Details
-
-- The `supabase/postgres` image pre-configures: `auth` schema, `supabase_auth_admin` role, `supabase_admin` role, required extensions (`pgcrypto`, `uuid-ossp`), and grants
-- Scripts in `/docker-entrypoint-initdb.d/` run alphabetically on first init (empty data dir)
-- By mounting as `99-init.sql`, the public schema tables are created after all Supabase infrastructure is ready
 

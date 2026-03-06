@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -46,8 +46,8 @@ services:
       GOTRUE_SMTP_ADMIN_EMAIL: "admin@example.com"
       GOTRUE_SMTP_HOST: "localhost"
       GOTRUE_SMTP_PORT: "587"
-      GOTRUE_SMTP_USER: ""
-      GOTRUE_SMTP_PASS: ""
+      GOTRUE_SMTP_USER: "no-reply@example.com"
+      GOTRUE_SMTP_PASS: "unused"
 
   # ─── PostgREST ───
   postgrest:

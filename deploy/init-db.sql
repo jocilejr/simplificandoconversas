@@ -2,8 +2,9 @@
 -- Init DB: Consolidated schema for self-hosted deploy
 -- ============================================================
 
--- Auth schema (required before GoTrue migrations)
-CREATE SCHEMA IF NOT EXISTS auth;
+-- NOTE: auth schema, supabase_auth_admin role, and extensions are created
+-- by the supabase/postgres image's built-in init scripts.
+-- This file is mounted as 99-init.sql to run AFTER those scripts.
 
 -- Roles for PostgREST
 DO $$
@@ -28,8 +29,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authentic
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
 
--- Storage schema (auth schema already exists in supabase/postgres image)
-CREATE SCHEMA IF NOT EXISTS storage;
+-- NOTE: storage schema and tables are managed by the supabase storage service.
 
 -- ============================================================
 -- PUBLIC TABLES
@@ -254,31 +254,8 @@ BEGIN
   END IF;
 END $$;
 
--- ============================================================
--- STORAGE BUCKET (for Supabase Storage compatibility)
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS storage.buckets (
-  id text PRIMARY KEY,
-  name text NOT NULL,
-  public boolean DEFAULT false,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS storage.objects (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  bucket_id text REFERENCES storage.buckets(id),
-  name text,
-  owner uuid,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  metadata jsonb
-);
-
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('chatbot-media', 'chatbot-media', true)
-ON CONFLICT (id) DO NOTHING;
+-- NOTE: Storage buckets are created by the storage service automatically.
+-- The 'chatbot-media' bucket is created via the backend or manually.
 
 -- ============================================================
 -- USER ROLES (RBAC)
