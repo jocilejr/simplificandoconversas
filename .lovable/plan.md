@@ -1,73 +1,39 @@
 
 
-## Plano: Dois domínios separados (Frontend + API)
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-A arquitetura atual usa um único `APP_URL` para tudo. Vamos separar em dois domínios:
-- **APP_DOMAIN** — frontend (ex: `app.seudominio.com`)
-- **API_DOMAIN** — backend/API (ex: `api.seudominio.com`)
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-O frontend faz chamadas ao Supabase client usando `VITE_SUPABASE_URL`, que apontará para o domínio da API.
+### Correções
 
-### Alterações
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-#### 1. `deploy/install.sh` — Solicitar dois domínios interativamente
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-Substituir a detecção automática de IP por prompts:
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
+
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
+
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
+
+### Total: ~7 linhas alteradas em 5 arquivos
+
+Após o push, rodar no servidor:
 ```bash
-read -p "Domínio do Frontend (ex: app.seudominio.com): " APP_DOMAIN
-read -p "Domínio da API (ex: api.seudominio.com): " API_DOMAIN
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
-
-Gravar no `.env`:
-- `APP_DOMAIN` e `API_DOMAIN` (sem protocolo)
-- `APP_URL=https://${APP_DOMAIN}`
-- `API_URL=https://${API_DOMAIN}`
-
-O `.env.production` do build passa a usar:
-```
-VITE_SUPABASE_URL=https://${API_DOMAIN}
-```
-
-#### 2. `deploy/nginx/default.conf` — Dois server blocks
-
-Converter para template (`default.conf.template`) com `envsubst`:
-
-- **Server 1** (`APP_DOMAIN`): Serve o frontend estático (SPA)
-- **Server 2** (`API_DOMAIN`): Proxies para PostgREST (`/rest/v1/`), GoTrue (`/auth/v1/`), Storage (`/storage/v1/`), Backend Express (`/functions/v1/`), Baileys (`/baileys/`)
-
-#### 3. `deploy/docker-compose.yml`
-
-- Passar `APP_DOMAIN` e `API_DOMAIN` como env vars do Nginx
-- Usar `envsubst` no entrypoint do Nginx para gerar o conf final
-- Atualizar GoTrue `API_EXTERNAL_URL` e `GOTRUE_SITE_URL` para usar as novas variáveis
-- Remover portas expostas desnecessárias (3000, 5000, 9999, 8084, 3001) — tudo passa pelo Nginx
-- Manter porta `80:80` no Nginx (o Nginx externo existente na VPS fará proxy para este)
-
-#### 4. `deploy/update.sh`
-
-Atualizar para usar `API_URL` no `VITE_SUPABASE_URL` do build.
-
-#### 5. `deploy/.env.example`
-
-Adicionar `APP_DOMAIN` e `API_DOMAIN`, remover `APP_URL` antigo.
-
-#### 6. `deploy/portainer-stack.yml`
-
-Alinhar com as mesmas variáveis de domínio.
-
-### Fluxo de rede
-
-```text
-Internet → Nginx externo (porta 80/443 com SSL)
-  ├─ app.dominio.com  → deploy-nginx:80 → frontend estático
-  └─ api.dominio.com  → deploy-nginx:80 → postgrest/gotrue/storage/backend/baileys
-```
-
-### Arquivos modificados
-- `deploy/install.sh`
-- `deploy/update.sh`
-- `deploy/nginx/default.conf` → `deploy/nginx/default.conf.template`
-- `deploy/docker-compose.yml`
-- `deploy/.env.example`
-- `deploy/portainer-stack.yml`
 

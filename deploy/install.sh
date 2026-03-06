@@ -35,6 +35,18 @@ DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DEPLOY_DIR"
 
 if [ ! -f .env ]; then
+  echo ""
+  echo -e "${BLUE}Configure os domínios da aplicação:${NC}"
+  echo ""
+  read -p "  Domínio do Frontend (ex: app.seudominio.com): " APP_DOMAIN
+  read -p "  Domínio da API      (ex: api.seudominio.com): " API_DOMAIN
+  echo ""
+
+  if [ -z "$APP_DOMAIN" ] || [ -z "$API_DOMAIN" ]; then
+    echo -e "${RED}Ambos os domínios são obrigatórios!${NC}"
+    exit 1
+  fi
+
   # Generate secrets
   JWT_SECRET=$(openssl rand -hex 32)
   POSTGRES_PASSWORD=$(openssl rand -hex 16)
@@ -66,23 +78,25 @@ if [ ! -f .env ]; then
     console.log(header+'.'+payload+'.'+sig);
   " 2>/dev/null || echo "generate-manually")
 
-  # Detect APP_URL
-  PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || echo "localhost")
-  APP_URL="http://${PUBLIC_IP}"
+  APP_URL="https://${APP_DOMAIN}"
+  API_URL="https://${API_DOMAIN}"
 
   cat > .env << EOF
+APP_DOMAIN=${APP_DOMAIN}
+API_DOMAIN=${API_DOMAIN}
+APP_URL=${APP_URL}
+API_URL=${API_URL}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
 ANON_KEY=${ANON_KEY}
 SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
-APP_URL=${APP_URL}
 BAILEYS_API_KEY=${BAILEYS_API_KEY}
 OPENAI_API_KEY=
 EOF
 
   echo -e "${GREEN}✓ .env gerado com secrets automáticos${NC}"
-  echo -e "${YELLOW}  APP_URL configurado como: ${APP_URL}${NC}"
-  echo -e "${YELLOW}  Edite .env se precisar alterar o domínio${NC}"
+  echo -e "${YELLOW}  Frontend: ${APP_URL}${NC}"
+  echo -e "${YELLOW}  API:      ${API_URL}${NC}"
 else
   echo -e "${GREEN}✓ .env já existe, mantendo configurações existentes${NC}"
 fi
@@ -98,7 +112,7 @@ cd "$REPO_ROOT"
 
 # Create frontend .env for build
 cat > .env.production << EOF
-VITE_SUPABASE_URL=${APP_URL}
+VITE_SUPABASE_URL=${API_URL}
 VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
 VITE_SUPABASE_PROJECT_ID=local
 EOF
@@ -158,13 +172,15 @@ echo -e "${GREEN}  ✅ Instalação concluída com sucesso!              ${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
 echo ""
 echo -e "  ${GREEN}Frontend:${NC}  ${APP_URL}"
-echo -e "  ${GREEN}Backend:${NC}   ${APP_URL}/functions/v1/"
-echo -e "  ${GREEN}Baileys:${NC}   ${APP_URL}/baileys/"
+echo -e "  ${GREEN}API:${NC}       ${API_URL}"
 echo ""
 echo -e "  ${YELLOW}Próximos passos:${NC}"
-echo -e "  1. Acesse ${APP_URL} no navegador"
-echo -e "  2. Crie sua conta"
-echo -e "  3. Configure a instância WhatsApp em Configurações"
+echo -e "  1. Configure o DNS dos domínios apontando para este servidor"
+echo -e "  2. Configure o Nginx externo (porta 80/443) como reverse proxy"
+echo -e "     - ${APP_DOMAIN} → localhost:8080"
+echo -e "     - ${API_DOMAIN} → localhost:8080"
+echo -e "  3. Acesse ${APP_URL} no navegador"
+echo -e "  4. Crie sua conta e configure o WhatsApp"
 echo ""
 echo -e "  ${YELLOW}Comandos úteis:${NC}"
 echo -e "  docker compose logs -f          # Ver logs"
