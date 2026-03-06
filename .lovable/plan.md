@@ -1,63 +1,39 @@
 
 
-## Problema
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-O container GoTrue está reiniciando (`is restarting`) quando o script tenta criar o admin. O health check do GoTrue passou (via `wget`), mas o container caiu logo depois -- provavelmente porque o GoTrue não encontrou as tabelas necessárias do `auth` schema no banco de dados.
-
-O `init-db.sql` cria `CREATE SCHEMA IF NOT EXISTS auth` mas **não cria as tabelas internas** que o GoTrue precisa (`auth.users`, `auth.refresh_tokens`, etc.). O GoTrue tenta fazer migrações automáticas, mas pode falhar ou reiniciar durante o processo.
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
 ### Correções
 
-**1. `deploy/install.sh`** -- Aguardar GoTrue estabilizar e usar retry robusto
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-O problema é que o health check passa no primeiro boot, mas o GoTrue reinicia ao tentar as migrações. O script precisa:
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-- Aguardar mais tempo após o GoTrue responder (30s extra após health check)
-- Fazer retry da criação do admin com loop (até 5 tentativas, 10s entre cada)
-- Verificar que o container está `running` (não `restarting`) antes de tentar
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
+
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
+
+### Total: ~7 linhas alteradas em 5 arquivos
+
+Após o push, rodar no servidor:
 ```bash
-# Esperar GoTrue estabilizar (migrações)
-echo "  Aguardando GoTrue estabilizar..."
-sleep 30
-
-# Retry loop para criar admin
-for attempt in {1..5}; do
-  STATE=$(docker compose ps gotrue --format '{{.State}}' 2>/dev/null)
-  if [ "$STATE" != "running" ]; then
-    echo "  GoTrue não está running (estado: $STATE), aguardando..."
-    sleep 10
-    continue
-  fi
-  
-  ADMIN_RESULT=$(docker compose exec -T gotrue wget -qO- ...)
-  if echo "$ADMIN_RESULT" | grep -q '"id"'; then
-    break
-  fi
-  sleep 10
-done
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
-
-**2. `deploy/docker-compose.yml`** -- Adicionar health check ao GoTrue
-
-```yaml
-gotrue:
-  ...
-  healthcheck:
-    test: ["CMD", "wget", "-qO-", "http://localhost:9999/health"]
-    interval: 5s
-    timeout: 5s
-    retries: 20
-    start_period: 30s
-```
-
-E fazer o backend/nginx depender de `gotrue: condition: service_healthy`.
-
-**3. `deploy/init-db.sql`** -- Remover `CREATE SCHEMA IF NOT EXISTS auth`
-
-O GoTrue cria e gerencia o schema `auth` automaticamente. Criar o schema vazio antes pode confundir o GoTrue ao verificar migrações. Remover a linha para deixar o GoTrue criar tudo.
-
-### Resultado
-
-O instalador vai esperar o GoTrue completar as migrações e estabilizar antes de tentar criar a conta admin, com retry automático se falhar na primeira tentativa.
 
