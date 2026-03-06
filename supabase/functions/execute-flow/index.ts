@@ -376,7 +376,7 @@ Deno.serve(async (req) => {
     if (!resumeFromNodeId) {
       let activeExecs = activeExecsResult.data;
       // If we need instance filtering, re-query only if we have results (rare path)
-      if (activeExecs && activeExecs.length > 0 && evolution_instance_name) {
+      if (activeExecs && activeExecs.length > 0 && instanceName) {
         const { data: filteredExecs } = await serviceClient
           .from("flow_executions")
           .select("id")
