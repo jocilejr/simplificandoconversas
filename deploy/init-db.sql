@@ -2,6 +2,9 @@
 -- Init DB: Consolidated schema for self-hosted deploy
 -- ============================================================
 
+-- Auth schema (required before GoTrue migrations)
+CREATE SCHEMA IF NOT EXISTS auth;
+
 -- Roles for PostgREST
 DO $$
 BEGIN
