@@ -44,33 +44,6 @@ export function AppSection() {
           </Button>
         </CardContent>
       </Card>
-
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg">Webhook</CardTitle>
-          <CardDescription>
-            URL do webhook configurada automaticamente ao criar instâncias
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label>URL do Webhook</Label>
-            <Input
-              readOnly
-              value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/evolution-webhook`}
-              onClick={(e) => {
-                (e.target as HTMLInputElement).select();
-                navigator.clipboard.writeText(
-                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/evolution-webhook`
-                );
-              }}
-            />
-            <p className="text-xs text-muted-foreground">
-              Clique para copiar. Este webhook é configurado automaticamente nas novas instâncias.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

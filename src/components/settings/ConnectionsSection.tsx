@@ -1,11 +1,8 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useProfile } from "@/hooks/useProfile";
 import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
 import {
   Loader2,
@@ -15,14 +12,11 @@ import {
   Trash2,
   Star,
   RefreshCw,
-  Shield,
-  Settings2,
   Search,
   Link2,
 } from "lucide-react";
 
 export function ConnectionsSection() {
-  const { profile, updateProfile } = useProfile();
   const {
     instances,
     fetchRemoteInstances,
@@ -30,38 +24,21 @@ export function ConnectionsSection() {
     connectInstance,
     deleteInstance,
     setActiveInstance,
-    setProxy,
-    syncWebhooks,
   } = useEvolutionInstances();
 
-  const [apiUrl, setApiUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [showServerConfig, setShowServerConfig] = useState(false);
   const [showBrowseDialog, setShowBrowseDialog] = useState(false);
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);
   const [remoteInstances, setRemoteInstances] = useState<any[]>([]);
-  const [proxyInputs, setProxyInputs] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (profile) {
-      setApiUrl(profile.evolution_api_url || "");
-      setApiKey(profile.evolution_api_key || "");
-    }
-  }, [profile]);
 
   // Auto-fetch remote instances to get real connection status
   useEffect(() => {
-    if (profile?.evolution_api_url && profile?.evolution_api_key && instances.length > 0) {
+    if (instances.length > 0) {
       fetchRemoteInstances.mutateAsync().then((result) => {
         if (Array.isArray(result)) setRemoteInstances(result);
         else if (result?.instances) setRemoteInstances(result.instances);
       }).catch(() => {});
     }
-  }, [profile?.evolution_api_url, profile?.evolution_api_key, instances.length]);
-
-  const handleSaveCredentials = () => {
-    updateProfile.mutate({ evolution_api_url: apiUrl, evolution_api_key: apiKey });
-  };
+  }, [instances.length]);
 
   const handleFetchInstances = async () => {
     const result = await fetchRemoteInstances.mutateAsync();
@@ -89,11 +66,6 @@ export function ConnectionsSection() {
     setShowBrowseDialog(false);
   };
 
-  const handleSetProxy = (instanceName: string) => {
-    const url = proxyInputs[instanceName];
-    if (url !== undefined) setProxy.mutate({ instanceName, proxyUrl: url });
-  };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case "open": return "bg-green-500/15 text-green-400 border-green-500/30";
@@ -110,39 +82,25 @@ export function ConnectionsSection() {
     }
   };
 
-  // Linked instances = instances from local DB (the ones the user has linked)
   const linkedInstances = instances.map(i => {
     const remote = remoteInstances.find((ri: any) => (ri.name || ri.instanceName || ri.instance?.instanceName) === i.instance_name);
     const status = remote ? (remote.connectionStatus || remote.instance?.state || remote.state || i.status) : i.status;
     return { ...i, status };
   });
 
-  const hasCredentials = !!(profile?.evolution_api_url && profile?.evolution_api_key);
-
   return (
     <div className="space-y-6">
-      {/* Header with config gear */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Instâncias WhatsApp</h3>
           <p className="text-sm text-muted-foreground">Suas conexões WhatsApp vinculadas</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Sync Webhooks Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!hasCredentials || instances.length === 0 || syncWebhooks.isPending}
-            onClick={() => syncWebhooks.mutate()}
-          >
-            {syncWebhooks.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            Sincronizar
-          </Button>
-
           {/* Browse / Link Dialog */}
           <Dialog open={showBrowseDialog} onOpenChange={setShowBrowseDialog}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={!hasCredentials}>
+              <Button variant="outline" size="sm">
                 <Search className="h-4 w-4 mr-2" />
                 Buscar Instâncias
               </Button>
@@ -235,60 +193,11 @@ export function ConnectionsSection() {
               </div>
             </DialogContent>
           </Dialog>
-
-          {/* Server Config Gear */}
-          <Dialog open={showServerConfig} onOpenChange={setShowServerConfig}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9">
-                <Settings2 className="h-4.5 w-4.5 text-muted-foreground" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Servidor Evolution API</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <Label>URL Base</Label>
-                  <Input
-                    placeholder="https://sua-instancia.evolution-api.com"
-                    value={apiUrl}
-                    onChange={(e) => setApiUrl(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>API Key Global</Label>
-                  <Input
-                    type="password"
-                    placeholder="Sua API Key"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                  />
-                </div>
-                <Button onClick={handleSaveCredentials} disabled={updateProfile.isPending} className="w-full">
-                  {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                  Salvar Credenciais
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 
-      {/* No credentials warning */}
-      {!hasCredentials && (
-        <Card className="border-dashed border-warning/40 bg-warning/5">
-          <CardContent className="py-6 text-center">
-            <Settings2 className="h-8 w-8 mx-auto mb-2 text-warning/60" />
-            <p className="text-sm text-muted-foreground">
-              Configure as credenciais do servidor Evolution API clicando no ícone de engrenagem acima
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Linked instances list */}
-      {hasCredentials && linkedInstances.length === 0 && (
+      {/* Empty state */}
+      {linkedInstances.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
             <WifiOff className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
@@ -307,7 +216,7 @@ export function ConnectionsSection() {
             inst.is_active ? "border-primary/40 bg-primary/5" : "border-border bg-card"
           }`}
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={`h-2.5 w-2.5 rounded-full ${
                 inst.status === "open" ? "bg-green-500" : inst.status === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-red-500"
@@ -337,20 +246,6 @@ export function ConnectionsSection() {
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
-          </div>
-
-          {/* Proxy */}
-          <div className="flex items-center gap-2">
-            <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Proxy (opcional): http://user:pass@host:port"
-              className="h-8 text-xs"
-              value={proxyInputs[inst.instance_name] ?? inst.proxy_url ?? ""}
-              onChange={(e) => setProxyInputs(prev => ({ ...prev, [inst.instance_name]: e.target.value }))}
-            />
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => handleSetProxy(inst.instance_name)} disabled={setProxy.isPending}>
-              Salvar
-            </Button>
           </div>
         </div>
       ))}

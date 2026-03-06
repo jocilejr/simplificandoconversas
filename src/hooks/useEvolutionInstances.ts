@@ -94,7 +94,6 @@ export function useEvolutionInstances() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Upsert the instance as active (no longer deactivates others)
       await supabase
         .from("evolution_instances")
         .upsert({
@@ -109,7 +108,7 @@ export function useEvolutionInstances() {
         body: { action: "set-webhook", instanceName },
       });
 
-      // Update profile for compatibility (keep last activated)
+      // Update profile for compatibility
       await supabase
         .from("profiles")
         .update({ evolution_instance_name: instanceName })
@@ -125,49 +124,6 @@ export function useEvolutionInstances() {
     },
   });
 
-  const setProxy = useMutation({
-    mutationFn: async ({ instanceName, proxyUrl }: { instanceName: string; proxyUrl: string }) => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
-        body: { action: "set-proxy", instanceName, proxyUrl },
-      });
-      if (error) throw error;
-
-      // Update local DB too
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase
-          .from("evolution_instances")
-          .update({ proxy_url: proxyUrl } as any)
-          .eq("user_id", user.id)
-          .eq("instance_name", instanceName);
-      }
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["evolution-instances"] });
-      toast({ title: "Proxy configurado!" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erro ao configurar proxy", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const syncWebhooks = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
-        body: { action: "sync-webhooks" },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data: any) => {
-      toast({ title: "Webhooks sincronizados!", description: `${data?.synced || 0} instância(s) configurada(s)` });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
-    },
-  });
-
   return {
     instances,
     isLoading,
@@ -176,7 +132,5 @@ export function useEvolutionInstances() {
     connectInstance,
     deleteInstance,
     setActiveInstance,
-    setProxy,
-    syncWebhooks,
   };
 }

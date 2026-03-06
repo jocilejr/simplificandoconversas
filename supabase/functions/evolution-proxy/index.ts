@@ -148,9 +148,13 @@ Deno.serve(async (req) => {
     // Actions that only need URL + API Key (no instance required)
     const noInstanceActions = ["fetch-instances", "create-instance", "connect-instance", "delete-instance", "set-proxy", "set-webhook", "sync-webhooks"];
 
+    // In Baileys-only mode, credentials may not be set — that's OK since
+    // the self-hosted nginx routes these calls to the Express backend.
+    // We only block if credentials are missing AND we're actually in Cloud mode.
     if (!evolution_api_url || !evolution_api_key) {
+      console.log("[evolution-proxy] No Evolution API credentials found, returning passthrough hint");
       return new Response(
-        JSON.stringify({ error: "Evolution API credentials not configured" }),
+        JSON.stringify({ error: "Backend not configured. Use self-hosted Baileys service." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
