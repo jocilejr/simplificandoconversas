@@ -23,6 +23,16 @@ psql -U postgres <<-EOSQL
     END IF;
   END
   \$\$;
+  -- Grant supabase_auth_admin permissions on public schema (needed for GoTrue migrations)
+  GRANT ALL ON SCHEMA public TO supabase_auth_admin;
+  GRANT ALL ON ALL TABLES IN SCHEMA public TO supabase_auth_admin;
+  GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO supabase_auth_admin;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO supabase_auth_admin;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO supabase_auth_admin;
+
+  -- Create auth schema owned by supabase_auth_admin (GoTrue expects this)
+  CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
+  GRANT ALL ON SCHEMA auth TO supabase_auth_admin;
 EOSQL
 
-echo "Supabase internal roles created/updated successfully"
+echo "Supabase internal roles and permissions created/updated successfully"
