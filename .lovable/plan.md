@@ -1,34 +1,39 @@
 
 
-## Root Cause Found
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-The Postgres logs reveal the exact error:
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-```
-ERROR: role "anon" does not exist
-STATEMENT: GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
-```
+### Correções
 
-In `init-db.sql`, line 9 tries to `GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role` **before** the `DO $$ CREATE ROLE` block (around line 14) that actually creates those roles. The script aborts, so no tables are created. Postgres itself starts fine afterward (running, exit code 0), but the database is empty.
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-## Fix
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-Reorder `deploy/init-db.sql` so the role creation block runs **before** any GRANT statements that reference those roles. Specifically, move the `DO $$ ... CREATE ROLE anon/authenticated/service_role ... END $$` block to the very top of the file, before the auth schema section.
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
-New order:
-1. Create roles (anon, authenticated, service_role) -- moved up
-2. Create auth schema + grants
-3. Grant on public schema
-4. Create tables, indexes, functions, triggers
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
 
-No other files need to change.
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
 
-### Redeploy after fix
+### Total: ~7 linhas alteradas em 5 arquivos
+
+Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas && git pull origin main && cd deploy
-docker compose down -v
-docker compose up -d
-sleep 25
-docker compose logs postgres 2>&1 | head -80
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
 

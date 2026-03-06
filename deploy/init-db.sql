@@ -2,13 +2,7 @@
 -- Init DB: Consolidated schema for self-hosted deploy
 -- ============================================================
 
--- Auth schema and supabase_auth_admin role are created by init-auth-role.sh (runs before this file)
-CREATE SCHEMA IF NOT EXISTS auth;
-ALTER SCHEMA auth OWNER TO supabase_auth_admin;
-GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
-GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
-
--- Roles for PostgREST
+-- 1. Create roles FIRST (before any GRANT references them)
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
@@ -21,6 +15,12 @@ BEGIN
     CREATE ROLE service_role NOLOGIN;
   END IF;
 END $$;
+
+-- 2. Auth schema (supabase_auth_admin created by init-auth-role.sh)
+CREATE SCHEMA IF NOT EXISTS auth;
+ALTER SCHEMA auth OWNER TO supabase_auth_admin;
+GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
+GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
