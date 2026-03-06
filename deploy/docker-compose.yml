@@ -32,7 +32,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - chatbot_pgdata:/var/lib/postgresql/data
-      - ./init-auth-role.sh:/docker-entrypoint-initdb.d/98-init-auth-role.sh
+      - ./init-roles.sh:/docker-entrypoint-initdb.d/00-init-roles.sh
       - ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
