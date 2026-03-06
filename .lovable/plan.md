@@ -1,58 +1,39 @@
 
 
-## GoTrue falha na migração: `auth.factor_type` não existe
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-O erro agora é diferente. O GoTrue roda suas migrações internas em sequência. A migração `20240729` tenta adicionar o valor `'phone'` ao enum `auth.factor_type`, mas esse tipo deveria ter sido criado por uma migração anterior. Isso indica que migrações anteriores falharam silenciosamente (provavelmente nas tentativas anteriores com o erro de SMTP, antes do volume ser limpo corretamente).
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-### Correção
+### Correções
 
-Pré-criar no `deploy/init-db.sql` os tipos enum do schema `auth` que o GoTrue espera encontrar. Isso permite que as migrações posteriores (que fazem `ALTER TYPE ... ADD VALUE`) funcionem:
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-```sql
--- Tipos que GoTrue migrations precisam
-DO $$
-BEGIN
-  CREATE TYPE auth.factor_type AS ENUM ('totp', 'webauthn');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-DO $$
-BEGIN
-  CREATE TYPE auth.factor_status AS ENUM ('unverified', 'verified');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
-DO $$
-BEGIN
-  CREATE TYPE auth.aal_level AS ENUM ('aal1', 'aal2', 'aal3');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
 
-DO $$
-BEGIN
-  CREATE TYPE auth.code_challenge_method AS ENUM ('s256', 'plain');
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
 
-DO $$
-BEGIN
-  CREATE TYPE auth.one_time_token_type AS ENUM (
-    'confirmation_token', 'reauthentication_token',
-    'recovery_token', 'email_change_token_new',
-    'email_change_token_current', 'phone_change_token'
-  );
-EXCEPTION WHEN duplicate_object THEN null;
-END $$;
-```
+### Total: ~7 linhas alteradas em 5 arquivos
 
-Adicionar isso logo após os grants do schema `auth` no `init-db.sql`.
-
-### Após aplicar
-
+Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas/deploy
-docker compose down -v
-rm .env
-bash install.sh
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
 
