@@ -37,7 +37,6 @@ export function useProfile() {
   const updateProfile = useMutation({
     mutationFn: async (updates: {
       full_name?: string;
-      evolution_instance_name?: string;
       openai_api_key?: string;
       app_public_url?: string;
     }) => {
@@ -60,26 +59,5 @@ export function useProfile() {
     },
   });
 
-  const testConnection = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
-        body: { action: "test-connection" },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      const state = data?.instance?.state || data?.state;
-      toast({
-        title: state === "open" ? "Conectado!" : "Status da conexão",
-        description: state || JSON.stringify(data),
-        variant: state === "open" ? "default" : "destructive",
-      });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erro na conexão", description: err.message, variant: "destructive" });
-    },
-  });
-
-  return { profile, isLoading, updateProfile, testConnection };
+  return { profile, isLoading, updateProfile };
 }
