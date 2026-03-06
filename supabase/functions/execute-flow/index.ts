@@ -404,7 +404,7 @@ Deno.serve(async (req) => {
         .select("id")
         .eq("user_id", userId)
         .eq("remote_jid", jid)
-        .eq("instance_name", evolution_instance_name)
+        .eq("instance_name", instanceName)
         .limit(1)
         .single();
       if (convLookup) {
