@@ -144,9 +144,9 @@ async function executeStep(
   }
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
-    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
     const r = await resp.json();
