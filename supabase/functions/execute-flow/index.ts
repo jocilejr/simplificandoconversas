@@ -113,9 +113,9 @@ async function executeStep(
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, audio: stepData.audioUrl }),
     });
     const r = await resp.json();
