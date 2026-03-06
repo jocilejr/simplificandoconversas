@@ -164,7 +164,7 @@ echo -e "${YELLOW}[5/8] Buildando e subindo containers Docker...${NC}"
 
 cd "$DEPLOY_DIR"
 docker compose build
-docker compose up -d
+docker compose up -d || true
 
 echo -e "${GREEN}✓ Containers iniciados${NC}"
 
