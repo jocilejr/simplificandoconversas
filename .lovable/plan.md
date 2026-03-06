@@ -1,30 +1,39 @@
 
 
-## Problema: `relation "identities" does not exist`
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-O GoTrue agora inicia, mas suas migrações internas não criaram as tabelas core (`auth.identities`, `auth.users`, etc.). A causa provável: o `init-db.sql` pré-cria os enum types do schema `auth` (`factor_type`, `factor_status`, etc.), e o sistema de migrações do GoTrue (baseado em `pop`) detecta que esses objetos já existem, fazendo com que migrações anteriores sejam marcadas como "já aplicadas" ou falhem silenciosamente -- pulando a criação das tabelas que viriam no mesmo arquivo de migração.
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-## Correção
+### Correções
 
-**Remover TODOS os blocos `DO $$ CREATE TYPE auth.*` do `init-db.sql`**. Manter apenas:
-- `CREATE SCHEMA IF NOT EXISTS auth;`
-- Criação de roles (`supabase_auth_admin`, `supabase_admin`)
-- Grants no schema `auth`
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-O GoTrue precisa rodar suas próprias migrações do zero, sem interferência. Ele criará os enums, tabelas (`users`, `identities`, `sessions`, `mfa_factors`, etc.) e índices internamente.
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-### Mudanças no `deploy/init-db.sql`
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
-Remover as linhas 57-86 (os 5 blocos `DO $$ CREATE TYPE auth.factor_type/factor_status/aal_level/code_challenge_method/one_time_token_type`). Manter todo o resto inalterado.
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
 
-### Após aplicar
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
 
+### Total: ~7 linhas alteradas em 5 arquivos
+
+Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas/deploy
-docker compose down -v
-rm .env
-bash install.sh
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
-
-Se o erro `factor_type does not exist` retornar na migração `20240729`, a alternativa será trocar a imagem `postgres:15-alpine` por `supabase/postgres:15.6.1.145` que já vem com todo o schema auth pré-configurado.
 
