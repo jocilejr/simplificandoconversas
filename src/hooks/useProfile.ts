@@ -37,7 +37,6 @@ export function useProfile() {
   const updateProfile = useMutation({
     mutationFn: async (updates: {
       full_name?: string;
-      evolution_instance_name?: string;
       openai_api_key?: string;
       app_public_url?: string;
     }) => {
