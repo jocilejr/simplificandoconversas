@@ -1,39 +1,39 @@
 
 
-## Plano: Corrigir erros de build TypeScript + Dockerfile
+## GoTrue continua reiniciando — solução definitiva
 
-Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
+O problema persiste porque o GoTrue v2.158.1 espera rodar contra um Postgres que já tem a infraestrutura base do Supabase (extensões acessíveis, roles com search_path correto). O `postgres:15-alpine` é um Postgres vanilla que não atende esses requisitos. Cada tentativa de corrigir manualmente no `init-db.sql` resolve um problema mas cria outro.
 
-### Correções
+### Solução: usar `supabase/postgres` no lugar de `postgres:15-alpine`
 
-**1. `deploy/baileys-service/Dockerfile`** (linha 3)
-- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
-- Necessário porque `@whiskeysockets/baileys` instala via git
+A imagem `supabase/postgres:15.8.1.060` já vem com:
+- Schema `auth` pré-configurado com todos os tipos enum
+- Extensões `uuid-ossp`, `pgcrypto` no schema correto
+- Roles `supabase_auth_admin`, `supabase_admin` com permissões e search_path
+- Todas as tabelas base que o GoTrue espera
 
-**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
-- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
-  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
-- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
-  - Corrige erro na linha 71
+### Alterações
 
-**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
-- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
-  - Corrige erro na linha 196
-- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
-  - Corrige erro na linha 394
-- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
+**1. `deploy/docker-compose.yml`** — trocar imagem do postgres:
+```yaml
+postgres:
+  image: supabase/postgres:15.8.1.060
+```
 
-**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
-- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
-  - Corrige erro na linha 37
+**2. `deploy/portainer-stack.yml`** — mesma troca.
 
-**5. `deploy/docker-compose.yml`** (1 linha)
-- Remover `version: "3.8"` para eliminar o warning
+**3. `deploy/init-db.sql`** — remover tudo relacionado ao schema `auth`, roles `supabase_auth_admin`/`supabase_admin`, e extensões (já vêm na imagem). Manter apenas:
+- Roles PostgREST (`anon`, `authenticated`, `service_role`)
+- Grants no schema `public`
+- Todas as tabelas `public.*`
+- Storage tables, indexes, functions, triggers, RBAC
 
-### Total: ~7 linhas alteradas em 5 arquivos
+### Após aplicar
 
-Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
+cd ~/simplificandoconversas/deploy
+docker compose down -v
+rm .env
+bash install.sh
 ```
 
