@@ -316,7 +316,7 @@ Deno.serve(async (req) => {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
     // Run all initial queries in parallel for faster startup
-    const [flowResult, profileResult, activeExecsResult] = await Promise.all([
+    const [flowResult, profileResult, activeInstanceResult, activeExecsResult] = await Promise.all([
       serviceClient
         .from("chatbot_flows")
         .select("*")
@@ -325,9 +325,19 @@ Deno.serve(async (req) => {
         .single(),
       serviceClient
         .from("profiles")
-        .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url")
+        .select("openai_api_key, app_public_url")
         .eq("user_id", userId)
         .single(),
+      // Get active instance if not provided in body
+      !bodyInstanceName
+        ? serviceClient
+            .from("evolution_instances")
+            .select("instance_name")
+            .eq("user_id", userId)
+            .eq("is_active", true)
+            .limit(1)
+            .single()
+        : Promise.resolve({ data: { instance_name: bodyInstanceName } }),
       // Only check active executions if not resuming
       !resumeFromNodeId
         ? serviceClient
@@ -349,16 +359,18 @@ Deno.serve(async (req) => {
     }
 
     const { data: profile } = profileResult;
-    if (!profile?.evolution_api_url || !profile?.evolution_api_key || !profile?.evolution_instance_name) {
-      return new Response(JSON.stringify({ error: "Evolution API not configured" }), {
+
+    // Baileys connection via env vars (backend handles routing)
+    const baileysUrl = Deno.env.get("BAILEYS_URL") || "http://baileys:8084";
+    const apiKey = Deno.env.get("BAILEYS_API_KEY") || "baileys-local-key";
+    const instanceName = activeInstanceResult?.data?.instance_name || bodyInstanceName;
+    if (!instanceName) {
+      return new Response(JSON.stringify({ error: "Nenhuma instância WhatsApp ativa. Vincule uma instância nas configurações." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const { evolution_api_url, evolution_api_key } = profile;
-    const evolution_instance_name = bodyInstanceName || profile.evolution_instance_name;
-    const baseUrl = evolution_api_url.replace(/\/$/, "");
+    const baseUrl = baileysUrl.replace(/\/$/, "");
 
     // Check active executions result (with instance_name filter if needed)
     if (!resumeFromNodeId) {
