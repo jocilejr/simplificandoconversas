@@ -147,7 +147,7 @@ networks:
   default:
   traefik:
     external: true
-    name: PrincipalNet
+    name: web
 
 volumes:
   pgdata:
