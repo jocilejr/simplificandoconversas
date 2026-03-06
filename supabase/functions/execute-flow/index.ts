@@ -37,8 +37,8 @@ interface StepData {
 async function executeStep(
   stepData: StepData,
   baseUrl: string,
-  evolution_api_key: string,
-  evolution_instance_name: string,
+  apiKey: string,
+  instanceName: string,
   jid: string,
   serviceClient: any,
   userId: string
