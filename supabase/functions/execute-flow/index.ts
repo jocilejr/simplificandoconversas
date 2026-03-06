@@ -726,7 +726,7 @@ Deno.serve(async (req) => {
               preview_title: data.clickPreviewTitle || null,
               preview_description: data.clickPreviewDescription || null,
               preview_image: data.clickPreviewImage || null,
-              instance_name: evolution_instance_name,
+               instance_name: instanceName,
             });
 
             const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
