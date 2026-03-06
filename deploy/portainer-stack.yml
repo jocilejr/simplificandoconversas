@@ -1,23 +1,44 @@
 services:
+  # ─── Traefik (SSL automático) ───
+  traefik:
+    image: traefik:v2.11
+    restart: always
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - chatbot_letsencrypt:/letsencrypt
+
   # ─── PostgreSQL ───
   postgres:
-    image: supabase/postgres:15.8.1.085
+    image: supabase/postgres:15.8.1.060
     restart: always
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - chatbot_pgdata:/var/lib/postgresql/data
       - ./init-auth-role.sh:/docker-entrypoint-initdb.d/98-init-auth-role.sh
-      - ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql:ro
+      - ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
-    labels:
-      - "com.simplificando.service=database"
 
   # ─── GoTrue (Auth) ───
   gotrue:
@@ -26,6 +47,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     environment:
       GOTRUE_API_HOST: "0.0.0.0"
       GOTRUE_API_PORT: "9999"
@@ -37,7 +64,7 @@ services:
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
       GOTRUE_JWT_EXP: "3600"
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
-      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_DISABLE_SIGNUP: "true"
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       GOTRUE_MAILER_AUTOCONFIRM: "true"
       GOTRUE_SMTP_ADMIN_EMAIL: "admin@example.com"
@@ -45,8 +72,6 @@ services:
       GOTRUE_SMTP_PORT: "587"
       GOTRUE_SMTP_USER: "no-reply@example.com"
       GOTRUE_SMTP_PASS: "unused"
-    labels:
-      - "com.simplificando.service=auth"
 
   # ─── PostgREST ───
   postgrest:
@@ -61,8 +86,6 @@ services:
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_DB_USE_LEGACY_GUCS: "false"
-    labels:
-      - "com.simplificando.service=api"
 
   # ─── Supabase Storage ───
   storage:
@@ -87,9 +110,7 @@ services:
       AUTH_JWT_SECRET: ${JWT_SECRET}
       AUTH_JWT_ALGORITHM: HS256
     volumes:
-      - storagedata:/var/lib/storage
-    labels:
-      - "com.simplificando.service=storage"
+      - chatbot_storagedata:/var/lib/storage
 
   # ─── Baileys Service (WhatsApp) ───
   baileys:
@@ -100,9 +121,7 @@ services:
       WEBHOOK_URL: http://backend:3001/api/webhook
       API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
     volumes:
-      - baileys_sessions:/app/sessions
-    labels:
-      - "com.simplificando.service=whatsapp"
+      - chatbot_baileys_sessions:/app/sessions
 
   # ─── Backend Express ───
   backend:
@@ -111,6 +130,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      gotrue:
+        condition: service_started
     environment:
       PORT: "3001"
       SUPABASE_URL: http://postgrest:3000
@@ -125,10 +146,8 @@ services:
       API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    labels:
-      - "com.simplificando.service=backend"
 
-  # ─── Nginx ───
+  # ─── Nginx (roteamento interno) ───
   nginx:
     image: nginx:alpine
     restart: always
@@ -142,31 +161,19 @@ services:
       API_DOMAIN: ${API_DOMAIN}
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - frontend_data:/usr/share/nginx/html:ro
-    networks:
-      - default
-      - traefik
+      - ./frontend:/usr/share/nginx/html:ro
     labels:
-      - "com.simplificando.service=proxy"
       - "traefik.enable=true"
-      - "traefik.http.routers.simplificando-app.rule=Host(`app.chatbotsimples.cloud`)"
-      - "traefik.http.routers.simplificando-app.entrypoints=websecure"
-      - "traefik.http.routers.simplificando-app.tls.certresolver=letsencryptresolver"
-      - "traefik.http.routers.simplificando-api.rule=Host(`api.chatbotsimples.cloud`)"
-      - "traefik.http.routers.simplificando-api.entrypoints=websecure"
-      - "traefik.http.routers.simplificando-api.tls.certresolver=letsencryptresolver"
-      - "traefik.http.services.simplificando-nginx.loadbalancer.server.port=80"
-
-networks:
-  default:
-  traefik:
-    external: true
-    name: PrincipalNet
+      - "traefik.http.routers.chatbot-app.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.chatbot-app.entrypoints=websecure"
+      - "traefik.http.routers.chatbot-app.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatbot-api.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.chatbot-api.entrypoints=websecure"
+      - "traefik.http.routers.chatbot-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.chatbot-nginx.loadbalancer.server.port=80"
 
 volumes:
-  pgdata:
-  storagedata:
-  baileys_sessions:
-  frontend_data:
-    external: true
-    name: ${STACK_NAME:-simplificando}_frontend
+  chatbot_letsencrypt:
+  chatbot_pgdata:
+  chatbot_storagedata:
+  chatbot_baileys_sessions:

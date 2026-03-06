@@ -9,30 +9,46 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}  Instalação Automatizada — Self-Hosted Deploy     ${NC}"
+echo -e "${BLUE}  ChatBot Simples — Instalação para VPS Limpa     ${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
 echo ""
 
-# ─── Check prerequisites ───
-echo -e "${YELLOW}[1/8] Verificando pré-requisitos...${NC}"
-
-if ! command -v docker &> /dev/null; then
-  echo -e "${RED}Docker não encontrado! Instale: https://docs.docker.com/engine/install/${NC}"
-  exit 1
-fi
-
-if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
-  echo -e "${RED}Docker Compose não encontrado! Instale: https://docs.docker.com/compose/install/${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}✓ Docker e Docker Compose instalados${NC}"
-
-# ─── Setup .env ───
-echo -e "${YELLOW}[2/8] Configurando variáveis de ambiente...${NC}"
-
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DEPLOY_DIR"
+
+# ─── 1. Install Docker ───
+echo -e "${YELLOW}[1/9] Verificando Docker...${NC}"
+
+if ! command -v docker &> /dev/null; then
+  echo -e "${YELLOW}Instalando Docker...${NC}"
+  curl -fsSL https://get.docker.com | sh
+  systemctl enable docker
+  systemctl start docker
+  echo -e "${GREEN}✓ Docker instalado${NC}"
+else
+  echo -e "${GREEN}✓ Docker já instalado${NC}"
+fi
+
+if ! docker compose version &> /dev/null; then
+  echo -e "${RED}Docker Compose não disponível! Atualize o Docker.${NC}"
+  exit 1
+fi
+echo -e "${GREEN}✓ Docker Compose disponível${NC}"
+
+# ─── 2. Install Node.js ───
+echo -e "${YELLOW}[2/9] Verificando Node.js...${NC}"
+
+if ! command -v node &> /dev/null; then
+  echo -e "${YELLOW}Instalando Node.js 20...${NC}"
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
+  echo -e "${GREEN}✓ Node.js instalado${NC}"
+else
+  echo -e "${GREEN}✓ Node.js $(node -v) já instalado${NC}"
+fi
+
+# ─── 3. Configure domains + admin ───
+echo -e "${YELLOW}[3/9] Configurando variáveis de ambiente...${NC}"
 
 if [ ! -f .env ]; then
   echo ""
@@ -40,6 +56,7 @@ if [ ! -f .env ]; then
   echo ""
   read -p "  Domínio do Frontend (ex: app.seudominio.com): " APP_DOMAIN
   read -p "  Domínio da API      (ex: api.seudominio.com): " API_DOMAIN
+  read -p "  Email para SSL Let's Encrypt: " ACME_EMAIL
   echo ""
 
   if [ -z "$APP_DOMAIN" ] || [ -z "$API_DOMAIN" ]; then
@@ -69,7 +86,7 @@ if [ ! -f .env ]; then
   POSTGRES_PASSWORD=$(openssl rand -hex 16)
   BAILEYS_API_KEY=$(openssl rand -hex 16)
 
-  # Generate ANON_KEY (JWT with role=anon)
+  # Generate ANON_KEY
   ANON_KEY=$(node -e "
     const crypto = require('crypto');
     const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
@@ -80,9 +97,9 @@ if [ ! -f .env ]; then
     })).toString('base64url');
     const sig = crypto.createHmac('sha256','${JWT_SECRET}').update(header+'.'+payload).digest('base64url');
     console.log(header+'.'+payload+'.'+sig);
-  " 2>/dev/null || echo "generate-manually")
+  ")
 
-  # Generate SERVICE_ROLE_KEY (JWT with role=service_role)
+  # Generate SERVICE_ROLE_KEY
   SERVICE_ROLE_KEY=$(node -e "
     const crypto = require('crypto');
     const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
@@ -93,7 +110,7 @@ if [ ! -f .env ]; then
     })).toString('base64url');
     const sig = crypto.createHmac('sha256','${JWT_SECRET}').update(header+'.'+payload).digest('base64url');
     console.log(header+'.'+payload+'.'+sig);
-  " 2>/dev/null || echo "generate-manually")
+  ")
 
   APP_URL="https://${APP_DOMAIN}"
   API_URL="https://${API_DOMAIN}"
@@ -103,6 +120,7 @@ APP_DOMAIN=${APP_DOMAIN}
 API_DOMAIN=${API_DOMAIN}
 APP_URL=${APP_URL}
 API_URL=${API_URL}
+ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
 ANON_KEY=${ANON_KEY}
@@ -118,25 +136,20 @@ EOF
   echo -e "${YELLOW}  API:      ${API_URL}${NC}"
   echo -e "${YELLOW}  Admin:    ${ADMIN_EMAIL}${NC}"
 else
-  echo -e "${GREEN}✓ .env já existe, mantendo configurações existentes${NC}"
+  echo -e "${GREEN}✓ .env já existe, mantendo configurações${NC}"
 fi
 
 # Load .env
+set -a
 source .env
+set +a
 
-# ─── Create Docker network ───
-echo -e "${YELLOW}[3/8] Configurando rede Docker...${NC}"
-
-docker network create web 2>/dev/null || true
-echo -e "${GREEN}✓ Rede 'web' pronta${NC}"
-
-# ─── Build frontend ───
-echo -e "${YELLOW}[4/8] Buildando frontend React...${NC}"
+# ─── 4. Build frontend ───
+echo -e "${YELLOW}[4/9] Buildando frontend React...${NC}"
 
 REPO_ROOT="$(dirname "$DEPLOY_DIR")"
 cd "$REPO_ROOT"
 
-# Create frontend .env for build
 cat > .env.production << EOF
 VITE_SUPABASE_URL=${API_URL}
 VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
@@ -150,28 +163,25 @@ elif command -v npm &> /dev/null; then
   npm ci 2>/dev/null || npm install
   npm run build
 else
-  echo -e "${RED}Node.js/npm/bun não encontrado! Instale Node.js 20+${NC}"
+  echo -e "${RED}Nenhum gerenciador de pacotes encontrado!${NC}"
   exit 1
 fi
 
-# Copy build to deploy/frontend
 rm -rf "$DEPLOY_DIR/frontend"
 cp -r dist "$DEPLOY_DIR/frontend"
-echo -e "${GREEN}✓ Frontend buildado e copiado para deploy/frontend/${NC}"
+echo -e "${GREEN}✓ Frontend buildado${NC}"
 
-# ─── Docker Compose ───
-echo -e "${YELLOW}[5/8] Buildando e subindo containers Docker...${NC}"
+# ─── 5. Build & start containers ───
+echo -e "${YELLOW}[5/9] Buildando e subindo containers...${NC}"
 
 cd "$DEPLOY_DIR"
 docker compose build
 docker compose up -d || true
-
 echo -e "${GREEN}✓ Containers iniciados${NC}"
 
-# ─── Wait for PostgreSQL + GoTrue ───
-echo -e "${YELLOW}[6/8] Aguardando PostgreSQL e GoTrue...${NC}"
+# ─── 6. Wait for Postgres ───
+echo -e "${YELLOW}[6/9] Aguardando PostgreSQL...${NC}"
 
-# Wait for PostgreSQL
 for i in {1..30}; do
   if docker compose exec -T postgres pg_isready -U postgres &>/dev/null; then
     break
@@ -182,8 +192,10 @@ done
 echo ""
 echo -e "${GREEN}✓ PostgreSQL pronto${NC}"
 
-# Wait for GoTrue
-echo -n "  Aguardando GoTrue"
+# ─── 7. Wait for GoTrue ───
+echo -e "${YELLOW}[7/9] Aguardando GoTrue estabilizar...${NC}"
+
+echo -n "  Health check"
 for i in {1..30}; do
   if docker compose exec -T gotrue wget -qO- http://localhost:9999/health &>/dev/null; then
     break
@@ -192,13 +204,10 @@ for i in {1..30}; do
   echo -n "."
 done
 echo ""
-echo -e "${GREEN}✓ GoTrue respondeu ao health check${NC}"
 
-# Wait for GoTrue to stabilize (internal migrations)
-echo -e "  Aguardando GoTrue estabilizar (migrações internas)..."
+# Wait for internal migrations
 sleep 30
 
-# Verify GoTrue container is actually running (not restarting)
 for i in {1..12}; do
   STATE=$(docker compose ps gotrue --format '{{.State}}' 2>/dev/null || echo "unknown")
   if [ "$STATE" = "running" ]; then
@@ -209,8 +218,8 @@ for i in {1..12}; do
 done
 echo -e "${GREEN}✓ GoTrue estável${NC}"
 
-# ─── Create admin account ───
-echo -e "${YELLOW}[7/8] Criando conta de administrador...${NC}"
+# ─── 8. Create admin account ───
+echo -e "${YELLOW}[8/9] Criando conta de administrador...${NC}"
 
 ADMIN_CREATED=false
 for attempt in {1..5}; do
@@ -218,7 +227,7 @@ for attempt in {1..5}; do
 
   STATE=$(docker compose ps gotrue --format '{{.State}}' 2>/dev/null || echo "unknown")
   if [ "$STATE" != "running" ]; then
-    echo -e "  GoTrue não está running (estado: ${STATE}), aguardando..."
+    echo -e "  GoTrue não está running (${STATE}), aguardando..."
     sleep 10
     continue
   fi
@@ -245,11 +254,11 @@ done
 
 if [ "$ADMIN_CREATED" = false ]; then
   echo -e "${RED}✗ Não foi possível criar o admin após 5 tentativas${NC}"
-  echo -e "${YELLOW}  Verifique os logs: docker compose logs gotrue${NC}"
+  echo -e "${YELLOW}  Verifique: docker compose logs gotrue${NC}"
 fi
 
-# ─── Summary ───
-echo -e "${YELLOW}[8/8] Verificando serviços...${NC}"
+# ─── 9. Summary ───
+echo -e "${YELLOW}[9/9] Verificando serviços...${NC}"
 
 sleep 5
 
@@ -263,14 +272,12 @@ echo -e "  ${GREEN}API:${NC}       ${API_URL}"
 echo -e "  ${GREEN}Admin:${NC}     ${ADMIN_EMAIL}"
 echo ""
 echo -e "  ${YELLOW}Próximos passos:${NC}"
-echo -e "  1. Configure o DNS dos domínios apontando para este servidor"
-echo -e "  2. Configure o reverse proxy (Traefik/Nginx) para SSL"
-echo -e "     - ${APP_DOMAIN} → localhost:80 (container nginx)"
-echo -e "     - ${API_DOMAIN} → localhost:80 (container nginx)"
+echo -e "  1. Aponte o DNS de ${APP_DOMAIN} e ${API_DOMAIN} para o IP desta VPS"
+echo -e "  2. O SSL será gerado automaticamente pelo Traefik (Let's Encrypt)"
 echo -e "  3. Acesse ${APP_URL} e faça login com a conta admin"
 echo ""
 echo -e "  ${YELLOW}Comandos úteis:${NC}"
 echo -e "  docker compose logs -f          # Ver logs"
 echo -e "  docker compose restart           # Reiniciar"
-echo -e "  ./update.sh                      # Atualizar após mudanças"
+echo -e "  ./update.sh                      # Atualizar"
 echo ""

@@ -1,14 +1,37 @@
 services:
+  # ─── Traefik (SSL automático) ───
+  traefik:
+    image: traefik:v2.11
+    restart: always
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - chatbot_letsencrypt:/letsencrypt
+
   # ─── PostgreSQL ───
   postgres:
-    image: supabase/postgres:15.8.1.085
+    image: supabase/postgres:15.8.1.060
     restart: always
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - chatbot_pgdata:/var/lib/postgresql/data
       - ./init-auth-role.sh:/docker-entrypoint-initdb.d/98-init-auth-role.sh
       - ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
     healthcheck:
@@ -87,7 +110,7 @@ services:
       AUTH_JWT_SECRET: ${JWT_SECRET}
       AUTH_JWT_ALGORITHM: HS256
     volumes:
-      - storagedata:/var/lib/storage
+      - chatbot_storagedata:/var/lib/storage
 
   # ─── Baileys Service (WhatsApp) ───
   baileys:
@@ -98,7 +121,7 @@ services:
       WEBHOOK_URL: http://backend:3001/api/webhook
       API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
     volumes:
-      - baileys_sessions:/app/sessions
+      - chatbot_baileys_sessions:/app/sessions
 
   # ─── Backend Express ───
   backend:
@@ -124,7 +147,7 @@ services:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
-  # ─── Nginx ───
+  # ─── Nginx (roteamento interno) ───
   nginx:
     image: nginx:alpine
     restart: always
@@ -139,26 +162,21 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./frontend:/usr/share/nginx/html:ro
-    networks:
-      - default
-      - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.simplificando-app.rule=Host(`${APP_DOMAIN}`)"
-      - "traefik.http.routers.simplificando-app.entrypoints=websecure"
-      - "traefik.http.routers.simplificando-app.tls.certresolver=letsencryptresolver"
-      - "traefik.http.routers.simplificando-api.rule=Host(`${API_DOMAIN}`)"
-      - "traefik.http.routers.simplificando-api.entrypoints=websecure"
-      - "traefik.http.routers.simplificando-api.tls.certresolver=letsencryptresolver"
-      - "traefik.http.services.simplificando-nginx.loadbalancer.server.port=80"
-
-networks:
-  default:
-  traefik:
-    external: true
-    name: web
+      # Frontend
+      - "traefik.http.routers.chatbot-app.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.chatbot-app.entrypoints=websecure"
+      - "traefik.http.routers.chatbot-app.tls.certresolver=letsencrypt"
+      # API
+      - "traefik.http.routers.chatbot-api.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.chatbot-api.entrypoints=websecure"
+      - "traefik.http.routers.chatbot-api.tls.certresolver=letsencrypt"
+      # Service
+      - "traefik.http.services.chatbot-nginx.loadbalancer.server.port=80"
 
 volumes:
-  pgdata:
-  storagedata:
-  baileys_sessions:
+  chatbot_letsencrypt:
+  chatbot_pgdata:
+  chatbot_storagedata:
+  chatbot_baileys_sessions:
