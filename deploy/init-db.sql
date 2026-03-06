@@ -19,7 +19,6 @@ END $$;
 -- 2. Auth schema is managed entirely by GoTrue — do NOT create it here.
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
