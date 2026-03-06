@@ -674,9 +674,9 @@ Deno.serve(async (req) => {
             console.log(`[execute-flow] AI response (${aiModel}):`, aiResponse.substring(0, 100));
 
             if (data.aiAutoSend !== false && aiResponse) {
-              const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+               const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
                 method: "POST",
-                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                headers: { apikey: apiKey, "Content-Type": "application/json" },
                 body: JSON.stringify({ number: jid, text: aiResponse }),
               });
               const sendResult = await sendResp.json();
