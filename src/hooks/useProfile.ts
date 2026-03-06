@@ -20,7 +20,6 @@ export function useProfile() {
 
       if (error) throw error;
 
-      // Auto-create profile if it doesn't exist (self-hosted edge case)
       if (!data) {
         const { data: newProfile, error: insertError } = await supabase
           .from("profiles")
@@ -38,8 +37,6 @@ export function useProfile() {
   const updateProfile = useMutation({
     mutationFn: async (updates: {
       full_name?: string;
-      evolution_api_url?: string;
-      evolution_api_key?: string;
       evolution_instance_name?: string;
       openai_api_key?: string;
       app_public_url?: string;
