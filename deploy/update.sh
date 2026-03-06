@@ -14,7 +14,7 @@ echo "[1/3] Rebuilding frontend..."
 cd "$REPO_ROOT"
 
 cat > .env.production << EOF
-VITE_SUPABASE_URL=${APP_URL}
+VITE_SUPABASE_URL=${API_URL}
 VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
 VITE_SUPABASE_PROJECT_ID=local
 EOF
@@ -38,4 +38,5 @@ docker compose up -d
 
 echo ""
 echo "✅ Atualização concluída!"
-echo "   Acesse: ${APP_URL}"
+echo "   Frontend: ${APP_URL}"
+echo "   API:      ${API_URL}"

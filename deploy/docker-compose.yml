@@ -26,7 +26,7 @@ services:
     environment:
       GOTRUE_API_HOST: "0.0.0.0"
       GOTRUE_API_PORT: "9999"
-      API_EXTERNAL_URL: ${APP_URL}
+      API_EXTERNAL_URL: ${API_URL}
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app?sslmode=disable
       GOTRUE_SITE_URL: ${APP_URL}
@@ -42,8 +42,6 @@ services:
       GOTRUE_SMTP_PORT: ""
       GOTRUE_SMTP_USER: ""
       GOTRUE_SMTP_PASS: ""
-    ports:
-      - "9999:9999"
 
   # ─── PostgREST ───
   postgrest:
@@ -58,8 +56,6 @@ services:
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_DB_USE_LEGACY_GUCS: "false"
-    ports:
-      - "3000:3000"
 
   # ─── Supabase Storage ───
   storage:
@@ -85,8 +81,6 @@ services:
       AUTH_JWT_ALGORITHM: HS256
     volumes:
       - storagedata:/var/lib/storage
-    ports:
-      - "5000:5000"
 
   # ─── Baileys Service (WhatsApp) ───
   baileys:
@@ -98,8 +92,6 @@ services:
       API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
     volumes:
       - baileys_sessions:/app/sessions
-    ports:
-      - "8084:8084"
 
   # ─── Backend Express ───
   backend:
@@ -119,10 +111,9 @@ services:
       BAILEYS_URL: http://baileys:8084
       BAILEYS_API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
       APP_URL: ${APP_URL}
+      API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    ports:
-      - "3001:3001"
 
   # ─── Nginx ───
   nginx:
@@ -133,9 +124,12 @@ services:
       - gotrue
       - storage
       - backend
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
-      - ./frontend:/usr/share/nginx/html
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./frontend:/usr/share/nginx/html:ro
     ports:
       - "8080:80"
 
