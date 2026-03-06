@@ -51,9 +51,9 @@ async function executeStep(
 
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
-    const resp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, text: resolvedText }),
     });
     const r = await resp.json();
