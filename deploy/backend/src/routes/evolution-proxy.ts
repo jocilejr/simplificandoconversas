@@ -67,7 +67,7 @@ router.post("/", async (req, res) => {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!userResp.ok) return res.status(401).json({ error: "Unauthorized" });
-    const userData = await userResp.json();
+    const userData: any = await userResp.json();
     const userId = userData.id;
 
     const supabase = getServiceClient();

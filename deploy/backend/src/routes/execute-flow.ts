@@ -390,7 +390,7 @@ router.post("/", async (req, res) => {
               headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
               body: JSON.stringify({ model: aiModel, messages: openaiMessages, temperature: data.aiTemperature ?? 0.7, max_tokens: data.aiMaxTokens || 500 }),
             });
-            const aiData = await aiResp.json();
+            const aiData: any = await aiResp.json();
             const aiResponse = aiData?.choices?.[0]?.message?.content || "";
 
             if (data.aiAutoSend !== false && aiResponse) {
