@@ -40,7 +40,7 @@ async function baileysRequest(path: string, method: string = "POST", body?: any)
     headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  return resp.json();
+  return resp.json() as Promise<any>;
 }
 
 async function executeStep(
@@ -192,7 +192,7 @@ router.post("/", async (req, res) => {
       if (!userResp.ok) {
         return res.status(401).json({ error: "Unauthorized" });
       }
-      const userData = await userResp.json();
+      const userData: any = await userResp.json();
       userId = userData.id;
     }
 
@@ -390,7 +390,7 @@ router.post("/", async (req, res) => {
               headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
               body: JSON.stringify({ model: aiModel, messages: openaiMessages, temperature: data.aiTemperature ?? 0.7, max_tokens: data.aiMaxTokens || 500 }),
             });
-            const aiData = await aiResp.json();
+            const aiData: any = await aiResp.json();
             const aiResponse = aiData?.choices?.[0]?.message?.content || "";
 
             if (data.aiAutoSend !== false && aiResponse) {

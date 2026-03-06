@@ -13,7 +13,7 @@ async function baileysRequest(path: string, method: string = "POST", body?: any)
     headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  return resp.json();
+  return resp.json() as Promise<any>;
 }
 
 async function downloadAndUploadMedia(
@@ -67,7 +67,7 @@ router.post("/", async (req, res) => {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!userResp.ok) return res.status(401).json({ error: "Unauthorized" });
-    const userData = await userResp.json();
+    const userData: any = await userResp.json();
     const userId = userData.id;
 
     const supabase = getServiceClient();
