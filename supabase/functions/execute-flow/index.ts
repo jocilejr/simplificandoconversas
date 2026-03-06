@@ -398,7 +398,7 @@ Deno.serve(async (req) => {
 
     // Auto-lookup conversation_id if not provided
     let resolvedConversationId = conversationId || null;
-    if (!resolvedConversationId && jid && evolution_instance_name) {
+    if (!resolvedConversationId && jid && instanceName) {
       const { data: convLookup } = await serviceClient
         .from("conversations")
         .select("id")
