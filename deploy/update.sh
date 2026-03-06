@@ -35,9 +35,10 @@ if [ ! -f "$REPO_ROOT/dist/index.html" ]; then
   exit 1
 fi
 
-# Replace frontend only after successful build
-rm -rf "$DEPLOY_DIR/frontend"
-cp -r "$REPO_ROOT/dist" "$DEPLOY_DIR/frontend"
+# Replace frontend files (preserve directory inode for bind mount)
+mkdir -p "$DEPLOY_DIR/frontend"
+rm -rf "$DEPLOY_DIR/frontend/"*
+cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
 echo "✓ Frontend copiado com sucesso"
 
 # Rebuild and restart containers
@@ -47,6 +48,10 @@ docker compose build
 
 echo "[4/4] Restarting..."
 docker compose up -d
+
+# Force restart Nginx to guarantee bind mount refresh
+docker compose restart nginx
+echo "✓ Nginx reiniciado"
 
 echo ""
 echo "✅ Atualização concluída!"
