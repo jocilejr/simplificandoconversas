@@ -1,68 +1,33 @@
 
+## Deploy para VPS Limpa — Concluído ✅
 
-## Problema
+Todos os arquivos de deploy foram reescritos para funcionar em uma VPS limpa com Traefik embutido e SSL automático.
 
-O erro CORS ocorre porque o Nginx no API_DOMAIN não adiciona headers CORS nas respostas. Quando o frontend em `app.chatbotsimplificado.com` faz requests para `api.chatbotsimplificado.com`, o browser bloqueia porque o preflight OPTIONS não recebe `Access-Control-Allow-Origin`.
+### Arquivos alterados
 
-## Solução
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/docker-compose.yml` | Reescrito: Traefik embutido, Postgres 15.8.1.060, volumes prefixados `chatbot_*`, sem rede externa |
+| `deploy/portainer-stack.yml` | Reescrito: mesma arquitetura do docker-compose.yml |
+| `deploy/init-auth-role.sh` | Simplificado: apenas seta password do `supabase_auth_admin` |
+| `deploy/init-db.sql` | Removida linha `GRANT USAGE ON SCHEMA auth` |
+| `deploy/install.sh` | Reescrito: instala Docker+Node.js, gera secrets, Traefik auto-SSL, health checks |
+| `deploy/.env.example` | Atualizado: inclui `ACME_EMAIL` e credenciais admin |
 
-Adicionar headers CORS e tratamento de preflight OPTIONS no Nginx para todas as rotas do API_DOMAIN.
+### Como usar na VPS limpa
 
-### Arquivo: `deploy/nginx/default.conf.template`
-
-Adicionar um bloco de CORS no server do API_DOMAIN, antes de cada location, ou melhor, usar uma abordagem centralizada com variáveis:
-
-```nginx
-# ─── API (API_DOMAIN) ───
-server {
-    listen 80;
-    server_name ${API_DOMAIN};
-    client_max_body_size 50M;
-
-    # CORS headers
-    set $cors_origin "https://${APP_DOMAIN}";
-
-    # PostgREST
-    location /rest/v1/ {
-        if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' $cors_origin always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'authorization, x-client-info, apikey, content-type, accept, accept-profile, content-profile, x-supabase-api-version, prefer, range' always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Max-Age' 86400;
-            add_header 'Content-Length' 0;
-            return 204;
-        }
-        add_header 'Access-Control-Allow-Origin' $cors_origin always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        proxy_pass http://postgrest:3000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # GoTrue (Auth) — mesmo padrão CORS
-    location /auth/v1/ { ... }
-
-    # Storage — mesmo padrão CORS
-    location /storage/v1/ { ... }
-
-    # Backend — mesmo padrão CORS
-    location /functions/v1/ { ... }
-
-    # Baileys — mesmo padrão CORS
-    location /baileys/ { ... }
-}
-```
-
-Cada location receberá o mesmo bloco de CORS headers com preflight OPTIONS handling. A origin será restrita ao `APP_DOMAIN` para segurança.
-
-### Deploy
-
-Após a alteração, na VPS:
 ```bash
-git pull
-docker compose up -d nginx
-```
+# 1. Clonar o repositório
+git clone <repo> && cd <repo>/deploy
 
+# 2. Executar instalação
+chmod +x install.sh && ./install.sh
+
+# 3. O script vai:
+#    - Instalar Docker e Node.js (se necessário)
+#    - Solicitar domínios, email SSL e credenciais admin
+#    - Gerar todos os secrets automaticamente
+#    - Buildar frontend e containers
+#    - Configurar Traefik com SSL Let's Encrypt
+#    - Criar conta admin no GoTrue
+```
