@@ -21,7 +21,7 @@ services:
 
   # ─── GoTrue (Auth) ───
   gotrue:
-    image: supabase/gotrue:v2.158.1
+    image: supabase/gotrue:v2.186.0
     restart: always
     depends_on:
       postgres:
