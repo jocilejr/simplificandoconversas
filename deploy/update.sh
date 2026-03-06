@@ -9,10 +9,13 @@ echo "═══ Atualizando deploy ═══"
 # Load env
 source "$DEPLOY_DIR/.env"
 
-# Rebuild frontend
-echo "[1/3] Rebuilding frontend..."
+# Pull latest code
+echo "[1/4] Pulling latest code..."
 cd "$REPO_ROOT"
+git pull origin main
 
+# Rebuild frontend
+echo "[2/4] Rebuilding frontend..."
 cat > .env.production << EOF
 VITE_SUPABASE_URL=${API_URL}
 VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
@@ -25,15 +28,24 @@ else
   npm ci && npm run build
 fi
 
+# Verify build succeeded
+if [ ! -f "$REPO_ROOT/dist/index.html" ]; then
+  echo "❌ Build falhou! dist/index.html não encontrado."
+  echo "   Frontend anterior mantido intacto."
+  exit 1
+fi
+
+# Replace frontend only after successful build
 rm -rf "$DEPLOY_DIR/frontend"
-cp -r dist "$DEPLOY_DIR/frontend"
+cp -r "$REPO_ROOT/dist" "$DEPLOY_DIR/frontend"
+echo "✓ Frontend copiado com sucesso"
 
 # Rebuild and restart containers
-echo "[2/3] Rebuilding containers..."
+echo "[3/4] Rebuilding containers..."
 cd "$DEPLOY_DIR"
 docker compose build
 
-echo "[3/3] Restarting..."
+echo "[4/4] Restarting..."
 docker compose up -d
 
 echo ""
