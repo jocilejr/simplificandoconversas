@@ -973,7 +973,7 @@ Deno.serve(async (req) => {
                 results.push(`group.${step.id}: action: ${actionType} (no-op)`);
               }
             } else {
-              const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
