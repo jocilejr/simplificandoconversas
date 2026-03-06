@@ -1,32 +1,33 @@
 
+## Deploy para VPS Limpa — Concluído ✅
 
-## Plano: Corrigir inicialização do PostgreSQL
+Todos os arquivos de deploy foram reescritos para funcionar em uma VPS limpa com Traefik embutido e SSL automático.
 
-### Problema
-A imagem `supabase/postgres:15.8.1.060` possui um `migrate.sh` interno que roda antes dos scripts customizados (numerados 98, 99). Esse script espera que roles como `supabase_admin` já existam, causando falha na inicialização.
+### Arquivos alterados
 
-### Solução
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/docker-compose.yml` | Reescrito: Traefik embutido, Postgres 15.8.1.060, volumes prefixados `chatbot_*`, sem rede externa |
+| `deploy/portainer-stack.yml` | Reescrito: mesma arquitetura do docker-compose.yml |
+| `deploy/init-auth-role.sh` | Simplificado: apenas seta password do `supabase_auth_admin` |
+| `deploy/init-db.sql` | Removida linha `GRANT USAGE ON SCHEMA auth` |
+| `deploy/install.sh` | Reescrito: instala Docker+Node.js, gera secrets, Traefik auto-SSL, health checks |
+| `deploy/.env.example` | Atualizado: inclui `ACME_EMAIL` e credenciais admin |
 
-**1. Criar `deploy/init-roles.sh`**
-Script shell numerado como `00` para rodar antes de tudo. Cria as roles internas que a imagem Supabase espera:
-- `supabase_admin` (superuser)
-- `supabase_auth_admin` (login, usado pelo GoTrue)
+### Como usar na VPS limpa
 
-Ambas com senha `${POSTGRES_PASSWORD}`.
-
-**2. Atualizar `deploy/docker-compose.yml` e `deploy/portainer-stack.yml`**
-Montar o novo script como `/docker-entrypoint-initdb.d/00-init-roles.sh` no container postgres, garantindo execução antes do `migrate.sh` da imagem.
-
-**3. Remover `deploy/init-auth-role.sh`**
-Funcionalidade absorvida pelo novo `00-init-roles.sh`.
-
-### Deploy
-Após as alterações, na VPS:
 ```bash
-docker compose down -v
-docker compose up -d
-sleep 30
-docker compose logs postgres --tail 20
-docker compose logs gotrue --tail 20
-```
+# 1. Clonar o repositório
+git clone <repo> && cd <repo>/deploy
 
+# 2. Executar instalação
+chmod +x install.sh && ./install.sh
+
+# 3. O script vai:
+#    - Instalar Docker e Node.js (se necessário)
+#    - Solicitar domínios, email SSL e credenciais admin
+#    - Gerar todos os secrets automaticamente
+#    - Buildar frontend e containers
+#    - Configurar Traefik com SSL Let's Encrypt
+#    - Criar conta admin no GoTrue
+```
