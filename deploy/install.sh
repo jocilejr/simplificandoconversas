@@ -192,25 +192,60 @@ for i in {1..30}; do
   echo -n "."
 done
 echo ""
-echo -e "${GREEN}✓ GoTrue pronto${NC}"
+echo -e "${GREEN}✓ GoTrue respondeu ao health check${NC}"
+
+# Wait for GoTrue to stabilize (internal migrations)
+echo -e "  Aguardando GoTrue estabilizar (migrações internas)..."
+sleep 30
+
+# Verify GoTrue container is actually running (not restarting)
+for i in {1..12}; do
+  STATE=$(docker compose ps gotrue --format '{{.State}}' 2>/dev/null || echo "unknown")
+  if [ "$STATE" = "running" ]; then
+    break
+  fi
+  echo -e "  GoTrue estado: ${STATE}, aguardando..."
+  sleep 5
+done
+echo -e "${GREEN}✓ GoTrue estável${NC}"
 
 # ─── Create admin account ───
 echo -e "${YELLOW}[7/8] Criando conta de administrador...${NC}"
 
-# Create admin user via GoTrue Admin API
-ADMIN_RESULT=$(docker compose exec -T gotrue wget -qO- \
-  --header="Authorization: Bearer ${SERVICE_ROLE_KEY}" \
-  --header="Content-Type: application/json" \
-  --post-data="{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"email_confirm\":true,\"user_metadata\":{\"full_name\":\"Admin\"}}" \
-  http://localhost:9999/admin/users 2>&1) || true
+ADMIN_CREATED=false
+for attempt in {1..5}; do
+  echo -e "  Tentativa ${attempt}/5..."
 
-if echo "$ADMIN_RESULT" | grep -q '"id"'; then
-  echo -e "${GREEN}✓ Conta admin criada: ${ADMIN_EMAIL}${NC}"
-elif echo "$ADMIN_RESULT" | grep -qi 'already'; then
-  echo -e "${YELLOW}⚠ Conta admin já existe: ${ADMIN_EMAIL}${NC}"
-else
-  echo -e "${YELLOW}⚠ Resultado da criação do admin: ${ADMIN_RESULT}${NC}"
-  echo -e "${YELLOW}  Tente criar manualmente se necessário${NC}"
+  STATE=$(docker compose ps gotrue --format '{{.State}}' 2>/dev/null || echo "unknown")
+  if [ "$STATE" != "running" ]; then
+    echo -e "  GoTrue não está running (estado: ${STATE}), aguardando..."
+    sleep 10
+    continue
+  fi
+
+  ADMIN_RESULT=$(docker compose exec -T gotrue wget -qO- \
+    --header="Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+    --header="Content-Type: application/json" \
+    --post-data="{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\",\"email_confirm\":true,\"user_metadata\":{\"full_name\":\"Admin\"}}" \
+    http://localhost:9999/admin/users 2>&1) || true
+
+  if echo "$ADMIN_RESULT" | grep -q '"id"'; then
+    echo -e "${GREEN}✓ Conta admin criada: ${ADMIN_EMAIL}${NC}"
+    ADMIN_CREATED=true
+    break
+  elif echo "$ADMIN_RESULT" | grep -qi 'already'; then
+    echo -e "${YELLOW}⚠ Conta admin já existe: ${ADMIN_EMAIL}${NC}"
+    ADMIN_CREATED=true
+    break
+  else
+    echo -e "${YELLOW}  Falhou: ${ADMIN_RESULT}${NC}"
+    sleep 10
+  fi
+done
+
+if [ "$ADMIN_CREATED" = false ]; then
+  echo -e "${RED}✗ Não foi possível criar o admin após 5 tentativas${NC}"
+  echo -e "${YELLOW}  Verifique os logs: docker compose logs gotrue${NC}"
 fi
 
 # ─── Summary ───
