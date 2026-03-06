@@ -417,7 +417,7 @@ Deno.serve(async (req) => {
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: evolution_instance_name || null })
+      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: instanceName || null })
       .select("id")
       .single();
 
