@@ -18,14 +18,14 @@ interface ManualFlowTriggerProps {
 export function ManualFlowTrigger({ open, onOpenChange }: ManualFlowTriggerProps) {
   const { toast } = useToast();
   const { data: flows = [] } = useChatbotFlows();
-  const { instances } = useEvolutionInstances();
+  const { instances = [] } = useEvolutionInstances();
 
   const [phone, setPhone] = useState("");
   const [flowId, setFlowId] = useState("");
   const [instanceName, setInstanceName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const activeFlows = flows.filter((f) => f.active);
+  const activeFlows = (flows || []).filter((f) => f.active);
 
   const handleSubmit = async () => {
     const cleaned = phone.replace(/\D/g, "");
