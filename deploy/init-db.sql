@@ -31,8 +31,30 @@ CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS storage;
 CREATE SCHEMA IF NOT EXISTS extensions;
 
+-- Extensions que GoTrue precisa
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;
+
+-- Roles internas que o GoTrue precisa para migrações
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    CREATE ROLE supabase_auth_admin NOLOGIN NOINHERIT;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    CREATE ROLE supabase_admin NOLOGIN NOINHERIT;
+  END IF;
+END $$;
+
+GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
+GRANT ALL ON ALL TABLES IN SCHEMA auth TO supabase_auth_admin, postgres;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA auth TO supabase_auth_admin, postgres;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA auth TO supabase_auth_admin, postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON TABLES TO supabase_auth_admin, postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON SEQUENCES TO supabase_auth_admin, postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON FUNCTIONS TO supabase_auth_admin, postgres;
+
+GRANT supabase_auth_admin TO postgres;
 
 -- ============================================================
 -- PUBLIC TABLES
