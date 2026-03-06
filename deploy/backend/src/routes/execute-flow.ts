@@ -40,7 +40,7 @@ async function baileysRequest(path: string, method: string = "POST", body?: any)
     headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  return resp.json();
+  return resp.json() as Promise<any>;
 }
 
 async function executeStep(
