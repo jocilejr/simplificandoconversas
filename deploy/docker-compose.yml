@@ -135,10 +135,10 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.simplificando-app.rule=Host(`app.chatbotsimples.cloud`)"
+      - "traefik.http.routers.simplificando-app.rule=Host(`${APP_DOMAIN}`)"
       - "traefik.http.routers.simplificando-app.entrypoints=websecure"
       - "traefik.http.routers.simplificando-app.tls.certresolver=letsencryptresolver"
-      - "traefik.http.routers.simplificando-api.rule=Host(`api.chatbotsimples.cloud`)"
+      - "traefik.http.routers.simplificando-api.rule=Host(`${API_DOMAIN}`)"
       - "traefik.http.routers.simplificando-api.entrypoints=websecure"
       - "traefik.http.routers.simplificando-api.tls.certresolver=letsencryptresolver"
       - "traefik.http.services.simplificando-nginx.loadbalancer.server.port=80"
