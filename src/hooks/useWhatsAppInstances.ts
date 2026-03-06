@@ -13,10 +13,25 @@ export interface WhatsAppInstance {
   updated_at: string;
 }
 
+export interface RemoteInstance {
+  name: string;
+  status: string;
+  profileName?: string;
+}
+
+function parseRemoteInstance(ri: any): RemoteInstance {
+  return {
+    name: ri.name || ri.instanceName || ri.instance?.instanceName || "unknown",
+    status: ri.connectionStatus || ri.instance?.state || ri.state || "close",
+    profileName: ri.profileName || "",
+  };
+}
+
 export function useWhatsAppInstances() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Local DB instances
   const { data: instances = [], isLoading } = useQuery({
     queryKey: ["whatsapp-instances"],
     queryFn: async () => {
@@ -29,17 +44,36 @@ export function useWhatsAppInstances() {
     },
   });
 
-  const fetchRemoteInstances = useMutation({
-    mutationFn: async () => {
+  // Auto-polling remote instances from Baileys via VPS
+  const {
+    data: remoteData,
+    isError: isServerError,
+    isLoading: isRemoteLoading,
+  } = useQuery({
+    queryKey: ["whatsapp-remote-instances"],
+    queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("evolution-proxy", {
         body: { action: "fetch-instances" },
       });
       if (error) throw error;
-      return data;
+      const list = Array.isArray(data) ? data : data?.instances || [];
+      return list.map(parseRemoteInstance) as RemoteInstance[];
     },
-    onError: (err: Error) => {
-      toast({ title: "Erro ao buscar instâncias", description: err.message, variant: "destructive" });
-    },
+    refetchInterval: 10000,
+    retry: 1,
+  });
+
+  const remoteInstances = remoteData || [];
+  const isServerConnected = !isServerError && remoteData !== undefined;
+
+  // Merge local instances with remote status
+  const mergedInstances = instances.map((inst) => {
+    const remote = remoteInstances.find((ri) => ri.name === inst.instance_name);
+    return {
+      ...inst,
+      status: remote?.status || inst.status,
+      profileName: remote?.profileName || "",
+    };
   });
 
   const createInstance = useMutation({
@@ -52,6 +86,7 @@ export function useWhatsAppInstances() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-remote-instances"] });
       toast({ title: "Instância criada com sucesso!" });
     },
     onError: (err: Error) => {
@@ -82,6 +117,7 @@ export function useWhatsAppInstances() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-remote-instances"] });
       toast({ title: "Instância removida!" });
     },
     onError: (err: Error) => {
@@ -114,9 +150,11 @@ export function useWhatsAppInstances() {
   });
 
   return {
-    instances,
+    instances: mergedInstances,
+    remoteInstances,
     isLoading,
-    fetchRemoteInstances,
+    isRemoteLoading,
+    isServerConnected,
     createInstance,
     connectInstance,
     deleteInstance,
