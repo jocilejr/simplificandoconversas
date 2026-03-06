@@ -14,7 +14,6 @@ psql -U postgres <<-EOSQL
   GRANT ALL ON SCHEMA public TO supabase_auth_admin;
   CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
   GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
-  GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
 EOSQL
 
 echo "supabase_auth_admin role configured successfully"

@@ -1,51 +1,39 @@
 
 
-## Problem
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-The Postgres container fails its healthcheck because `init-auth-role.sh` (runs as script `98`) references roles `anon`, `authenticated`, and `service_role` on line 17:
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-```sql
-GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
-```
+### Correções
 
-But these roles are only created later in `init-db.sql` (script `99`). The `set -e` causes the script to abort on this error, making Postgres "unhealthy".
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-## Fix
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-**`deploy/init-auth-role.sh`** — Remove the GRANT USAGE line that references roles not yet created. Keep only the schema creation and admin grants:
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
+
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
+
+### Total: ~7 linhas alteradas em 5 arquivos
+
+Após o push, rodar no servidor:
 ```bash
-psql -U postgres <<-EOSQL
-  DO \$\$
-  BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
-      CREATE ROLE supabase_auth_admin LOGIN NOINHERIT CREATEROLE CREATEDB REPLICATION;
-    END IF;
-  END \$\$;
-  ALTER ROLE supabase_auth_admin WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';
-  GRANT ALL ON SCHEMA public TO supabase_auth_admin;
-  CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
-  GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
-EOSQL
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
-
-**`deploy/init-db.sql`** — Add the auth schema grant for the other roles right after creating them (around line 18):
-
-```sql
-GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
-```
-
-This ensures roles exist before being referenced.
-
-## After deploying
-
-```bash
-cd ~/simplificandoconversas && git pull origin main && cd deploy
-docker compose down -v
-docker compose up -d
-sleep 30
-docker compose logs gotrue --tail=10
-```
-
-Then create the admin user with the same `wget` command.
 
