@@ -1,32 +1,73 @@
 
 
-## Situação atual
+## Situação
 
-1. O serviço `traefik_traefik` foi removido (por comando anterior), derrubando o proxy reverso de **todas** as aplicações
-2. O compose do Traefik **não está** nos diretórios do Portainer (composes 5,8,9,13,14,15 são typebot, minio, rabbitmq, evolution, n8n, wordpress)
-3. O Traefik foi provavelmente deployado diretamente via Portainer UI como um stack, mas o compose original não está visível nos arquivos encontrados
+O compose do Traefik **não foi encontrado** em nenhum arquivo YAML do Portainer (`find` retornou vazio). Os diretórios não inspecionados são **1, 10 e 19**. O Traefik provavelmente foi deployado via Portainer UI (editor inline) e o compose pode estar em um desses diretórios, ou foi criado diretamente sem arquivo persistido.
 
-## Ação imediata: Restaurar o Traefik
+## Próximo passo: Inspecionar os 3 diretórios restantes
 
-Precisamos verificar o compose do Traefik. Ele pode estar em outro compose do Portainer (não listamos todos) ou no `/opt/dash-origem-viva/docker-compose-swarm.yml`. Execute:
+Execute:
 
 ```bash
-# 1. Listar TODOS os composes do Portainer
-ls /var/lib/docker/volumes/portainer_data/_data/compose/
-
-# 2. Verificar o arquivo do dash-origem-viva (pode conter o Traefik)
-cat /opt/dash-origem-viva/docker-compose-swarm.yml | head -50
-
-# 3. Verificar se existe um stack "traefik" no Portainer data
-find /var/lib/docker/volumes/portainer_data/_data -name "*.yml" -exec grep -l "traefik/traefik" {} \; 2>/dev/null
+for i in 1 10 19; do
+  echo "=== compose/$i ==="
+  head -15 /var/lib/docker/volumes/portainer_data/_data/compose/$i/docker-compose.yml
+  echo ""
+done
 ```
 
-Se o compose do Traefik for encontrado, o deploy será:
+Se nenhum deles contiver o Traefik, o compose original foi provavelmente criado inline no Portainer e **não existe mais em disco**. Nesse caso, precisaremos recriar o stack do Traefik manualmente com base nas labels existentes nos outros stacks. Execute também:
+
 ```bash
-docker stack deploy -c <arquivo-encontrado> traefik
+# Ver se há algum compose com "traefik" no nome (não só no conteúdo)
+find /var/lib/docker/volumes/portainer_data/_data -name "*traefik*" 2>/dev/null
+
+# Ver a config que o Traefik usava (pode ter pistas)
+ls -la /etc/traefik/
+find /etc/traefik -type f 2>/dev/null
 ```
 
-## Sobre a rede PrincipalNet
+## Se não encontrarmos o compose original
 
-Após restaurar o Traefik, para integrar nosso compose sem derrubar nada, a alternativa menos invasiva é **não usar a rede overlay** e sim expor as portas do Nginx diretamente, adicionando labels do Traefik via Docker API. Mas isso será tratado depois — a prioridade agora é restaurar o Traefik.
+Baseado nas labels dos outros stacks (que usam `letsencryptresolver`, `websecure`, rede `PrincipalNet`), o compose do Traefik seria algo como:
+
+```yaml
+version: "3.7"
+services:
+  traefik:
+    image: traefik:v2.11
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=PrincipalNet"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencryptresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencryptresolver.acme.email=SEU_EMAIL"
+      - "--certificatesresolvers.letsencryptresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+      - /etc/traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - PrincipalNet
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+networks:
+  PrincipalNet:
+    external: true
+
+volumes:
+  traefik_certs:
+```
+
+Precisaremos confirmar o **email do ACME** e a **versão exata do Traefik** antes de deployar. Os certificados provavelmente ainda estão em um volume Docker existente.
 
