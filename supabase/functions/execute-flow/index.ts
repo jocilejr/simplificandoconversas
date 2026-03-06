@@ -153,7 +153,7 @@ async function executeStep(
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName },
         { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
