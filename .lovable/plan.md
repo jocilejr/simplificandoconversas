@@ -1,40 +1,39 @@
 
 
-## Problem
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-GoTrue logs show: `relation "identities" does not exist`. GoTrue reported "67 migrations applied successfully" but the `auth` schema was pre-created by `init-db.sql` before GoTrue ran. This conflicts with GoTrue's own internal migration process --- GoTrue expects to create and manage the `auth` schema itself. The memory note confirms this: *"init-db.sql deve ser mantido livre de qualquer definição do schema auth"*.
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-## Fix
+### Correções
 
-Remove all `auth` schema statements from `deploy/init-db.sql`:
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-```sql
--- REMOVE these 4 lines:
-CREATE SCHEMA IF NOT EXISTS auth;
-ALTER SCHEMA auth OWNER TO supabase_auth_admin;
-GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
-GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
-```
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-GoTrue will create the `auth` schema, the `identities` table, and all related auth tables during its own startup migrations.
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
-## After deploying
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
 
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
+
+### Total: ~7 linhas alteradas em 5 arquivos
+
+Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas && git pull origin main && cd deploy
-docker compose down -v
-docker compose up -d
-sleep 30
-docker compose logs gotrue --tail=5
-```
-
-Then create the admin user:
-
-```bash
-docker compose exec -T backend sh -c 'wget -qO- \
-  --post-data="{\"email\":\"jocilejun@gmail.com\",\"password\":\"Hollywood123@qA\",\"email_confirm\":true}" \
-  --header="Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  --header="Content-Type: application/json" \
-  http://gotrue:9999/admin/users'
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
 

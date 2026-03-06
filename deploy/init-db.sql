@@ -16,11 +16,7 @@ BEGIN
   END IF;
 END $$;
 
--- 2. Auth schema (supabase_auth_admin created by init-auth-role.sh)
-CREATE SCHEMA IF NOT EXISTS auth;
-ALTER SCHEMA auth OWNER TO supabase_auth_admin;
-GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
-GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
+-- 2. Auth schema is managed entirely by GoTrue — do NOT create it here.
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
