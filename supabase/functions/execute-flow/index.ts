@@ -979,7 +979,7 @@ Deno.serve(async (req) => {
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+          const result = await executeStep(data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
           results.push(result);
         }
       } catch (err: any) {
