@@ -29,8 +29,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authentic
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
 
--- Storage schema (auth schema already exists in supabase/postgres image)
-CREATE SCHEMA IF NOT EXISTS storage;
+-- NOTE: storage schema and tables are managed by the supabase storage service.
 
 -- ============================================================
 -- PUBLIC TABLES
