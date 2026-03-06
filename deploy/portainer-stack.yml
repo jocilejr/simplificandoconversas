@@ -4,7 +4,7 @@ services:
     image: supabase/postgres:15.8.1.060
     restart: always
     environment:
-      POSTGRES_DB: app
+      POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
@@ -30,7 +30,7 @@ services:
       GOTRUE_API_PORT: "9999"
       API_EXTERNAL_URL: ${API_URL}
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app?sslmode=disable
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
       GOTRUE_SITE_URL: ${APP_URL}
       GOTRUE_URI_ALLOW_LIST: "*"
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
@@ -55,7 +55,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       PGRST_DB_SCHEMAS: public,storage
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
@@ -75,7 +75,7 @@ services:
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
       POSTGREST_URL: http://postgrest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       FILE_SIZE_LIMIT: "52428800"
       STORAGE_BACKEND: file
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
@@ -122,7 +122,7 @@ services:
       BAILEYS_API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
       APP_URL: ${APP_URL}
       API_URL: ${API_URL}
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/app
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     labels:
       - "com.simplificando.service=backend"
