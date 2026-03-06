@@ -1,33 +1,38 @@
 
-## Deploy para VPS Limpa — Concluído ✅
 
-Todos os arquivos de deploy foram reescritos para funcionar em uma VPS limpa com Traefik embutido e SSL automático.
+## Remover Evolution API completamente — usar apenas Baileys
 
-### Arquivos alterados
+### Problema atual
+O edge function `evolution-proxy` (1037 linhas) ainda contém toda a lógica da Evolution API. Quando roda no Lovable Cloud, ele tenta ler `evolution_api_url` e `evolution_api_key` do perfil e retorna erro 400 quando não encontra. Na VPS, o Nginx intercepta a rota e encaminha para o Express backend (que fala com Baileys), então o edge function nunca é chamado lá — mas ele precisa existir para o código compilar.
 
-| Arquivo | Mudança |
-|---------|---------|
-| `deploy/docker-compose.yml` | Reescrito: Traefik embutido, Postgres 15.8.1.060, volumes prefixados `chatbot_*`, sem rede externa |
-| `deploy/portainer-stack.yml` | Reescrito: mesma arquitetura do docker-compose.yml |
-| `deploy/init-auth-role.sh` | Simplificado: apenas seta password do `supabase_auth_admin` |
-| `deploy/init-db.sql` | Removida linha `GRANT USAGE ON SCHEMA auth` |
-| `deploy/install.sh` | Reescrito: instala Docker+Node.js, gera secrets, Traefik auto-SSL, health checks |
-| `deploy/.env.example` | Atualizado: inclui `ACME_EMAIL` e credenciais admin |
+### Plano
 
-### Como usar na VPS limpa
+**1. Reescrever `supabase/functions/evolution-proxy/index.ts`**
+- Reduzir de 1037 linhas para ~30 linhas
+- Retornar uma resposta simples informando que a funcionalidade requer o backend self-hosted (Baileys)
+- Manter CORS headers e estrutura básica para não quebrar chamadas do frontend
+- Na VPS isso nunca será chamado (Nginx intercepta antes)
 
-```bash
-# 1. Clonar o repositório
-git clone <repo> && cd <repo>/deploy
+**2. Remover `supabase/functions/evolution-webhook/index.ts`**
+- O webhook da Evolution API não é mais necessário — Baileys envia webhooks diretamente para o Express backend
 
-# 2. Executar instalação
-chmod +x install.sh && ./install.sh
+**3. Limpar `src/hooks/useEvolutionInstances.ts`**
+- Remover a chamada `set-webhook` do `setActiveInstance` (Baileys gerencia webhooks internamente)
 
-# 3. O script vai:
-#    - Instalar Docker e Node.js (se necessário)
-#    - Solicitar domínios, email SSL e credenciais admin
-#    - Gerar todos os secrets automaticamente
-#    - Buildar frontend e containers
-#    - Configurar Traefik com SSL Let's Encrypt
-#    - Criar conta admin no GoTrue
-```
+**4. Limpar `src/hooks/useProfile.ts`**
+- Remover `evolution_instance_name` do `updateProfile` (não é mais necessário sincronizar com profile)
+- Remover `testConnection` mutation (usava Evolution API)
+
+**5. Limpar `src/pages/Conversations.tsx`**
+- Verificar se `sync-chats` ainda faz sentido (na VPS vai para Express/Baileys, no Cloud retornará erro informativo)
+
+### Arquivos que NÃO mudam
+- `src/components/settings/ConnectionsSection.tsx` — já está limpo
+- `src/components/settings/AppSection.tsx` — já está limpo
+- `deploy/backend/*` — backend Express/Baileys continua funcionando igual
+
+### Resultado
+- Zero referências à Evolution API no código
+- Edge function serve apenas como stub (na VPS nunca é chamado)
+- Frontend continua chamando `supabase.functions.invoke("evolution-proxy")` que no VPS é interceptado pelo Nginx → Express → Baileys
+
