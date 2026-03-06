@@ -254,31 +254,8 @@ BEGIN
   END IF;
 END $$;
 
--- ============================================================
--- STORAGE BUCKET (for Supabase Storage compatibility)
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS storage.buckets (
-  id text PRIMARY KEY,
-  name text NOT NULL,
-  public boolean DEFAULT false,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS storage.objects (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  bucket_id text REFERENCES storage.buckets(id),
-  name text,
-  owner uuid,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  metadata jsonb
-);
-
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('chatbot-media', 'chatbot-media', true)
-ON CONFLICT (id) DO NOTHING;
+-- NOTE: Storage buckets are created by the storage service automatically.
+-- The 'chatbot-media' bucket is created via the backend or manually.
 
 -- ============================================================
 -- USER ROLES (RBAC)
