@@ -33,7 +33,7 @@ async function downloadAndUploadMedia(
           }
         );
         if (resp.ok) {
-          const result = await resp.json();
+          const result: any = await resp.json();
           base64 = result?.base64;
         }
       } catch (e: any) {
