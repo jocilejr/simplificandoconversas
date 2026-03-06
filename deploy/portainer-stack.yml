@@ -59,6 +59,7 @@ services:
       API_EXTERNAL_URL: ${API_URL}
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable
+      GOTRUE_DB_NAMESPACE: auth
       GOTRUE_SITE_URL: ${APP_URL}
       GOTRUE_URI_ALLOW_LIST: "*"
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
