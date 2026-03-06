@@ -1,57 +1,39 @@
 
 
-## Diagnóstico: 2 problemas
+## Plano: Corrigir erros de build TypeScript + Dockerfile
 
-### Problema 1: GoTrue falha ao iniciar (unhealthy)
+Os arquivos nunca receberam as correções anteriores. Vou aplicar as mudanças mínimas necessárias.
 
-O GoTrue está crashando antes de passar o healthcheck. O `docker compose up -d` já falha porque o backend depende de `gotrue: condition: service_healthy`, e o GoTrue nunca fica healthy.
+### Correções
 
-**Causa provável:** O GoTrue precisa que o schema `auth` exista com certas tabelas internas. Na versão atual do `init-db.sql`, removemos o `CREATE SCHEMA IF NOT EXISTS auth`. Mas o GoTrue v2.158.1 espera poder fazer suas migrações no schema auth -- porém algumas versões precisam que o schema já exista antes.
+**1. `deploy/baileys-service/Dockerfile`** (linha 3)
+- Adicionar `RUN apk add --no-cache git` antes do `COPY package.json`
+- Necessário porque `@whiskeysockets/baileys` instala via git
 
-**Correção:** 
-- Restaurar `CREATE SCHEMA IF NOT EXISTS auth;` no `init-db.sql` (apenas o schema, não as tabelas -- o GoTrue cria as tabelas)
-- Remover a dependência `gotrue: condition: service_healthy` do backend -- usar apenas `condition: service_started` para que o compose não bloqueie
-- No `install.sh`, o retry loop já cuida de esperar o GoTrue estabilizar
+**2. `deploy/backend/src/routes/evolution-proxy.ts`** (2 linhas)
+- Linha 16: `return resp.json();` → `return resp.json() as Promise<any>;`
+  - Corrige erros nas linhas 29, 102, 195, 221 (todas usam resultado de `baileysRequest`)
+- Linha 70: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 71
 
-**Importante:** Preciso que você execute `docker compose logs gotrue` na VPS e cole o resultado aqui. Isso vai confirmar a causa exata do crash. As correções acima cobrem o cenário mais provável.
+**3. `deploy/backend/src/routes/execute-flow.ts`** (2 linhas)
+- Linha 195: `const userData = await userResp.json();` → `const userData: any = await userResp.json();`
+  - Corrige erro na linha 196
+- Linha 393: `const aiData = await aiResp.json();` → `const aiData: any = await aiResp.json();`
+  - Corrige erro na linha 394
+- As linhas 64, 79, 94, 109, 126, 400, 428, 484 usam `r?.key?.id` onde `r` vem de `baileysRequest`. Como `baileysRequest` no execute-flow.ts também tem o mesmo problema, preciso verificar essa função lá.
 
-### Problema 2: URL abre outra aplicação
+**4. `deploy/backend/src/routes/webhook.ts`** (1 linha)
+- Linha 36: `const result = await resp.json();` → `const result: any = await resp.json();`
+  - Corrige erro na linha 37
 
-A imagem mostra "Simplificando Grupos" em `app.chatbotsimples.cloud`. Isso é um conflito de roteamento no Traefik -- o outro app na VPS está capturando o tráfego.
+**5. `deploy/docker-compose.yml`** (1 linha)
+- Remover `version: "3.8"` para eliminar o warning
 
-**Causa:** Os nomes dos routers Traefik podem estar conflitando, ou o domínio configurado no `.env` não está correto.
+### Total: ~7 linhas alteradas em 5 arquivos
 
-**Correção:**
-- Verificar que os domínios no `.env` estão corretos e diferentes da outra aplicação
-- Usar nomes de router Traefik únicos no `docker-compose.yml` (já usam `simplificando-app` e `simplificando-api`, que devem ser únicos)
-- Garantir que o serviço Traefik tenha o `Host()` rule correto para os domínios da nova aplicação
-
-### Mudanças no código
-
-**1. `deploy/init-db.sql`** -- Restaurar criação do schema auth
-```sql
-CREATE SCHEMA IF NOT EXISTS auth;
-```
-Adicionar de volta antes do schema storage.
-
-**2. `deploy/docker-compose.yml`** -- Relaxar dependência do GoTrue
-- Backend: mudar `gotrue: condition: service_healthy` para `gotrue: condition: service_started`
-- Nginx: remover `gotrue` do `depends_on` (nginx não precisa do GoTrue diretamente)
-
-**3. `deploy/install.sh`** -- Adicionar `set +e` antes do `docker compose up -d`
-- O `set -e` faz o script inteiro abortar quando o GoTrue falha o healthcheck
-- Usar `docker compose up -d || true` para continuar mesmo se o GoTrue não estiver healthy imediatamente
-- O retry loop no passo 7 já cuida de esperar
-
-### Próximo passo do usuário
-
-Após aplicar as mudanças, executar na VPS:
+Após o push, rodar no servidor:
 ```bash
-cd ~/simplificandoconversas/deploy
-docker compose down -v
-rm .env
-bash install.sh
+cd ~/simplificandoconversas && git pull origin main && cd deploy && docker compose build --no-cache && docker compose up -d
 ```
-
-Se o GoTrue ainda falhar, executar `docker compose logs gotrue` e colar aqui para diagnóstico preciso.
 
