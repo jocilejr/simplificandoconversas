@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export type Conversation = {
   id: string;
@@ -16,6 +16,7 @@ export type Conversation = {
 
 export function useConversations() {
   const queryClient = useQueryClient();
+  const realtimeFailed = useRef(false);
 
   const query = useQuery({
     queryKey: ["conversations"],
@@ -28,6 +29,8 @@ export function useConversations() {
       if (error) throw error;
       return data as Conversation[];
     },
+    // Poll every 10s as fallback when realtime is unavailable
+    refetchInterval: realtimeFailed.current ? 10000 : false,
   });
 
   useEffect(() => {
@@ -40,7 +43,13 @@ export function useConversations() {
           queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          realtimeFailed.current = true;
+          // Enable polling fallback
+          queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -55,11 +64,8 @@ export function useConversations() {
   };
 
   const deleteConversation = async (conversationId: string) => {
-    // Delete messages first (FK constraint)
     await supabase.from("messages").delete().eq("conversation_id", conversationId);
-    // Delete conversation labels
     await supabase.from("conversation_labels").delete().eq("conversation_id", conversationId);
-    // Delete conversation
     const { error } = await supabase.from("conversations").delete().eq("id", conversationId);
     if (error) throw error;
     queryClient.invalidateQueries({ queryKey: ["conversations"] });

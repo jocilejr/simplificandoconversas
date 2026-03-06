@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export type Message = {
   id: string;
@@ -18,6 +18,7 @@ export type Message = {
 
 export function useMessages(conversationId: string | null) {
   const queryClient = useQueryClient();
+  const realtimeFailed = useRef(false);
 
   const query = useQuery({
     queryKey: ["messages", conversationId],
@@ -32,6 +33,7 @@ export function useMessages(conversationId: string | null) {
       if (error) throw error;
       return data as Message[];
     },
+    refetchInterval: realtimeFailed.current ? 5000 : false,
   });
 
   useEffect(() => {
@@ -51,7 +53,12 @@ export function useMessages(conversationId: string | null) {
           queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          realtimeFailed.current = true;
+          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -77,7 +84,6 @@ export function useMessages(conversationId: string | null) {
       return data;
     },
     onMutate: async ({ remoteJid, message, messageType = "text", mediaUrl }) => {
-      // Cancel outgoing refetches so they don't overwrite our optimistic update
       await queryClient.cancelQueries({ queryKey: ["messages", conversationId] });
 
       const previousMessages = queryClient.getQueryData<Message[]>(["messages", conversationId]);
