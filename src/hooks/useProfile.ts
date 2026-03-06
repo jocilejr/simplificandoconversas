@@ -12,13 +12,25 @@ export function useProfile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("profiles")
         .select("*")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
+
+      // Auto-create profile if it doesn't exist (self-hosted edge case)
+      if (!data) {
+        const { data: newProfile, error: insertError } = await supabase
+          .from("profiles")
+          .insert({ user_id: user.id })
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        data = newProfile;
+      }
+
       return data;
     },
   });

@@ -317,5 +317,39 @@ GRANT ALL ON public.user_roles TO anon, authenticated, service_role;
 -- Enable realtime for messages
 -- ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 
+-- ============================================================
+-- AUTO-CREATE PROFILE ON USER SIGNUP
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.profiles (user_id, full_name)
+  VALUES (NEW.id, NEW.raw_user_meta_data->>'full_name')
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'on_auth_user_created') THEN
+    CREATE TRIGGER on_auth_user_created
+      AFTER INSERT ON auth.users
+      FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+  END IF;
+END $$;
+
+-- Create profiles for any existing users that don't have one
+INSERT INTO public.profiles (user_id, full_name)
+SELECT id, raw_user_meta_data->>'full_name'
+FROM auth.users u
+WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = u.id)
+ON CONFLICT DO NOTHING;
+
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
