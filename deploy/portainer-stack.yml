@@ -1,7 +1,7 @@
 services:
   # ─── PostgreSQL ───
   postgres:
-    image: postgres:15-alpine
+    image: supabase/postgres:15.8.1.060
     restart: always
     environment:
       POSTGRES_DB: app
