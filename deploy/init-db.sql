@@ -2,9 +2,19 @@
 -- Init DB: Consolidated schema for self-hosted deploy
 -- ============================================================
 
--- NOTE: auth schema, supabase_auth_admin role, and extensions are created
--- by the supabase/postgres image's built-in init scripts.
--- This file is mounted as 99-init.sql to run AFTER those scripts.
+-- Create auth schema and roles required by GoTrue
+CREATE SCHEMA IF NOT EXISTS auth;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    CREATE ROLE supabase_auth_admin NOLOGIN NOINHERIT;
+  END IF;
+END $$;
+
+ALTER SCHEMA auth OWNER TO supabase_auth_admin;
+GRANT ALL ON SCHEMA auth TO supabase_auth_admin, postgres;
+GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
 
 -- Roles for PostgREST
 DO $$
