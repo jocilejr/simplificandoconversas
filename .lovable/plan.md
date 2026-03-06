@@ -1,42 +1,32 @@
 
 
-## Problema
+## Situação atual
 
-A rede `PrincipalNet` é uma rede Swarm e não permite attach manual por containers `docker compose` (não-Swarm). O erro `not manually attachable` ocorre porque a rede foi criada sem a flag `--attachable`.
+1. O serviço `traefik_traefik` foi removido (por comando anterior), derrubando o proxy reverso de **todas** as aplicações
+2. O compose do Traefik **não está** nos diretórios do Portainer (composes 5,8,9,13,14,15 são typebot, minio, rabbitmq, evolution, n8n, wordpress)
+3. O Traefik foi provavelmente deployado diretamente via Portainer UI como um stack, mas o compose original não está visível nos arquivos encontrados
 
-## Solução
+## Ação imediata: Restaurar o Traefik
 
-Recriar a rede `PrincipalNet` com a flag `--attachable`, permitindo que containers standalone (docker compose) se conectem a ela.
+Precisamos verificar o compose do Traefik. Ele pode estar em outro compose do Portainer (não listamos todos) ou no `/opt/dash-origem-viva/docker-compose-swarm.yml`. Execute:
 
-### Passos
+```bash
+# 1. Listar TODOS os composes do Portainer
+ls /var/lib/docker/volumes/portainer_data/_data/compose/
 
-1. **Verificar se a rede permite attachable:**
-   ```bash
-   docker network inspect PrincipalNet --format '{{.Attachable}}'
-   ```
+# 2. Verificar o arquivo do dash-origem-viva (pode conter o Traefik)
+cat /opt/dash-origem-viva/docker-compose-swarm.yml | head -50
 
-2. **Se retornar `false`, recriar a rede:**
-   ```bash
-   # Parar o stack do Traefik temporariamente
-   docker stack rm traefik
-   
-   # Remover a rede antiga
-   docker network rm PrincipalNet
-   
-   # Recriar com --attachable
-   docker network create --driver overlay --attachable PrincipalNet
-   
-   # Redeployar o Traefik stack
-   docker stack deploy -c <caminho-do-traefik-compose> traefik
-   ```
+# 3. Verificar se existe um stack "traefik" no Portainer data
+find /var/lib/docker/volumes/portainer_data/_data -name "*.yml" -exec grep -l "traefik/traefik" {} \; 2>/dev/null
+```
 
-3. **Subir o compose novamente:**
-   ```bash
-   cd ~/simplificandoconversas/deploy
-   docker compose up -d
-   ```
+Se o compose do Traefik for encontrado, o deploy será:
+```bash
+docker stack deploy -c <arquivo-encontrado> traefik
+```
 
-### Importante
-- O Traefik ficará fora do ar por alguns segundos durante a recriação da rede
-- Nenhuma alteração nos arquivos do projeto é necessária — o problema é na configuração da rede Docker no host
+## Sobre a rede PrincipalNet
+
+Após restaurar o Traefik, para integrar nosso compose sem derrubar nada, a alternativa menos invasiva é **não usar a rede overlay** e sim expor as portas do Nginx diretamente, adicionando labels do Traefik via Docker API. Mas isso será tratado depois — a prioridade agora é restaurar o Traefik.
 
