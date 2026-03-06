@@ -72,19 +72,23 @@ router.post("/", async (req, res) => {
 
     const supabase = getServiceClient();
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("evolution_api_url, evolution_api_key, evolution_instance_name")
-      .eq("user_id", userId)
-      .single();
-
-    if (profileError || !profile) return res.status(404).json({ error: "Profile not found" });
-
-    const { evolution_instance_name } = profile;
     const body = req.body;
     const { action, ...params } = body;
 
     if (!action) return res.status(400).json({ error: "action required" });
+
+    // Get instance name from body or from active instance in DB
+    let evolution_instance_name = params.instanceName;
+    if (!evolution_instance_name) {
+      const { data: activeInst } = await supabase
+        .from("evolution_instances")
+        .select("instance_name")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      evolution_instance_name = activeInst?.instance_name;
+    }
 
     const serviceClient = getServiceClient();
     let result: any;

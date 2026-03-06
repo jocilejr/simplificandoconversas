@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Plus, History, Check, Loader2, icons, Radio } from "lucide-react";
-import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
+import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,7 +95,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
   const [name, setName] = useState(flowName);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [instanceNames, setInstanceNames] = useState<string[]>(initialInstanceNames || []);
-  const { instances } = useEvolutionInstances();
+  const { instances } = useWhatsAppInstances();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

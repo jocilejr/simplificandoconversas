@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useConversations, Conversation } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { useContactPhotos } from "@/hooks/useContactPhoto";
-import { useEvolutionInstances } from "@/hooks/useEvolutionInstances";
+import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
@@ -20,7 +20,7 @@ const Conversations = () => {
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const { data: messages, isLoading: loadingMsgs, sendMessage } = useMessages(selected?.id || null);
   const { toast } = useToast();
-  const { instances } = useEvolutionInstances();
+  const { instances } = useWhatsAppInstances();
   const { user } = useAuth();
 
   // Fetch all conversation labels with label details for the sidebar

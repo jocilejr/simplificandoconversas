@@ -37,8 +37,8 @@ interface StepData {
 async function executeStep(
   stepData: StepData,
   baseUrl: string,
-  evolution_api_key: string,
-  evolution_instance_name: string,
+  apiKey: string,
+  instanceName: string,
   jid: string,
   serviceClient: any,
   userId: string
@@ -51,9 +51,9 @@ async function executeStep(
 
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
-    const resp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, text: resolvedText }),
     });
     const r = await resp.json();
@@ -61,7 +61,7 @@ async function executeStep(
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { user_id: userId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName },
         { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
@@ -82,16 +82,16 @@ async function executeStep(
   }
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
-    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName },
         { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
@@ -113,16 +113,16 @@ async function executeStep(
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, audio: stepData.audioUrl }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName },
         { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
@@ -144,16 +144,16 @@ async function executeStep(
   }
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
-    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName },
         { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
@@ -177,16 +177,16 @@ async function executeStep(
   if (nodeType === "sendFile" && stepData.fileUrl) {
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
-    const resp = await fetch(`${baseUrl}/message/sendMedia/${evolution_instance_name}`, {
+    const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
-      headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ number: jid, mediatype: "document", media: stepData.fileUrl, fileName, mimetype: "application/pdf" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert(
-        { user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+        { user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName },
         { onConflict: "user_id,remote_jid,instance_name" }
       )
       .select("id")
@@ -222,9 +222,9 @@ async function executeStep(
     if (presenceType === "composing" || presenceType === "recording" || stepData.simulateTyping) {
       const presence = presenceType === "recording" ? "recording" : "composing";
       try {
-        await fetch(`${baseUrl}/message/sendPresence/${evolution_instance_name}`, {
+        await fetch(`${baseUrl}/message/sendPresence/${instanceName}`, {
           method: "POST",
-          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          headers: { apikey: apiKey, "Content-Type": "application/json" },
           body: JSON.stringify({ number: jid, presence }),
         });
       } catch (e) {
@@ -239,9 +239,9 @@ async function executeStep(
     const presenceTypeAfter = (stepData as any).delayPresenceType;
     if (presenceTypeAfter === "composing" || presenceTypeAfter === "recording" || stepData.simulateTyping) {
       try {
-        await fetch(`${baseUrl}/message/sendPresence/${evolution_instance_name}`, {
+        await fetch(`${baseUrl}/message/sendPresence/${instanceName}`, {
           method: "POST",
-          headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+          headers: { apikey: apiKey, "Content-Type": "application/json" },
           body: JSON.stringify({ number: jid, presence: "paused" }),
         });
       } catch (e) {
@@ -316,7 +316,7 @@ Deno.serve(async (req) => {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
     // Run all initial queries in parallel for faster startup
-    const [flowResult, profileResult, activeExecsResult] = await Promise.all([
+    const [flowResult, profileResult, activeInstanceResult, activeExecsResult] = await Promise.all([
       serviceClient
         .from("chatbot_flows")
         .select("*")
@@ -325,9 +325,19 @@ Deno.serve(async (req) => {
         .single(),
       serviceClient
         .from("profiles")
-        .select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url")
+        .select("openai_api_key, app_public_url")
         .eq("user_id", userId)
         .single(),
+      // Get active instance if not provided in body
+      !bodyInstanceName
+        ? serviceClient
+            .from("evolution_instances")
+            .select("instance_name")
+            .eq("user_id", userId)
+            .eq("is_active", true)
+            .limit(1)
+            .single()
+        : Promise.resolve({ data: { instance_name: bodyInstanceName } }),
       // Only check active executions if not resuming
       !resumeFromNodeId
         ? serviceClient
@@ -349,28 +359,30 @@ Deno.serve(async (req) => {
     }
 
     const { data: profile } = profileResult;
-    if (!profile?.evolution_api_url || !profile?.evolution_api_key || !profile?.evolution_instance_name) {
-      return new Response(JSON.stringify({ error: "Evolution API not configured" }), {
+
+    // Baileys connection via env vars (backend handles routing)
+    const baileysUrl = Deno.env.get("BAILEYS_URL") || "http://baileys:8084";
+    const apiKey = Deno.env.get("BAILEYS_API_KEY") || "baileys-local-key";
+    const instanceName = activeInstanceResult?.data?.instance_name || bodyInstanceName;
+    if (!instanceName) {
+      return new Response(JSON.stringify({ error: "Nenhuma instância WhatsApp ativa. Vincule uma instância nas configurações." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const { evolution_api_url, evolution_api_key } = profile;
-    const evolution_instance_name = bodyInstanceName || profile.evolution_instance_name;
-    const baseUrl = evolution_api_url.replace(/\/$/, "");
+    const baseUrl = baileysUrl.replace(/\/$/, "");
 
     // Check active executions result (with instance_name filter if needed)
     if (!resumeFromNodeId) {
       let activeExecs = activeExecsResult.data;
       // If we need instance filtering, re-query only if we have results (rare path)
-      if (activeExecs && activeExecs.length > 0 && evolution_instance_name) {
+      if (activeExecs && activeExecs.length > 0 && instanceName) {
         const { data: filteredExecs } = await serviceClient
           .from("flow_executions")
           .select("id")
           .eq("user_id", userId)
           .eq("remote_jid", jid)
-          .eq("instance_name", evolution_instance_name)
+          .eq("instance_name", instanceName)
           .in("status", ["running", "waiting_click", "waiting_reply"])
           .limit(1);
         activeExecs = filteredExecs;
@@ -386,13 +398,13 @@ Deno.serve(async (req) => {
 
     // Auto-lookup conversation_id if not provided
     let resolvedConversationId = conversationId || null;
-    if (!resolvedConversationId && jid && evolution_instance_name) {
+    if (!resolvedConversationId && jid && instanceName) {
       const { data: convLookup } = await serviceClient
         .from("conversations")
         .select("id")
         .eq("user_id", userId)
         .eq("remote_jid", jid)
-        .eq("instance_name", evolution_instance_name)
+        .eq("instance_name", instanceName)
         .limit(1)
         .single();
       if (convLookup) {
@@ -405,7 +417,7 @@ Deno.serve(async (req) => {
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: evolution_instance_name || null })
+      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: instanceName || null })
       .select("id")
       .single();
 
@@ -662,9 +674,9 @@ Deno.serve(async (req) => {
             console.log(`[execute-flow] AI response (${aiModel}):`, aiResponse.substring(0, 100));
 
             if (data.aiAutoSend !== false && aiResponse) {
-              const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+               const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
                 method: "POST",
-                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                headers: { apikey: apiKey, "Content-Type": "application/json" },
                 body: JSON.stringify({ number: jid, text: aiResponse }),
               });
               const sendResult = await sendResp.json();
@@ -672,7 +684,7 @@ Deno.serve(async (req) => {
               const { data: conv } = await serviceClient
                 .from("conversations")
                 .upsert(
-                  { user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+                  { user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName },
                   { onConflict: "user_id,remote_jid,instance_name" }
                 )
                 .select("id")
@@ -714,7 +726,7 @@ Deno.serve(async (req) => {
               preview_title: data.clickPreviewTitle || null,
               preview_description: data.clickPreviewDescription || null,
               preview_image: data.clickPreviewImage || null,
-              instance_name: evolution_instance_name,
+               instance_name: instanceName,
             });
 
             const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
@@ -722,9 +734,9 @@ Deno.serve(async (req) => {
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-            const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+             const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
               method: "POST",
-              headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+              headers: { apikey: apiKey, "Content-Type": "application/json" },
               body: JSON.stringify({ number: jid, text: messageText }),
             });
             const sendResult = await sendResp.json();
@@ -733,7 +745,7 @@ Deno.serve(async (req) => {
             const { data: conv } = await serviceClient
               .from("conversations")
               .upsert(
-                { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+                 { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName },
                 { onConflict: "user_id,remote_jid,instance_name" }
               )
               .select("id")
@@ -844,16 +856,16 @@ Deno.serve(async (req) => {
                 preview_title: step.data.clickPreviewTitle || null,
                 preview_description: step.data.clickPreviewDescription || null,
                 preview_image: step.data.clickPreviewImage || null,
-                instance_name: evolution_instance_name,
+                instance_name: instanceName,
               });
 
               const trackingUrl = `${Deno.env.get("SUPABASE_URL")!}/functions/v1/link-redirect?code=${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              const sendResp = await fetch(`${baseUrl}/message/sendText/${evolution_instance_name}`, {
+               const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
                 method: "POST",
-                headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
+                headers: { apikey: apiKey, "Content-Type": "application/json" },
                 body: JSON.stringify({ number: jid, text: messageText }),
               });
               const sendResult = await sendResp.json();
@@ -862,7 +874,7 @@ Deno.serve(async (req) => {
               const { data: conv } = await serviceClient
                 .from("conversations")
                 .upsert(
-                  { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+                  { user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName },
                   { onConflict: "user_id,remote_jid,instance_name" }
                 )
                 .select("id")
@@ -961,13 +973,13 @@ Deno.serve(async (req) => {
                 results.push(`group.${step.id}: action: ${actionType} (no-op)`);
               }
             } else {
-              const stepResult = await executeStep(step.data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, baseUrl, evolution_api_key, evolution_instance_name, jid, serviceClient, userId);
+          const result = await executeStep(data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
           results.push(result);
         }
       } catch (err: any) {

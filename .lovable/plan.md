@@ -1,48 +1,33 @@
 
+## Deploy para VPS Limpa — Concluído ✅
 
-## Substituir Evolution API por conexão direta com Baileys
+Todos os arquivos de deploy foram reescritos para funcionar em uma VPS limpa com Traefik embutido e SSL automático.
 
-### Problema
-O frontend ainda usa `useEvolutionInstances` que lê da tabela `evolution_instances` e chama `supabase.functions.invoke("evolution-proxy")`. O edge function `execute-flow` ainda exige `evolution_api_url` e `evolution_api_key` do perfil. Tudo isso precisa ser limpo para usar apenas o Baileys na VPS.
+### Arquivos alterados
 
-### Arquitetura atual (VPS)
-- Nginx intercepta `/functions/v1/` → Express backend (porta 3001)
-- Express backend (`evolution-proxy.ts`) fala com Baileys service (porta 8084) usando `BAILEYS_URL` e `BAILEYS_API_KEY` (variáveis de ambiente do Docker)
-- O frontend NÃO precisa de URL ou API key — o backend resolve tudo internamente
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/docker-compose.yml` | Reescrito: Traefik embutido, Postgres 15.8.1.060, volumes prefixados `chatbot_*`, sem rede externa |
+| `deploy/portainer-stack.yml` | Reescrito: mesma arquitetura do docker-compose.yml |
+| `deploy/init-auth-role.sh` | Simplificado: apenas seta password do `supabase_auth_admin` |
+| `deploy/init-db.sql` | Removida linha `GRANT USAGE ON SCHEMA auth` |
+| `deploy/install.sh` | Reescrito: instala Docker+Node.js, gera secrets, Traefik auto-SSL, health checks |
+| `deploy/.env.example` | Atualizado: inclui `ACME_EMAIL` e credenciais admin |
 
-### Plano de alterações
+### Como usar na VPS limpa
 
-**1. Renomear hook: `useEvolutionInstances.ts` → `useWhatsAppInstances.ts`**
-- Renomear interface `EvolutionInstance` → `WhatsAppInstance`
-- Manter mesma lógica (chama `evolution-proxy` que é a rota no Nginx → Express → Baileys)
-- Tabela continua `evolution_instances` (renomear tabela é arriscado, tem FK e RLS)
+```bash
+# 1. Clonar o repositório
+git clone <repo> && cd <repo>/deploy
 
-**2. Atualizar `ConnectionsSection.tsx`**
-- Importar de `useWhatsAppInstances`
-- Sem outras mudanças visuais (já está limpo)
+# 2. Executar instalação
+chmod +x install.sh && ./install.sh
 
-**3. Atualizar `FlowEditor.tsx`, `ManualFlowTrigger.tsx`, `Conversations.tsx`**
-- Trocar import `useEvolutionInstances` → `useWhatsAppInstances`
-
-**4. Reescrever `supabase/functions/execute-flow/index.ts` (parte crítica)**
-- Remover dependência de `evolution_api_url` e `evolution_api_key` do perfil
-- Usar `BAILEYS_URL` e `BAILEYS_API_KEY` de variáveis de ambiente (Deno.env)
-- Isso é idêntico ao que o Express backend faz — o edge function fala direto com Baileys
-- Mudar parâmetro `evolution_instance_name` → pegar do `bodyInstanceName` ou da tabela `evolution_instances`
-- Remover checagem que retorna 400 "Evolution API not configured"
-
-**5. Limpar `deploy/backend/src/routes/evolution-proxy.ts`**
-- Remover leitura de `evolution_api_url`/`evolution_api_key` do perfil (já usa env vars)
-- Remover referência a `evolution_instance_name` do perfil — usar apenas a instância passada no body ou da tabela
-
-**6. Não alterar**
-- Tabela `evolution_instances` (renomear exigiria migration + atualizar RLS + backend)
-- Nginx config (já funciona)
-- Baileys service (já funciona)
-- Rota `evolution-proxy` no Express (o nome da rota não importa, é interno)
-
-### Resultado
-- Zero referências a "Evolution" no frontend visível ao usuário
-- Edge function `execute-flow` funciona sem credenciais Evolution no perfil
-- Tudo conecta diretamente com Baileys via variáveis de ambiente do servidor
-
+# 3. O script vai:
+#    - Instalar Docker e Node.js (se necessário)
+#    - Solicitar domínios, email SSL e credenciais admin
+#    - Gerar todos os secrets automaticamente
+#    - Buildar frontend e containers
+#    - Configurar Traefik com SSL Let's Encrypt
+#    - Criar conta admin no GoTrue
+```

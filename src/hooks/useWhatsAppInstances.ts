@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-export interface EvolutionInstance {
+export interface WhatsAppInstance {
   id: string;
   user_id: string;
   instance_name: string;
@@ -13,19 +13,19 @@ export interface EvolutionInstance {
   updated_at: string;
 }
 
-export function useEvolutionInstances() {
+export function useWhatsAppInstances() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: instances = [], isLoading } = useQuery({
-    queryKey: ["evolution-instances"],
+    queryKey: ["whatsapp-instances"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("evolution_instances")
         .select("*")
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data as EvolutionInstance[];
+      return data as WhatsAppInstance[];
     },
   });
 
@@ -51,7 +51,7 @@ export function useEvolutionInstances() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["evolution-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
       toast({ title: "Instância criada com sucesso!" });
     },
     onError: (err: Error) => {
@@ -81,7 +81,7 @@ export function useEvolutionInstances() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["evolution-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
       toast({ title: "Instância removida!" });
     },
     onError: (err: Error) => {
@@ -104,7 +104,7 @@ export function useEvolutionInstances() {
         } as any, { onConflict: "user_id,instance_name" });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["evolution-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       toast({ title: "Instância ativa atualizada!" });
     },
