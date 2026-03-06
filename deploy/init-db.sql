@@ -282,6 +282,65 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('chatbot-media', 'chatbot-media', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- ============================================================
+-- USER ROLES (RBAC)
+-- ============================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'app_role') THEN
+    CREATE TYPE public.app_role AS ENUM ('admin', 'user');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  role app_role NOT NULL DEFAULT 'user',
+  UNIQUE (user_id, role)
+);
+
+-- Trigger: assign admin role on profile creation
+-- Since signup is disabled, only installer-created users get profiles
+CREATE OR REPLACE FUNCTION public.assign_admin_role()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (NEW.user_id, 'admin')
+  ON CONFLICT (user_id, role) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'on_profile_created_assign_admin') THEN
+    CREATE TRIGGER on_profile_created_assign_admin
+      AFTER INSERT ON public.profiles
+      FOR EACH ROW EXECUTE FUNCTION public.assign_admin_role();
+  END IF;
+END $$;
+
+-- Security definer function to check roles
+CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = _user_id AND role = _role
+  )
+$$;
+
+GRANT ALL ON public.user_roles TO anon, authenticated, service_role;
+
 -- Enable realtime for messages
 -- ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 
