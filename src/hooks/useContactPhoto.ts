@@ -17,8 +17,8 @@ export function useContactPhoto(remoteJid: string | null) {
         .maybeSingle();
       if (cached?.photo_url) return cached.photo_url;
 
-      // Fallback to API
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      // Fallback to Baileys API
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "fetch-profile-picture", remoteJid },
       });
       if (error || !data?.profilePictureUrl) return null;
