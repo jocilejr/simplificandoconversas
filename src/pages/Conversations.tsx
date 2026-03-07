@@ -58,7 +58,7 @@ const Conversations = () => {
 
   const syncChats = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "sync-chats" },
       });
       if (error) throw error;

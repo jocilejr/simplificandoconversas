@@ -77,7 +77,7 @@ export function useMessages(conversationId: string | null) {
       messageType?: string;
       mediaUrl?: string;
     }) => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "send-message", remoteJid, message, messageType, mediaUrl },
       });
       if (error) throw error;

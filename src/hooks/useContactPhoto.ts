@@ -72,7 +72,7 @@ export function useContactPhotos(remoteJids: string[]) {
 
     (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+        const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
           body: { action: "fetch-profile-pictures", remoteJids: uncached },
         });
         if (cancelled || error || !data) return;

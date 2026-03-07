@@ -331,7 +331,7 @@ Deno.serve(async (req) => {
       // Get active instance if not provided in body
       !bodyInstanceName
         ? serviceClient
-            .from("evolution_instances")
+            .from("whatsapp_instances")
             .select("instance_name")
             .eq("user_id", userId)
             .eq("is_active", true)

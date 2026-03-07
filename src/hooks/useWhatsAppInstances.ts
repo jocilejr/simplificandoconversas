@@ -131,7 +131,7 @@ export function useWhatsAppInstances() {
       if (!user) throw new Error("Not authenticated");
 
       await supabase
-        .from("evolution_instances")
+        .from("whatsapp_instances")
         .upsert({
           user_id: user.id,
           instance_name: instanceName,
