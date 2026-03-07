@@ -6,7 +6,13 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Auth from "./pages/Auth";
-import Index from "./pages/Index";
+import Dashboard from "./pages/Dashboard";
+import Contacts from "./pages/Contacts";
+import Schedule from "./pages/Schedule";
+import ChatbotBuilder from "./pages/ChatbotBuilder";
+import Conversations from "./pages/Conversations";
+import SettingsPage from "./pages/SettingsPage";
+import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -19,10 +25,16 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
-          <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/r/:code" element={<LinkRedirect />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
-              <Route path="/home" element={<Index />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/contacts" element={<Contacts />} />
+              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/chatbot" element={<ChatbotBuilder />} />
+              <Route path="/conversations" element={<Conversations />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>
           <Route path="*" element={<NotFound />} />
