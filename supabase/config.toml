@@ -1,9 +1,6 @@
 project_id = "kktjghlcizayyraegdlb"
 
-[functions.evolution-proxy]
-verify_jwt = false
-
-[functions.evolution-webhook]
+[functions.whatsapp-proxy]
 verify_jwt = false
 
 [functions.execute-flow]

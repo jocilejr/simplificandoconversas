@@ -4,6 +4,18 @@ import crypto from "crypto";
 
 const router = Router();
 
+const BAILEYS_URL = process.env.BAILEYS_URL || "http://baileys:8084";
+const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || "baileys-local-key";
+
+async function baileysRequest(path: string, method: string = "POST", body?: any) {
+  const resp = await fetch(`${BAILEYS_URL}${path}`, {
+    method,
+    headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  return resp.json() as Promise<any>;
+}
+
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text;
   return text.substring(0, max) + "…";
@@ -11,31 +23,23 @@ function truncate(text: string, max: number): string {
 
 async function downloadAndUploadMedia(
   supabase: any,
-  profile: { evolution_api_url: string; evolution_api_key: string; evolution_instance_name: string },
+  instanceName: string,
   messageData: any,
   messageType: string,
   userId: string,
 ): Promise<string | null> {
   try {
-    const { evolution_api_url, evolution_api_key, evolution_instance_name } = profile;
-    const baseUrl = evolution_api_url.replace(/\/$/, "");
     let base64 = messageData.message?.base64;
     const mediaMessage = messageData.message?.imageMessage || messageData.message?.videoMessage || messageData.message?.audioMessage || messageData.message?.documentMessage;
 
     if (!base64 && mediaMessage) {
       try {
-        const resp = await fetch(
-          `${baseUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(evolution_instance_name)}`,
-          {
-            method: "POST",
-            headers: { apikey: evolution_api_key, "Content-Type": "application/json" },
-            body: JSON.stringify({ message: messageData, convertToMp4: messageType === "audio" }),
-          }
+        const result = await baileysRequest(
+          `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+          "POST",
+          { message: messageData, convertToMp4: messageType === "audio" }
         );
-        if (resp.ok) {
-          const result: any = await resp.json();
-          base64 = result?.base64;
-        }
+        base64 = result?.base64;
       } catch (e: any) {
         console.error("getBase64 error:", e.message);
       }
@@ -122,10 +126,9 @@ router.post("/", async (req, res) => {
     const supabase = getServiceClient();
 
     let userId: string | null = null;
-    let profile: any = null;
 
     const { data: instanceRecord } = await supabase
-      .from("evolution_instances")
+      .from("whatsapp_instances")
       .select("user_id")
       .eq("instance_name", instance)
       .limit(1)
@@ -133,26 +136,12 @@ router.post("/", async (req, res) => {
 
     if (instanceRecord) {
       userId = instanceRecord.user_id;
-    } else {
-      const { data: profileRecord } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("evolution_instance_name", instance)
-        .single();
-      if (profileRecord) userId = profileRecord.user_id;
     }
 
     if (!userId) {
       console.error("No user found for instance:", instance);
       return res.status(404).json({ error: "Instance not found" });
     }
-
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("evolution_api_url, evolution_api_key, evolution_instance_name")
-      .eq("user_id", userId)
-      .single();
-    profile = profileData;
 
     if (!remoteJid) {
       return res.json({ ok: true, skipped: "no remoteJid" });
@@ -191,8 +180,8 @@ router.post("/", async (req, res) => {
     }
 
     let mediaUrl: string | null = null;
-    if (messageType !== "text" && profile?.evolution_api_url && profile?.evolution_api_key) {
-      mediaUrl = await downloadAndUploadMedia(supabase, profile as any, data, messageType, userId);
+    if (messageType !== "text") {
+      mediaUrl = await downloadAndUploadMedia(supabase, instance, data, messageType, userId);
       console.log("Media uploaded:", mediaUrl ? "success" : "failed/skipped");
     }
 

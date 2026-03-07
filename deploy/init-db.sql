@@ -38,16 +38,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   user_id uuid NOT NULL,
   full_name text,
   avatar_url text,
-  evolution_api_url text,
-  evolution_api_key text,
-  evolution_instance_name text,
   openai_api_key text,
   app_public_url text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.evolution_instances (
+CREATE TABLE IF NOT EXISTS public.whatsapp_instances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   instance_name text NOT NULL,
@@ -274,7 +271,6 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
 );
 
 -- Trigger: assign admin role on profile creation
--- Since signup is disabled, only installer-created users get profiles
 CREATE OR REPLACE FUNCTION public.assign_admin_role()
 RETURNS trigger
 LANGUAGE plpgsql

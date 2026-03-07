@@ -61,7 +61,6 @@ router.post("/", async (req, res) => {
 
     const token = authHeader.replace("Bearer ", "");
 
-    // Verify JWT via GoTrue
     const gotrueUrl = process.env.GOTRUE_URL || "http://gotrue:9999";
     const userResp = await fetch(`${gotrueUrl}/user`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -77,17 +76,16 @@ router.post("/", async (req, res) => {
 
     if (!action) return res.status(400).json({ error: "action required" });
 
-    // Get instance name from body or from active instance in DB
-    let evolution_instance_name = params.instanceName;
-    if (!evolution_instance_name) {
+    let instanceName = params.instanceName;
+    if (!instanceName) {
       const { data: activeInst } = await supabase
-        .from("evolution_instances")
+        .from("whatsapp_instances")
         .select("instance_name")
         .eq("user_id", userId)
         .eq("is_active", true)
         .limit(1)
         .single();
-      evolution_instance_name = activeInst?.instance_name;
+      instanceName = activeInst?.instance_name;
     }
 
     const serviceClient = getServiceClient();
@@ -100,10 +98,10 @@ router.post("/", async (req, res) => {
       }
 
       case "create-instance": {
-        const instanceName = `sc-${Date.now().toString(36)}`;
-        const createResult = await baileysRequest("/instance/create", "POST", { instanceName });
-        await serviceClient.from("evolution_instances").upsert({ user_id: userId, instance_name: instanceName, status: "close", is_active: false }, { onConflict: "user_id,instance_name" });
-        result = { ...createResult, instanceName };
+        const newName = `sc-${Date.now().toString(36)}`;
+        const createResult = await baileysRequest("/instance/create", "POST", { instanceName: newName });
+        await serviceClient.from("whatsapp_instances").upsert({ user_id: userId, instance_name: newName, status: "close", is_active: false }, { onConflict: "user_id,instance_name" });
+        result = { ...createResult, instanceName: newName };
         break;
       }
 
@@ -118,18 +116,16 @@ router.post("/", async (req, res) => {
         const { instanceName: delInstName } = params;
         if (!delInstName) return res.status(400).json({ error: "instanceName required" });
         result = await baileysRequest(`/instance/delete/${encodeURIComponent(delInstName)}`, "DELETE");
-        await serviceClient.from("evolution_instances").delete().eq("user_id", userId).eq("instance_name", delInstName);
+        await serviceClient.from("whatsapp_instances").delete().eq("user_id", userId).eq("instance_name", delInstName);
         break;
       }
 
       case "set-proxy": {
-        // No-op for Baileys — proxy is not supported
         result = { ok: true, message: "Proxy not applicable with Baileys" };
         break;
       }
 
       case "set-webhook": {
-        // No-op — Baileys auto-forwards via webhook
         result = { ok: true, message: "Webhook auto-configured" };
         break;
       }
@@ -140,7 +136,7 @@ router.post("/", async (req, res) => {
       }
 
       case "test-connection": {
-        result = await baileysRequest(`/instance/connectionState/${encodeURIComponent(evolution_instance_name)}`, "GET");
+        result = await baileysRequest(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
         break;
       }
 
@@ -160,12 +156,12 @@ router.post("/", async (req, res) => {
           payload = { number: remoteJid, mediatype: "video", media: mediaUrl, caption: message || "" };
         }
 
-        result = await baileysRequest(`/message/${endpoint}/${encodeURIComponent(evolution_instance_name)}`, "POST", payload);
+        result = await baileysRequest(`/message/${endpoint}/${encodeURIComponent(instanceName)}`, "POST", payload);
 
         if (result?.key) {
           const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
           const { data: conv } = await serviceClient.from("conversations").upsert(
-            { user_id: userId, remote_jid: jid, last_message: message || `[${messageType}]`, last_message_at: new Date().toISOString(), instance_name: evolution_instance_name },
+            { user_id: userId, remote_jid: jid, last_message: message || `[${messageType}]`, last_message_at: new Date().toISOString(), instance_name: instanceName },
             { onConflict: "user_id,remote_jid,instance_name" }
           ).select("id").single();
 
@@ -181,23 +177,22 @@ router.post("/", async (req, res) => {
       }
 
       case "fetch-chats": {
-        result = await baileysRequest(`/chat/findChats/${encodeURIComponent(evolution_instance_name)}`, "POST", {});
+        result = await baileysRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
         break;
       }
 
       case "sync-chats": {
-        // Simplified sync for Baileys — conversations come via webhook
-        const { data: userInstances } = await serviceClient.from("evolution_instances").select("instance_name").eq("user_id", userId);
+        const { data: userInstances } = await serviceClient.from("whatsapp_instances").select("instance_name").eq("user_id", userId);
         const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
-        if (evolution_instance_name && !instancesToSync.includes(evolution_instance_name)) {
-          instancesToSync.push(evolution_instance_name);
+        if (instanceName && !instancesToSync.includes(instanceName)) {
+          instancesToSync.push(instanceName);
         }
 
         const instanceStatuses: any[] = [];
         for (const instName of instancesToSync) {
           const stateResult = await baileysRequest(`/instance/connectionState/${encodeURIComponent(instName)}`, "GET");
           const connectionState = stateResult?.instance?.state || "close";
-          await serviceClient.from("evolution_instances").update({ status: connectionState }).eq("user_id", userId).eq("instance_name", instName);
+          await serviceClient.from("whatsapp_instances").update({ status: connectionState }).eq("user_id", userId).eq("instance_name", instName);
           instanceStatuses.push({ instance: instName, connectionState });
         }
 
@@ -208,7 +203,7 @@ router.post("/", async (req, res) => {
       case "fetch-profile-picture": {
         const { remoteJid: picJid } = params;
         if (!picJid) return res.status(400).json({ error: "remoteJid required" });
-        result = await baileysRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(evolution_instance_name)}`, "POST", { number: picJid.split("@")[0] });
+        result = await baileysRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: picJid.split("@")[0] });
         break;
       }
 
@@ -221,7 +216,7 @@ router.post("/", async (req, res) => {
         for (const batch of batches) {
           await Promise.allSettled(batch.map(async (jid: string) => {
             try {
-              const d = await baileysRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(evolution_instance_name)}`, "POST", { number: jid.split("@")[0] });
+              const d = await baileysRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: jid.split("@")[0] });
               const url = d?.profilePictureUrl;
               if (url) photos[jid] = url;
             } catch {}
@@ -232,12 +227,12 @@ router.post("/", async (req, res) => {
       }
 
       case "fetch-contact-names": {
-        result = await baileysRequest(`/chat/findContacts/${encodeURIComponent(evolution_instance_name)}`, "POST", {});
+        result = await baileysRequest(`/chat/findContacts/${encodeURIComponent(instanceName)}`, "POST", {});
         break;
       }
 
       case "fetch-messages": {
-        const { remoteJid, count = 50 } = params;
+        const { remoteJid } = params;
         if (!remoteJid) return res.status(400).json({ error: "remoteJid required" });
         result = { imported: 0, info: "Messages arrive via webhook" };
         break;

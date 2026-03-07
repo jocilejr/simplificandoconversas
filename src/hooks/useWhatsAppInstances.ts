@@ -36,7 +36,7 @@ export function useWhatsAppInstances() {
     queryKey: ["whatsapp-instances"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("evolution_instances")
+        .from("whatsapp_instances")
         .select("*")
         .order("created_at", { ascending: true });
       if (error) throw error;
@@ -52,7 +52,7 @@ export function useWhatsAppInstances() {
   } = useQuery({
     queryKey: ["whatsapp-remote-instances"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "fetch-instances" },
       });
       if (error) throw error;
@@ -78,7 +78,7 @@ export function useWhatsAppInstances() {
 
   const createInstance = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "create-instance" },
       });
       if (error) throw error;
@@ -96,7 +96,7 @@ export function useWhatsAppInstances() {
 
   const connectInstance = useMutation({
     mutationFn: async (instanceName: string) => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "connect-instance", instanceName },
       });
       if (error) throw error;
@@ -109,7 +109,7 @@ export function useWhatsAppInstances() {
 
   const deleteInstance = useMutation({
     mutationFn: async (instanceName: string) => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "delete-instance", instanceName },
       });
       if (error) throw error;
@@ -131,7 +131,7 @@ export function useWhatsAppInstances() {
       if (!user) throw new Error("Not authenticated");
 
       await supabase
-        .from("evolution_instances")
+        .from("whatsapp_instances")
         .upsert({
           user_id: user.id,
           instance_name: instanceName,
