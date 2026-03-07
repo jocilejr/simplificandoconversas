@@ -109,7 +109,7 @@ export function useWhatsAppInstances() {
 
   const deleteInstance = useMutation({
     mutationFn: async (instanceName: string) => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "delete-instance", instanceName },
       });
       if (error) throw error;
