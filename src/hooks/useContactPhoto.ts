@@ -61,7 +61,7 @@ export function useContactPhotos(remoteJids: string[]) {
     },
   });
 
-  // Background refresh from Evolution API
+  // Background refresh from Baileys API
   useEffect(() => {
     if (!remoteJids.length || query.isLoading) return;
 
