@@ -78,7 +78,7 @@ export function useWhatsAppInstances() {
 
   const createInstance = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "create-instance" },
       });
       if (error) throw error;
