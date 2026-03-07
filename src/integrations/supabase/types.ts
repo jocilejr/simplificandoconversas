@@ -211,39 +211,6 @@ export type Database = {
         }
         Relationships: []
       }
-      evolution_instances: {
-        Row: {
-          created_at: string | null
-          id: string
-          instance_name: string
-          is_active: boolean | null
-          proxy_url: string | null
-          status: string | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          instance_name: string
-          is_active?: boolean | null
-          proxy_url?: string | null
-          status?: string | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          instance_name?: string
-          is_active?: boolean | null
-          proxy_url?: string | null
-          status?: string | null
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
       flow_executions: {
         Row: {
           conversation_id: string | null
@@ -434,9 +401,6 @@ export type Database = {
           app_public_url: string | null
           avatar_url: string | null
           created_at: string
-          evolution_api_key: string | null
-          evolution_api_url: string | null
-          evolution_instance_name: string | null
           full_name: string | null
           id: string
           openai_api_key: string | null
@@ -447,9 +411,6 @@ export type Database = {
           app_public_url?: string | null
           avatar_url?: string | null
           created_at?: string
-          evolution_api_key?: string | null
-          evolution_api_url?: string | null
-          evolution_instance_name?: string | null
           full_name?: string | null
           id?: string
           openai_api_key?: string | null
@@ -460,9 +421,6 @@ export type Database = {
           app_public_url?: string | null
           avatar_url?: string | null
           created_at?: string
-          evolution_api_key?: string | null
-          evolution_api_url?: string | null
-          evolution_instance_name?: string | null
           full_name?: string | null
           id?: string
           openai_api_key?: string | null
@@ -566,6 +524,39 @@ export type Database = {
         Update: {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_instances: {
+        Row: {
+          created_at: string | null
+          id: string
+          instance_name: string
+          is_active: boolean | null
+          proxy_url: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          instance_name: string
+          is_active?: boolean | null
+          proxy_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          instance_name?: string
+          is_active?: boolean | null
+          proxy_url?: string | null
+          status?: string | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
