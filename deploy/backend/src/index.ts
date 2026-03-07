@@ -4,7 +4,7 @@ import cron from "node-cron";
 
 import webhookRouter from "./routes/webhook";
 import executeFlowRouter from "./routes/execute-flow";
-import evolutionProxyRouter from "./routes/evolution-proxy";
+import whatsappProxyRouter from "./routes/whatsapp-proxy";
 import linkRedirectRouter from "./routes/link-redirect";
 import { processTimeouts } from "./routes/check-timeouts";
 
@@ -13,11 +13,10 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
 // Routes (mapped from /functions/v1/X via Nginx → /api/X)
-app.use("/api/evolution-webhook", webhookRouter);
+app.use("/api/whatsapp-proxy", whatsappProxyRouter);
 app.use("/api/execute-flow", executeFlowRouter);
-app.use("/api/evolution-proxy", evolutionProxyRouter);
 app.use("/api/link-redirect", linkRedirectRouter);
-app.use("/api/webhook", webhookRouter); // Baileys sends here directly
+app.use("/api/webhook", webhookRouter);
 
 // Health
 app.get("/health", (_, res) => res.json({ ok: true }));
