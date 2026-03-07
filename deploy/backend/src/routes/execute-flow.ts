@@ -184,7 +184,6 @@ router.post("/", async (req, res) => {
     if (isServiceRole && bodyUserId) {
       userId = bodyUserId;
     } else {
-      // Verify JWT via GoTrue
       const gotrueUrl = process.env.GOTRUE_URL || "http://gotrue:9999";
       const userResp = await fetch(`${gotrueUrl}/user`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -202,9 +201,22 @@ router.post("/", async (req, res) => {
 
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
+    // Get instance name from body or from active instance in DB
+    let instanceName = bodyInstanceName;
+    if (!instanceName) {
+      const { data: activeInst } = await serviceClient
+        .from("whatsapp_instances")
+        .select("instance_name")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      instanceName = activeInst?.instance_name;
+    }
+
     const [flowResult, profileResult, activeExecsResult] = await Promise.all([
       serviceClient.from("chatbot_flows").select("*").eq("id", flowId).eq("user_id", userId).single(),
-      serviceClient.from("profiles").select("evolution_api_url, evolution_api_key, evolution_instance_name, openai_api_key, app_public_url").eq("user_id", userId).single(),
+      serviceClient.from("profiles").select("openai_api_key, app_public_url").eq("user_id", userId).single(),
       !resumeFromNodeId
         ? serviceClient.from("flow_executions").select("id").eq("user_id", userId).eq("remote_jid", jid).in("status", ["running", "waiting_click", "waiting_reply"]).limit(1)
         : Promise.resolve({ data: null }),
@@ -214,18 +226,17 @@ router.post("/", async (req, res) => {
     if (flowErr || !flow) return res.status(404).json({ error: "Flow not found" });
 
     const { data: profile } = profileResult;
-    const evolution_instance_name = bodyInstanceName || profile?.evolution_instance_name;
 
-    if (!evolution_instance_name) {
+    if (!instanceName) {
       return res.status(400).json({ error: "No instance name" });
     }
 
     if (!resumeFromNodeId) {
       let activeExecs = activeExecsResult.data;
-      if (activeExecs && activeExecs.length > 0 && evolution_instance_name) {
+      if (activeExecs && activeExecs.length > 0 && instanceName) {
         const { data: filteredExecs } = await serviceClient
           .from("flow_executions").select("id").eq("user_id", userId).eq("remote_jid", jid)
-          .eq("instance_name", evolution_instance_name).in("status", ["running", "waiting_click", "waiting_reply"]).limit(1);
+          .eq("instance_name", instanceName).in("status", ["running", "waiting_click", "waiting_reply"]).limit(1);
         activeExecs = filteredExecs;
       }
       if (activeExecs && activeExecs.length > 0) {
@@ -234,10 +245,10 @@ router.post("/", async (req, res) => {
     }
 
     let resolvedConversationId = conversationId || null;
-    if (!resolvedConversationId && jid && evolution_instance_name) {
+    if (!resolvedConversationId && jid && instanceName) {
       const { data: convLookup } = await serviceClient
         .from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid)
-        .eq("instance_name", evolution_instance_name).limit(1).single();
+        .eq("instance_name", instanceName).limit(1).single();
       if (convLookup) resolvedConversationId = convLookup.id;
     }
 
@@ -245,7 +256,7 @@ router.post("/", async (req, res) => {
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: evolution_instance_name || null })
+      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: instanceName || null })
       .select("id").single();
 
     if (execErr || !execution) return res.status(500).json({ error: "Failed to start execution tracking" });
@@ -394,8 +405,8 @@ router.post("/", async (req, res) => {
             const aiResponse = aiData?.choices?.[0]?.message?.content || "";
 
             if (data.aiAutoSend !== false && aiResponse) {
-              const sendResult = await baileysRequest(`/message/sendText/${evolution_instance_name}`, "POST", { number: jid, text: aiResponse });
-              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+              const sendResult = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: aiResponse });
+              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
               }
@@ -415,15 +426,15 @@ router.post("/", async (req, res) => {
               original_url: clickUrl, short_code: shortCode, next_node_id: nextNodeId,
               conversation_id: conversationId || null, preview_title: data.clickPreviewTitle || null,
               preview_description: data.clickPreviewDescription || null, preview_image: data.clickPreviewImage || null,
-              instance_name: evolution_instance_name,
+              instance_name: instanceName,
             });
 
             const trackingUrl = `${appUrl}/functions/v1/link-redirect?code=${shortCode}`;
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-            const sendResult = await baileysRequest(`/message/sendText/${evolution_instance_name}`, "POST", { number: jid, text: messageText });
-            const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+            const sendResult = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
+            const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
             if (conv) {
               await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
             }
@@ -471,15 +482,15 @@ router.post("/", async (req, res) => {
                 original_url: clickUrl, short_code: shortCode, next_node_id: nextNodeId,
                 conversation_id: conversationId || null, preview_title: step.data.clickPreviewTitle || null,
                 preview_description: step.data.clickPreviewDescription || null, preview_image: step.data.clickPreviewImage || null,
-                instance_name: evolution_instance_name,
+                instance_name: instanceName,
               });
 
               const trackingUrl = `${appUrl}/functions/v1/link-redirect?code=${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              const sendResult = await baileysRequest(`/message/sendText/${evolution_instance_name}`, "POST", { number: jid, text: messageText });
-              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: evolution_instance_name }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+              const sendResult = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
+              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
               }
@@ -524,13 +535,13 @@ router.post("/", async (req, res) => {
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
             } else {
-              const stepResult = await executeStep(step.data, evolution_instance_name, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, evolution_instance_name, jid, serviceClient, userId);
+          const result = await executeStep(data, instanceName, jid, serviceClient, userId);
           results.push(result);
         }
       } catch (err: any) {
