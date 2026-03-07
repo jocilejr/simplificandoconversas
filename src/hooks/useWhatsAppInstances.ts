@@ -52,7 +52,7 @@ export function useWhatsAppInstances() {
   } = useQuery({
     queryKey: ["whatsapp-remote-instances"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("evolution-proxy", {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "fetch-instances" },
       });
       if (error) throw error;
