@@ -1,21 +1,8 @@
-import {
-  LayoutDashboard,
-  Users,
-  CalendarClock,
-  Workflow,
-  MessageSquare,
-  Settings,
-  Zap,
-  LogOut,
-  Send,
-} from "lucide-react";
+import { Home, LogOut, Zap } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfile } from "@/hooks/useProfile";
 import {
   Sidebar,
   SidebarContent,
@@ -29,7 +16,6 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
@@ -39,50 +25,18 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path;
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
-  const { profile } = useProfile();
-
-  useEffect(() => {
-    const fetchUnread = async () => {
-      const { count } = await supabase
-        .from("conversations")
-        .select("id", { count: "exact", head: true })
-        .gt("unread_count", 0);
-      setUnreadCount(count || 0);
-    };
-
-    fetchUnread();
-
-    const channel = supabase
-      .channel("sidebar-unread")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
-        () => fetchUnread()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
 
-  const displayName = profile?.full_name || user?.email?.split("@")[0] || "Usuário";
+  const displayName = user?.email?.split("@")[0] || "Usuário";
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const mainItems = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-    { title: "Contatos", url: "/contacts", icon: Users },
-    { title: "Agendamentos", url: "/schedule", icon: CalendarClock },
-    { title: "Fluxos", url: "/chatbot", icon: Workflow },
-    { title: "Conversas", url: "/conversations", icon: MessageSquare, badge: unreadCount > 0 },
+    { title: "Início", url: "/home", icon: Home },
   ];
 
   return (
@@ -120,60 +74,12 @@ export function AppSidebar() {
                       className="hover:bg-sidebar-accent/80"
                       activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
                     >
-                      <div className="relative">
-                        <item.icon className="h-5 w-5" />
-                        {item.badge && (
-                          <span className="absolute -top-1.5 -right-1.5 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-sidebar-background" />
-                        )}
-                      </div>
+                      <item.icon className="h-5 w-5" />
                       {!collapsed && <span className="text-sm">{item.title}</span>}
-                      {!collapsed && item.badge && (
-                        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500/15 px-1.5 text-[10px] font-semibold text-green-500">
-                          {unreadCount}
-                        </span>
-                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <Separator className="my-2 opacity-50" />
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-1">
-            Sistema
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="h-10 rounded-lg transition-all duration-200 cursor-pointer hover:bg-sidebar-accent/80"
-                  onClick={() => setTriggerOpen(true)}
-                >
-                  <Send className="h-5 w-5" />
-                  {!collapsed && <span className="text-sm">Disparar Fluxo</span>}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive("/settings")}
-                  className="h-10 rounded-lg transition-all duration-200"
-                >
-                  <NavLink
-                    to="/settings"
-                    end
-                    className="hover:bg-sidebar-accent/80"
-                    activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
-                  >
-                    <Settings className="h-5 w-5" />
-                    {!collapsed && <span className="text-sm">Configurações</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -204,7 +110,6 @@ export function AppSidebar() {
           )}
         </div>
       </SidebarFooter>
-      <ManualFlowTrigger open={triggerOpen} onOpenChange={setTriggerOpen} />
     </Sidebar>
   );
 }
