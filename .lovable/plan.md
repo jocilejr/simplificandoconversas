@@ -1,33 +1,65 @@
 
-## Deploy para VPS Limpa — Concluído ✅
 
-Todos os arquivos de deploy foram reescritos para funcionar em uma VPS limpa com Traefik embutido e SSL automático.
+## Plano: Reconstruir do zero — manter apenas o frontend base
 
-### Arquivos alterados
+Isso é uma operação grande. Vou detalhar tudo que será removido e o que ficará.
 
-| Arquivo | Mudança |
-|---------|---------|
-| `deploy/docker-compose.yml` | Reescrito: Traefik embutido, Postgres 15.8.1.060, volumes prefixados `chatbot_*`, sem rede externa |
-| `deploy/portainer-stack.yml` | Reescrito: mesma arquitetura do docker-compose.yml |
-| `deploy/init-auth-role.sh` | Simplificado: apenas seta password do `supabase_auth_admin` |
-| `deploy/init-db.sql` | Removida linha `GRANT USAGE ON SCHEMA auth` |
-| `deploy/install.sh` | Reescrito: instala Docker+Node.js, gera secrets, Traefik auto-SSL, health checks |
-| `deploy/.env.example` | Atualizado: inclui `ACME_EMAIL` e credenciais admin |
+### O que será REMOVIDO
 
-### Como usar na VPS limpa
+**Edge Functions (4 arquivos):**
+- `supabase/functions/check-timeouts/index.ts`
+- `supabase/functions/evolution-proxy/index.ts`
+- `supabase/functions/execute-flow/index.ts`
+- `supabase/functions/link-redirect/index.ts`
 
-```bash
-# 1. Clonar o repositório
-git clone <repo> && cd <repo>/deploy
+**Config das functions** em `supabase/config.toml` — limpar todas as entradas de functions
 
-# 2. Executar instalação
-chmod +x install.sh && ./install.sh
+**Deploy (pasta inteira):**
+- `deploy/` — backend Express, Baileys service, Docker compose, Nginx, scripts
 
-# 3. O script vai:
-#    - Instalar Docker e Node.js (se necessário)
-#    - Solicitar domínios, email SSL e credenciais admin
-#    - Gerar todos os secrets automaticamente
-#    - Buildar frontend e containers
-#    - Configurar Traefik com SSL Let's Encrypt
-#    - Criar conta admin no GoTrue
-```
+**Tabelas do banco (via migration DROP):**
+- `chatbot_flow_history`, `chatbot_flows`, `contact_photos`, `contact_tags`
+- `conversation_labels`, `conversations`, `evolution_instances`
+- `flow_executions`, `flow_timeouts`, `labels`, `messages`
+- `profiles`, `quick_replies`, `tracked_links`
+- Functions DB: `handle_new_user`, `update_updated_at_column`, `increment_unread`
+- Storage bucket: `chatbot-media`
+
+**Páginas específicas do sistema antigo:**
+- `ChatbotBuilder.tsx`, `Contacts.tsx`, `Conversations.tsx`, `Schedule.tsx`, `LinkRedirect.tsx`, `SettingsPage.tsx`, `Dashboard.tsx`
+
+**Componentes do sistema antigo:**
+- `src/components/chatbot/` (inteira)
+- `src/components/conversations/` (inteira)
+- `src/components/settings/` (inteira)
+- `ManualFlowTrigger.tsx`
+
+**Hooks do sistema antigo:**
+- `useChatbotFlows.ts`, `useContactPhoto.ts`, `useConversations.ts`, `useFlowExecutions.ts`, `useFlowHistory.ts`, `useLabels.ts`, `useMessages.ts`, `useProfile.ts`, `useQuickReplies.ts`, `useWhatsAppInstances.ts`
+
+**Tipos:**
+- `src/types/chatbot.ts`
+
+### O que FICARÁ
+
+- **Infraestrutura React**: `App.tsx` (simplificado), `main.tsx`, `index.css`, `App.css`
+- **UI components**: Toda a pasta `src/components/ui/` (shadcn)
+- **Base components**: `AppLayout.tsx`, `AppSidebar.tsx`, `NavLink.tsx`, `ProtectedRoute.tsx`, `ThemeToggle.tsx`
+- **Hooks base**: `use-mobile.tsx`, `use-toast.ts`, `useAuth.ts`
+- **Auth page**: `Auth.tsx`
+- **Página inicial**: `Index.tsx` (vazia/placeholder)
+- **NotFound**: `NotFound.tsx`
+- **Config**: `package.json`, `vite.config.ts`, `tailwind.config.ts`, etc.
+- **Supabase client**: `src/integrations/supabase/client.ts` (auto-gerado)
+
+### Resumo da execução
+
+1. **Migration SQL**: DROP todas as 14 tabelas, 3 functions DB, e o bucket
+2. **Deletar** as 4 edge functions e a pasta `deploy/`
+3. **Deletar** páginas, componentes, hooks e tipos do sistema antigo
+4. **Simplificar** `App.tsx` para ter apenas Auth, uma página inicial vazia e NotFound
+5. **Limpar** `AppSidebar.tsx` removendo links para páginas deletadas
+6. **Limpar** `supabase/config.toml` removendo as entradas de functions
+
+Após isso, o projeto será um shell React limpo com autenticação, pronto para reconstrução.
+
