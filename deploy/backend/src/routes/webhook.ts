@@ -197,18 +197,17 @@ router.post("/*", async (req, res) => {
     const lastMessagePreview = truncate(messageContent || `[${messageType}]`, 100);
 
     if (fromMe && event === "send.message") {
+      const sendUpsert: Record<string, unknown> = {
+        user_id: userId,
+        remote_jid: remoteJid,
+        last_message: lastMessagePreview,
+        last_message_at: new Date().toISOString(),
+        instance_name: instance,
+      };
+      if (resolvedPhone) sendUpsert.phone_number = resolvedPhone;
       await supabase
         .from("conversations")
-        .upsert(
-          {
-            user_id: userId,
-            remote_jid: remoteJid,
-            last_message: lastMessagePreview,
-            last_message_at: new Date().toISOString(),
-            instance_name: instance,
-          },
-          { onConflict: "user_id,remote_jid,instance_name" }
-        );
+        .upsert(sendUpsert, { onConflict: "user_id,remote_jid,instance_name" });
       return res.json({ ok: true, updated: "conversation" });
     }
 

@@ -11,6 +11,7 @@ export type Conversation = {
   unread_count: number;
   created_at: string;
   instance_name: string | null;
+  phone_number: string | null;
 };
 
 export function useConversations() {
