@@ -340,8 +340,62 @@ router.post("/", async (req, res) => {
             console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 
             for (const chat of individualChats) {
-              const jid = extractJid(chat);
-              if (!jid) continue;
+              const rawJid = extractJid(chat);
+              if (!rawJid) continue;
+
+              let resolvedJid = rawJid;
+
+              // For @lid JIDs, try to resolve to real phone number
+              if (rawJid.includes("@lid")) {
+                console.log(`[sync-chats] ${instName}: Attempting to resolve @lid ${rawJid}`);
+                let foundPhone: string | null = null;
+
+                // Strategy 1: Check chat.participant or chat.participantAlt
+                const chatParticipant = chat.participant || chat.participantAlt || "";
+                if (chatParticipant.includes("@s.whatsapp.net")) {
+                  foundPhone = chatParticipant;
+                  console.log(`[sync-chats] Resolved ${rawJid} via chat.participant → ${foundPhone}`);
+                }
+
+                // Strategy 2: Fetch first page of messages and look for participantAlt in keys
+                if (!foundPhone) {
+                  try {
+                    const probe = await evolutionRequest(
+                      `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
+                      { where: { key: { remoteJid: rawJid } }, page: 1 }
+                    );
+                    let probeMessages: any[] = [];
+                    if (probe?.messages?.records) probeMessages = probe.messages.records;
+                    else if (Array.isArray(probe?.messages)) probeMessages = probe.messages;
+                    else if (Array.isArray(probe)) probeMessages = probe;
+
+                    for (const m of probeMessages) {
+                      const k = m.key || {};
+                      const alt = k.participantAlt || k.participant || "";
+                      if (alt.includes("@s.whatsapp.net")) {
+                        foundPhone = alt;
+                        console.log(`[sync-chats] Resolved ${rawJid} via message participantAlt → ${foundPhone}`);
+                        break;
+                      }
+                      // Also check remoteJid in the key itself
+                      const keyRemote = k.remoteJid || "";
+                      if (keyRemote !== rawJid && keyRemote.includes("@s.whatsapp.net")) {
+                        foundPhone = keyRemote;
+                        console.log(`[sync-chats] Resolved ${rawJid} via message key.remoteJid → ${foundPhone}`);
+                        break;
+                      }
+                    }
+                  } catch (e: any) {
+                    console.error(`[sync-chats] Error probing messages for ${rawJid}:`, e.message);
+                  }
+                }
+
+                if (!foundPhone) {
+                  console.log(`[sync-chats] Could not resolve @lid ${rawJid}, skipping (will be created via webhook)`);
+                  continue;
+                }
+                resolvedJid = foundPhone;
+              }
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
               const lastMsgContent = chat.lastMessage?.message?.conversation
@@ -352,29 +406,29 @@ router.post("/", async (req, res) => {
                 ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
 
-              // Upsert conversation
+              // Upsert conversation using resolved JID (always @s.whatsapp.net)
               const { data: convData, error: convErr } = await serviceClient.from("conversations").upsert({
                 user_id: userId,
-                remote_jid: jid,
+                remote_jid: resolvedJid,
                 contact_name: contactName,
                 instance_name: instName,
                 last_message: lastMsgContent,
                 last_message_at: lastTs,
               }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").maybeSingle();
-              if (convErr) console.error(`[sync-chats] Conv upsert error for ${jid}:`, convErr);
-              else console.log(`[sync-chats] Conv upserted for ${jid}: ${convData?.id} (${contactName})`);
+              if (convErr) console.error(`[sync-chats] Conv upsert error for ${resolvedJid}:`, convErr);
+              else console.log(`[sync-chats] Conv upserted for ${resolvedJid}: ${convData?.id} (${contactName})`);
               totalSynced++;
 
               if (!convData) continue;
 
               // Step 2: Fetch all messages for this contact with pagination
-              // Use rawJid for API query (Evolution needs the original format), but resolved jid for DB
+              // Use rawJid for API query (Evolution needs the original format), but resolvedJid for DB
               let page = 1;
               let contactMsgsSynced = 0;
               while (true) {
                 const msgResponse = await evolutionRequest(
                   `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-                  { where: { key: { remoteJid: jid } }, page }
+                  { where: { key: { remoteJid: rawJid } }, page }
                 );
 
                 let messageList: any[] = [];
@@ -389,7 +443,7 @@ router.post("/", async (req, res) => {
                 }
 
                 const totalPages = msgResponse?.messages?.pages || 1;
-                console.log(`[sync-chats] ${instName}/${jid}: page ${page}/${totalPages}, ${messageList.length} messages`);
+                console.log(`[sync-chats] ${instName}/${resolvedJid}: page ${page}/${totalPages}, ${messageList.length} messages`);
 
                 for (const msg of messageList) {
                   const key = msg.key || {};
@@ -422,7 +476,7 @@ router.post("/", async (req, res) => {
                   const { error: insertErr } = await serviceClient.from("messages").insert({
                     conversation_id: convData.id,
                     user_id: userId,
-                    remote_jid: jid,
+                    remote_jid: resolvedJid,
                     content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
                     message_type: msgType,
                     direction: isFromMe ? "outbound" : "inbound",
@@ -438,7 +492,7 @@ router.post("/", async (req, res) => {
                 page++;
               }
               totalMessagesSynced += contactMsgsSynced;
-              console.log(`[sync-chats] ${jid}: ${contactMsgsSynced} new messages synced`);
+              console.log(`[sync-chats] ${resolvedJid}: ${contactMsgsSynced} new messages synced`);
             }
           } catch (e: any) {
             console.error(`[sync-chats] Error syncing ${instName}:`, e.message);
