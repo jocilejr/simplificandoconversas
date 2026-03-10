@@ -2,16 +2,26 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Loader2,
   Plus,
-  Wifi,
   WifiOff,
   Trash2,
   Star,
   Link2,
   ServerCrash,
+  QrCode,
+  RefreshCw,
 } from "lucide-react";
 
 export function ConnectionsSection() {
@@ -22,26 +32,50 @@ export function ConnectionsSection() {
     isRemoteLoading,
     isServerConnected,
     createInstance,
-    connectInstance,
+    getQrCode,
+    logoutInstance,
     deleteInstance,
     setActiveInstance,
   } = useWhatsAppInstances();
 
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [newName, setNewName] = useState("");
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);
+  const [loadingQr, setLoadingQr] = useState<string | null>(null);
 
   const handleCreateInstance = async () => {
-    const result = await createInstance.mutateAsync();
-    const base64 = result?.qrcode?.base64 || result?.base64;
-    if (base64) {
-      setQrCode({ instanceName: result.instanceName, base64 });
+    if (!newName.trim()) return;
+    await createInstance.mutateAsync(newName.trim());
+    setShowNameDialog(false);
+    setNewName("");
+  };
+
+  const handleGetQrCode = async (instanceName: string) => {
+    setLoadingQr(instanceName);
+    try {
+      const result = await getQrCode.mutateAsync(instanceName);
+      const base64 = result?.qrcode?.base64 || result?.base64;
+      if (base64) {
+        setQrCode({ instanceName, base64 });
+      } else {
+        // No QR = already connected or error
+        setQrCode(null);
+      }
+    } finally {
+      setLoadingQr(null);
     }
   };
 
-  const handleConnect = async (instanceName: string) => {
-    const result = await connectInstance.mutateAsync(instanceName);
-    const base64 = result?.qrcode?.base64 || result?.base64;
-    if (base64) {
-      setQrCode({ instanceName, base64 });
+  const handleLogout = async (instanceName: string) => {
+    setLoadingQr(instanceName);
+    try {
+      const result = await logoutInstance.mutateAsync(instanceName);
+      const base64 = result?.qrcode?.base64 || result?.base64;
+      if (base64) {
+        setQrCode({ instanceName, base64 });
+      }
+    } finally {
+      setLoadingQr(null);
     }
   };
 
@@ -65,7 +99,6 @@ export function ConnectionsSection() {
     }
   };
 
-  // Remote instances not yet linked locally
   const unlinkedRemote = remoteInstances.filter(
     (ri) => !instances.some((i) => i.instance_name === ri.name)
   );
@@ -79,7 +112,6 @@ export function ConnectionsSection() {
           <p className="text-sm text-muted-foreground">Gerencie suas instâncias do WhatsApp</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Server status indicator */}
           <div className="flex items-center gap-1.5">
             <div className={`h-2 w-2 rounded-full ${
               isRemoteLoading ? "bg-yellow-500 animate-pulse" :
@@ -92,14 +124,37 @@ export function ConnectionsSection() {
           </div>
           <Button
             size="sm"
-            onClick={handleCreateInstance}
-            disabled={createInstance.isPending || !isServerConnected}
+            onClick={() => setShowNameDialog(true)}
+            disabled={!isServerConnected}
           >
-            {createInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+            <Plus className="h-4 w-4 mr-2" />
             Nova Instância
           </Button>
         </div>
       </div>
+
+      {/* Name Dialog */}
+      <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Instância</DialogTitle>
+            <DialogDescription>Escolha um nome para identificar esta conexão WhatsApp</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Ex: atendimento, vendas, suporte..."
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreateInstance()}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNameDialog(false)}>Cancelar</Button>
+            <Button onClick={handleCreateInstance} disabled={!newName.trim() || createInstance.isPending}>
+              {createInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Criar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Server offline warning */}
       {!isServerConnected && !isRemoteLoading && (
@@ -116,14 +171,14 @@ export function ConnectionsSection() {
         </Card>
       )}
 
-      {/* Loading state */}
+      {/* Loading */}
       {isLoading && (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty */}
       {!isLoading && instances.length === 0 && unlinkedRemote.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
@@ -161,8 +216,35 @@ export function ConnectionsSection() {
             </div>
             <div className="flex items-center gap-1">
               {inst.status !== "open" && (
-                <Button variant="ghost" size="sm" onClick={() => handleConnect(inst.instance_name)} disabled={connectInstance.isPending} className="text-xs">
-                  <Wifi className="h-3.5 w-3.5 mr-1" /> Conectar
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleGetQrCode(inst.instance_name)}
+                  disabled={loadingQr === inst.instance_name}
+                  className="text-xs"
+                >
+                  {loadingQr === inst.instance_name ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <QrCode className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  QR Code
+                </Button>
+              )}
+              {inst.status === "open" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleLogout(inst.instance_name)}
+                  disabled={loadingQr === inst.instance_name}
+                  className="text-xs"
+                >
+                  {loadingQr === inst.instance_name ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Reconexão
                 </Button>
               )}
               {!inst.is_active && (
@@ -208,7 +290,7 @@ export function ConnectionsSection() {
         </div>
       )}
 
-      {/* QR Code */}
+      {/* QR Code display */}
       {qrCode && (
         <Card className="border-primary/30">
           <CardContent className="py-6 text-center">
