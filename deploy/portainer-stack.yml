@@ -113,10 +113,19 @@ services:
     volumes:
       - chatbot_storagedata:/var/lib/storage
 
+  # ─── Redis (cache para Evolution API) ───
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - chatbot_redis:/data
+
   # ─── Evolution API (WhatsApp) ───
   evolution:
     image: atendai/evolution-api:v2.2.3
     restart: always
+    depends_on:
+      - redis
     environment:
       SERVER_URL: ${API_URL}
       SERVER_PORT: "8080"
