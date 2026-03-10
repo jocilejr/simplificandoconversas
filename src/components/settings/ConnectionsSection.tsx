@@ -53,6 +53,7 @@ export function ConnectionsSection() {
   const [newName, setNewName] = useState("");
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);
   const [loadingQr, setLoadingQr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
