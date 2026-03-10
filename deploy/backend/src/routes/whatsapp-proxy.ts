@@ -288,12 +288,15 @@ router.post("/", async (req, res) => {
         ).filter((n: string) => n !== "unknown");
         console.log(`[sync-chats] Instances from Evolution API: ${JSON.stringify(instancesToSync)}`);
 
+        // Sync instances WITHOUT overwriting is_active
         for (const instName of instancesToSync) {
-          const { error: upsertErr } = await serviceClient.from("whatsapp_instances").upsert(
-            { user_id: userId, instance_name: instName, status: "close", is_active: false },
-            { onConflict: "user_id,instance_name" }
-          );
-          if (upsertErr) console.error(`[sync-chats] Instance upsert error for ${instName}:`, upsertErr);
+          const { data: existing } = await serviceClient.from("whatsapp_instances")
+            .select("id").eq("user_id", userId).eq("instance_name", instName).maybeSingle();
+          if (!existing) {
+            const { error: insertErr } = await serviceClient.from("whatsapp_instances")
+              .insert({ user_id: userId, instance_name: instName, status: "close", is_active: false });
+            if (insertErr) console.error(`[sync-chats] Instance insert error for ${instName}:`, insertErr);
+          }
         }
 
         let totalSynced = 0;
@@ -316,107 +319,119 @@ router.post("/", async (req, res) => {
           if (connectionState !== "open") continue;
 
           try {
-            const rawResponse = await evolutionRequest(
-              `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-              { where: {} }
+            // Step 1: Use findChats to get all contacts
+            const chatsResponse = await evolutionRequest(
+              `/chat/findChats/${encodeURIComponent(instName)}`, "POST", {}
             );
-            
-            let messageList: any[] = [];
-            if (Array.isArray(rawResponse)) {
-              messageList = rawResponse;
-            } else if (rawResponse?.messages?.records) {
-              messageList = rawResponse.messages.records;
-            } else if (rawResponse?.messages && Array.isArray(rawResponse.messages)) {
-              messageList = rawResponse.messages;
-            } else if (rawResponse?.data && Array.isArray(rawResponse.data)) {
-              messageList = rawResponse.data;
-            }
-            
-            console.log(`[sync-chats] ${instName}: findMessages returned ${messageList.length} messages (raw keys: ${Object.keys(rawResponse || {}).join(",")})`);
+            const chatList = Array.isArray(chatsResponse) ? chatsResponse : [];
+            console.log(`[sync-chats] ${instName}: findChats returned ${chatList.length} chats`);
 
-            const msgsByJid = new Map<string, any[]>();
-            for (const msg of messageList) {
-              const jid = msg.key?.remoteJid;
-              if (!jid || jid.includes("@g.us") || jid === "status@broadcast" || jid.includes("@newsletter")) continue;
-              if (!msgsByJid.has(jid)) msgsByJid.set(jid, []);
-              msgsByJid.get(jid)!.push(msg);
-            }
+            // Filter: only individual contacts (no groups, no status, no newsletter)
+            const individualChats = chatList.filter((chat: any) => {
+              const id = chat.id || chat.remoteJid || "";
+              return id.includes("@s.whatsapp.net") && id !== "status@broadcast";
+            });
+            console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 
-            console.log(`[sync-chats] ${instName}: ${msgsByJid.size} unique contacts derived from messages`);
+            for (const chat of individualChats) {
+              const jid = chat.id || chat.remoteJid;
+              if (!jid) continue;
 
-            for (const [jid, msgs] of msgsByJid) {
-              msgs.sort((a: any, b: any) => Number(a.messageTimestamp || 0) - Number(b.messageTimestamp || 0));
-
-              const lastMsg = msgs[msgs.length - 1];
-              const lastContent = lastMsg?.message?.conversation
-                || lastMsg?.message?.extendedTextMessage?.text
-                || lastMsg?.message?.imageMessage?.caption
-                || `[media]`;
-              const lastTs = lastMsg?.messageTimestamp
-                ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString()
+              const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
+              const lastMsgContent = chat.lastMessage?.message?.conversation
+                || chat.lastMessage?.message?.extendedTextMessage?.text
+                || chat.lastMessage?.message?.imageMessage?.caption
+                || (chat.lastMessage ? "[media]" : null);
+              const lastTs = chat.lastMessage?.messageTimestamp
+                ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
 
-              let contactName: string | null = null;
-              for (const m of msgs) {
-                if (m.pushName) { contactName = m.pushName; break; }
-              }
-
+              // Upsert conversation
               const { data: convData, error: convErr } = await serviceClient.from("conversations").upsert({
                 user_id: userId,
                 remote_jid: jid,
                 contact_name: contactName,
                 instance_name: instName,
-                last_message: lastContent,
+                last_message: lastMsgContent,
                 last_message_at: lastTs,
-              }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+              }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").maybeSingle();
               if (convErr) console.error(`[sync-chats] Conv upsert error for ${jid}:`, convErr);
-              else console.log(`[sync-chats] Conv upserted for ${jid}: ${convData?.id}`);
+              else console.log(`[sync-chats] Conv upserted for ${jid}: ${convData?.id} (${contactName})`);
               totalSynced++;
 
               if (!convData) continue;
 
-              for (const msg of msgs) {
-                const key = msg.key || {};
-                const externalId = key.id;
-                if (!externalId) continue;
+              // Step 2: Fetch all messages for this contact with pagination
+              let page = 1;
+              let contactMsgsSynced = 0;
+              while (true) {
+                const msgResponse = await evolutionRequest(
+                  `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
+                  { where: { key: { remoteJid: jid } }, page }
+                );
 
-                const { data: existing, error: existErr } = await serviceClient.from("messages")
-                  .select("id").eq("external_id", externalId).limit(1).single();
-                if (existErr && existErr.code !== "PGRST116") console.error(`[sync-chats] Dedup check error:`, existErr);
-                if (existing) continue;
+                let messageList: any[] = [];
+                if (msgResponse?.messages?.records) {
+                  messageList = msgResponse.messages.records;
+                } else if (Array.isArray(msgResponse?.messages)) {
+                  messageList = msgResponse.messages;
+                } else if (Array.isArray(msgResponse)) {
+                  messageList = msgResponse;
+                } else if (msgResponse?.data && Array.isArray(msgResponse.data)) {
+                  messageList = msgResponse.data;
+                }
 
-                const isFromMe = key.fromMe === true;
-                const msgContent = msg.message?.conversation
-                  || msg.message?.extendedTextMessage?.text
-                  || msg.message?.imageMessage?.caption
-                  || msg.message?.videoMessage?.caption
-                  || null;
+                const totalPages = msgResponse?.messages?.pages || 1;
+                console.log(`[sync-chats] ${instName}/${jid}: page ${page}/${totalPages}, ${messageList.length} messages`);
 
-                let msgType = "text";
-                if (msg.message?.imageMessage) msgType = "image";
-                else if (msg.message?.videoMessage) msgType = "video";
-                else if (msg.message?.audioMessage) msgType = "audio";
-                else if (msg.message?.documentMessage) msgType = "document";
-                else if (msg.message?.stickerMessage) msgType = "sticker";
+                for (const msg of messageList) {
+                  const key = msg.key || {};
+                  const externalId = key.id;
+                  if (!externalId) continue;
 
-                const timestamp = msg.messageTimestamp
-                  ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
-                  : new Date().toISOString();
+                  // Dedup check
+                  const { data: existing } = await serviceClient.from("messages")
+                    .select("id").eq("external_id", externalId).maybeSingle();
+                  if (existing) continue;
 
-                const { error: insertErr } = await serviceClient.from("messages").insert({
-                  conversation_id: convData.id,
-                  user_id: userId,
-                  remote_jid: jid,
-                  content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
-                  message_type: msgType,
-                  direction: isFromMe ? "outbound" : "inbound",
-                  status: "delivered",
-                  external_id: externalId,
-                  created_at: timestamp,
-                });
-                if (insertErr) console.error(`[sync-chats] Message insert error for ${externalId}:`, insertErr);
-                totalMessagesSynced++;
+                  const isFromMe = key.fromMe === true;
+                  const msgContent = msg.message?.conversation
+                    || msg.message?.extendedTextMessage?.text
+                    || msg.message?.imageMessage?.caption
+                    || msg.message?.videoMessage?.caption
+                    || null;
+
+                  let msgType = "text";
+                  if (msg.message?.imageMessage) msgType = "image";
+                  else if (msg.message?.videoMessage) msgType = "video";
+                  else if (msg.message?.audioMessage) msgType = "audio";
+                  else if (msg.message?.documentMessage) msgType = "document";
+                  else if (msg.message?.stickerMessage) msgType = "sticker";
+
+                  const timestamp = msg.messageTimestamp
+                    ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
+                    : new Date().toISOString();
+
+                  const { error: insertErr } = await serviceClient.from("messages").insert({
+                    conversation_id: convData.id,
+                    user_id: userId,
+                    remote_jid: jid,
+                    content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
+                    message_type: msgType,
+                    direction: isFromMe ? "outbound" : "inbound",
+                    status: "delivered",
+                    external_id: externalId,
+                    created_at: timestamp,
+                  });
+                  if (insertErr) console.error(`[sync-chats] Message insert error for ${externalId}:`, insertErr);
+                  else contactMsgsSynced++;
+                }
+
+                if (page >= totalPages) break;
+                page++;
               }
+              totalMessagesSynced += contactMsgsSynced;
+              console.log(`[sync-chats] ${jid}: ${contactMsgsSynced} new messages synced`);
             }
           } catch (e: any) {
             console.error(`[sync-chats] Error syncing ${instName}:`, e.message);
