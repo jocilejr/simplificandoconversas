@@ -147,17 +147,19 @@ router.post("/", async (req, res) => {
         if (!delInstName) return res.status(400).json({ error: "instanceName required" });
         console.log(`[delete-instance] Deleting: ${delInstName} for user ${userId}`);
         
-        // Try Evolution delete, but don't fail if instance doesn't exist there
         try {
           await evolutionRequest(`/instance/delete/${encodeURIComponent(delInstName)}`, "DELETE");
           console.log(`[delete-instance] Evolution delete OK for ${delInstName}`);
         } catch (e: any) {
-          console.log(`[delete-instance] Evolution delete failed (may not exist): ${e.message}`);
+          console.log(`[delete-instance] Evolution delete failed: ${e.message}`);
         }
         
-        // Always clean up local DB
-        await serviceClient.from("whatsapp_instances").delete().eq("user_id", userId).eq("instance_name", delInstName);
-        console.log(`[delete-instance] DB cleanup done for ${delInstName}`);
+        // Clean up DB - by instance_name only (handles userId mismatch)
+        const { data: deleted } = await serviceClient
+          .from("whatsapp_instances").delete()
+          .eq("instance_name", delInstName)
+          .select("id");
+        console.log(`[delete-instance] DB rows deleted: ${deleted?.length || 0}`);
         result = { ok: true, deleted: delInstName };
         break;
       }
