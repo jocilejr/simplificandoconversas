@@ -284,6 +284,22 @@ export function ConnectionsSection() {
                   Reconexão
                 </Button>
               )}
+              {inst.status === "open" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="text-xs"
+                >
+                  {syncing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Sincronizar
+                </Button>
+              )}
               {!inst.is_active && (
                 <Button variant="ghost" size="sm" onClick={() => setActiveInstance.mutate(inst.instance_name)} disabled={setActiveInstance.isPending} className="text-xs">
                   <Star className="h-3.5 w-3.5 mr-1" /> Ativar
