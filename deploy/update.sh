@@ -44,6 +44,7 @@ echo "✓ Frontend copiado com sucesso"
 # Rebuild and restart containers
 echo "[3/4] Rebuilding containers..."
 cd "$DEPLOY_DIR"
+docker compose build --no-cache backend
 docker compose build
 
 echo "[4/4] Restarting..."
