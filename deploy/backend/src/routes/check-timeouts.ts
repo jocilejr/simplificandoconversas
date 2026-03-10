@@ -1,6 +1,7 @@
 import { getServiceClient } from "../lib/supabase";
 
 export async function processTimeouts() {
+  console.log(`[check-timeouts] Using URL: ${process.env.SUPABASE_URL}, key length: ${process.env.SUPABASE_SERVICE_ROLE_KEY?.length}`);
   const supabase = getServiceClient();
 
   const { data: pendingTimeouts, error: fetchErr } = await supabase
@@ -11,7 +12,7 @@ export async function processTimeouts() {
     .limit(50);
 
   if (fetchErr) {
-    console.error("[check-timeouts] Fetch error:", JSON.stringify(fetchErr));
+    console.error("[check-timeouts] Fetch error:", fetchErr.message, "code:", fetchErr.code, "details:", fetchErr.details, "hint:", fetchErr.hint);
     return;
   }
 
