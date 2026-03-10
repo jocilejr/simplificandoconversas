@@ -496,6 +496,19 @@ router.post("/", async (req, res) => {
         break;
       }
 
+      case "debug-findchats": {
+        if (!instanceName) return res.status(400).json({ error: "No active instance" });
+        const rawChats = await evolutionRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
+        const rawList = Array.isArray(rawChats) ? rawChats : [];
+        // Return first 5 chats with truncated data for debugging
+        result = rawList.slice(0, 5).map((c: any, i: number) => ({
+          index: i,
+          keys: Object.keys(c),
+          dump: JSON.stringify(c).substring(0, 600),
+        }));
+        break;
+      }
+
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
     }
