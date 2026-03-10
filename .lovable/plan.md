@@ -1,16 +1,15 @@
 
-## Remoção completa da Evolution API — Concluído ✅
+## Fix: supabase-js URL Path Mismatch + Chat Persistence — Concluído ✅
 
-Todas as referências a "evolution" foram removidas do projeto. O sistema usa exclusivamente Baileys.
+### Root Cause
+O backend usava `SUPABASE_URL=http://postgrest:3000`, mas o `supabase-js` adiciona `/rest/v1/` automaticamente, causando 404 no PostgREST.
 
 ### Mudanças realizadas
 
 | Área | Mudança |
 |------|---------|
-| **Banco de dados** | Tabela `evolution_instances` renomeada para `whatsapp_instances`; colunas `evolution_api_url`, `evolution_api_key`, `evolution_instance_name` removidas de `profiles` |
-| **Edge functions** | `evolution-proxy` deletada → `whatsapp-proxy` criada; `evolution-webhook` removida do config.toml |
-| **Frontend hooks** | `useWhatsAppInstances`, `useMessages`, `useContactPhoto` atualizados para usar `whatsapp-proxy` e `whatsapp_instances` |
-| **Página Conversations** | Invoke atualizado de `evolution-proxy` → `whatsapp-proxy` |
-| **Edge function execute-flow** | Query atualizada de `evolution_instances` → `whatsapp_instances` |
-| **Deploy backend** | `evolution-proxy.ts` → `whatsapp-proxy.ts`; `webhook.ts` reescrito sem refs Evolution; `execute-flow.ts` atualizado; `index.ts` atualizado |
-| **Deploy init-db.sql** | Tabela e colunas renomeadas/removidas |
+| **nginx** | `server_name` do API server block agora aceita `nginx` e `localhost` como hostnames internos |
+| **docker-compose** | Backend `SUPABASE_URL` alterado de `http://postgrest:3000` → `http://nginx:80`; `depends_on` inclui `nginx` |
+| **portainer-stack** | Mesmas alterações do docker-compose |
+| **check-timeouts** | Logging melhorado com `Object.getOwnPropertyNames` para capturar erros raw |
+| **Evolution API** | `DATABASE_SAVE_DATA_CHATS` alterado de `false` → `true` em ambos os compose files |
