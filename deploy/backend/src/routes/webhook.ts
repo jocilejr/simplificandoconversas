@@ -101,8 +101,23 @@ router.post("/*", async (req, res) => {
     }
 
     const key = data.key || {};
-    const remoteJid = key.remoteJid || data.remoteJid;
+    let remoteJid = key.remoteJid || data.remoteJid;
     const fromMe = key.fromMe ?? data.fromMe ?? false;
+
+    // Resolve @lid to real phone number
+    if (remoteJid && remoteJid.includes("@lid")) {
+      const alt = key.participantAlt;
+      if (alt && alt.includes("@s.whatsapp.net")) {
+        console.log(`[webhook] Resolved @lid ${remoteJid} → ${alt}`);
+        remoteJid = alt;
+      } else {
+        const keyRemote = key.remoteJid;
+        if (keyRemote && keyRemote !== remoteJid && keyRemote.includes("@s.whatsapp.net")) {
+          console.log(`[webhook] Resolved @lid ${remoteJid} → ${keyRemote}`);
+          remoteJid = keyRemote;
+        }
+      }
+    }
     const rawContent =
       data.message?.conversation ||
       data.message?.extendedTextMessage?.text ||

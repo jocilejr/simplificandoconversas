@@ -404,12 +404,13 @@ router.post("/", async (req, res) => {
               if (!convData) continue;
 
               // Step 2: Fetch all messages for this contact with pagination
+              // Use rawJid for API query (Evolution needs the original format), but resolved jid for DB
               let page = 1;
               let contactMsgsSynced = 0;
               while (true) {
                 const msgResponse = await evolutionRequest(
                   `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-                  { where: { key: { remoteJid: jid } }, page }
+                  { where: { key: { remoteJid: rawJid } }, page }
                 );
 
                 let messageList: any[] = [];
