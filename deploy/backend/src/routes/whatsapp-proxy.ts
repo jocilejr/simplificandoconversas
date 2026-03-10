@@ -100,17 +100,26 @@ router.post("/", async (req, res) => {
         const list = Array.isArray(instances) ? instances : [];
         console.log(`[fetch-instances] Evolution returned ${list.length} instances`);
 
-        // Auto-populate whatsapp_instances table
+        // Auto-populate whatsapp_instances table (without overwriting is_active)
         for (const inst of list) {
           const name = inst.name || inst.instanceName || "unknown";
           const status = inst.connectionStatus || "close";
           if (name === "unknown") continue;
-          const { data: upsertData, error: upsertErr } = await serviceClient.from("whatsapp_instances").upsert(
-            { user_id: userId, instance_name: name, status, is_active: false },
-            { onConflict: "user_id,instance_name" }
-          );
-          if (upsertErr) console.error(`[fetch-instances] DB upsert error for ${name}:`, upsertErr);
-          else console.log(`[fetch-instances] Upserted instance: ${name}`);
+          // Check if instance already exists
+          const { data: existing } = await serviceClient.from("whatsapp_instances")
+            .select("id").eq("user_id", userId).eq("instance_name", name).maybeSingle();
+          if (existing) {
+            // Only update status, never touch is_active
+            const { error: updateErr } = await serviceClient.from("whatsapp_instances")
+              .update({ status }).eq("id", existing.id);
+            if (updateErr) console.error(`[fetch-instances] DB update error for ${name}:`, updateErr);
+            else console.log(`[fetch-instances] Updated instance status: ${name}`);
+          } else {
+            const { error: insertErr } = await serviceClient.from("whatsapp_instances")
+              .insert({ user_id: userId, instance_name: name, status, is_active: false });
+            if (insertErr) console.error(`[fetch-instances] DB insert error for ${name}:`, insertErr);
+            else console.log(`[fetch-instances] Inserted new instance: ${name}`);
+          }
         }
 
         // Ensure at least one instance is active
