@@ -1,16 +1,51 @@
 
-## Remoção completa da Evolution API — Concluído ✅
 
-Todas as referências a "evolution" foram removidas do projeto. O sistema usa exclusivamente Baileys.
+## Diagnóstico: Causa Raiz Encontrada
 
-### Mudanças realizadas
+O papel `service_role` no banco de dados **não tem o atributo `BYPASSRLS`**. No `init-db.sql` linha 14:
 
-| Área | Mudança |
-|------|---------|
-| **Banco de dados** | Tabela `evolution_instances` renomeada para `whatsapp_instances`; colunas `evolution_api_url`, `evolution_api_key`, `evolution_instance_name` removidas de `profiles` |
-| **Edge functions** | `evolution-proxy` deletada → `whatsapp-proxy` criada; `evolution-webhook` removida do config.toml |
-| **Frontend hooks** | `useWhatsAppInstances`, `useMessages`, `useContactPhoto` atualizados para usar `whatsapp-proxy` e `whatsapp_instances` |
-| **Página Conversations** | Invoke atualizado de `evolution-proxy` → `whatsapp-proxy` |
-| **Edge function execute-flow** | Query atualizada de `evolution_instances` → `whatsapp_instances` |
-| **Deploy backend** | `evolution-proxy.ts` → `whatsapp-proxy.ts`; `webhook.ts` reescrito sem refs Evolution; `execute-flow.ts` atualizado; `index.ts` atualizado |
-| **Deploy init-db.sql** | Tabela e colunas renomeadas/removidas |
+```sql
+CREATE ROLE service_role NOLOGIN;  -- FALTA BYPASSRLS!
+```
+
+Sem `BYPASSRLS`, mesmo com `GRANT ALL`, as policies RLS bloqueiam o acesso porque `auth.uid()` retorna `NULL` para o service client. Por isso:
+- `sync-chats`: query retorna `[]` (RLS bloqueia)
+- `delete-instance`: delete não remove nada (RLS bloqueia)
+- Frontend funciona porque usa o token JWT do usuário (RLS passa com `auth.uid()`)
+
+## Plano
+
+### 1. Corrigir `deploy/init-db.sql` — adicionar BYPASSRLS ao service_role
+
+Alterar a criação do role `service_role` (linha 14-16):
+
+```sql
+IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN
+  CREATE ROLE service_role NOLOGIN BYPASSRLS;
+END IF;
+```
+
+### 2. Corrigir banco existente na VPS
+
+Como o banco já existe, o `CREATE ROLE IF NOT EXISTS` não vai re-executar. Adicionar um `ALTER ROLE` após o bloco DO (após linha 17):
+
+```sql
+ALTER ROLE service_role BYPASSRLS;
+```
+
+### 3. Deploy
+
+Na VPS, executar manualmente no PostgreSQL para corrigir o banco existente:
+
+```bash
+docker compose exec postgres psql -U postgres -c "ALTER ROLE service_role BYPASSRLS;"
+```
+
+Depois reiniciar o backend:
+
+```bash
+docker compose restart backend
+```
+
+Isso resolve tanto o sync quanto o delete — o service client poderá ler e apagar registros ignorando RLS.
+
