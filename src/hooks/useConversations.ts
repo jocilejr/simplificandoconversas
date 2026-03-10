@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useRef } from "react";
 
 export type Conversation = {
   id: string;
@@ -16,7 +15,6 @@ export type Conversation = {
 
 export function useConversations() {
   const queryClient = useQueryClient();
-  const realtimeFailed = useRef(false);
 
   const query = useQuery({
     queryKey: ["conversations"],
@@ -29,32 +27,9 @@ export function useConversations() {
       if (error) throw error;
       return data as Conversation[];
     },
-    // Poll every 10s as fallback when realtime is unavailable
+    // Polling every 3s — no Realtime WebSocket on VPS
     refetchInterval: 3000,
   });
-
-  useEffect(() => {
-    const channel = supabase
-      .channel("conversations-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "conversations" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["conversations"] });
-        }
-      )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          realtimeFailed.current = true;
-          // Enable polling fallback
-          queryClient.invalidateQueries({ queryKey: ["conversations"] });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
 
   const markAsRead = async (conversationId: string) => {
     await supabase

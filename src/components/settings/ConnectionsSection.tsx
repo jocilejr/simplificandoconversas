@@ -32,7 +32,9 @@ import {
   ServerCrash,
   QrCode,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 export function ConnectionsSection() {
@@ -54,6 +56,7 @@ export function ConnectionsSection() {
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);
   const [loadingQr, setLoadingQr] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
@@ -97,6 +100,24 @@ export function ConnectionsSection() {
 
   const handleLinkInstance = async (name: string) => {
     await setActiveInstance.mutateAsync(name);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { action: "sync-chats" },
+      });
+      if (error) throw error;
+      toast({
+        title: "Sincronização concluída",
+        description: `${data?.synced || 0} conversas e ${data?.messagesSynced || 0} mensagens importadas`,
+      });
+    } catch (e: any) {
+      toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -261,6 +282,22 @@ export function ConnectionsSection() {
                     <RefreshCw className="h-3.5 w-3.5 mr-1" />
                   )}
                   Reconexão
+                </Button>
+              )}
+              {inst.status === "open" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="text-xs"
+                >
+                  {syncing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Sincronizar
                 </Button>
               )}
               {!inst.is_active && (
