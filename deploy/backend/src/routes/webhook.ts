@@ -104,72 +104,98 @@ router.post("/*", async (req, res) => {
     let remoteJid = key.remoteJid || data.remoteJid;
     const fromMe = key.fromMe ?? data.fromMe ?? false;
 
-    // Resolve @lid to real phone number
+    // Resolve @lid to real phone number using all available fields
     if (remoteJid && remoteJid.includes("@lid")) {
-      const alt = key.participantAlt;
-      if (alt && alt.includes("@s.whatsapp.net")) {
-        console.log(`[webhook] Resolved @lid ${remoteJid} → ${alt}`);
-        remoteJid = alt;
+      const originalLid = remoteJid;
+      const senderPn = key.senderPn || data.senderPn;
+      if (senderPn) {
+        remoteJid = `${senderPn}@s.whatsapp.net`;
+        console.log(`[webhook] Resolved @lid via senderPn: ${originalLid} → ${remoteJid}`);
+      } else if (key.remoteJidAlt && key.remoteJidAlt.includes("@s.whatsapp.net")) {
+        remoteJid = key.remoteJidAlt;
+        console.log(`[webhook] Resolved @lid via remoteJidAlt: ${originalLid} → ${remoteJid}`);
+      } else if (key.participantAlt && key.participantAlt.includes("@s.whatsapp.net")) {
+        remoteJid = key.participantAlt;
+        console.log(`[webhook] Resolved @lid via participantAlt: ${originalLid} → ${remoteJid}`);
       } else {
-        const keyRemote = key.remoteJid;
-        if (keyRemote && keyRemote !== remoteJid && keyRemote.includes("@s.whatsapp.net")) {
-          console.log(`[webhook] Resolved @lid ${remoteJid} → ${keyRemote}`);
-          remoteJid = keyRemote;
+        console.log(`[webhook] Could not resolve @lid ${originalLid}, saving as-is`);
+      }
+
+      // If resolved, migrate existing @lid conversations/messages to real phone number
+      if (remoteJid !== originalLid) {
+        const supabaseMigrate = getServiceClient();
+
+        // Find instance user_id first
+        const { data: instRec } = await supabaseMigrate
+          .from("whatsapp_instances")
+          .select("user_id")
+          .eq("instance_name", instance)
+          .limit(1)
+          .single();
+
+        if (instRec) {
+          // Check if a conversation exists with the old @lid
+          const { data: lidConv } = await supabaseMigrate
+            .from("conversations")
+            .select("id")
+            .eq("user_id", instRec.user_id)
+            .eq("remote_jid", originalLid)
+            .eq("instance_name", instance)
+            .limit(1);
+
+          if (lidConv && lidConv.length > 0) {
+            // Check if a conversation already exists with the real phone number
+            const { data: phoneConv } = await supabaseMigrate
+              .from("conversations")
+              .select("id")
+              .eq("user_id", instRec.user_id)
+              .eq("remote_jid", remoteJid)
+              .eq("instance_name", instance)
+              .limit(1);
+
+            if (phoneConv && phoneConv.length > 0) {
+              // Phone conversation already exists — move messages from @lid conv to phone conv, then delete @lid conv
+              console.log(`[webhook] Merging @lid conv ${lidConv[0].id} into phone conv ${phoneConv[0].id}`);
+              await supabaseMigrate
+                .from("messages")
+                .update({ conversation_id: phoneConv[0].id, remote_jid: remoteJid })
+                .eq("conversation_id", lidConv[0].id);
+              await supabaseMigrate
+                .from("conversation_labels")
+                .update({ conversation_id: phoneConv[0].id })
+                .eq("conversation_id", lidConv[0].id);
+              await supabaseMigrate
+                .from("conversations")
+                .delete()
+                .eq("id", lidConv[0].id);
+            } else {
+              // No phone conversation exists — just update the @lid conversation to use real phone
+              console.log(`[webhook] Migrating @lid conv ${lidConv[0].id}: ${originalLid} → ${remoteJid}`);
+              await supabaseMigrate
+                .from("conversations")
+                .update({ remote_jid: remoteJid })
+                .eq("id", lidConv[0].id);
+              await supabaseMigrate
+                .from("messages")
+                .update({ remote_jid: remoteJid })
+                .eq("user_id", instRec.user_id)
+                .eq("remote_jid", originalLid);
+            }
+
+            // Also migrate contact_photos and contact_tags
+            await supabaseMigrate
+              .from("contact_photos")
+              .update({ remote_jid: remoteJid })
+              .eq("user_id", instRec.user_id)
+              .eq("remote_jid", originalLid);
+            await supabaseMigrate
+              .from("contact_tags")
+              .update({ remote_jid: remoteJid })
+              .eq("user_id", instRec.user_id)
+              .eq("remote_jid", originalLid);
+          }
         }
       }
-    }
-    const rawContent =
-      data.message?.conversation ||
-      data.message?.extendedTextMessage?.text ||
-      data.message?.imageMessage?.caption ||
-      data.message?.videoMessage?.caption ||
-      "";
-    const messageType = data.message?.imageMessage
-      ? "image"
-      : data.message?.audioMessage
-      ? "audio"
-      : data.message?.videoMessage
-      ? "video"
-      : data.message?.documentMessage
-      ? "document"
-      : "text";
-    const externalId = key.id || data.keyId || null;
-
-    const messageContent = rawContent;
-    const lastMessagePreview = truncate(rawContent, 50) || `[${messageType}]`;
-
-    const supabase = getServiceClient();
-
-    let userId: string | null = null;
-
-    const { data: instanceRecord } = await supabase
-      .from("whatsapp_instances")
-      .select("user_id")
-      .eq("instance_name", instance)
-      .limit(1)
-      .single();
-
-    if (instanceRecord) {
-      userId = instanceRecord.user_id;
-    }
-
-    if (!userId) {
-      console.error("No user found for instance:", instance);
-      return res.status(404).json({ error: "Instance not found" });
-    }
-
-    if (!remoteJid) {
-      return res.json({ ok: true, skipped: "no remoteJid" });
-    }
-
-    if (remoteJid === "status@broadcast" || remoteJid.includes("@g.us")) {
-      return res.json({ ok: true, skipped: "filtered" });
-    }
-
-    // If @lid could not be resolved above, skip entirely — no @lid in DB
-    if (remoteJid.includes("@lid")) {
-      console.log(`[webhook] Skipping unresolved @lid: ${remoteJid} (no @lid allowed in DB)`);
-      return res.json({ ok: true, skipped: "unresolved_lid" });
     }
 
     if (fromMe && event === "send.message") {
