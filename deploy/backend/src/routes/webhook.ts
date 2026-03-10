@@ -78,7 +78,7 @@ async function downloadAndUploadMedia(
   }
 }
 
-router.post("/", async (req, res) => {
+router.post("/*", async (req, res) => {
   try {
     const body = req.body;
     console.log("Webhook event:", body.event, "instance:", body.instance);
