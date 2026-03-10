@@ -262,41 +262,42 @@ router.post("/", async (req, res) => {
           if (connectionState !== "open") continue;
 
           try {
-            // Use findContacts instead of buggy findChats (Evolution API v2.3.x issue #2051)
-            const contacts = await evolutionRequest(
-              `/chat/findContacts/${encodeURIComponent(instName)}`, "POST", {}
+            // Bypass buggy findChats/findContacts — fetch ALL messages directly
+            const rawResponse = await evolutionRequest(
+              `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
+              { where: {} }
             );
-            const contactList = Array.isArray(contacts) ? contacts : [];
-            console.log(`[sync-chats] ${instName}: findContacts returned ${contactList.length} contacts`);
+            
+            // Handle different response formats from Evolution API
+            let messageList: any[] = [];
+            if (Array.isArray(rawResponse)) {
+              messageList = rawResponse;
+            } else if (rawResponse?.messages?.records) {
+              messageList = rawResponse.messages.records;
+            } else if (rawResponse?.messages && Array.isArray(rawResponse.messages)) {
+              messageList = rawResponse.messages;
+            } else if (rawResponse?.data && Array.isArray(rawResponse.data)) {
+              messageList = rawResponse.data;
+            }
+            
+            console.log(`[sync-chats] ${instName}: findMessages returned ${messageList.length} messages (raw keys: ${Object.keys(rawResponse || {}).join(",")})`);
 
-            // Filter individual contacts only (exclude groups and broadcast)
-            const individualContacts = contactList.filter((c: any) => {
-              const id = c.id || c.remoteJid || "";
-              return id && !id.includes("@g.us") && id !== "status@broadcast" && !id.includes("@newsletter");
-            });
-            console.log(`[sync-chats] ${instName}: ${individualContacts.length} individual contacts after filter`);
+            // Group messages by remoteJid
+            const msgsByJid = new Map<string, any[]>();
+            for (const msg of messageList) {
+              const jid = msg.key?.remoteJid;
+              if (!jid || jid.includes("@g.us") || jid === "status@broadcast" || jid.includes("@newsletter")) continue;
+              if (!msgsByJid.has(jid)) msgsByJid.set(jid, []);
+              msgsByJid.get(jid)!.push(msg);
+            }
 
-            for (const contact of individualContacts) {
-              const remoteJid = contact.id || contact.remoteJid;
-              if (!remoteJid) continue;
+            console.log(`[sync-chats] ${instName}: ${msgsByJid.size} unique contacts derived from messages`);
 
-              // Fetch messages for this contact
-              let msgList: any[] = [];
-              try {
-                const messages = await evolutionRequest(
-                  `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-                  { where: { key: { remoteJid } }, limit: 50 }
-                );
-                msgList = Array.isArray(messages) ? messages : (messages?.messages?.records || messages?.messages || []);
-              } catch (msgFetchErr: any) {
-                console.error(`[sync-chats] findMessages failed for ${remoteJid}:`, msgFetchErr.message);
-              }
+            for (const [jid, msgs] of msgsByJid) {
+              // Sort by timestamp ascending
+              msgs.sort((a: any, b: any) => Number(a.messageTimestamp || 0) - Number(b.messageTimestamp || 0));
 
-              // Skip contacts with no messages
-              if (msgList.length === 0) continue;
-
-              // Determine last message info
-              const lastMsg = msgList[msgList.length - 1];
+              const lastMsg = msgs[msgs.length - 1];
               const lastContent = lastMsg?.message?.conversation
                 || lastMsg?.message?.extendedTextMessage?.text
                 || lastMsg?.message?.imageMessage?.caption
@@ -305,10 +306,16 @@ router.post("/", async (req, res) => {
                 ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
 
+              // Try to get contact name from pushName in any message
+              let contactName: string | null = null;
+              for (const m of msgs) {
+                if (m.pushName) { contactName = m.pushName; break; }
+              }
+
               const { data: convData } = await serviceClient.from("conversations").upsert({
                 user_id: userId,
-                remote_jid: remoteJid,
-                contact_name: contact.pushName || contact.name || contact.verifiedName || null,
+                remote_jid: jid,
+                contact_name: contactName,
                 instance_name: instName,
                 last_message: lastContent,
                 last_message_at: lastTs,
@@ -318,12 +325,11 @@ router.post("/", async (req, res) => {
               if (!convData) continue;
 
               // Import messages with deduplication by external_id
-              for (const msg of msgList) {
+              for (const msg of msgs) {
                 const key = msg.key || {};
                 const externalId = key.id;
                 if (!externalId) continue;
 
-                // Skip if already exists
                 const { data: existing } = await serviceClient.from("messages")
                   .select("id").eq("external_id", externalId).limit(1).single();
                 if (existing) continue;
@@ -349,7 +355,7 @@ router.post("/", async (req, res) => {
                 await serviceClient.from("messages").insert({
                   conversation_id: convData.id,
                   user_id: userId,
-                  remote_jid: remoteJid,
+                  remote_jid: jid,
                   content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
                   message_type: msgType,
                   direction: isFromMe ? "outbound" : "inbound",
