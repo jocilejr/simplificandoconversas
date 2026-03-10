@@ -94,7 +94,34 @@ router.post("/", async (req, res) => {
 
     switch (action) {
       case "fetch-instances": {
-        result = await evolutionRequest("/instance/fetchInstances", "GET");
+        const instances = await evolutionRequest("/instance/fetchInstances", "GET");
+        const list = Array.isArray(instances) ? instances : [];
+
+        // Auto-populate whatsapp_instances table
+        for (const inst of list) {
+          const name = inst.name || inst.instanceName || "unknown";
+          const status = inst.connectionStatus || "close";
+          if (name === "unknown") continue;
+          await serviceClient.from("whatsapp_instances").upsert(
+            { user_id: userId, instance_name: name, status, is_active: false },
+            { onConflict: "user_id,instance_name" }
+          );
+        }
+
+        // Ensure at least one instance is active
+        const { data: activeCheck } = await serviceClient
+          .from("whatsapp_instances")
+          .select("id").eq("user_id", userId).eq("is_active", true).limit(1);
+        if ((!activeCheck || activeCheck.length === 0) && list.length > 0) {
+          const firstName = list[0].name || list[0].instanceName;
+          if (firstName) {
+            await serviceClient.from("whatsapp_instances")
+              .update({ is_active: true })
+              .eq("user_id", userId).eq("instance_name", firstName);
+          }
+        }
+
+        result = instances;
         break;
       }
 
