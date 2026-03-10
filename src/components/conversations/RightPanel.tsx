@@ -24,13 +24,15 @@ interface RightPanelProps {
   onClose: () => void;
 }
 
+function isLidJid(jid: string) {
+  return jid.includes("@lid");
+}
 
 function formatJid(jid: string) {
   return jid.split("@")[0];
 }
 
-function formatPhone(jid: string) {
-  const num = jid.split("@")[0];
+function formatPhone(num: string) {
   if (num.length >= 12) {
     return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
   }
