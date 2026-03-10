@@ -113,10 +113,19 @@ services:
     volumes:
       - chatbot_storagedata:/var/lib/storage
 
+  # ─── Redis (cache para Evolution API) ───
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - chatbot_redis:/data
+
   # ─── Evolution API (WhatsApp) ───
   evolution:
     image: atendai/evolution-api:v2.2.3
     restart: always
+    depends_on:
+      - redis
     environment:
       SERVER_URL: ${API_URL}
       SERVER_PORT: "8080"
@@ -139,6 +148,9 @@ services:
       WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
       WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
       WEBHOOK_EVENTS_SEND_MESSAGE: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379
+      CACHE_REDIS_PREFIX_KEY: evolution
     volumes:
       - chatbot_evolution_instances:/evolution/instances
       - chatbot_evolution_store:/evolution/store
@@ -198,3 +210,4 @@ volumes:
   chatbot_storagedata:
   chatbot_evolution_instances:
   chatbot_evolution_store:
+  chatbot_redis:
