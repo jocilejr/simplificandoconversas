@@ -1,31 +1,15 @@
 
+## Fix: supabase-js URL Path Mismatch + Chat Persistence — Concluído ✅
 
-## Bug: `sync-chats` retorna 0 contatos -- duas causas
+### Root Cause
+O backend usava `SUPABASE_URL=http://postgrest:3000`, mas o `supabase-js` adiciona `/rest/v1/` automaticamente, causando 404 no PostgREST.
 
-### Causa 1: `chat.id` retorna o ID do banco, não o JID
-Linha 331: `const id = chat.id || chat.remoteJid || ""`
+### Mudanças realizadas
 
-O `findChats` da Evolution v2 retorna objetos onde `id` é o ID do Prisma (ex: `cmmkncock0007l14xrm3y3pht`), não o `remoteJid`. Como `chat.id` sempre existe, `chat.remoteJid` nunca é usado. O filtro `id.includes("@s.whatsapp.net")` falha em 100% dos casos.
-
-### Causa 2: Contatos `@lid` são excluídos
-A Evolution v2 usa o formato LID (`177266285932779@lid`) para alguns contatos individuais. O filtro atual só aceita `@s.whatsapp.net`.
-
-### Correção em `deploy/backend/src/routes/whatsapp-proxy.ts`
-
-**Linha 331**: Usar `chat.remoteJid` como fonte principal do JID, e aceitar tanto `@s.whatsapp.net` quanto `@lid`:
-
-```typescript
-const individualChats = chatList.filter((chat: any) => {
-  const jid = chat.remoteJid || chat.id || "";
-  return (jid.includes("@s.whatsapp.net") || jid.includes("@lid")) 
-    && jid !== "status@broadcast";
-});
-```
-
-**Linha 337**: Mesma correção na extração do JID:
-```typescript
-const jid = chat.remoteJid || chat.id;
-```
-
-Adicionar log dos primeiros chats para debug futuro.
-
+| Área | Mudança |
+|------|---------|
+| **nginx** | `server_name` do API server block agora aceita `nginx` e `localhost` como hostnames internos |
+| **docker-compose** | Backend `SUPABASE_URL` alterado de `http://postgrest:3000` → `http://nginx:80`; `depends_on` inclui `nginx` |
+| **portainer-stack** | Mesmas alterações do docker-compose |
+| **check-timeouts** | Logging melhorado com `Object.getOwnPropertyNames` para capturar erros raw |
+| **Evolution API** | `DATABASE_SAVE_DATA_CHATS` alterado de `false` → `true` em ambos os compose files |

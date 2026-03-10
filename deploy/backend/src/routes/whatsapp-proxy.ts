@@ -325,16 +325,23 @@ router.post("/", async (req, res) => {
             );
             const chatList = Array.isArray(chatsResponse) ? chatsResponse : [];
             console.log(`[sync-chats] ${instName}: findChats returned ${chatList.length} chats`);
+            // Debug: log first 3 chat objects to see structure
+            if (chatList.length > 0) {
+              console.log(`[sync-chats] Sample chat keys:`, JSON.stringify(Object.keys(chatList[0])));
+              for (const s of chatList.slice(0, 3)) {
+                console.log(`[sync-chats] chat sample: id=${s.id}, remoteJid=${s.remoteJid}, name=${s.name || s.pushName}`);
+              }
+            }
 
             // Filter: only individual contacts (no groups, no status, no newsletter)
             const individualChats = chatList.filter((chat: any) => {
-              const id = chat.id || chat.remoteJid || "";
-              return id.includes("@s.whatsapp.net") && id !== "status@broadcast";
+              const jid = chat.remoteJid || chat.id || "";
+              return (jid.includes("@s.whatsapp.net") || jid.includes("@lid")) && jid !== "status@broadcast";
             });
             console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 
             for (const chat of individualChats) {
-              const jid = chat.id || chat.remoteJid;
+              const jid = chat.remoteJid || chat.id;
               if (!jid) continue;
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
