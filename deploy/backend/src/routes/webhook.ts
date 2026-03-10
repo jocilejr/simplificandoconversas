@@ -242,6 +242,9 @@ router.post("/*", async (req, res) => {
     if (contactName) {
       upsertData.contact_name = contactName;
     }
+    if (resolvedPhone) {
+      upsertData.phone_number = resolvedPhone;
+    }
 
     const { data: conv } = await supabase
       .from("conversations")
