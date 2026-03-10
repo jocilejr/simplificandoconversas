@@ -79,13 +79,15 @@ router.post("/", async (req, res) => {
 
     let instanceName = params.instanceName;
     if (!instanceName) {
-      const { data: activeInst } = await supabase
+      const { data: activeInst, error: activeInstErr } = await supabase
         .from("whatsapp_instances")
         .select("instance_name")
         .eq("user_id", userId)
         .eq("is_active", true)
         .limit(1)
         .single();
+      if (activeInstErr) console.error("[whatsapp-proxy] Active instance query error:", activeInstErr);
+      else console.log("[whatsapp-proxy] Active instance:", activeInst?.instance_name);
       instanceName = activeInst?.instance_name;
     }
 
@@ -96,28 +98,36 @@ router.post("/", async (req, res) => {
       case "fetch-instances": {
         const instances = await evolutionRequest("/instance/fetchInstances", "GET");
         const list = Array.isArray(instances) ? instances : [];
+        console.log(`[fetch-instances] Evolution returned ${list.length} instances`);
 
         // Auto-populate whatsapp_instances table
         for (const inst of list) {
           const name = inst.name || inst.instanceName || "unknown";
           const status = inst.connectionStatus || "close";
           if (name === "unknown") continue;
-          await serviceClient.from("whatsapp_instances").upsert(
+          const { data: upsertData, error: upsertErr } = await serviceClient.from("whatsapp_instances").upsert(
             { user_id: userId, instance_name: name, status, is_active: false },
             { onConflict: "user_id,instance_name" }
           );
+          if (upsertErr) console.error(`[fetch-instances] DB upsert error for ${name}:`, upsertErr);
+          else console.log(`[fetch-instances] Upserted instance: ${name}`);
         }
 
         // Ensure at least one instance is active
-        const { data: activeCheck } = await serviceClient
+        const { data: activeCheck, error: activeCheckErr } = await serviceClient
           .from("whatsapp_instances")
           .select("id").eq("user_id", userId).eq("is_active", true).limit(1);
+        if (activeCheckErr) console.error("[fetch-instances] Active check error:", activeCheckErr);
+        else console.log(`[fetch-instances] Active instances found: ${activeCheck?.length || 0}`);
+        
         if ((!activeCheck || activeCheck.length === 0) && list.length > 0) {
           const firstName = list[0].name || list[0].instanceName;
           if (firstName) {
-            await serviceClient.from("whatsapp_instances")
+            const { error: updateErr } = await serviceClient.from("whatsapp_instances")
               .update({ is_active: true })
               .eq("user_id", userId).eq("instance_name", firstName);
+            if (updateErr) console.error(`[fetch-instances] Set active error for ${firstName}:`, updateErr);
+            else console.log(`[fetch-instances] Set ${firstName} as active`);
           }
         }
 
@@ -135,10 +145,12 @@ router.post("/", async (req, res) => {
         });
         console.log("[create-instance] Create result:", JSON.stringify(createResult));
         if (createResult?.instance) {
-          await serviceClient.from("whatsapp_instances").upsert(
+          const { error: upsertErr } = await serviceClient.from("whatsapp_instances").upsert(
             { user_id: userId, instance_name: customName, status: "close", is_active: false },
             { onConflict: "user_id,instance_name" }
           );
+          if (upsertErr) console.error("[create-instance] DB upsert error:", upsertErr);
+          else console.log("[create-instance] DB upsert OK");
         }
         result = { ...createResult, instanceName: customName };
         break;
@@ -181,12 +193,12 @@ router.post("/", async (req, res) => {
           console.log(`[delete-instance] Evolution delete failed: ${e.message}`);
         }
         
-        // Clean up DB - by instance_name only (handles userId mismatch)
-        const { data: deleted } = await serviceClient
+        const { data: deleted, error: deleteErr } = await serviceClient
           .from("whatsapp_instances").delete()
           .eq("instance_name", delInstName)
           .select("id");
-        console.log(`[delete-instance] DB rows deleted: ${deleted?.length || 0}`);
+        if (deleteErr) console.error(`[delete-instance] DB delete error:`, deleteErr);
+        else console.log(`[delete-instance] DB rows deleted: ${deleted?.length || 0}`);
         result = { ok: true, deleted: delInstName };
         break;
       }
@@ -227,21 +239,27 @@ router.post("/", async (req, res) => {
           payload = { number: remoteJid, mediatype: "video", media: mediaUrl, caption: message || "" };
         }
 
+        console.log(`[send-message] Sending ${messageType} to ${remoteJid} via ${instanceName}`);
         result = await evolutionRequest(`/message/${endpoint}/${encodeURIComponent(instanceName)}`, "POST", payload);
+        console.log(`[send-message] Evolution result:`, JSON.stringify(result)?.substring(0, 300));
 
         if (result?.key) {
           const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
-          const { data: conv } = await serviceClient.from("conversations").upsert(
+          const { data: conv, error: convErr } = await serviceClient.from("conversations").upsert(
             { user_id: userId, remote_jid: jid, last_message: message || `[${messageType}]`, last_message_at: new Date().toISOString(), instance_name: instanceName },
             { onConflict: "user_id,remote_jid,instance_name" }
           ).select("id").single();
+          if (convErr) console.error("[send-message] Conv upsert error:", convErr);
+          else console.log("[send-message] Conv upserted:", conv?.id);
 
           if (conv) {
-            await serviceClient.from("messages").insert({
+            const { error: msgErr } = await serviceClient.from("messages").insert({
               conversation_id: conv.id, user_id: userId, remote_jid: jid, content: message,
               message_type: messageType, direction: "outbound", status: "sent",
               external_id: result?.key?.id || null, media_url: mediaUrl || null,
             });
+            if (msgErr) console.error("[send-message] Message insert error:", msgErr);
+            else console.log("[send-message] Message inserted OK");
           }
         }
         break;
@@ -253,7 +271,6 @@ router.post("/", async (req, res) => {
       }
 
       case "sync-chats": {
-        // Get instances from Evolution API (source of truth)
         const allEvolutionInstances = await evolutionRequest("/instance/fetchInstances", "GET");
         const evolutionList = Array.isArray(allEvolutionInstances) ? allEvolutionInstances : [];
         
@@ -262,12 +279,12 @@ router.post("/", async (req, res) => {
         ).filter((n: string) => n !== "unknown");
         console.log(`[sync-chats] Instances from Evolution API: ${JSON.stringify(instancesToSync)}`);
 
-        // Ensure all instances exist in DB
         for (const instName of instancesToSync) {
-          await serviceClient.from("whatsapp_instances").upsert(
+          const { error: upsertErr } = await serviceClient.from("whatsapp_instances").upsert(
             { user_id: userId, instance_name: instName, status: "close", is_active: false },
             { onConflict: "user_id,instance_name" }
           );
+          if (upsertErr) console.error(`[sync-chats] Instance upsert error for ${instName}:`, upsertErr);
         }
 
         let totalSynced = 0;
@@ -280,22 +297,21 @@ router.post("/", async (req, res) => {
           );
           const connectionState = stateResult?.instance?.state || "close";
           console.log(`[sync-chats] ${instName}: connectionState=${connectionState}`);
-          await serviceClient.from("whatsapp_instances")
+          const { error: statusErr } = await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
             .eq("instance_name", instName)
             .eq("user_id", userId);
+          if (statusErr) console.error(`[sync-chats] Status update error for ${instName}:`, statusErr);
           instanceStatuses.push({ instance: instName, connectionState });
 
           if (connectionState !== "open") continue;
 
           try {
-            // Bypass buggy findChats/findContacts — fetch ALL messages directly
             const rawResponse = await evolutionRequest(
               `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
               { where: {} }
             );
             
-            // Handle different response formats from Evolution API
             let messageList: any[] = [];
             if (Array.isArray(rawResponse)) {
               messageList = rawResponse;
@@ -309,7 +325,6 @@ router.post("/", async (req, res) => {
             
             console.log(`[sync-chats] ${instName}: findMessages returned ${messageList.length} messages (raw keys: ${Object.keys(rawResponse || {}).join(",")})`);
 
-            // Group messages by remoteJid
             const msgsByJid = new Map<string, any[]>();
             for (const msg of messageList) {
               const jid = msg.key?.remoteJid;
@@ -321,7 +336,6 @@ router.post("/", async (req, res) => {
             console.log(`[sync-chats] ${instName}: ${msgsByJid.size} unique contacts derived from messages`);
 
             for (const [jid, msgs] of msgsByJid) {
-              // Sort by timestamp ascending
               msgs.sort((a: any, b: any) => Number(a.messageTimestamp || 0) - Number(b.messageTimestamp || 0));
 
               const lastMsg = msgs[msgs.length - 1];
@@ -333,13 +347,12 @@ router.post("/", async (req, res) => {
                 ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
 
-              // Try to get contact name from pushName in any message
               let contactName: string | null = null;
               for (const m of msgs) {
                 if (m.pushName) { contactName = m.pushName; break; }
               }
 
-              const { data: convData } = await serviceClient.from("conversations").upsert({
+              const { data: convData, error: convErr } = await serviceClient.from("conversations").upsert({
                 user_id: userId,
                 remote_jid: jid,
                 contact_name: contactName,
@@ -347,18 +360,20 @@ router.post("/", async (req, res) => {
                 last_message: lastContent,
                 last_message_at: lastTs,
               }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+              if (convErr) console.error(`[sync-chats] Conv upsert error for ${jid}:`, convErr);
+              else console.log(`[sync-chats] Conv upserted for ${jid}: ${convData?.id}`);
               totalSynced++;
 
               if (!convData) continue;
 
-              // Import messages with deduplication by external_id
               for (const msg of msgs) {
                 const key = msg.key || {};
                 const externalId = key.id;
                 if (!externalId) continue;
 
-                const { data: existing } = await serviceClient.from("messages")
+                const { data: existing, error: existErr } = await serviceClient.from("messages")
                   .select("id").eq("external_id", externalId).limit(1).single();
+                if (existErr && existErr.code !== "PGRST116") console.error(`[sync-chats] Dedup check error:`, existErr);
                 if (existing) continue;
 
                 const isFromMe = key.fromMe === true;
@@ -379,7 +394,7 @@ router.post("/", async (req, res) => {
                   ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
                   : new Date().toISOString();
 
-                await serviceClient.from("messages").insert({
+                const { error: insertErr } = await serviceClient.from("messages").insert({
                   conversation_id: convData.id,
                   user_id: userId,
                   remote_jid: jid,
@@ -390,6 +405,7 @@ router.post("/", async (req, res) => {
                   external_id: externalId,
                   created_at: timestamp,
                 });
+                if (insertErr) console.error(`[sync-chats] Message insert error for ${externalId}:`, insertErr);
                 totalMessagesSynced++;
               }
             }
@@ -447,6 +463,7 @@ router.post("/", async (req, res) => {
 
     return res.json(result);
   } catch (err: any) {
+    console.error("[whatsapp-proxy] Unhandled error:", err.message, err.stack);
     return res.status(500).json({ error: err.message });
   }
 });
