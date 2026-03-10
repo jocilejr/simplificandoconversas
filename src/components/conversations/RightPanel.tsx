@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   X, Tag, Zap, Square, Loader2, Clock, Phone,
-  Globe, Calendar,
+  Globe, Calendar, Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
