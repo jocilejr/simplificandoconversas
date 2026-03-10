@@ -343,58 +343,10 @@ router.post("/", async (req, res) => {
               const rawJid = extractJid(chat);
               if (!rawJid) continue;
 
-              let resolvedJid = rawJid;
-
-              // For @lid JIDs, try to resolve to real phone number
+              // Accept @lid as-is; will be migrated to real phone via webhook
+              const resolvedJid = rawJid;
               if (rawJid.includes("@lid")) {
-                console.log(`[sync-chats] ${instName}: Attempting to resolve @lid ${rawJid}`);
-                let foundPhone: string | null = null;
-
-                // Strategy 1: Check chat.participant or chat.participantAlt
-                const chatParticipant = chat.participant || chat.participantAlt || "";
-                if (chatParticipant.includes("@s.whatsapp.net")) {
-                  foundPhone = chatParticipant;
-                  console.log(`[sync-chats] Resolved ${rawJid} via chat.participant → ${foundPhone}`);
-                }
-
-                // Strategy 2: Fetch first page of messages and look for participantAlt in keys
-                if (!foundPhone) {
-                  try {
-                    const probe = await evolutionRequest(
-                      `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-                      { where: { key: { remoteJid: rawJid } }, page: 1 }
-                    );
-                    let probeMessages: any[] = [];
-                    if (probe?.messages?.records) probeMessages = probe.messages.records;
-                    else if (Array.isArray(probe?.messages)) probeMessages = probe.messages;
-                    else if (Array.isArray(probe)) probeMessages = probe;
-
-                    for (const m of probeMessages) {
-                      const k = m.key || {};
-                      const alt = k.participantAlt || k.participant || "";
-                      if (alt.includes("@s.whatsapp.net")) {
-                        foundPhone = alt;
-                        console.log(`[sync-chats] Resolved ${rawJid} via message participantAlt → ${foundPhone}`);
-                        break;
-                      }
-                      // Also check remoteJid in the key itself
-                      const keyRemote = k.remoteJid || "";
-                      if (keyRemote !== rawJid && keyRemote.includes("@s.whatsapp.net")) {
-                        foundPhone = keyRemote;
-                        console.log(`[sync-chats] Resolved ${rawJid} via message key.remoteJid → ${foundPhone}`);
-                        break;
-                      }
-                    }
-                  } catch (e: any) {
-                    console.error(`[sync-chats] Error probing messages for ${rawJid}:`, e.message);
-                  }
-                }
-
-                if (!foundPhone) {
-                  console.log(`[sync-chats] Could not resolve @lid ${rawJid}, skipping (will be created via webhook)`);
-                  continue;
-                }
-                resolvedJid = foundPhone;
+                console.log(`[sync-chats] ${instName}: Saving @lid ${rawJid} as-is (will migrate via webhook)`);
               }
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
