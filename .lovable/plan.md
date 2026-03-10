@@ -1,15 +1,63 @@
 
-## Fix: supabase-js URL Path Mismatch + Chat Persistence — Concluído ✅
 
-### Root Cause
-O backend usava `SUPABASE_URL=http://postgrest:3000`, mas o `supabase-js` adiciona `/rest/v1/` automaticamente, causando 404 no PostgREST.
+## Problema
 
-### Mudanças realizadas
+O build falha porque o webhook.ts tem variáveis usadas mas nunca declaradas dentro do handler `router.post`. Na edição anterior, o bloco de resolução `@lid` foi expandido mas as declarações de variáveis essenciais foram removidas acidentalmente.
 
-| Área | Mudança |
-|------|---------|
-| **nginx** | `server_name` do API server block agora aceita `nginx` e `localhost` como hostnames internos |
-| **docker-compose** | Backend `SUPABASE_URL` alterado de `http://postgrest:3000` → `http://nginx:80`; `depends_on` inclui `nginx` |
-| **portainer-stack** | Mesmas alterações do docker-compose |
-| **check-timeouts** | Logging melhorado com `Object.getOwnPropertyNames` para capturar erros raw |
-| **Evolution API** | `DATABASE_SAVE_DATA_CHATS` alterado de `false` → `true` em ambos os compose files |
+Variáveis faltando entre a linha 199 e 201:
+- `supabase` (service client)
+- `userId` (do whatsapp_instances)
+- `messageType`, `messageContent`, `externalId`, `lastMessagePreview` (extraídos do payload)
+
+## Correção
+
+**Arquivo: `deploy/backend/src/routes/webhook.ts`**
+
+Inserir entre o fim do bloco de resolução `@lid` (linha 199) e o `if (fromMe && event === "send.message")` (linha 201) o bloco de declaração de variáveis:
+
+```typescript
+    // Skip group messages
+    if (remoteJid && remoteJid.includes("@g.us")) {
+      return res.json({ ok: true, skipped: "group" });
+    }
+
+    // Get supabase client and user info
+    const supabase = getServiceClient();
+
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("user_id")
+      .eq("instance_name", instance)
+      .limit(1)
+      .single();
+
+    if (!inst) {
+      console.error("No instance found for:", instance);
+      return res.status(404).json({ error: "Instance not found" });
+    }
+
+    const userId = inst.user_id;
+
+    // Extract message content
+    const message = data.message || {};
+    const messageContent = message.conversation
+      || message.extendedTextMessage?.text
+      || message.imageMessage?.caption
+      || message.videoMessage?.caption
+      || message.documentMessage?.caption
+      || "";
+    const externalId = data.key?.id || data.messageId || null;
+
+    // Determine message type
+    let messageType = "text";
+    if (message.imageMessage) messageType = "image";
+    else if (message.videoMessage) messageType = "video";
+    else if (message.audioMessage) messageType = "audio";
+    else if (message.documentMessage) messageType = "document";
+    else if (message.stickerMessage) messageType = "sticker";
+
+    const lastMessagePreview = truncate(messageContent || `[${messageType}]`, 100);
+```
+
+Nenhuma outra alteração necessária -- o resto do código já usa essas variáveis corretamente.
+
