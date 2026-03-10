@@ -31,8 +31,9 @@ export function ConnectionsSection() {
 
   const handleCreateInstance = async () => {
     const result = await createInstance.mutateAsync();
-    if (result?.qrcode?.base64) {
-      setQrCode({ instanceName: result.instanceName, base64: result.qrcode.base64 });
+    const base64 = result?.qrcode?.base64 || result?.base64;
+    if (base64) {
+      setQrCode({ instanceName: result.instanceName, base64 });
     }
   };
 
