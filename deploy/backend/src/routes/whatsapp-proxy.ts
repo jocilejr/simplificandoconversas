@@ -325,24 +325,32 @@ router.post("/", async (req, res) => {
             );
             const chatList = Array.isArray(chatsResponse) ? chatsResponse : [];
             console.log(`[sync-chats] ${instName}: findChats returned ${chatList.length} chats`);
-            // Debug: log first 3 chat objects to see structure
+            // Debug: dump full first 3 chat objects to discover JID field
             if (chatList.length > 0) {
-              console.log(`[sync-chats] Sample chat keys:`, JSON.stringify(Object.keys(chatList[0])));
-              for (const s of chatList.slice(0, 3)) {
-                console.log(`[sync-chats] chat sample: id=${s.id}, remoteJid=${s.remoteJid}, name=${s.name || s.pushName}`);
+              for (let di = 0; di < Math.min(3, chatList.length); di++) {
+                console.log(`[sync-chats] FULL CHAT DUMP [${di}]:`, JSON.stringify(chatList[di]).substring(0, 800));
               }
+            }
+
+            // Helper: extract JID from chat object trying multiple possible fields
+            function extractJid(chat: any): string {
+              return chat.remoteJid || chat.jid || chat.chatId || chat.owner || "";
             }
 
             // Filter: only individual contacts (no groups, no status, no newsletter)
             const individualChats = chatList.filter((chat: any) => {
-              const jid = chat.remoteJid || chat.id || "";
-              return (jid.includes("@s.whatsapp.net") || jid.includes("@lid")) && jid !== "status@broadcast";
+              const jid = extractJid(chat);
+              // If no known JID field found, try chat.id only if it looks like a JID
+              const finalJid = jid || (typeof chat.id === "string" && chat.id.includes("@") ? chat.id : "");
+              if (!finalJid) return false;
+              return (finalJid.includes("@s.whatsapp.net") || finalJid.includes("@lid")) && finalJid !== "status@broadcast";
             });
             console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 
             for (const chat of individualChats) {
-              const jid = chat.remoteJid || chat.id;
-              if (!jid) continue;
+              const rawJid = extractJid(chat) || (typeof chat.id === "string" && chat.id.includes("@") ? chat.id : "");
+              if (!rawJid) continue;
+              const jid = rawJid; // keep original format for now
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
               const lastMsgContent = chat.lastMessage?.message?.conversation
@@ -485,6 +493,19 @@ router.post("/", async (req, res) => {
         const { remoteJid } = params;
         if (!remoteJid) return res.status(400).json({ error: "remoteJid required" });
         result = { imported: 0, info: "Messages arrive via webhook" };
+        break;
+      }
+
+      case "debug-findchats": {
+        if (!instanceName) return res.status(400).json({ error: "No active instance" });
+        const rawChats = await evolutionRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
+        const rawList = Array.isArray(rawChats) ? rawChats : [];
+        // Return first 5 chats with truncated data for debugging
+        result = rawList.slice(0, 5).map((c: any, i: number) => ({
+          index: i,
+          keys: Object.keys(c),
+          dump: JSON.stringify(c).substring(0, 600),
+        }));
         break;
       }
 
