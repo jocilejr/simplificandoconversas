@@ -332,15 +332,43 @@ router.post("/", async (req, res) => {
               }
             }
 
-            // Helper: extract JID from chat object trying multiple possible fields
+            // Helper: extract raw JID from chat object
             function extractJid(chat: any): string {
               return chat.remoteJid || chat.jid || chat.chatId || chat.owner || "";
+            }
+
+            // Helper: resolve @lid to real phone number @s.whatsapp.net
+            function resolveToPhoneJid(chat: any): { resolved: string; raw: string } {
+              const rawJid = extractJid(chat) || (typeof chat.id === "string" && chat.id.includes("@") ? chat.id : "");
+              if (!rawJid) return { resolved: "", raw: "" };
+
+              // Already a phone number
+              if (rawJid.includes("@s.whatsapp.net")) return { resolved: rawJid, raw: rawJid };
+
+              // Try to resolve @lid to phone number
+              if (rawJid.includes("@lid")) {
+                const key = chat.lastMessage?.key || {};
+                // participantAlt usually has the real phone JID
+                const alt = key.participantAlt;
+                if (alt && alt.includes("@s.whatsapp.net")) {
+                  console.log(`[sync-chats] Resolved @lid ${rawJid} → ${alt}`);
+                  return { resolved: alt, raw: rawJid };
+                }
+                // remoteJid in the key might also have it (for 1:1 chats)
+                const keyRemote = key.remoteJid;
+                if (keyRemote && keyRemote.includes("@s.whatsapp.net")) {
+                  console.log(`[sync-chats] Resolved @lid ${rawJid} → ${keyRemote} (via key.remoteJid)`);
+                  return { resolved: keyRemote, raw: rawJid };
+                }
+                console.log(`[sync-chats] Could not resolve @lid ${rawJid}, using as-is`);
+              }
+
+              return { resolved: rawJid, raw: rawJid };
             }
 
             // Filter: only individual contacts (no groups, no status, no newsletter)
             const individualChats = chatList.filter((chat: any) => {
               const jid = extractJid(chat);
-              // If no known JID field found, try chat.id only if it looks like a JID
               const finalJid = jid || (typeof chat.id === "string" && chat.id.includes("@") ? chat.id : "");
               if (!finalJid) return false;
               return (finalJid.includes("@s.whatsapp.net") || finalJid.includes("@lid")) && finalJid !== "status@broadcast";
@@ -348,9 +376,8 @@ router.post("/", async (req, res) => {
             console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 
             for (const chat of individualChats) {
-              const rawJid = extractJid(chat) || (typeof chat.id === "string" && chat.id.includes("@") ? chat.id : "");
-              if (!rawJid) continue;
-              const jid = rawJid; // keep original format for now
+              const { resolved: jid, raw: rawJid } = resolveToPhoneJid(chat);
+              if (!jid) continue;
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
               const lastMsgContent = chat.lastMessage?.message?.conversation
