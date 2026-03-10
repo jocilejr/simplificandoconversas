@@ -11,7 +11,7 @@ export async function processTimeouts() {
     .limit(50);
 
   if (fetchErr) {
-    console.error("[check-timeouts] Fetch error:", fetchErr);
+    console.error("[check-timeouts] Fetch error:", JSON.stringify(fetchErr));
     return;
   }
 
