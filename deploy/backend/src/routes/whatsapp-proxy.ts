@@ -85,9 +85,9 @@ router.post("/", async (req, res) => {
         .eq("user_id", userId)
         .eq("is_active", true)
         .limit(1)
-        .single();
+        .maybeSingle();
       if (activeInstErr) console.error("[whatsapp-proxy] Active instance query error:", activeInstErr);
-      else console.log("[whatsapp-proxy] Active instance:", activeInst?.instance_name);
+      else console.log("[whatsapp-proxy] Active instance:", activeInst?.instance_name || "none");
       instanceName = activeInst?.instance_name;
     }
 
