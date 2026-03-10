@@ -114,8 +114,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Baileys Service
-    location /baileys/ {
+    # Evolution API
+    location /evolution/ {
         if ($request_method = 'OPTIONS') {
             add_header 'Access-Control-Allow-Origin' $cors_origin always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
@@ -131,7 +131,7 @@ server {
         proxy_hide_header 'Access-Control-Allow-Credentials';
         add_header 'Access-Control-Allow-Origin' $cors_origin always;
         add_header 'Access-Control-Allow-Credentials' 'true' always;
-        proxy_pass http://baileys:8084/;
+        proxy_pass http://evolution:8080/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }

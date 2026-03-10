@@ -113,16 +113,27 @@ services:
     volumes:
       - chatbot_storagedata:/var/lib/storage
 
-  # ─── Baileys Service (WhatsApp) ───
-  baileys:
-    build: ./baileys-service
+  # ─── Evolution API (WhatsApp) ───
+  evolution:
+    image: atendai/evolution-api:v2.2.3
     restart: always
     environment:
-      PORT: "8084"
-      WEBHOOK_URL: http://backend:3001/api/webhook
-      API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
+      SERVER_URL: ${API_URL}
+      SERVER_PORT: "8080"
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DATABASE_ENABLED: "false"
+      WEBHOOK_GLOBAL_URL: http://backend:3001/api/webhook
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
+      WEBHOOK_EVENTS_SEND_MESSAGE: "true"
     volumes:
-      - chatbot_baileys_sessions:/app/sessions
+      - chatbot_evolution_instances:/evolution/instances
+      - chatbot_evolution_store:/evolution/store
 
   # ─── Backend Express ───
   backend:
@@ -141,8 +152,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       GOTRUE_URL: http://gotrue:9999
       STORAGE_URL: http://storage:5000
-      BAILEYS_URL: http://baileys:8084
-      BAILEYS_API_KEY: ${BAILEYS_API_KEY:-baileys-local-key}
+      EVOLUTION_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       APP_URL: ${APP_URL}
       API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
@@ -177,4 +188,5 @@ volumes:
   chatbot_letsencrypt:
   chatbot_pgdata:
   chatbot_storagedata:
-  chatbot_baileys_sessions:
+  chatbot_evolution_instances:
+  chatbot_evolution_store:
