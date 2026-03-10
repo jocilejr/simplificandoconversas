@@ -164,8 +164,6 @@ services:
         condition: service_healthy
       gotrue:
         condition: service_started
-      nginx:
-        condition: service_started
     environment:
       PORT: "3001"
       SUPABASE_URL: http://nginx:80
