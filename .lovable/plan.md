@@ -1,16 +1,40 @@
 
-## Remoção completa da Evolution API — Concluído ✅
 
-Todas as referências a "evolution" foram removidas do projeto. O sistema usa exclusivamente Baileys.
+## Diagnóstico
 
-### Mudanças realizadas
+O log mostra claramente o erro:
 
-| Área | Mudança |
-|------|---------|
-| **Banco de dados** | Tabela `evolution_instances` renomeada para `whatsapp_instances`; colunas `evolution_api_url`, `evolution_api_key`, `evolution_instance_name` removidas de `profiles` |
-| **Edge functions** | `evolution-proxy` deletada → `whatsapp-proxy` criada; `evolution-webhook` removida do config.toml |
-| **Frontend hooks** | `useWhatsAppInstances`, `useMessages`, `useContactPhoto` atualizados para usar `whatsapp-proxy` e `whatsapp_instances` |
-| **Página Conversations** | Invoke atualizado de `evolution-proxy` → `whatsapp-proxy` |
-| **Edge function execute-flow** | Query atualizada de `evolution_instances` → `whatsapp_instances` |
-| **Deploy backend** | `evolution-proxy.ts` → `whatsapp-proxy.ts`; `webhook.ts` reescrito sem refs Evolution; `execute-flow.ts` atualizado; `index.ts` atualizado |
-| **Deploy init-db.sql** | Tabela e colunas renomeadas/removidas |
+```
+Create result: {"status":400,"error":"Bad Request","response":{"message":["Invalid integration"]}}
+```
+
+A Evolution API v2.2.3 **exige** o campo `integration` no payload de criação de instância. O código atual envia apenas `{ instanceName: newName }`, faltando o campo obrigatório.
+
+## Correção
+
+No `deploy/backend/src/routes/whatsapp-proxy.ts`, linha 103, alterar o payload do create:
+
+```typescript
+// DE:
+const createResult = await evolutionRequest("/instance/create", "POST", { instanceName: newName });
+
+// PARA:
+const createResult = await evolutionRequest("/instance/create", "POST", {
+  instanceName: newName,
+  integration: "WHATSAPP-BAILEYS",
+  qrcode: true,
+});
+```
+
+O campo `qrcode: true` faz a Evolution API já retornar o QR code na resposta da criação, eliminando a necessidade da chamada separada ao `/instance/connect`.
+
+## Deploy
+
+```bash
+cd ~/simplificandoconversas/deploy
+git pull origin main
+docker compose up -d --build backend
+# Testar e verificar logs:
+docker compose logs backend --tail=20
+```
+
