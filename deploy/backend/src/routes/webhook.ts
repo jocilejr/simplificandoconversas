@@ -198,6 +198,48 @@ router.post("/*", async (req, res) => {
       }
     }
 
+    // Skip group messages
+    if (remoteJid && remoteJid.includes("@g.us")) {
+      return res.json({ ok: true, skipped: "group" });
+    }
+
+    // Get supabase client and user info
+    const supabase = getServiceClient();
+
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("user_id")
+      .eq("instance_name", instance)
+      .limit(1)
+      .single();
+
+    if (!inst) {
+      console.error("No instance found for:", instance);
+      return res.status(404).json({ error: "Instance not found" });
+    }
+
+    const userId = inst.user_id;
+
+    // Extract message content
+    const message = data.message || {};
+    const messageContent = message.conversation
+      || message.extendedTextMessage?.text
+      || message.imageMessage?.caption
+      || message.videoMessage?.caption
+      || message.documentMessage?.caption
+      || "";
+    const externalId = data.key?.id || data.messageId || null;
+
+    // Determine message type
+    let messageType = "text";
+    if (message.imageMessage) messageType = "image";
+    else if (message.videoMessage) messageType = "video";
+    else if (message.audioMessage) messageType = "audio";
+    else if (message.documentMessage) messageType = "document";
+    else if (message.stickerMessage) messageType = "sticker";
+
+    const lastMessagePreview = truncate(messageContent || `[${messageType}]`, 100);
+
     if (fromMe && event === "send.message") {
       await supabase
         .from("conversations")
