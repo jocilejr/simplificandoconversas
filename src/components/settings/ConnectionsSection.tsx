@@ -131,6 +131,25 @@ export function ConnectionsSection() {
     }
   };
 
+  const handleDeleteAllConversations = async () => {
+    setDeletingAll(true);
+    try {
+      // Delete in order: messages → conversation_labels → conversations
+      const { error: msgErr } = await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (msgErr) throw msgErr;
+      const { error: labelsErr } = await supabase.from("conversation_labels").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (labelsErr) throw labelsErr;
+      const { error: convErr } = await supabase.from("conversations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (convErr) throw convErr;
+      toast({ title: "Conversas excluídas", description: "Todas as conversas foram removidas com sucesso." });
+    } catch (e: any) {
+      toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" });
+    } finally {
+      setDeletingAll(false);
+      setConfirmDeleteAll(false);
+    }
+  };
+
   const getStatusLabel = (status: string) => {
     switch (status) {
       case "open": return "Conectada";
