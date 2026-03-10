@@ -32,6 +32,7 @@ import {
   ServerCrash,
   QrCode,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 

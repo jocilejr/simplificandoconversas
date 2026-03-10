@@ -262,103 +262,106 @@ router.post("/", async (req, res) => {
           if (connectionState !== "open") continue;
 
           try {
-            const chats = await evolutionRequest(
-              `/chat/findChats/${encodeURIComponent(instName)}`, "POST", {}
+            // Use findContacts instead of buggy findChats (Evolution API v2.3.x issue #2051)
+            const contacts = await evolutionRequest(
+              `/chat/findContacts/${encodeURIComponent(instName)}`, "POST", {}
             );
-            console.log(`[sync-chats] ${instName}: findChats raw response:`, JSON.stringify(chats)?.substring(0, 500));
-            console.log(`[sync-chats] ${instName}: ${Array.isArray(chats) ? chats.length : 'not-array'} chats returned`);
-            if (!Array.isArray(chats)) continue;
+            const contactList = Array.isArray(contacts) ? contacts : [];
+            console.log(`[sync-chats] ${instName}: findContacts returned ${contactList.length} contacts`);
 
-            for (const chat of chats) {
-              const remoteJid = chat.id || chat.remoteJid;
-              if (!remoteJid || remoteJid.includes("@g.us") || remoteJid === "status@broadcast") continue;
+            // Filter individual contacts only (exclude groups and broadcast)
+            const individualContacts = contactList.filter((c: any) => {
+              const id = c.id || c.remoteJid || "";
+              return id && !id.includes("@g.us") && id !== "status@broadcast" && !id.includes("@newsletter");
+            });
+            console.log(`[sync-chats] ${instName}: ${individualContacts.length} individual contacts after filter`);
+
+            for (const contact of individualContacts) {
+              const remoteJid = contact.id || contact.remoteJid;
+              if (!remoteJid) continue;
+
+              // Fetch messages for this contact
+              let msgList: any[] = [];
+              try {
+                const messages = await evolutionRequest(
+                  `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
+                  { where: { key: { remoteJid } }, limit: 50 }
+                );
+                msgList = Array.isArray(messages) ? messages : (messages?.messages?.records || messages?.messages || []);
+              } catch (msgFetchErr: any) {
+                console.error(`[sync-chats] findMessages failed for ${remoteJid}:`, msgFetchErr.message);
+              }
+
+              // Skip contacts with no messages
+              if (msgList.length === 0) continue;
+
+              // Determine last message info
+              const lastMsg = msgList[msgList.length - 1];
+              const lastContent = lastMsg?.message?.conversation
+                || lastMsg?.message?.extendedTextMessage?.text
+                || lastMsg?.message?.imageMessage?.caption
+                || `[media]`;
+              const lastTs = lastMsg?.messageTimestamp
+                ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString()
+                : new Date().toISOString();
 
               const { data: convData } = await serviceClient.from("conversations").upsert({
                 user_id: userId,
                 remote_jid: remoteJid,
-                contact_name: chat.name || chat.pushName || null,
+                contact_name: contact.pushName || contact.name || contact.verifiedName || null,
                 instance_name: instName,
-                last_message_at: chat.lastMsgTimestamp
-                  ? new Date(chat.lastMsgTimestamp * 1000).toISOString()
-                  : new Date().toISOString(),
+                last_message: lastContent,
+                last_message_at: lastTs,
               }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               totalSynced++;
 
-              // Import messages for this chat
-              if (convData) {
-                try {
-                  const messages = await evolutionRequest(
-                    `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-                    { where: { key: { remoteJid } }, limit: 100 }
-                  );
-                  const msgList = Array.isArray(messages) ? messages : (messages?.messages?.records || messages?.messages || []);
-                  console.log(`[sync-chats] ${instName}/${remoteJid}: ${msgList.length} messages found`);
+              if (!convData) continue;
 
-                  for (const msg of msgList) {
-                    const key = msg.key || {};
-                    const externalId = key.id;
-                    if (!externalId) continue;
+              // Import messages with deduplication by external_id
+              for (const msg of msgList) {
+                const key = msg.key || {};
+                const externalId = key.id;
+                if (!externalId) continue;
 
-                    // Skip if already exists
-                    const { data: existing } = await serviceClient.from("messages")
-                      .select("id").eq("external_id", externalId).limit(1).single();
-                    if (existing) continue;
+                // Skip if already exists
+                const { data: existing } = await serviceClient.from("messages")
+                  .select("id").eq("external_id", externalId).limit(1).single();
+                if (existing) continue;
 
-                    const isFromMe = key.fromMe === true;
-                    const msgContent = msg.message?.conversation
-                      || msg.message?.extendedTextMessage?.text
-                      || msg.message?.imageMessage?.caption
-                      || msg.message?.videoMessage?.caption
-                      || null;
+                const isFromMe = key.fromMe === true;
+                const msgContent = msg.message?.conversation
+                  || msg.message?.extendedTextMessage?.text
+                  || msg.message?.imageMessage?.caption
+                  || msg.message?.videoMessage?.caption
+                  || null;
 
-                    let msgType = "text";
-                    if (msg.message?.imageMessage) msgType = "image";
-                    else if (msg.message?.videoMessage) msgType = "video";
-                    else if (msg.message?.audioMessage) msgType = "audio";
-                    else if (msg.message?.documentMessage) msgType = "document";
-                    else if (msg.message?.stickerMessage) msgType = "sticker";
+                let msgType = "text";
+                if (msg.message?.imageMessage) msgType = "image";
+                else if (msg.message?.videoMessage) msgType = "video";
+                else if (msg.message?.audioMessage) msgType = "audio";
+                else if (msg.message?.documentMessage) msgType = "document";
+                else if (msg.message?.stickerMessage) msgType = "sticker";
 
-                    const timestamp = msg.messageTimestamp
-                      ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
-                      : new Date().toISOString();
+                const timestamp = msg.messageTimestamp
+                  ? new Date(Number(msg.messageTimestamp) * 1000).toISOString()
+                  : new Date().toISOString();
 
-                    await serviceClient.from("messages").insert({
-                      conversation_id: convData.id,
-                      user_id: userId,
-                      remote_jid: remoteJid,
-                      content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
-                      message_type: msgType,
-                      direction: isFromMe ? "outbound" : "inbound",
-                      status: "delivered",
-                      external_id: externalId,
-                      created_at: timestamp,
-                    });
-                    totalMessagesSynced++;
-                  }
-
-                  // Update conversation last_message from most recent message
-                  if (msgList.length > 0) {
-                    const lastMsg = msgList[msgList.length - 1];
-                    const lastContent = lastMsg?.message?.conversation
-                      || lastMsg?.message?.extendedTextMessage?.text
-                      || `[${lastMsg?.message?.imageMessage ? "image" : "media"}]`;
-                    const lastTs = lastMsg?.messageTimestamp
-                      ? new Date(Number(lastMsg.messageTimestamp) * 1000).toISOString()
-                      : undefined;
-                    if (lastContent || lastTs) {
-                      const updateData: any = {};
-                      if (lastContent) updateData.last_message = lastContent;
-                      if (lastTs) updateData.last_message_at = lastTs;
-                      await serviceClient.from("conversations").update(updateData).eq("id", convData.id);
-                    }
-                  }
-                } catch (msgErr: any) {
-                  console.error(`[sync-chats] Error importing messages for ${remoteJid}:`, msgErr.message);
-                }
+                await serviceClient.from("messages").insert({
+                  conversation_id: convData.id,
+                  user_id: userId,
+                  remote_jid: remoteJid,
+                  content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
+                  message_type: msgType,
+                  direction: isFromMe ? "outbound" : "inbound",
+                  status: "delivered",
+                  external_id: externalId,
+                  created_at: timestamp,
+                });
+                totalMessagesSynced++;
               }
             }
           } catch (e: any) {
-            console.error(`[sync-chats] Error fetching chats for ${instName}:`, e.message);
+            console.error(`[sync-chats] Error syncing ${instName}:`, e.message);
           }
         }
 

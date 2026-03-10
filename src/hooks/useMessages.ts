@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useRef } from "react";
 
 export type Message = {
   id: string;
@@ -18,7 +17,6 @@ export type Message = {
 
 export function useMessages(conversationId: string | null) {
   const queryClient = useQueryClient();
-  const realtimeFailed = useRef(false);
 
   const query = useQuery({
     queryKey: ["messages", conversationId],
@@ -35,35 +33,6 @@ export function useMessages(conversationId: string | null) {
     },
     refetchInterval: 2000,
   });
-
-  useEffect(() => {
-    if (!conversationId) return;
-
-    const channel = supabase
-      .channel(`messages-${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-        }
-      )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          realtimeFailed.current = true;
-          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [conversationId, queryClient]);
 
   const sendMessage = useMutation({
     mutationFn: async ({
