@@ -100,7 +100,11 @@ router.post("/", async (req, res) => {
       case "create-instance": {
         const newName = `sc-${Date.now().toString(36)}`;
         console.log("[create-instance] Creating instance:", newName);
-        const createResult = await evolutionRequest("/instance/create", "POST", { instanceName: newName });
+        const createResult = await evolutionRequest("/instance/create", "POST", {
+          instanceName: newName,
+          integration: "WHATSAPP-BAILEYS",
+          qrcode: true,
+        });
         console.log("[create-instance] Create result:", JSON.stringify(createResult));
         await serviceClient.from("whatsapp_instances").upsert({ user_id: userId, instance_name: newName, status: "close", is_active: false }, { onConflict: "user_id,instance_name" });
         // Wait for Evolution API to register the instance before connecting
