@@ -101,7 +101,12 @@ router.post("/", async (req, res) => {
         const newName = `sc-${Date.now().toString(36)}`;
         const createResult = await evolutionRequest("/instance/create", "POST", { instanceName: newName });
         await serviceClient.from("whatsapp_instances").upsert({ user_id: userId, instance_name: newName, status: "close", is_active: false }, { onConflict: "user_id,instance_name" });
-        result = { ...createResult, instanceName: newName };
+        // Auto-connect to get QR code
+        let connectResult: any = {};
+        try {
+          connectResult = await evolutionRequest(`/instance/connect/${encodeURIComponent(newName)}`, "GET");
+        } catch {}
+        result = { ...createResult, ...connectResult, instanceName: newName };
         break;
       }
 
