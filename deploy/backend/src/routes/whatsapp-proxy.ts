@@ -226,15 +226,26 @@ router.post("/", async (req, res) => {
       }
 
       case "sync-chats": {
-        const { data: userInstances } = await serviceClient
-          .from("whatsapp_instances").select("instance_name").eq("user_id", userId);
+        let { data: userInstances } = await serviceClient
+          .from("whatsapp_instances").select("instance_name, user_id").eq("user_id", userId);
+        
+        // Fallback: if no instances for this userId, fetch all (single-user setup)
+        if (!userInstances?.length) {
+          console.log(`[sync-chats] No instances for userId ${userId}, fetching all`);
+          const allResult = await serviceClient
+            .from("whatsapp_instances").select("instance_name, user_id");
+          userInstances = allResult.data;
+        }
+        
         const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
         console.log(`[sync-chats] Instances to sync: ${JSON.stringify(instancesToSync)}`);
 
         let totalSynced = 0;
         const instanceStatuses: any[] = [];
 
-        for (const instName of instancesToSync) {
+        for (const instItem of (userInstances || [])) {
+          const instName = instItem.instance_name;
+          const instUserId = instItem.user_id;
           const stateResult = await evolutionRequest(
             `/instance/connectionState/${encodeURIComponent(instName)}`, "GET"
           );
@@ -242,7 +253,7 @@ router.post("/", async (req, res) => {
           console.log(`[sync-chats] ${instName}: connectionState=${connectionState}`);
           await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
-            .eq("user_id", userId).eq("instance_name", instName);
+            .eq("instance_name", instName);
           instanceStatuses.push({ instance: instName, connectionState });
 
           if (connectionState !== "open") continue;
