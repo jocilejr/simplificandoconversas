@@ -264,6 +264,7 @@ router.post("/", async (req, res) => {
             const chats = await evolutionRequest(
               `/chat/findChats/${encodeURIComponent(instName)}`, "POST", {}
             );
+            console.log(`[sync-chats] ${instName}: findChats raw response:`, JSON.stringify(chats)?.substring(0, 500));
             console.log(`[sync-chats] ${instName}: ${Array.isArray(chats) ? chats.length : 'not-array'} chats returned`);
             if (!Array.isArray(chats)) continue;
 
