@@ -1,46 +1,16 @@
 
+## Remoção completa da Evolution API — Concluído ✅
 
-## Fix: Evolution API precisa de banco dedicado
+Todas as referências a "evolution" foram removidas do projeto. O sistema usa exclusivamente Baileys.
 
-### Problema
-O Evolution API v2 usa Prisma e tenta rodar 49 migrations no banco `postgres`, que já contém as tabelas do app. Prisma rejeita com `P3005: The database schema is not empty`.
+### Mudanças realizadas
 
-### Correção
-
-**`deploy/docker-compose.yml` e `deploy/portainer-stack.yml`** — Alterar `DATABASE_CONNECTION_URI` do serviço `evolution`:
-
-```yaml
-# De:
-DATABASE_CONNECTION_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
-# Para:
-DATABASE_CONNECTION_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/evolution
-```
-
-**`deploy/init-roles.sh`** — Adicionar criação do banco `evolution` no script de inicialização do Postgres:
-
-```bash
-psql -v ON_ERROR_STOP=0 --username "$POSTGRES_USER" <<-EOSQL
-  CREATE DATABASE evolution;
-EOSQL
-```
-
-Isso garante que o banco exista na primeira instalação. Para a VPS atual (banco já rodando), o usuário cria manualmente com `docker compose exec -T postgres psql -U postgres -c "CREATE DATABASE evolution;"`.
-
-### Após aplicar na VPS
-
-```bash
-# Criar banco (VPS já rodando)
-docker compose exec -T postgres psql -U postgres -c "CREATE DATABASE evolution;"
-
-# Parar serviço que usa porta 80
-sudo systemctl stop apache2 nginx 2>/dev/null
-sudo systemctl disable apache2 nginx 2>/dev/null
-
-# Puxar código atualizado e reiniciar
-git pull
-docker compose down
-docker compose up -d
-docker compose ps
-docker compose logs evolution --tail=20
-```
-
+| Área | Mudança |
+|------|---------|
+| **Banco de dados** | Tabela `evolution_instances` renomeada para `whatsapp_instances`; colunas `evolution_api_url`, `evolution_api_key`, `evolution_instance_name` removidas de `profiles` |
+| **Edge functions** | `evolution-proxy` deletada → `whatsapp-proxy` criada; `evolution-webhook` removida do config.toml |
+| **Frontend hooks** | `useWhatsAppInstances`, `useMessages`, `useContactPhoto` atualizados para usar `whatsapp-proxy` e `whatsapp_instances` |
+| **Página Conversations** | Invoke atualizado de `evolution-proxy` → `whatsapp-proxy` |
+| **Edge function execute-flow** | Query atualizada de `evolution_instances` → `whatsapp_instances` |
+| **Deploy backend** | `evolution-proxy.ts` → `whatsapp-proxy.ts`; `webhook.ts` reescrito sem refs Evolution; `execute-flow.ts` atualizado; `index.ts` atualizado |
+| **Deploy init-db.sql** | Tabela e colunas renomeadas/removidas |
