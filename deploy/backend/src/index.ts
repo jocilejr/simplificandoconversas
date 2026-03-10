@@ -6,6 +6,7 @@ import webhookRouter from "./routes/webhook";
 import executeFlowRouter from "./routes/execute-flow";
 import whatsappProxyRouter from "./routes/whatsapp-proxy";
 import linkRedirectRouter from "./routes/link-redirect";
+import healthDbRouter from "./routes/health-db";
 import { processTimeouts } from "./routes/check-timeouts";
 
 const app = express();
@@ -19,6 +20,8 @@ app.use("/api/link-redirect", linkRedirectRouter);
 app.use("/api/webhook", webhookRouter);
 
 // Health
+// Health
+app.use("/api/health/db", healthDbRouter);
 app.get("/health", (_, res) => res.json({ ok: true }));
 
 // Check timeouts every 30 seconds
