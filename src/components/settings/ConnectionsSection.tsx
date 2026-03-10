@@ -108,7 +108,7 @@ export function ConnectionsSection() {
             <div>
               <p className="text-sm font-medium text-destructive">Servidor não acessível</p>
               <p className="text-xs text-muted-foreground">
-                O backend Baileys não está respondendo. Verifique se os containers estão rodando na VPS.
+                O backend Evolution API não está respondendo. Verifique se os containers estão rodando na VPS.
               </p>
             </div>
           </CardContent>

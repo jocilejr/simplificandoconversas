@@ -44,7 +44,7 @@ export function useWhatsAppInstances() {
     },
   });
 
-  // Auto-polling remote instances from Baileys via VPS
+  // Auto-polling remote instances from Evolution API via VPS
   const {
     data: remoteData,
     isError: isServerError,
