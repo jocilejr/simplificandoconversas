@@ -98,27 +98,39 @@ router.post("/", async (req, res) => {
       }
 
       case "create-instance": {
-        const newName = `sc-${Date.now().toString(36)}`;
-        console.log("[create-instance] Creating instance:", newName);
+        const customName = params.instanceName || `sc-${Date.now().toString(36)}`;
+        console.log("[create-instance] Creating instance:", customName);
         const createResult = await evolutionRequest("/instance/create", "POST", {
-          instanceName: newName,
+          instanceName: customName,
           integration: "WHATSAPP-BAILEYS",
           qrcode: true,
         });
         console.log("[create-instance] Create result:", JSON.stringify(createResult));
-        await serviceClient.from("whatsapp_instances").upsert({ user_id: userId, instance_name: newName, status: "close", is_active: false }, { onConflict: "user_id,instance_name" });
-        // Wait for Evolution API to register the instance before connecting
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        let connectResult: any = {};
-        try {
-          console.log("[create-instance] Connecting to get QR code...");
-          connectResult = await evolutionRequest(`/instance/connect/${encodeURIComponent(newName)}`, "GET");
-          console.log("[create-instance] Connect result:", JSON.stringify(connectResult));
-        } catch (connectErr: any) {
-          console.error("[create-instance] Connect error:", connectErr.message);
+        if (createResult?.instance) {
+          await serviceClient.from("whatsapp_instances").upsert(
+            { user_id: userId, instance_name: customName, status: "close", is_active: false },
+            { onConflict: "user_id,instance_name" }
+          );
         }
-        result = { ...createResult, ...connectResult, instanceName: newName };
-        console.log("[create-instance] Final result keys:", Object.keys(result));
+        result = { ...createResult, instanceName: customName };
+        break;
+      }
+
+      case "get-qrcode": {
+        const { instanceName: qrInstName } = params;
+        if (!qrInstName) return res.status(400).json({ error: "instanceName required" });
+        result = await evolutionRequest(`/instance/connect/${encodeURIComponent(qrInstName)}`, "GET");
+        break;
+      }
+
+      case "logout-instance": {
+        const { instanceName: logoutInstName } = params;
+        if (!logoutInstName) return res.status(400).json({ error: "instanceName required" });
+        console.log("[logout-instance] Logging out:", logoutInstName);
+        await evolutionRequest(`/instance/logout/${encodeURIComponent(logoutInstName)}`, "DELETE");
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        result = await evolutionRequest(`/instance/connect/${encodeURIComponent(logoutInstName)}`, "GET");
+        console.log("[logout-instance] New QR result:", JSON.stringify(result));
         break;
       }
 

@@ -31,7 +31,6 @@ export function useWhatsAppInstances() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Local DB instances
   const { data: instances = [], isLoading } = useQuery({
     queryKey: ["whatsapp-instances"],
     queryFn: async () => {
@@ -44,7 +43,6 @@ export function useWhatsAppInstances() {
     },
   });
 
-  // Auto-polling remote instances from Evolution API via VPS
   const {
     data: remoteData,
     isError: isServerError,
@@ -66,7 +64,6 @@ export function useWhatsAppInstances() {
   const remoteInstances = remoteData || [];
   const isServerConnected = !isServerError && remoteData !== undefined;
 
-  // Merge local instances with remote status
   const mergedInstances = instances.map((inst) => {
     const remote = remoteInstances.find((ri) => ri.name === inst.instance_name);
     return {
@@ -77,9 +74,9 @@ export function useWhatsAppInstances() {
   });
 
   const createInstance = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (customName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "create-instance" },
+        body: { action: "create-instance", instanceName: customName },
       });
       if (error) throw error;
       return data;
@@ -94,6 +91,19 @@ export function useWhatsAppInstances() {
     },
   });
 
+  const getQrCode = useMutation({
+    mutationFn: async (instanceName: string) => {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { action: "get-qrcode", instanceName },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao obter QR Code", description: err.message, variant: "destructive" });
+    },
+  });
+
   const connectInstance = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
@@ -104,6 +114,23 @@ export function useWhatsAppInstances() {
     },
     onError: (err: Error) => {
       toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const logoutInstance = useMutation({
+    mutationFn: async (instanceName: string) => {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { action: "logout-instance", instanceName },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-remote-instances"] });
+      toast({ title: "Reconexão iniciada! Escaneie o novo QR Code." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao reconectar", description: err.message, variant: "destructive" });
     },
   });
 
@@ -156,7 +183,9 @@ export function useWhatsAppInstances() {
     isRemoteLoading,
     isServerConnected,
     createInstance,
+    getQrCode,
     connectInstance,
+    logoutInstance,
     deleteInstance,
     setActiveInstance,
   };
