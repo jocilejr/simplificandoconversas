@@ -420,6 +420,50 @@ export function ConnectionsSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete all conversations section */}
+      <div className="border-t border-border pt-6 mt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-destructive">Zona de Perigo</h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Exclua todas as conversas e mensagens para reimportar do zero.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setConfirmDeleteAll(true)}
+            disabled={deletingAll}
+          >
+            {deletingAll ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageSquareX className="h-4 w-4 mr-2" />}
+            Excluir Todas as Conversas
+          </Button>
+        </div>
+      </div>
+
+      {/* Delete all conversations confirmation */}
+      <AlertDialog open={confirmDeleteAll} onOpenChange={setConfirmDeleteAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir todas as conversas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação vai remover <strong>TODAS</strong> as conversas, mensagens e etiquetas de conversa. 
+              Isso não pode ser desfeito. Você poderá reimportar usando o botão "Sincronizar".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteAllConversations}
+            >
+              {deletingAll ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Sim, excluir tudo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
