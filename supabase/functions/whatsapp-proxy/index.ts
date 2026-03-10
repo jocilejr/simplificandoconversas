@@ -10,12 +10,12 @@ Deno.serve(async (req) => {
   }
 
   // This edge function is a stub. On the VPS, Nginx intercepts this route
-  // and forwards it to the Express/Baileys backend before it reaches here.
+  // and forwards it to the Express backend before it reaches here.
   // If this code runs, it means the app is not on the self-hosted environment.
   return new Response(
     JSON.stringify({
-      error: "This feature requires the self-hosted backend (Baileys). Configure your VPS deployment.",
-      info: "Na VPS, esta rota é interceptada pelo Nginx e encaminhada para o backend Express/Baileys.",
+      error: "This feature requires the self-hosted backend (Evolution API). Configure your VPS deployment.",
+      info: "Na VPS, esta rota é interceptada pelo Nginx e encaminhada para o backend Express que se comunica com a Evolution API.",
     }),
     {
       status: 503,

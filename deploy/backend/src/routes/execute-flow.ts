@@ -31,13 +31,13 @@ interface StepData {
   [key: string]: unknown;
 }
 
-const BAILEYS_URL = process.env.BAILEYS_URL || "http://baileys:8084";
-const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || "baileys-local-key";
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 
-async function baileysRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${BAILEYS_URL}${path}`, {
+async function evolutionRequest(path: string, method: string = "POST", body?: any) {
+  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
     method,
-    headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
+    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return resp.json() as Promise<any>;
@@ -52,7 +52,7 @@ async function executeStep(
 
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
-    const r = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: resolvedText });
+    const r = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: resolvedText });
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -68,7 +68,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
-    const r = await baileysRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -83,7 +83,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    const r = await baileysRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: jid, audio: stepData.audioUrl });
+    const r = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: jid, audio: stepData.audioUrl });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -98,7 +98,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
-    const r = await baileysRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -115,7 +115,7 @@ async function executeStep(
   if (nodeType === "sendFile" && (stepData as any).fileUrl) {
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
-    const r = await baileysRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -141,7 +141,7 @@ async function executeStep(
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       const presence = presenceType === "recording" ? "recording" : "composing";
       try {
-        await baileysRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence });
+        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence error:`, e);
       }
@@ -151,7 +151,7 @@ async function executeStep(
 
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       try {
-        await baileysRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence: "paused" });
+        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence: "paused" });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence paused error:`, e);
       }
@@ -201,7 +201,6 @@ router.post("/", async (req, res) => {
 
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
-    // Get instance name from body or from active instance in DB
     let instanceName = bodyInstanceName;
     if (!instanceName) {
       const { data: activeInst } = await serviceClient
@@ -405,7 +404,7 @@ router.post("/", async (req, res) => {
             const aiResponse = aiData?.choices?.[0]?.message?.content || "";
 
             if (data.aiAutoSend !== false && aiResponse) {
-              const sendResult = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: aiResponse });
+              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: aiResponse });
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -433,7 +432,7 @@ router.post("/", async (req, res) => {
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-            const sendResult = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
+            const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
             const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
             if (conv) {
               await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -489,7 +488,7 @@ router.post("/", async (req, res) => {
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              const sendResult = await baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
+              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });

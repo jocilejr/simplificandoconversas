@@ -4,13 +4,13 @@ import crypto from "crypto";
 
 const router = Router();
 
-const BAILEYS_URL = process.env.BAILEYS_URL || "http://baileys:8084";
-const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || "baileys-local-key";
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 
-async function baileysRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${BAILEYS_URL}${path}`, {
+async function evolutionRequest(path: string, method: string = "POST", body?: any) {
+  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
     method,
-    headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
+    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return resp.json() as Promise<any>;
@@ -34,7 +34,7 @@ async function downloadAndUploadMedia(
 
     if (!base64 && mediaMessage) {
       try {
-        const result = await baileysRequest(
+        const result = await evolutionRequest(
           `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
           "POST",
           { message: messageData, convertToMp4: messageType === "audio" }
