@@ -59,7 +59,11 @@ export function ConnectionsSection() {
       if (base64) {
         setQrCode({ instanceName, base64 });
       } else {
-        // No QR = already connected or error
+        toast({
+          title: "QR Code não disponível",
+          description: "A instância não retornou um QR Code. Tente novamente em alguns segundos.",
+          variant: "destructive",
+        });
         setQrCode(null);
       }
     } finally {
