@@ -123,10 +123,22 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             <h2 className="mt-3 font-bold text-base text-foreground">
               {conversation.contact_name || formatJid(conversation.remote_jid)}
             </h2>
-            <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
-              <Phone className="h-3 w-3" />
-              <span className="text-xs">{formatPhone(conversation.remote_jid)}</span>
-            </div>
+            {conversation.phone_number ? (
+              <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+                <Phone className="h-3 w-3" />
+                <span className="text-xs">{formatPhone(conversation.phone_number)}</span>
+              </div>
+            ) : isLidJid(conversation.remote_jid) ? (
+              <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+                <Hash className="h-3 w-3" />
+                <span className="text-xs">ID: {formatJid(conversation.remote_jid)}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+                <Phone className="h-3 w-3" />
+                <span className="text-xs">{formatPhone(formatJid(conversation.remote_jid))}</span>
+              </div>
+            )}
             {conversation.instance_name && (
               <div className="flex items-center gap-1.5 mt-1.5 text-muted-foreground">
                 <Globe className="h-3 w-3" />

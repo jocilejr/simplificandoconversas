@@ -165,10 +165,10 @@ export function ChatPanel({
         <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="md" />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate text-foreground">
-            {conversation.contact_name || formatJid(conversation.remote_jid)}
+            {conversation.contact_name || (conversation.phone_number ? formatPhone(conversation.phone_number) : formatJid(conversation.remote_jid))}
           </p>
           <p className="text-xs text-muted-foreground">
-            {formatJid(conversation.remote_jid)}
+            {displaySubtitle(conversation)}
           </p>
         </div>
         <Button

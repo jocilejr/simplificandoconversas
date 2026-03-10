@@ -195,7 +195,7 @@ export function ConversationList({
                               "text-sm truncate",
                               hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
                             )}>
-                              {conv.contact_name || formatJid(conv.remote_jid)}
+                              {displayName(conv)}
                             </span>
                             {conv.instance_name && (
                               <span className="text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded truncate">
