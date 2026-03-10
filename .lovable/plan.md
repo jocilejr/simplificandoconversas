@@ -1,42 +1,30 @@
 
 
-## Diagnóstico
+## Diagnóstico: Dois Problemas Identificados
 
-O fix `router.post("/*")` está correto no código (linha 81). Porém os logs da Evolution mostram:
+### Problema 1: Mensagens antigas não importam
+`findChats` retorna `[]` porque o Docker Compose tem `DATABASE_SAVE_DATA_HISTORIC: "false"`. Isso impede a Evolution API de persistir e retornar o histórico de chats. Mesmo com `DATABASE_SAVE_DATA_CHATS: "true"`, os chats históricos anteriores à conexão não foram salvos.
 
-```
-"Erro não recuperável (404): Cancelando retentativas."
-```
+### Problema 2: Mensagens novas demoram a aparecer na UI
+Na VPS não existe o serviço Supabase Realtime (não está no docker-compose). O frontend detecta falha no WebSocket e ativa polling de fallback: **5s para mensagens** e **10s para conversas**. Isso explica o atraso — as mensagens chegam ao DB instantaneamente via webhook, mas a UI só busca a cada 5-10 segundos.
 
-A Evolution API recebeu 404 **antes do rebuild** do backend, marcou o webhook como falho e **parou de enviar**. Mesmo após o rebuild, a Evolution não tenta novamente até ser reiniciada.
+---
 
-## Plano
+## Plano de Correção
 
-Nenhuma alteração de código necessária. Apenas comandos operacionais na VPS:
+### 1. Habilitar histórico na Evolution API (docker-compose.yml)
+Mudar `DATABASE_SAVE_DATA_HISTORIC` de `"false"` para `"true"` nas linhas 143 e equivalente no portainer-stack.yml. Após isso, reconectar a instância para que a Evolution importe o histórico.
 
-### 1. Garantir que o backend está com o código atualizado
+### 2. Reduzir intervalo de polling no frontend
+- `src/hooks/useMessages.ts`: mudar `refetchInterval` de `5000` para `2000`
+- `src/hooks/useConversations.ts`: mudar `refetchInterval` de `10000` para `3000`
+- Ativar polling **sempre** (não apenas quando realtime falha), já que na VPS o realtime nunca funcionará
+
+### 3. Deploy
 ```bash
 cd ~/simplificandoconversas && git pull origin main
 cd deploy && docker compose up -d --build backend
-```
-
-### 2. Reiniciar a Evolution API para resetar o estado dos webhooks
-```bash
 docker compose restart evolution
 ```
-
-### 3. Aguardar ~30 segundos e verificar
-```bash
-docker compose logs evolution --tail=10 -f
-```
-Envie uma mensagem WhatsApp de teste. Deve aparecer nos logs da Evolution o envio do webhook **sem erro 404**, e nos logs do backend:
-```bash
-docker compose logs backend --tail=10 -f
-```
-Deve aparecer `Webhook event: messages.upsert instance: Adsd`.
-
-Se ainda der 404 após restart, o problema é que o `docker compose build backend` não incorporou a mudança. Nesse caso, forçar rebuild sem cache:
-```bash
-docker compose build --no-cache backend && docker compose up -d backend && docker compose restart evolution
-```
+Após restart da Evolution, reconectar a instância WhatsApp para importar histórico.
 
