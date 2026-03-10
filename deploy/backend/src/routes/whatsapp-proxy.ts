@@ -220,21 +220,52 @@ router.post("/", async (req, res) => {
       }
 
       case "sync-chats": {
-        const { data: userInstances } = await serviceClient.from("whatsapp_instances").select("instance_name").eq("user_id", userId);
+        const { data: userInstances } = await serviceClient
+          .from("whatsapp_instances").select("instance_name").eq("user_id", userId);
         const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
-        if (instanceName && !instancesToSync.includes(instanceName)) {
-          instancesToSync.push(instanceName);
-        }
 
+        let totalSynced = 0;
         const instanceStatuses: any[] = [];
+
         for (const instName of instancesToSync) {
-          const stateResult = await evolutionRequest(`/instance/connectionState/${encodeURIComponent(instName)}`, "GET");
+          const stateResult = await evolutionRequest(
+            `/instance/connectionState/${encodeURIComponent(instName)}`, "GET"
+          );
           const connectionState = stateResult?.instance?.state || "close";
-          await serviceClient.from("whatsapp_instances").update({ status: connectionState }).eq("user_id", userId).eq("instance_name", instName);
+          await serviceClient.from("whatsapp_instances")
+            .update({ status: connectionState })
+            .eq("user_id", userId).eq("instance_name", instName);
           instanceStatuses.push({ instance: instName, connectionState });
+
+          if (connectionState !== "open") continue;
+
+          try {
+            const chats = await evolutionRequest(
+              `/chat/findChats/${encodeURIComponent(instName)}`, "POST", {}
+            );
+            if (!Array.isArray(chats)) continue;
+
+            for (const chat of chats) {
+              const remoteJid = chat.id || chat.remoteJid;
+              if (!remoteJid || remoteJid.includes("@g.us") || remoteJid === "status@broadcast") continue;
+
+              await serviceClient.from("conversations").upsert({
+                user_id: userId,
+                remote_jid: remoteJid,
+                contact_name: chat.name || chat.pushName || null,
+                instance_name: instName,
+                last_message_at: chat.lastMsgTimestamp
+                  ? new Date(chat.lastMsgTimestamp * 1000).toISOString()
+                  : new Date().toISOString(),
+              }, { onConflict: "user_id,remote_jid,instance_name" });
+              totalSynced++;
+            }
+          } catch (e: any) {
+            console.error(`[sync-chats] Error fetching chats for ${instName}:`, e.message);
+          }
         }
 
-        result = { synced: 0, info: "Conversas chegam via webhook em tempo real", instanceStatuses };
+        result = { synced: totalSynced, instanceStatuses };
         break;
       }
 
