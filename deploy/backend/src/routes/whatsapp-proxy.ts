@@ -270,7 +270,7 @@ router.post("/", async (req, res) => {
               if (!remoteJid || remoteJid.includes("@g.us") || remoteJid === "status@broadcast") continue;
 
               await serviceClient.from("conversations").upsert({
-                user_id: userId,
+                user_id: instUserId,
                 remote_jid: remoteJid,
                 contact_name: chat.name || chat.pushName || null,
                 instance_name: instName,

@@ -139,6 +139,8 @@ export function useWhatsAppInstances() {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "delete-instance", instanceName },
       });
+      // Fallback: also delete directly from DB
+      await supabase.from("whatsapp_instances").delete().eq("instance_name", instanceName);
       if (error) throw error;
       return data;
     },
