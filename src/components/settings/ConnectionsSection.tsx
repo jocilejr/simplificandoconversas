@@ -292,15 +292,26 @@ export function ConnectionsSection() {
                   {getStatusLabel(ri.status)}
                 </Badge>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={() => handleLinkInstance(ri.name)}
-                disabled={setActiveInstance.isPending}
-              >
-                <Link2 className="h-3.5 w-3.5 mr-1" /> Vincular
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => handleLinkInstance(ri.name)}
+                  disabled={setActiveInstance.isPending}
+                >
+                  <Link2 className="h-3.5 w-3.5 mr-1" /> Vincular
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDelete(ri.name)}
+                  disabled={deleteInstance.isPending}
+                  className="text-xs text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
