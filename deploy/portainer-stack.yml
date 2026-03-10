@@ -140,7 +140,7 @@ services:
       DATABASE_SAVE_DATA_CONTACTS: "false"
       DATABASE_SAVE_DATA_CHATS: "true"
       DATABASE_SAVE_DATA_LABELS: "false"
-      DATABASE_SAVE_DATA_HISTORIC: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
       WEBHOOK_GLOBAL_URL: http://backend:3001/api/webhook
       WEBHOOK_GLOBAL_ENABLED: "true"
       WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "true"

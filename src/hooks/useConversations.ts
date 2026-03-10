@@ -30,7 +30,7 @@ export function useConversations() {
       return data as Conversation[];
     },
     // Poll every 10s as fallback when realtime is unavailable
-    refetchInterval: realtimeFailed.current ? 10000 : false,
+    refetchInterval: 3000,
   });
 
   useEffect(() => {
