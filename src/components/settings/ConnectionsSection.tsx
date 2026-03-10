@@ -102,6 +102,24 @@ export function ConnectionsSection() {
     await setActiveInstance.mutateAsync(name);
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { action: "sync-chats" },
+      });
+      if (error) throw error;
+      toast({
+        title: "Sincronização concluída",
+        description: `${data?.synced || 0} conversas e ${data?.messagesSynced || 0} mensagens importadas`,
+      });
+    } catch (e: any) {
+      toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "open": return "bg-green-500/15 text-green-400 border-green-500/30";
