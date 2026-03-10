@@ -68,6 +68,7 @@ router.post("/", async (req, res) => {
     if (!userResp.ok) return res.status(401).json({ error: "Unauthorized" });
     const userData: any = await userResp.json();
     const userId = userData.id;
+    console.log(`[whatsapp-proxy] Authenticated userId: ${userId}`);
 
     const supabase = getServiceClient();
 
