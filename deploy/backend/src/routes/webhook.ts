@@ -166,6 +166,12 @@ router.post("/*", async (req, res) => {
       return res.json({ ok: true, skipped: "filtered" });
     }
 
+    // Skip unresolved @lid JIDs — only process real phone numbers
+    if (remoteJid.includes("@lid")) {
+      console.log(`[webhook] Skipping unresolved @lid: ${remoteJid}`);
+      return res.json({ ok: true, skipped: "unresolved_lid" });
+    }
+
     if (fromMe && event === "send.message") {
       await supabase
         .from("conversations")
