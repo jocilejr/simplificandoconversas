@@ -164,8 +164,6 @@ services:
         condition: service_healthy
       gotrue:
         condition: service_started
-      nginx:
-        condition: service_started
     environment:
       PORT: "3001"
       SUPABASE_URL: http://nginx:80
@@ -189,7 +187,6 @@ services:
       - postgrest
       - gotrue
       - storage
-      - backend
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
