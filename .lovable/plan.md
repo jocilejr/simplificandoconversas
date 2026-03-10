@@ -1,16 +1,29 @@
 
-## Remoção completa da Evolution API — Concluído ✅
 
-Todas as referências a "evolution" foram removidas do projeto. O sistema usa exclusivamente Baileys.
+## Plano
 
-### Mudanças realizadas
+A imagem correta para v2.3.7 é `evoapicloud/evolution-api:v2.3.7` (o publisher mudou de `atendai` para `evoapicloud`).
 
-| Área | Mudança |
-|------|---------|
-| **Banco de dados** | Tabela `evolution_instances` renomeada para `whatsapp_instances`; colunas `evolution_api_url`, `evolution_api_key`, `evolution_instance_name` removidas de `profiles` |
-| **Edge functions** | `evolution-proxy` deletada → `whatsapp-proxy` criada; `evolution-webhook` removida do config.toml |
-| **Frontend hooks** | `useWhatsAppInstances`, `useMessages`, `useContactPhoto` atualizados para usar `whatsapp-proxy` e `whatsapp_instances` |
-| **Página Conversations** | Invoke atualizado de `evolution-proxy` → `whatsapp-proxy` |
-| **Edge function execute-flow** | Query atualizada de `evolution_instances` → `whatsapp_instances` |
-| **Deploy backend** | `evolution-proxy.ts` → `whatsapp-proxy.ts`; `webhook.ts` reescrito sem refs Evolution; `execute-flow.ts` atualizado; `index.ts` atualizado |
-| **Deploy init-db.sql** | Tabela e colunas renomeadas/removidas |
+### Alteração
+
+**`deploy/docker-compose.yml`** — linha da imagem do Evolution:
+```yaml
+# DE:
+image: atendai/evolution-api:v2.2.3
+
+# PARA:
+image: evoapicloud/evolution-api:v2.3.7
+```
+
+### Deploy na VPS
+
+```bash
+cd ~/simplificandoconversas
+git pull origin main
+cd deploy
+docker compose pull evolution
+docker compose up -d evolution
+# Aguardar ~30s, depois rebuild backend
+docker compose up -d --build backend
+```
+
