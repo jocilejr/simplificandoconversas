@@ -23,6 +23,7 @@ import {
   QrCode,
   RefreshCw,
 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 export function ConnectionsSection() {
   const {
