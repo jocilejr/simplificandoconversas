@@ -370,7 +370,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const baseUrl = baileysUrl.replace(/\/$/, "");
+    const baseUrl = evolutionUrl.replace(/\/$/, "");
 
     // Check active executions result (with instance_name filter if needed)
     if (!resumeFromNodeId) {
