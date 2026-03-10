@@ -1,30 +1,15 @@
 
+## Fix: supabase-js URL Path Mismatch + Chat Persistence — Concluído ✅
 
-## Diagnóstico Confirmado
+### Root Cause
+O backend usava `SUPABASE_URL=http://postgrest:3000`, mas o `supabase-js` adiciona `/rest/v1/` automaticamente, causando 404 no PostgREST.
 
-O Nginx renderizado mostra `server_name api.chatbotsimplificado.com nginx localhost;` -- a configuração está correta. Porém, o primeiro server block (frontend) é automaticamente o **default_server** do Nginx. Quando o backend envia `Host: nginx`, por algum motivo o Nginx está resolvendo para o bloco frontend e retornando `index.html`.
+### Mudanças realizadas
 
-## Solução: Marcar o bloco API como `default_server`
-
-Adicionar `default_server` no `listen` do bloco API garante que **qualquer request que não seja explicitamente para o APP_DOMAIN** vá para o bloco API. Isso é uma mudança de uma palavra, determinística, sem risco de quebrar o frontend.
-
-### Alteração em `deploy/nginx/default.conf.template`
-
-Linha 15, mudar de:
-```
-listen 80;
-```
-Para:
-```
-listen 80 default_server;
-```
-
-Nenhuma outra alteração necessária. O bloco frontend continua funcionando normalmente para requests com `Host: app.chatbotsimplificado.com`.
-
-### Deploy
-```bash
-cd ~/simplificandoconversas && git pull origin main
-cd deploy && docker compose up -d --force-recreate nginx
-docker compose logs backend --tail=10 -f
-```
-
+| Área | Mudança |
+|------|---------|
+| **nginx** | `server_name` do API server block agora aceita `nginx` e `localhost` como hostnames internos |
+| **docker-compose** | Backend `SUPABASE_URL` alterado de `http://postgrest:3000` → `http://nginx:80`; `depends_on` inclui `nginx` |
+| **portainer-stack** | Mesmas alterações do docker-compose |
+| **check-timeouts** | Logging melhorado com `Object.getOwnPropertyNames` para capturar erros raw |
+| **Evolution API** | `DATABASE_SAVE_DATA_CHATS` alterado de `false` → `true` em ambos os compose files |
