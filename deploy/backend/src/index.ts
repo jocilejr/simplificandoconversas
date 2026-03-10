@@ -20,6 +20,8 @@ app.use("/api/link-redirect", linkRedirectRouter);
 app.use("/api/webhook", webhookRouter);
 
 // Health
+// Health
+app.use("/api/health/db", healthDbRouter);
 app.get("/health", (_, res) => res.json({ ok: true }));
 
 // Check timeouts every 30 seconds
