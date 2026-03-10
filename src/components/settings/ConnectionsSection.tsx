@@ -268,7 +268,7 @@ export function ConnectionsSection() {
                   <Star className="h-3.5 w-3.5 mr-1" /> Ativar
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={() => deleteInstance.mutate(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
