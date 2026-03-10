@@ -58,6 +58,8 @@ export function ConnectionsSection() {
   const [loadingQr, setLoadingQr] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
