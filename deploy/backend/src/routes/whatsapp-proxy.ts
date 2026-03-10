@@ -339,7 +339,7 @@ router.post("/", async (req, res) => {
             console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 
             for (const chat of individualChats) {
-              const { resolved: jid, raw: rawJid } = resolveToPhoneJid(chat);
+              const jid = extractJid(chat);
               if (!jid) continue;
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
