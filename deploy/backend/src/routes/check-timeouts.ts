@@ -12,7 +12,8 @@ export async function processTimeouts() {
     .limit(50);
 
   if (fetchErr) {
-    console.error("[check-timeouts] Fetch error:", fetchErr.message, "code:", fetchErr.code, "details:", fetchErr.details, "hint:", fetchErr.hint);
+    const keys = Object.getOwnPropertyNames(fetchErr);
+    console.error("[check-timeouts] Fetch error — raw keys:", keys, "full:", JSON.stringify(fetchErr, keys));
     return;
   }
 
