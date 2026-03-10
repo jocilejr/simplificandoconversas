@@ -226,26 +226,27 @@ router.post("/", async (req, res) => {
       }
 
       case "sync-chats": {
-        let { data: userInstances } = await serviceClient
-          .from("whatsapp_instances").select("instance_name, user_id").eq("user_id", userId);
+        // Get instances from Evolution API (source of truth)
+        const allEvolutionInstances = await evolutionRequest("/instance/fetchInstances", "GET");
+        const evolutionList = Array.isArray(allEvolutionInstances) ? allEvolutionInstances : [];
         
-        // Fallback: if no instances for this userId, fetch all (single-user setup)
-        if (!userInstances?.length) {
-          console.log(`[sync-chats] No instances for userId ${userId}, fetching all`);
-          const allResult = await serviceClient
-            .from("whatsapp_instances").select("instance_name, user_id");
-          userInstances = allResult.data;
+        const instancesToSync = evolutionList.map((i: any) => 
+          i.name || i.instanceName || i.instance?.instanceName || "unknown"
+        ).filter((n: string) => n !== "unknown");
+        console.log(`[sync-chats] Instances from Evolution API: ${JSON.stringify(instancesToSync)}`);
+
+        // Ensure all instances exist in DB
+        for (const instName of instancesToSync) {
+          await serviceClient.from("whatsapp_instances").upsert(
+            { user_id: userId, instance_name: instName, status: "close", is_active: false },
+            { onConflict: "user_id,instance_name" }
+          );
         }
-        
-        const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
-        console.log(`[sync-chats] Instances to sync: ${JSON.stringify(instancesToSync)}`);
 
         let totalSynced = 0;
         const instanceStatuses: any[] = [];
 
-        for (const instItem of (userInstances || [])) {
-          const instName = instItem.instance_name;
-          const instUserId = instItem.user_id;
+        for (const instName of instancesToSync) {
           const stateResult = await evolutionRequest(
             `/instance/connectionState/${encodeURIComponent(instName)}`, "GET"
           );
@@ -253,7 +254,8 @@ router.post("/", async (req, res) => {
           console.log(`[sync-chats] ${instName}: connectionState=${connectionState}`);
           await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
-            .eq("instance_name", instName);
+            .eq("instance_name", instName)
+            .eq("user_id", userId);
           instanceStatuses.push({ instance: instName, connectionState });
 
           if (connectionState !== "open") continue;
@@ -270,7 +272,7 @@ router.post("/", async (req, res) => {
               if (!remoteJid || remoteJid.includes("@g.us") || remoteJid === "status@broadcast") continue;
 
               await serviceClient.from("conversations").upsert({
-                user_id: instUserId,
+                user_id: userId,
                 remote_jid: remoteJid,
                 contact_name: chat.name || chat.pushName || null,
                 instance_name: instName,
