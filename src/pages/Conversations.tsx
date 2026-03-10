@@ -68,8 +68,18 @@ const Conversations = () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       if (data?.info) {
         toast({ title: "Informação", description: data.info });
+      } else if (data?.synced > 0) {
+        toast({ title: "Sincronizado", description: `${data.synced} conversas sincronizadas` });
       } else {
-        toast({ title: "Sincronizado", description: `${data?.synced || 0} conversas sincronizadas` });
+        const statuses = data?.instanceStatuses || [];
+        const disconnected = statuses.filter((s: any) => s.connectionState !== "open");
+        if (statuses.length === 0) {
+          toast({ title: "Nenhuma instância", description: "Conecte uma instância em Configurações.", variant: "destructive" });
+        } else if (disconnected.length === statuses.length) {
+          toast({ title: "Instâncias desconectadas", description: "Reconecte via QR Code em Configurações.", variant: "destructive" });
+        } else {
+          toast({ title: "Sincronizado", description: "0 conversas encontradas nas instâncias conectadas" });
+        }
       }
     },
     onError: (err: any) => {

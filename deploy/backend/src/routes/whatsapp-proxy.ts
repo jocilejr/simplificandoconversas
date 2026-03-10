@@ -144,16 +144,19 @@ router.post("/", async (req, res) => {
       case "delete-instance": {
         const { instanceName: delInstName } = params;
         if (!delInstName) return res.status(400).json({ error: "instanceName required" });
+        console.log(`[delete-instance] Deleting: ${delInstName} for user ${userId}`);
         
         // Try Evolution delete, but don't fail if instance doesn't exist there
         try {
           await evolutionRequest(`/instance/delete/${encodeURIComponent(delInstName)}`, "DELETE");
+          console.log(`[delete-instance] Evolution delete OK for ${delInstName}`);
         } catch (e: any) {
           console.log(`[delete-instance] Evolution delete failed (may not exist): ${e.message}`);
         }
         
         // Always clean up local DB
         await serviceClient.from("whatsapp_instances").delete().eq("user_id", userId).eq("instance_name", delInstName);
+        console.log(`[delete-instance] DB cleanup done for ${delInstName}`);
         result = { ok: true, deleted: delInstName };
         break;
       }
@@ -223,6 +226,7 @@ router.post("/", async (req, res) => {
         const { data: userInstances } = await serviceClient
           .from("whatsapp_instances").select("instance_name").eq("user_id", userId);
         const instancesToSync = userInstances?.map((i: any) => i.instance_name) || [];
+        console.log(`[sync-chats] Instances to sync: ${JSON.stringify(instancesToSync)}`);
 
         let totalSynced = 0;
         const instanceStatuses: any[] = [];
@@ -232,6 +236,7 @@ router.post("/", async (req, res) => {
             `/instance/connectionState/${encodeURIComponent(instName)}`, "GET"
           );
           const connectionState = stateResult?.instance?.state || "close";
+          console.log(`[sync-chats] ${instName}: connectionState=${connectionState}`);
           await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
             .eq("user_id", userId).eq("instance_name", instName);
@@ -243,6 +248,7 @@ router.post("/", async (req, res) => {
             const chats = await evolutionRequest(
               `/chat/findChats/${encodeURIComponent(instName)}`, "POST", {}
             );
+            console.log(`[sync-chats] ${instName}: ${Array.isArray(chats) ? chats.length : 'not-array'} chats returned`);
             if (!Array.isArray(chats)) continue;
 
             for (const chat of chats) {
@@ -265,6 +271,7 @@ router.post("/", async (req, res) => {
           }
         }
 
+        console.log(`[sync-chats] Total synced: ${totalSynced}`);
         result = { synced: totalSynced, instanceStatuses };
         break;
       }
