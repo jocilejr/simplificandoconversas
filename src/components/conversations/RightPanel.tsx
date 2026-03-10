@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   X, Tag, Zap, Square, Loader2, Clock, Phone,
-  Globe, Calendar,
+  Globe, Calendar, Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -24,13 +24,15 @@ interface RightPanelProps {
   onClose: () => void;
 }
 
+function isLidJid(jid: string) {
+  return jid.includes("@lid");
+}
 
 function formatJid(jid: string) {
   return jid.split("@")[0];
 }
 
-function formatPhone(jid: string) {
-  const num = jid.split("@")[0];
+function formatPhone(num: string) {
   if (num.length >= 12) {
     return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
   }
@@ -121,10 +123,22 @@ export function RightPanel({ conversation, contactPhoto, onClose }: RightPanelPr
             <h2 className="mt-3 font-bold text-base text-foreground">
               {conversation.contact_name || formatJid(conversation.remote_jid)}
             </h2>
-            <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
-              <Phone className="h-3 w-3" />
-              <span className="text-xs">{formatPhone(conversation.remote_jid)}</span>
-            </div>
+            {conversation.phone_number ? (
+              <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+                <Phone className="h-3 w-3" />
+                <span className="text-xs">{formatPhone(conversation.phone_number)}</span>
+              </div>
+            ) : isLidJid(conversation.remote_jid) ? (
+              <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+                <Hash className="h-3 w-3" />
+                <span className="text-xs">ID: {formatJid(conversation.remote_jid)}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 mt-1 text-muted-foreground">
+                <Phone className="h-3 w-3" />
+                <span className="text-xs">{formatPhone(formatJid(conversation.remote_jid))}</span>
+              </div>
+            )}
             {conversation.instance_name && (
               <div className="flex items-center gap-1.5 mt-1.5 text-muted-foreground">
                 <Globe className="h-3 w-3" />

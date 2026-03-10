@@ -358,7 +358,12 @@ router.post("/", async (req, res) => {
                 ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
 
-              // Upsert conversation using resolved JID (always @s.whatsapp.net)
+              // Determine phone_number: if JID is @s.whatsapp.net, extract number; if @lid, null
+              const phoneNumber = resolvedJid.includes("@s.whatsapp.net")
+                ? resolvedJid.split("@")[0]
+                : null;
+
+              // Upsert conversation using resolved JID
               const { data: convData, error: convErr } = await serviceClient.from("conversations").upsert({
                 user_id: userId,
                 remote_jid: resolvedJid,
@@ -366,6 +371,7 @@ router.post("/", async (req, res) => {
                 instance_name: instName,
                 last_message: lastMsgContent,
                 last_message_at: lastTs,
+                phone_number: phoneNumber,
               }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").maybeSingle();
               if (convErr) console.error(`[sync-chats] Conv upsert error for ${resolvedJid}:`, convErr);
               else console.log(`[sync-chats] Conv upserted for ${resolvedJid}: ${convData?.id} (${contactName})`);

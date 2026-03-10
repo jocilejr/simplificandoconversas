@@ -49,8 +49,26 @@ function formatTime(dateStr: string | null) {
   return format(d, "dd/MM/yy");
 }
 
+function isLidJid(jid: string) {
+  return jid.includes("@lid");
+}
+
 function formatJid(jid: string) {
   return jid.split("@")[0];
+}
+
+function formatPhone(num: string) {
+  if (num.length >= 12) {
+    return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
+  }
+  return `+${num}`;
+}
+
+function displayName(conv: Conversation) {
+  if (conv.contact_name) return conv.contact_name;
+  if (conv.phone_number) return formatPhone(conv.phone_number);
+  if (isLidJid(conv.remote_jid)) return formatJid(conv.remote_jid);
+  return formatJid(conv.remote_jid);
 }
 
 export function ConversationList({
@@ -177,7 +195,7 @@ export function ConversationList({
                               "text-sm truncate",
                               hasUnread ? "font-semibold text-foreground" : "font-medium text-foreground/80"
                             )}>
-                              {conv.contact_name || formatJid(conv.remote_jid)}
+                              {displayName(conv)}
                             </span>
                             {conv.instance_name && (
                               <span className="text-[9px] font-medium text-muted-foreground/60 bg-secondary/80 px-1.5 py-0.5 rounded truncate">

@@ -33,8 +33,25 @@ interface ChatPanelProps {
   showRightPanel: boolean;
 }
 
+function isLidJid(jid: string) {
+  return jid.includes("@lid");
+}
+
 function formatJid(jid: string) {
   return jid.split("@")[0];
+}
+
+function formatPhone(num: string) {
+  if (num.length >= 12) {
+    return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
+  }
+  return `+${num}`;
+}
+
+function displaySubtitle(conv: Conversation) {
+  if (conv.phone_number) return formatPhone(conv.phone_number);
+  if (isLidJid(conv.remote_jid)) return `ID: ${formatJid(conv.remote_jid)}`;
+  return formatJid(conv.remote_jid);
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -148,10 +165,10 @@ export function ChatPanel({
         <ContactAvatar photoUrl={contactPhoto} name={conversation.contact_name} size="md" />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm truncate text-foreground">
-            {conversation.contact_name || formatJid(conversation.remote_jid)}
+            {conversation.contact_name || (conversation.phone_number ? formatPhone(conversation.phone_number) : formatJid(conversation.remote_jid))}
           </p>
           <p className="text-xs text-muted-foreground">
-            {formatJid(conversation.remote_jid)}
+            {displaySubtitle(conversation)}
           </p>
         </div>
         <Button

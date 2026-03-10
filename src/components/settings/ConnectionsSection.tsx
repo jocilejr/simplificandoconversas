@@ -33,6 +33,7 @@ import {
   QrCode,
   RefreshCw,
   RotateCcw,
+  MessageSquareX,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -57,6 +58,8 @@ export function ConnectionsSection() {
   const [loadingQr, setLoadingQr] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
@@ -125,6 +128,25 @@ export function ConnectionsSection() {
       case "open": return "bg-green-500/15 text-green-400 border-green-500/30";
       case "connecting": return "bg-yellow-500/15 text-yellow-400 border-yellow-500/30";
       default: return "bg-red-500/15 text-red-400 border-red-500/30";
+    }
+  };
+
+  const handleDeleteAllConversations = async () => {
+    setDeletingAll(true);
+    try {
+      // Delete in order: messages → conversation_labels → conversations
+      const { error: msgErr } = await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (msgErr) throw msgErr;
+      const { error: labelsErr } = await supabase.from("conversation_labels").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (labelsErr) throw labelsErr;
+      const { error: convErr } = await supabase.from("conversations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (convErr) throw convErr;
+      toast({ title: "Conversas excluídas", description: "Todas as conversas foram removidas com sucesso." });
+    } catch (e: any) {
+      toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" });
+    } finally {
+      setDeletingAll(false);
+      setConfirmDeleteAll(false);
     }
   };
 
@@ -394,6 +416,50 @@ export function ConnectionsSection() {
               }}
             >
               Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete all conversations section */}
+      <div className="border-t border-border pt-6 mt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-semibold text-destructive">Zona de Perigo</h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Exclua todas as conversas e mensagens para reimportar do zero.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setConfirmDeleteAll(true)}
+            disabled={deletingAll}
+          >
+            {deletingAll ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageSquareX className="h-4 w-4 mr-2" />}
+            Excluir Todas as Conversas
+          </Button>
+        </div>
+      </div>
+
+      {/* Delete all conversations confirmation */}
+      <AlertDialog open={confirmDeleteAll} onOpenChange={setConfirmDeleteAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir todas as conversas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação vai remover <strong>TODAS</strong> as conversas, mensagens e etiquetas de conversa. 
+              Isso não pode ser desfeito. Você poderá reimportar usando o botão "Sincronizar".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteAllConversations}
+            >
+              {deletingAll ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Sim, excluir tudo
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
