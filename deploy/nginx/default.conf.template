@@ -12,7 +12,7 @@ server {
 
 # ─── API (API_DOMAIN) ───
 server {
-    listen 80;
+    listen 80 default_server;
     server_name ${API_DOMAIN} nginx localhost;
     client_max_body_size 50M;
 
