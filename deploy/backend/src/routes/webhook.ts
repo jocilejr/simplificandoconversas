@@ -104,96 +104,52 @@ router.post("/*", async (req, res) => {
     let remoteJid = key.remoteJid || data.remoteJid;
     const fromMe = key.fromMe ?? data.fromMe ?? false;
 
-    // Resolve @lid to real phone number using all available fields
+    // Resolve @lid: try to find the real phone number but KEEP remote_jid as-is
+    let resolvedPhone: string | null = null;
+    const originalLid = remoteJid;
+
     if (remoteJid && remoteJid.includes("@lid")) {
-      const originalLid = remoteJid;
       const senderPn = key.senderPn || data.senderPn;
       if (senderPn) {
-        remoteJid = `${senderPn}@s.whatsapp.net`;
-        console.log(`[webhook] Resolved @lid via senderPn: ${originalLid} → ${remoteJid}`);
+        resolvedPhone = senderPn;
+        console.log(`[webhook] Resolved phone via senderPn for @lid: ${resolvedPhone}`);
       } else if (key.remoteJidAlt && key.remoteJidAlt.includes("@s.whatsapp.net")) {
-        remoteJid = key.remoteJidAlt;
-        console.log(`[webhook] Resolved @lid via remoteJidAlt: ${originalLid} → ${remoteJid}`);
+        resolvedPhone = key.remoteJidAlt.split("@")[0];
+        console.log(`[webhook] Resolved phone via remoteJidAlt for @lid: ${resolvedPhone}`);
       } else if (key.participantAlt && key.participantAlt.includes("@s.whatsapp.net")) {
-        remoteJid = key.participantAlt;
-        console.log(`[webhook] Resolved @lid via participantAlt: ${originalLid} → ${remoteJid}`);
+        resolvedPhone = key.participantAlt.split("@")[0];
+        console.log(`[webhook] Resolved phone via participantAlt for @lid: ${resolvedPhone}`);
       } else {
-        console.log(`[webhook] Could not resolve @lid ${originalLid}, saving as-is`);
+        console.log(`[webhook] Could not resolve phone for @lid ${remoteJid}`);
       }
+    } else if (remoteJid && remoteJid.includes("@s.whatsapp.net")) {
+      resolvedPhone = remoteJid.split("@")[0];
+    }
 
-      // If resolved, migrate existing @lid conversations/messages to real phone number
-      if (remoteJid !== originalLid) {
-        const supabaseMigrate = getServiceClient();
+    // Smart lookup: if message comes with a phone number, check if there's an existing @lid conversation for this contact
+    if (resolvedPhone && remoteJid.includes("@s.whatsapp.net")) {
+      const supabaseLookup = getServiceClient();
+      const { data: instRec } = await supabaseLookup
+        .from("whatsapp_instances")
+        .select("user_id")
+        .eq("instance_name", instance)
+        .limit(1)
+        .single();
 
-        // Find instance user_id first
-        const { data: instRec } = await supabaseMigrate
-          .from("whatsapp_instances")
-          .select("user_id")
+      if (instRec) {
+        // Check if there's an existing @lid conversation with this phone_number
+        const { data: lidConv } = await supabaseLookup
+          .from("conversations")
+          .select("id, remote_jid")
+          .eq("user_id", instRec.user_id)
+          .eq("phone_number", resolvedPhone)
           .eq("instance_name", instance)
-          .limit(1)
-          .single();
+          .limit(1);
 
-        if (instRec) {
-          // Check if a conversation exists with the old @lid
-          const { data: lidConv } = await supabaseMigrate
-            .from("conversations")
-            .select("id")
-            .eq("user_id", instRec.user_id)
-            .eq("remote_jid", originalLid)
-            .eq("instance_name", instance)
-            .limit(1);
-
-          if (lidConv && lidConv.length > 0) {
-            // Check if a conversation already exists with the real phone number
-            const { data: phoneConv } = await supabaseMigrate
-              .from("conversations")
-              .select("id")
-              .eq("user_id", instRec.user_id)
-              .eq("remote_jid", remoteJid)
-              .eq("instance_name", instance)
-              .limit(1);
-
-            if (phoneConv && phoneConv.length > 0) {
-              // Phone conversation already exists — move messages from @lid conv to phone conv, then delete @lid conv
-              console.log(`[webhook] Merging @lid conv ${lidConv[0].id} into phone conv ${phoneConv[0].id}`);
-              await supabaseMigrate
-                .from("messages")
-                .update({ conversation_id: phoneConv[0].id, remote_jid: remoteJid })
-                .eq("conversation_id", lidConv[0].id);
-              await supabaseMigrate
-                .from("conversation_labels")
-                .update({ conversation_id: phoneConv[0].id })
-                .eq("conversation_id", lidConv[0].id);
-              await supabaseMigrate
-                .from("conversations")
-                .delete()
-                .eq("id", lidConv[0].id);
-            } else {
-              // No phone conversation exists — just update the @lid conversation to use real phone
-              console.log(`[webhook] Migrating @lid conv ${lidConv[0].id}: ${originalLid} → ${remoteJid}`);
-              await supabaseMigrate
-                .from("conversations")
-                .update({ remote_jid: remoteJid })
-                .eq("id", lidConv[0].id);
-              await supabaseMigrate
-                .from("messages")
-                .update({ remote_jid: remoteJid })
-                .eq("user_id", instRec.user_id)
-                .eq("remote_jid", originalLid);
-            }
-
-            // Also migrate contact_photos and contact_tags
-            await supabaseMigrate
-              .from("contact_photos")
-              .update({ remote_jid: remoteJid })
-              .eq("user_id", instRec.user_id)
-              .eq("remote_jid", originalLid);
-            await supabaseMigrate
-              .from("contact_tags")
-              .update({ remote_jid: remoteJid })
-              .eq("user_id", instRec.user_id)
-              .eq("remote_jid", originalLid);
-          }
+        if (lidConv && lidConv.length > 0 && lidConv[0].remote_jid.includes("@lid")) {
+          // Use the existing @lid conversation instead of creating a new one
+          console.log(`[webhook] Found existing @lid conv for phone ${resolvedPhone}, using conv ${lidConv[0].id}`);
+          remoteJid = lidConv[0].remote_jid;
         }
       }
     }
