@@ -13,6 +13,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Loader2,
   Plus,
   WifiOff,
@@ -43,6 +53,7 @@ export function ConnectionsSection() {
   const [newName, setNewName] = useState("");
   const [qrCode, setQrCode] = useState<{ instanceName: string; base64: string } | null>(null);
   const [loadingQr, setLoadingQr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
@@ -257,7 +268,7 @@ export function ConnectionsSection() {
                   <Star className="h-3.5 w-3.5 mr-1" /> Ativar
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={() => deleteInstance.mutate(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -281,15 +292,26 @@ export function ConnectionsSection() {
                   {getStatusLabel(ri.status)}
                 </Badge>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={() => handleLinkInstance(ri.name)}
-                disabled={setActiveInstance.isPending}
-              >
-                <Link2 className="h-3.5 w-3.5 mr-1" /> Vincular
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => handleLinkInstance(ri.name)}
+                  disabled={setActiveInstance.isPending}
+                >
+                  <Link2 className="h-3.5 w-3.5 mr-1" /> Vincular
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDelete(ri.name)}
+                  disabled={deleteInstance.isPending}
+                  className="text-xs text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -313,6 +335,32 @@ export function ConnectionsSection() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover instância</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover a instância <strong>{confirmDelete}</strong>? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmDelete) {
+                  deleteInstance.mutate(confirmDelete);
+                  setConfirmDelete(null);
+                }
+              }}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
