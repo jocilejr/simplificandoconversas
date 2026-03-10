@@ -373,7 +373,7 @@ router.post("/", async (req, res) => {
               while (true) {
                 const msgResponse = await evolutionRequest(
                   `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
-                  { where: { key: { remoteJid: rawJid } }, page }
+                  { where: { key: { remoteJid: jid } }, page }
                 );
 
                 let messageList: any[] = [];
