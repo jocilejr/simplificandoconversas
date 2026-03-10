@@ -330,11 +330,12 @@ router.post("/", async (req, res) => {
               return chat.remoteJid || chat.jid || chat.chatId || chat.owner || "";
             }
 
-            // Filter: only real phone contacts (@s.whatsapp.net), no groups, no @lid, no broadcasts
+            // Filter: individual contacts (both @s.whatsapp.net and @lid), no groups, no broadcasts
             const individualChats = chatList.filter((chat: any) => {
               const jid = extractJid(chat);
               if (!jid) return false;
-              return jid.includes("@s.whatsapp.net") && jid !== "status@broadcast";
+              if (jid.includes("@g.us") || jid === "status@broadcast") return false;
+              return jid.includes("@s.whatsapp.net") || jid.includes("@lid");
             });
             console.log(`[sync-chats] ${instName}: ${individualChats.length} individual contacts after filtering`);
 

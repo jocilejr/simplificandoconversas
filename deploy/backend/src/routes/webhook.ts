@@ -166,10 +166,21 @@ router.post("/*", async (req, res) => {
       return res.json({ ok: true, skipped: "filtered" });
     }
 
-    // Skip unresolved @lid JIDs — only process real phone numbers
+    // Resolve @lid JIDs: if we can't resolve, still process (contact may exist as @lid in DB)
+    // The webhook already tries to resolve @lid above via participantAlt (lines 108-120)
+    // If still @lid, check if there's a conversation with this @lid already; if not, skip
     if (remoteJid.includes("@lid")) {
-      console.log(`[webhook] Skipping unresolved @lid: ${remoteJid}`);
-      return res.json({ ok: true, skipped: "unresolved_lid" });
+      const { data: existingLidConv } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("remote_jid", remoteJid)
+        .eq("user_id", userId)
+        .limit(1);
+      if (!existingLidConv || existingLidConv.length === 0) {
+        console.log(`[webhook] Skipping unresolved @lid with no existing conversation: ${remoteJid}`);
+        return res.json({ ok: true, skipped: "unresolved_lid_no_conv" });
+      }
+      console.log(`[webhook] Processing @lid ${remoteJid} — existing conversation found`);
     }
 
     if (fromMe && event === "send.message") {
