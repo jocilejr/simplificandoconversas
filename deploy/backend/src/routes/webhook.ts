@@ -246,14 +246,14 @@ router.post("/*", async (req, res) => {
       upsertData.phone_number = resolvedPhone;
     }
 
-    const { data: conv } = await supabase
+    const { data: conv, error: convError } = await supabase
       .from("conversations")
       .upsert(upsertData, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id")
       .single();
 
-    if (!conv) {
-      console.error("Failed to upsert conversation");
+    if (convError || !conv) {
+      console.error("Failed to upsert conversation:", convError?.message || "no data returned");
       return res.status(500).json({ error: "Failed to save conversation" });
     }
 
