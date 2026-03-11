@@ -262,7 +262,7 @@ router.post("/*", async (req, res) => {
     }
 
     console.log("Inserting message:", { remoteJid, direction: fromMe ? "outbound" : "inbound", content: messageContent?.substring(0, 50), mediaUrl });
-    await supabase.from("messages").insert({
+    const { error: insertError } = await supabase.from("messages").insert({
       conversation_id: conv.id,
       user_id: userId,
       remote_jid: remoteJid,
@@ -273,6 +273,9 @@ router.post("/*", async (req, res) => {
       external_id: externalId,
       media_url: mediaUrl,
     });
+    if (insertError) {
+      console.error("Message insert error:", insertError.message, insertError);
+    }
 
     let flowResumed = false;
     if (!fromMe && messageContent) {
