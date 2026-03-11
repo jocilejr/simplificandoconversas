@@ -33,6 +33,22 @@ psql -U postgres <<-EOSQL
   -- Create auth schema owned by supabase_auth_admin (GoTrue expects this)
   CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
   GRANT ALL ON SCHEMA auth TO supabase_auth_admin;
+
+  -- Create supabase_storage_admin (used by Storage API)
+  DO \$\$
+  BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'supabase_storage_admin') THEN
+      CREATE ROLE supabase_storage_admin WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';
+    ELSE
+      ALTER ROLE supabase_storage_admin WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';
+    END IF;
+  END
+  \$\$;
+
+  -- Create storage schema owned by supabase_storage_admin (Storage API expects this)
+  CREATE SCHEMA IF NOT EXISTS storage AUTHORIZATION supabase_storage_admin;
+  GRANT ALL ON SCHEMA storage TO supabase_storage_admin, postgres, service_role;
+  GRANT ALL ON SCHEMA storage TO anon, authenticated;
 EOSQL
 
 echo "Supabase internal roles and permissions created/updated successfully"
