@@ -246,14 +246,14 @@ router.post("/*", async (req, res) => {
       upsertData.phone_number = resolvedPhone;
     }
 
-    const { data: conv } = await supabase
+    const { data: conv, error: convError } = await supabase
       .from("conversations")
       .upsert(upsertData, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id")
       .single();
 
-    if (!conv) {
-      console.error("Failed to upsert conversation");
+    if (convError || !conv) {
+      console.error("Failed to upsert conversation:", convError?.message || "no data returned");
       return res.status(500).json({ error: "Failed to save conversation" });
     }
 
@@ -262,7 +262,7 @@ router.post("/*", async (req, res) => {
     }
 
     console.log("Inserting message:", { remoteJid, direction: fromMe ? "outbound" : "inbound", content: messageContent?.substring(0, 50), mediaUrl });
-    await supabase.from("messages").insert({
+    const { error: insertError } = await supabase.from("messages").insert({
       conversation_id: conv.id,
       user_id: userId,
       remote_jid: remoteJid,
@@ -273,6 +273,9 @@ router.post("/*", async (req, res) => {
       external_id: externalId,
       media_url: mediaUrl,
     });
+    if (insertError) {
+      console.error("Message insert error:", insertError.message, insertError);
+    }
 
     let flowResumed = false;
     if (!fromMe && messageContent) {

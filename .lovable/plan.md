@@ -1,27 +1,15 @@
 
+## Fix: supabase-js URL Path Mismatch + Chat Persistence — Concluído ✅
 
-## Diagnostico
+### Root Cause
+O backend usava `SUPABASE_URL=http://postgrest:3000`, mas o `supabase-js` adiciona `/rest/v1/` automaticamente, causando 404 no PostgREST.
 
-O upload de midia agora funciona (`Media uploaded: success`). O problema e que o `console.log("Inserting message:", ...)` aparece nos logs, mas o resultado do `supabase.from("messages").insert()` **nao e verificado para erros**. Se o insert falhar (por exemplo, por RLS na tabela `messages` ou constraint violation), o erro e engolido silenciosamente.
+### Mudanças realizadas
 
-## Plano
-
-### 1. Adicionar log de erro no insert de mensagens (`deploy/backend/src/routes/webhook.ts`)
-
-Capturar e logar o resultado do insert para identificar se ha um erro silencioso:
-
-```typescript
-const { error: insertError } = await supabase.from("messages").insert({...});
-if (insertError) {
-  console.error("Message insert error:", insertError.message);
-}
-```
-
-### 2. Adicionar log de erro no insert/upsert de conversas
-
-Mesma verificacao no upsert de conversations (linha 249-253) para garantir que o conversation upsert tambem esta funcionando.
-
-### Resultado esperado
-
-Com os logs de erro adicionados, ao enviar uma nova midia pelo WhatsApp, os logs do backend vao mostrar claramente se o insert esta falhando e qual o erro exato (possivelmente RLS na tabela `messages` ou outro constraint). Isso vai direcionar a correcao definitiva.
-
+| Área | Mudança |
+|------|---------|
+| **nginx** | `server_name` do API server block agora aceita `nginx` e `localhost` como hostnames internos |
+| **docker-compose** | Backend `SUPABASE_URL` alterado de `http://postgrest:3000` → `http://nginx:80`; `depends_on` inclui `nginx` |
+| **portainer-stack** | Mesmas alterações do docker-compose |
+| **check-timeouts** | Logging melhorado com `Object.getOwnPropertyNames` para capturar erros raw |
+| **Evolution API** | `DATABASE_SAVE_DATA_CHATS` alterado de `false` → `true` em ambos os compose files |
