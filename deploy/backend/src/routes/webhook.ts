@@ -22,7 +22,6 @@ function truncate(text: string, max: number): string {
 }
 
 async function downloadAndUploadMedia(
-  supabase: any,
   instanceName: string,
   messageData: any,
   messageType: string,
@@ -61,23 +60,27 @@ async function downloadAndUploadMedia(
       bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    const { error: uploadError } = await supabase.storage
-      .from("chatbot-media")
-      .upload(fileName, bytes, { contentType: mimetype, upsert: false });
+    // Upload direto ao container Storage via HTTP, contornando RLS
+    const storageUrl = process.env.STORAGE_URL || "http://storage:5000";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const uploadResp = await fetch(`${storageUrl}/object/chatbot-media/${fileName}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        "Content-Type": mimetype,
+      },
+      body: bytes,
+    });
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError.message);
+    if (!uploadResp.ok) {
+      const errBody = await uploadResp.text();
+      console.error("Storage direct upload error:", uploadResp.status, errBody);
       return null;
     }
 
-    const { data: publicUrl } = supabase.storage.from("chatbot-media").getPublicUrl(fileName);
-    const rawUrl = publicUrl?.publicUrl || null;
-    if (rawUrl) {
-      const internalBase = process.env.SUPABASE_URL || "http://nginx:80";
-      const externalBase = process.env.API_URL || "";
-      return rawUrl.replace(internalBase, externalBase);
-    }
-    return null;
+    // Construir URL pública manualmente
+    const externalBase = process.env.API_URL || "";
+    return `${externalBase}/storage/v1/object/public/chatbot-media/${fileName}`;
   } catch (e: any) {
     console.error("Media download/upload error:", e.message);
     return null;
