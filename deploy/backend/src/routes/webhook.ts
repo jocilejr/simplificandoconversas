@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import crypto from "crypto";
+import fs from "fs/promises";
+import path from "path";
 
 const router = Router();
 
@@ -60,27 +62,17 @@ async function downloadAndUploadMedia(
       bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    // Upload direto ao container Storage via HTTP, contornando RLS
-    const storageUrl = process.env.STORAGE_URL || "http://storage:5000";
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-    const uploadResp = await fetch(`${storageUrl}/object/chatbot-media/${fileName}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": mimetype,
-      },
-      body: bytes,
-    });
+    // Salvar no filesystem (volume compartilhado com Nginx)
+    const mediaDir = path.join("/media-files", userId);
+    await fs.mkdir(mediaDir, { recursive: true });
 
-    if (!uploadResp.ok) {
-      const errBody = await uploadResp.text();
-      console.error("Storage direct upload error:", uploadResp.status, errBody);
-      return null;
-    }
+    const localFileName = `${crypto.randomUUID()}.${ext}`;
+    const filePath = path.join(mediaDir, localFileName);
+    await fs.writeFile(filePath, bytes);
 
-    // Construir URL pública manualmente
+    // URL pública servida pelo Nginx
     const externalBase = process.env.API_URL || "";
-    return `${externalBase}/storage/v1/object/public/chatbot-media/${fileName}`;
+    return `${externalBase}/media/${userId}/${localFileName}`;
   } catch (e: any) {
     console.error("Media download/upload error:", e.message);
     return null;

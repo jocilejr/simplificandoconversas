@@ -164,6 +164,8 @@ services:
         condition: service_healthy
       gotrue:
         condition: service_started
+    volumes:
+      - chatbot_media:/media-files
     environment:
       PORT: "3001"
       SUPABASE_URL: http://nginx:80
@@ -193,6 +195,7 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./frontend:/usr/share/nginx/html:ro
+      - chatbot_media:/usr/share/nginx/media:ro
     labels:
       - "traefik.enable=true"
       # Frontend
@@ -213,3 +216,4 @@ volumes:
   chatbot_evolution_instances:
   chatbot_evolution_store:
   chatbot_redis:
+  chatbot_media:
