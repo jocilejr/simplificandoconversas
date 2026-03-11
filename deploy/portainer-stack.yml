@@ -213,3 +213,4 @@ volumes:
   chatbot_evolution_instances:
   chatbot_evolution_store:
   chatbot_redis:
+  chatbot_media:

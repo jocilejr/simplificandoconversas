@@ -114,6 +114,14 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Media files (filesystem volume)
+    location /media/ {
+        alias /usr/share/nginx/media/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+    }
+
     # Evolution API
     location /evolution/ {
         if ($request_method = 'OPTIONS') {
