@@ -234,7 +234,7 @@ router.post("/*", async (req, res) => {
 
     let mediaUrl: string | null = null;
     if (messageType !== "text") {
-      mediaUrl = await downloadAndUploadMedia(supabase, instance, data, messageType, userId);
+      mediaUrl = await downloadAndUploadMedia(instance, data, messageType, userId);
       console.log("Media uploaded:", mediaUrl ? "success" : "failed/skipped");
     }
 
