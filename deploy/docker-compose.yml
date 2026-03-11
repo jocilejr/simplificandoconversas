@@ -164,6 +164,8 @@ services:
         condition: service_healthy
       gotrue:
         condition: service_started
+    volumes:
+      - chatbot_media:/media-files
     environment:
       PORT: "3001"
       SUPABASE_URL: http://nginx:80
