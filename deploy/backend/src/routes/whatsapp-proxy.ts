@@ -45,7 +45,13 @@ async function downloadAndUploadMedia(
     if (uploadError) { console.error("Upload error:", uploadError.message); return null; }
 
     const { data: publicUrl } = storageClient.storage.from("chatbot-media").getPublicUrl(fileName);
-    return publicUrl?.publicUrl || null;
+    const rawUrl = publicUrl?.publicUrl || null;
+    if (rawUrl) {
+      const internalBase = process.env.SUPABASE_URL || "http://nginx:80";
+      const externalBase = process.env.API_URL || "";
+      return rawUrl.replace(internalBase, externalBase);
+    }
+    return null;
   } catch (e: any) {
     console.error("Media download/upload error:", e.message);
     return null;

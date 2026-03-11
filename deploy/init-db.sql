@@ -252,8 +252,30 @@ BEGIN
   END IF;
 END $$;
 
--- NOTE: Storage buckets are created by the storage service automatically.
--- The 'chatbot-media' bucket is created via the backend or manually.
+-- ============================================================
+-- STORAGE: Create chatbot-media bucket + policies
+-- ============================================================
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('chatbot-media', 'chatbot-media', true)
+ON CONFLICT (id) DO NOTHING;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE policyname = 'Public read chatbot-media' AND tablename = 'objects'
+  ) THEN
+    CREATE POLICY "Public read chatbot-media" ON storage.objects
+      FOR SELECT USING (bucket_id = 'chatbot-media');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE policyname = 'Auth upload chatbot-media' AND tablename = 'objects'
+  ) THEN
+    CREATE POLICY "Auth upload chatbot-media" ON storage.objects
+      FOR INSERT WITH CHECK (bucket_id = 'chatbot-media');
+  END IF;
+END $$;
 
 -- ============================================================
 -- USER ROLES (RBAC)
