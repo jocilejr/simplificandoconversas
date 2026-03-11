@@ -223,13 +223,23 @@ export function ChatPanel({
                     {msg.media_url && (
                       <div className={cn("mb-2", !msg.content && "-mx-1 -mt-1")}>
                         {msg.message_type === "image" ? (
-                          <img
-                            src={msg.media_url}
-                            alt=""
-                            className="rounded-xl max-w-[360px] max-h-[360px] w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                            loading="lazy"
-                            onClick={() => setLightboxUrl(msg.media_url!)}
-                          />
+                          <>
+                            <img
+                              src={msg.media_url}
+                              alt=""
+                              className="rounded-xl max-w-[360px] max-h-[360px] w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                              loading="lazy"
+                              onClick={() => setLightboxUrl(msg.media_url!)}
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling;
+                                if (fallback) fallback.classList.remove('hidden');
+                              }}
+                            />
+                            <div className="hidden rounded-xl bg-muted p-4 text-xs text-muted-foreground flex items-center gap-2">
+                              📷 Imagem indisponível
+                            </div>
+                          </>
                         ) : msg.message_type === "audio" ? (
                           <WhatsAppAudioPlayer
                             src={msg.media_url}
