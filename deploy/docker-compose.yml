@@ -195,6 +195,7 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./frontend:/usr/share/nginx/html:ro
+      - chatbot_media:/usr/share/nginx/media:ro
     labels:
       - "traefik.enable=true"
       # Frontend
