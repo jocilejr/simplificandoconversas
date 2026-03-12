@@ -142,7 +142,7 @@ async function executeStep(
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       const presence = presenceType === "recording" ? "recording" : "composing";
       try {
-        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence });
+        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence error:`, e);
       }
