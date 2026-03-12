@@ -463,7 +463,7 @@ router.post("/", async (req, res) => {
               instance_name: instanceName,
             });
 
-            const trackingUrl = `${appUrl}/functions/v1/link-redirect?code=${shortCode}`;
+            const trackingUrl = `${appUrl}/r/${shortCode}`;
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
@@ -519,7 +519,7 @@ router.post("/", async (req, res) => {
                 instance_name: instanceName,
               });
 
-              const trackingUrl = `${appUrl}/functions/v1/link-redirect?code=${shortCode}`;
+              const trackingUrl = `${appUrl}/r/${shortCode}`;
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
