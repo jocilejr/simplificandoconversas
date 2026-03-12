@@ -183,6 +183,7 @@ export type Database = {
           instance_name: string | null
           last_message: string | null
           last_message_at: string | null
+          lid: string | null
           phone_number: string | null
           remote_jid: string
           unread_count: number
@@ -195,6 +196,7 @@ export type Database = {
           instance_name?: string | null
           last_message?: string | null
           last_message_at?: string | null
+          lid?: string | null
           phone_number?: string | null
           remote_jid: string
           unread_count?: number
@@ -207,6 +209,7 @@ export type Database = {
           instance_name?: string | null
           last_message?: string | null
           last_message_at?: string | null
+          lid?: string | null
           phone_number?: string | null
           remote_jid?: string
           unread_count?: number
