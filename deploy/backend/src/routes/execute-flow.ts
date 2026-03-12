@@ -116,7 +116,7 @@ async function executeStep(
   if (nodeType === "sendFile" && (stepData as any).fileUrl) {
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
