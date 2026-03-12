@@ -1,19 +1,27 @@
 
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
+## Problema
 
-### Mudanças realizadas
+A URL de tracking gerada é:
+```
+https://app.chatbotsimplificado.com/functions/v1/link-redirect?code=xxx
+```
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+O Nginx na VPS só tem `/functions/v1/` configurado no **API_DOMAIN**, não no **APP_DOMAIN**. Quando o WhatsApp busca essa URL no `APP_DOMAIN`, cai no `location /` que serve o React SPA (`index.html`) com as OG tags padrão do app — ignorando completamente os dados customizados de preview.
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+O bloco `/r/` no APP_DOMAIN já faz o proxy correto para o backend link-redirect. Basta mudar a URL gerada.
+
+## Correção
+
+Trocar a URL de tracking de `/functions/v1/link-redirect?code=XXX` para `/r/XXX` em 2 arquivos:
+
+### 1. `deploy/backend/src/routes/execute-flow.ts`
+- **Linha 466**: `${appUrl}/r/${shortCode}` (em vez de `/functions/v1/link-redirect?code=`)
+- **Linha 522**: mesma mudança
+
+### 2. `supabase/functions/execute-flow/index.ts`
+- **Linha 763**: `${supabaseUrl}/r/${shortCode}` (na edge function, o SUPABASE_URL aponta para o API_DOMAIN, então precisa usar APP_URL ou manter o formato `/functions/v1/` que funciona no Lovable Cloud — vou verificar a variável correta)
+- **Linha 893**: mesma mudança
+
+Na edge function (Lovable Cloud), o formato `/functions/v1/link-redirect?code=` continua correto pois lá é o Supabase real. A mudança principal é no backend Express da VPS.
+
