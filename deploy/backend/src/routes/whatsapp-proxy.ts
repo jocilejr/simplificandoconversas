@@ -602,7 +602,19 @@ router.post("/", async (req, res) => {
       case "fetch-profile-picture": {
         const { remoteJid: picJid } = params;
         if (!picJid) return res.status(400).json({ error: "remoteJid required" });
-        result = await evolutionRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: picJid.split("@")[0] });
+
+        let picNumber = picJid.split("@")[0];
+        // For @lid, resolve to phone_number from conversations
+        if (picJid.includes("@lid")) {
+          const { data: convForPic } = await serviceClient.from("conversations")
+            .select("phone_number")
+            .eq("user_id", userId)
+            .eq("remote_jid", picJid)
+            .maybeSingle();
+          if (convForPic?.phone_number) picNumber = convForPic.phone_number;
+        }
+
+        result = await evolutionRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: picNumber });
         break;
       }
 
