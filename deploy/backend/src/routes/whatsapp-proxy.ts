@@ -388,12 +388,26 @@ router.post("/", async (req, res) => {
                   .eq("user_id", userId)
                   .eq("phone_number", phoneNumber)
                   .eq("instance_name", instName)
-                  .not("lid", "is", null)
                   .limit(1)
                   .maybeSingle();
                 if (byPhone) {
                   existingConv = byPhone;
-                  console.log(`[sync-chats] ${instName}: phone ${phoneNumber} matches @lid conv ${byPhone.id} (lid=${byPhone.lid}), merging`);
+                  console.log(`[sync-chats] ${instName}: phone ${phoneNumber} matches conv ${byPhone.id} (lid=${byPhone.lid}), updating`);
+                } else if (contactName) {
+                  // Fallback: search by contact_name + instance for @lid convs without phone_number yet
+                  const { data: byName } = await serviceClient.from("conversations")
+                    .select("id, remote_jid, lid")
+                    .eq("user_id", userId)
+                    .eq("contact_name", contactName)
+                    .eq("instance_name", instName)
+                    .not("lid", "is", null)
+                    .is("phone_number", null)
+                    .limit(1)
+                    .maybeSingle();
+                  if (byName) {
+                    existingConv = byName;
+                    console.log(`[sync-chats] ${instName}: contact_name "${contactName}" matches @lid conv ${byName.id}, linking phone ${phoneNumber}`);
+                  }
                 }
               }
 
@@ -401,7 +415,7 @@ router.post("/", async (req, res) => {
               let convErr: any = null;
 
               if (existingConv) {
-                // Update existing conversation instead of creating a new one
+                // Update existing conversation — NEVER change remote_jid
                 const updatePayload: Record<string, unknown> = {
                   contact_name: contactName,
                   last_message: lastMsgContent,
@@ -409,10 +423,6 @@ router.post("/", async (req, res) => {
                 };
                 if (phoneNumber) updatePayload.phone_number = phoneNumber;
                 if (isLid) updatePayload.lid = rawJid;
-                // If chat came as phone and we found an @lid conv, update remote_jid to phone
-                if (!isLid && existingConv.remote_jid.includes("@lid")) {
-                  updatePayload.remote_jid = resolvedJid;
-                }
 
                 const { data: updated, error: updateErr } = await serviceClient.from("conversations")
                   .update(updatePayload)
