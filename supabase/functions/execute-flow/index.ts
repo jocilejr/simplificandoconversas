@@ -56,7 +56,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, text: resolvedText }),
+      body: JSON.stringify({ number: num, text: resolvedText }),
     });
     const r = await resp.json();
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
