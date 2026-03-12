@@ -526,6 +526,74 @@ router.post("/", async (req, res) => {
           }
         }
 
+        // === FETCH PROFILE PHOTOS IN BATCH ===
+        try {
+          // Get all conversations that DON'T have a photo yet
+          const { data: allConvs } = await serviceClient.from("conversations")
+            .select("remote_jid, phone_number")
+            .eq("user_id", userId);
+
+          const { data: existingPhotos } = await serviceClient.from("contact_photos")
+            .select("remote_jid")
+            .eq("user_id", userId);
+
+          const existingSet = new Set((existingPhotos || []).map((p: any) => p.remote_jid));
+          const convsNeedingPhoto = (allConvs || []).filter((c: any) => !existingSet.has(c.remote_jid));
+
+          console.log(`[sync-chats] Photos: ${existingSet.size} cached, ${convsNeedingPhoto.length} need fetching`);
+
+          // Get active instance for photo fetching
+          const { data: activeInst } = await serviceClient.from("whatsapp_instances")
+            .select("instance_name")
+            .eq("user_id", userId)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+
+          if (activeInst && convsNeedingPhoto.length > 0) {
+            const photoInstName = activeInst.instance_name;
+            // Process in batches of 3
+            for (let i = 0; i < convsNeedingPhoto.length; i += 3) {
+              const batch = convsNeedingPhoto.slice(i, i + 3);
+              const photoRows: any[] = [];
+
+              await Promise.allSettled(batch.map(async (conv: any) => {
+                try {
+                  // For @lid contacts, use phone_number if available
+                  let numberToQuery = conv.remote_jid.split("@")[0];
+                  if (conv.remote_jid.includes("@lid") && conv.phone_number) {
+                    numberToQuery = conv.phone_number;
+                  }
+
+                  const d = await evolutionRequest(
+                    `/chat/fetchProfilePictureUrl/${encodeURIComponent(photoInstName)}`,
+                    "POST",
+                    { number: numberToQuery }
+                  );
+                  const url = d?.profilePictureUrl;
+                  if (url) {
+                    photoRows.push({
+                      user_id: userId,
+                      remote_jid: conv.remote_jid,
+                      photo_url: url,
+                      updated_at: new Date().toISOString(),
+                    });
+                  }
+                } catch {}
+              }));
+
+              if (photoRows.length > 0) {
+                const { error: photoErr } = await serviceClient.from("contact_photos")
+                  .upsert(photoRows, { onConflict: "user_id,remote_jid" });
+                if (photoErr) console.error("[sync-chats] Photo upsert error:", photoErr);
+                else console.log(`[sync-chats] Saved ${photoRows.length} photos (batch ${Math.floor(i / 3) + 1})`);
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error("[sync-chats] Photo fetch error:", e.message);
+        }
+
         console.log(`[sync-chats] Total chats synced: ${totalSynced}, messages synced: ${totalMessagesSynced}`);
         result = { synced: totalSynced, messagesSynced: totalMessagesSynced, instanceStatuses };
         break;
