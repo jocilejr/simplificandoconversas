@@ -690,6 +690,24 @@ router.post("/", async (req, res) => {
         break;
       }
 
+      case "media-upload": {
+        const { fileBase64, fileName: origName, mimetype } = params;
+        if (!fileBase64 || !origName) {
+          return res.status(400).json({ error: "fileBase64 and fileName are required" });
+        }
+        const ext = origName.split(".").pop() || "bin";
+        const uniqueName = `${crypto.randomUUID()}.${ext}`;
+        const userDir = path.join("/media-files", userId);
+        fs.mkdirSync(userDir, { recursive: true });
+        const filePath = path.join(userDir, uniqueName);
+        fs.writeFileSync(filePath, Buffer.from(fileBase64, "base64"));
+        const apiUrl = process.env.API_URL || "";
+        const publicUrl = `${apiUrl}/media/${userId}/${uniqueName}`;
+        console.log(`[media-upload] Saved ${origName} → ${publicUrl}`);
+        result = { url: publicUrl };
+        break;
+      }
+
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
     }
