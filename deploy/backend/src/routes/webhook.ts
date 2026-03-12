@@ -219,17 +219,29 @@ router.post("/*", async (req, res) => {
     const lastMessagePreview = truncate(messageContent || `[${messageType}]`, 100);
 
     if (fromMe && event === "send.message") {
-      const sendUpsert: Record<string, unknown> = {
-        user_id: userId,
-        remote_jid: remoteJid,
-        last_message: lastMessagePreview,
-        last_message_at: new Date().toISOString(),
-        instance_name: instance,
-      };
-      if (resolvedPhone) sendUpsert.phone_number = resolvedPhone;
-      await supabase
-        .from("conversations")
-        .upsert(sendUpsert, { onConflict: "user_id,remote_jid,instance_name" });
+      if (existingConvId) {
+        // Update existing conv (found by lid or phone_number)
+        const updateData: Record<string, unknown> = {
+          last_message: lastMessagePreview,
+          last_message_at: new Date().toISOString(),
+        };
+        if (resolvedPhone) updateData.phone_number = resolvedPhone;
+        if (lidValue) updateData.lid = lidValue;
+        await supabase.from("conversations").update(updateData).eq("id", existingConvId);
+      } else {
+        const sendUpsert: Record<string, unknown> = {
+          user_id: userId,
+          remote_jid: remoteJid,
+          last_message: lastMessagePreview,
+          last_message_at: new Date().toISOString(),
+          instance_name: instance,
+        };
+        if (resolvedPhone) sendUpsert.phone_number = resolvedPhone;
+        if (lidValue) sendUpsert.lid = lidValue;
+        await supabase
+          .from("conversations")
+          .upsert(sendUpsert, { onConflict: "user_id,remote_jid,instance_name" });
+      }
       return res.json({ ok: true, updated: "conversation" });
     }
 
