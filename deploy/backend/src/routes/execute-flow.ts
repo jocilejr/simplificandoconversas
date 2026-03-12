@@ -152,7 +152,7 @@ async function executeStep(
 
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       try {
-        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence: "paused" });
+        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence: "paused" });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence paused error:`, e);
       }
