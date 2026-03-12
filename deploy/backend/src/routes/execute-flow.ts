@@ -84,7 +84,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    const r = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: jid, audio: stepData.audioUrl });
+    const r = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
