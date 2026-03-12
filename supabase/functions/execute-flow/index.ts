@@ -708,7 +708,7 @@ Deno.serve(async (req) => {
                const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
                 method: "POST",
                 headers: { apikey: apiKey, "Content-Type": "application/json" },
-                body: JSON.stringify({ number: jid, text: aiResponse }),
+                body: JSON.stringify({ number: sendNumber, text: aiResponse }),
               });
               const sendResult = await sendResp.json();
 
