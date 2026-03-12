@@ -44,8 +44,9 @@ async function evolutionRequest(path: string, method: string = "POST", body?: an
 }
 
 async function executeStep(
-  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string
+  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string
 ): Promise<string> {
+  const num = sendNumber || jid;
   const nodeType = stepData.type;
 
   if (nodeType === "trigger") return "trigger: skipped";
