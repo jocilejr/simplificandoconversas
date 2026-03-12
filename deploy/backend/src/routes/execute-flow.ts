@@ -53,7 +53,7 @@ async function executeStep(
 
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
-    const r = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: resolvedText });
+    const r = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText });
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
