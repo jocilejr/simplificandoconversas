@@ -41,8 +41,10 @@ async function executeStep(
   instanceName: string,
   jid: string,
   serviceClient: any,
-  userId: string
+  userId: string,
+  sendNumber?: string
 ): Promise<string> {
+  const num = sendNumber || jid;
   const nodeType = stepData.type;
 
   if (nodeType === "trigger") {
