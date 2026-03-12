@@ -621,13 +621,29 @@ router.post("/", async (req, res) => {
       case "fetch-profile-pictures": {
         const { remoteJids: jids } = params;
         if (!jids || !Array.isArray(jids)) return res.status(400).json({ error: "remoteJids required" });
+
+        // Pre-fetch phone_number for @lid contacts
+        const lidJids = jids.filter((j: string) => j.includes("@lid"));
+        const phoneMap: Record<string, string> = {};
+        if (lidJids.length > 0) {
+          const { data: lidConvs } = await serviceClient.from("conversations")
+            .select("remote_jid, phone_number")
+            .eq("user_id", userId)
+            .in("remote_jid", lidJids);
+          (lidConvs || []).forEach((c: any) => {
+            if (c.phone_number) phoneMap[c.remote_jid] = c.phone_number;
+          });
+        }
+
         const photos: Record<string, string> = {};
         const batches = [];
         for (let i = 0; i < jids.length; i += 10) batches.push(jids.slice(i, i + 10));
         for (const batch of batches) {
           await Promise.allSettled(batch.map(async (jid: string) => {
             try {
-              const d = await evolutionRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: jid.split("@")[0] });
+              let num = jid.split("@")[0];
+              if (jid.includes("@lid") && phoneMap[jid]) num = phoneMap[jid];
+              const d = await evolutionRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: num });
               const url = d?.profilePictureUrl;
               if (url) photos[jid] = url;
             } catch {}
