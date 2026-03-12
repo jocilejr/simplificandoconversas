@@ -4,6 +4,16 @@ server {
     server_name ${APP_DOMAIN};
     client_max_body_size 50M;
 
+    # Link redirect — proxy to backend so bots get OG tags without JS
+    location /r/ {
+        rewrite ^/r/(.+)$ /api/link-redirect?code=$1 break;
+        proxy_pass http://backend:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location / {
         root /usr/share/nginx/html;
         try_files $uri $uri/ /index.html;
