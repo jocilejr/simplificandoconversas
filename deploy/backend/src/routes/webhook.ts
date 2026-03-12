@@ -129,7 +129,9 @@ router.post("/*", async (req, res) => {
       resolvedPhone = remoteJid.split("@")[0];
     }
 
-    // Smart lookup: check if there's an existing conversation with matching lid for this contact
+    // Smart lookup: find existing conversation by lid or phone_number (NEVER change remote_jid)
+    let existingConvId: string | null = null;
+
     if (remoteJid.includes("@s.whatsapp.net") || remoteJid.includes("@lid")) {
       const supabaseLookup = getServiceClient();
       const { data: instRec } = await supabaseLookup
@@ -141,10 +143,10 @@ router.post("/*", async (req, res) => {
 
       if (instRec) {
         if (remoteJid.includes("@lid")) {
-          // Message is @lid: check if we already have a conversation with this lid
+          // Message is @lid: find existing conv by lid
           const { data: lidConv } = await supabaseLookup
             .from("conversations")
-            .select("id, remote_jid")
+            .select("id")
             .eq("user_id", instRec.user_id)
             .eq("lid", remoteJid)
             .eq("instance_name", instance)
@@ -152,31 +154,23 @@ router.post("/*", async (req, res) => {
             .maybeSingle();
 
           if (lidConv) {
-            // Use the existing conversation (which may have been migrated to phone remote_jid)
-            console.log(`[webhook] Found existing conv by lid=${remoteJid}, using remote_jid=${lidConv.remote_jid}`);
-            remoteJid = lidConv.remote_jid;
+            existingConvId = lidConv.id;
+            console.log(`[webhook] Found existing conv by lid=${remoteJid}, conv=${lidConv.id}`);
           }
         } else if (resolvedPhone) {
-          // Message is @s.whatsapp.net: check if there's an existing @lid conversation with this phone
-          const { data: lidConv } = await supabaseLookup
+          // Message is @s.whatsapp.net: find existing conv by phone_number (may be @lid conv)
+          const { data: phoneConv } = await supabaseLookup
             .from("conversations")
-            .select("id, remote_jid, lid")
+            .select("id, remote_jid")
             .eq("user_id", instRec.user_id)
             .eq("phone_number", resolvedPhone)
             .eq("instance_name", instance)
-            .not("lid", "is", null)
             .limit(1)
             .maybeSingle();
 
-          if (lidConv && lidConv.remote_jid.includes("@lid")) {
-            // Migrate: update remote_jid to phone, keep lid
-            console.log(`[webhook] Migrating conv ${lidConv.id} from @lid to phone ${resolvedPhone}`);
-            await supabaseLookup.from("conversations")
-              .update({ remote_jid: remoteJid, phone_number: resolvedPhone })
-              .eq("id", lidConv.id);
-          } else if (lidConv) {
-            console.log(`[webhook] Found existing conv by phone ${resolvedPhone} with lid, using conv ${lidConv.id}`);
-            remoteJid = lidConv.remote_jid;
+          if (phoneConv) {
+            existingConvId = phoneConv.id;
+            console.log(`[webhook] Found existing conv by phone=${resolvedPhone}, conv=${phoneConv.id} (remote_jid=${phoneConv.remote_jid})`);
           }
         }
       }
