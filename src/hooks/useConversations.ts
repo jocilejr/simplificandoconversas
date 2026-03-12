@@ -40,6 +40,10 @@ export function useConversations() {
   };
 
   const deleteConversation = async (conversationId: string) => {
+    // Delete dependents: flow_timeouts → flow_executions → tracked_links → messages → conversation_labels → conversations
+    await supabase.from("flow_timeouts").delete().eq("conversation_id", conversationId);
+    await supabase.from("flow_executions").delete().eq("conversation_id", conversationId);
+    await supabase.from("tracked_links").delete().eq("conversation_id", conversationId);
     await supabase.from("messages").delete().eq("conversation_id", conversationId);
     await supabase.from("conversation_labels").delete().eq("conversation_id", conversationId);
     const { error } = await supabase.from("conversations").delete().eq("id", conversationId);

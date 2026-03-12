@@ -134,7 +134,13 @@ export function ConnectionsSection() {
   const handleDeleteAllConversations = async () => {
     setDeletingAll(true);
     try {
-      // Delete in order: messages → conversation_labels → conversations
+      // Delete in order: flow_timeouts → flow_executions → tracked_links → messages → conversation_labels → conversations
+      const { error: toErr } = await supabase.from("flow_timeouts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (toErr) throw toErr;
+      const { error: feErr } = await supabase.from("flow_executions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (feErr) throw feErr;
+      const { error: tlErr } = await supabase.from("tracked_links").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (tlErr) throw tlErr;
       const { error: msgErr } = await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       if (msgErr) throw msgErr;
       const { error: labelsErr } = await supabase.from("conversation_labels").delete().neq("id", "00000000-0000-0000-0000-000000000000");
