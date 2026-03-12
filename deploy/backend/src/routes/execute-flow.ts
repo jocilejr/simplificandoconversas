@@ -575,7 +575,7 @@ router.post("/", async (req, res) => {
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, instanceName, jid, serviceClient, userId);
+          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber);
           results.push(result);
         }
       } catch (err: any) {
