@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Upload, X, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +12,19 @@ interface MediaUploadProps {
   onChange: (url: string) => void;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Remove data:...;base64, prefix
+      resolve(result.split(",")[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export function MediaUpload({ label, value, accept, onChange }: MediaUploadProps) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -23,20 +35,21 @@ export function MediaUpload({ label, value, accept, onChange }: MediaUploadProps
 
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `${crypto.randomUUID()}.${ext}`;
+      const fileBase64 = await fileToBase64(file);
 
-      const { error } = await supabase.storage
-        .from("chatbot-media")
-        .upload(path, file);
+      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: {
+          action: "media-upload",
+          fileBase64,
+          fileName: file.name,
+          mimetype: file.type,
+        },
+      });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      const { data: urlData } = supabase.storage
-        .from("chatbot-media")
-        .getPublicUrl(path);
-
-      onChange(urlData.publicUrl);
+      onChange(data.url);
       toast.success("Arquivo enviado!");
     } catch (err: any) {
       toast.error("Erro ao enviar: " + err.message);
