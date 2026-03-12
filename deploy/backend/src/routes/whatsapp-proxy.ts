@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 
 const router = Router();
 
