@@ -202,6 +202,16 @@ router.post("/", async (req, res) => {
 
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 
+    // Resolve sendNumber: if jid is @lid, use phone_number for Evolution API calls
+    let sendNumber = jid;
+    if (jid.includes("@lid")) {
+      if (bodyResolvedPhone) {
+        sendNumber = bodyResolvedPhone.includes("@") ? bodyResolvedPhone : `${bodyResolvedPhone}@s.whatsapp.net`;
+        console.log(`[execute-flow] Using resolvedPhone from webhook: ${sendNumber}`);
+      }
+      // Will also try conversation lookup below
+    }
+
     let instanceName = bodyInstanceName;
     if (!instanceName) {
       const { data: activeInst } = await serviceClient
