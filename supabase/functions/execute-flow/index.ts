@@ -1004,7 +1004,7 @@ Deno.serve(async (req) => {
                 results.push(`group.${step.id}: action: ${actionType} (no-op)`);
               }
             } else {
-              const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
