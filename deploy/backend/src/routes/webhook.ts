@@ -108,8 +108,10 @@ router.post("/*", async (req, res) => {
     // Resolve @lid: try to find the real phone number but KEEP remote_jid as-is
     let resolvedPhone: string | null = null;
     const originalLid = remoteJid;
+    let lidValue: string | null = null;
 
     if (remoteJid && remoteJid.includes("@lid")) {
+      lidValue = remoteJid;
       const senderPn = key.senderPn || data.senderPn;
       if (senderPn) {
         resolvedPhone = senderPn;
@@ -127,8 +129,8 @@ router.post("/*", async (req, res) => {
       resolvedPhone = remoteJid.split("@")[0];
     }
 
-    // Smart lookup: if message comes with a phone number, check if there's an existing @lid conversation for this contact
-    if (resolvedPhone && remoteJid.includes("@s.whatsapp.net")) {
+    // Smart lookup: check if there's an existing conversation with matching lid for this contact
+    if (remoteJid.includes("@s.whatsapp.net") || remoteJid.includes("@lid")) {
       const supabaseLookup = getServiceClient();
       const { data: instRec } = await supabaseLookup
         .from("whatsapp_instances")
@@ -138,19 +140,44 @@ router.post("/*", async (req, res) => {
         .single();
 
       if (instRec) {
-        // Check if there's an existing @lid conversation with this phone_number
-        const { data: lidConv } = await supabaseLookup
-          .from("conversations")
-          .select("id, remote_jid")
-          .eq("user_id", instRec.user_id)
-          .eq("phone_number", resolvedPhone)
-          .eq("instance_name", instance)
-          .limit(1);
+        if (remoteJid.includes("@lid")) {
+          // Message is @lid: check if we already have a conversation with this lid
+          const { data: lidConv } = await supabaseLookup
+            .from("conversations")
+            .select("id, remote_jid")
+            .eq("user_id", instRec.user_id)
+            .eq("lid", remoteJid)
+            .eq("instance_name", instance)
+            .limit(1)
+            .maybeSingle();
 
-        if (lidConv && lidConv.length > 0 && lidConv[0].remote_jid.includes("@lid")) {
-          // Use the existing @lid conversation instead of creating a new one
-          console.log(`[webhook] Found existing @lid conv for phone ${resolvedPhone}, using conv ${lidConv[0].id}`);
-          remoteJid = lidConv[0].remote_jid;
+          if (lidConv) {
+            // Use the existing conversation (which may have been migrated to phone remote_jid)
+            console.log(`[webhook] Found existing conv by lid=${remoteJid}, using remote_jid=${lidConv.remote_jid}`);
+            remoteJid = lidConv.remote_jid;
+          }
+        } else if (resolvedPhone) {
+          // Message is @s.whatsapp.net: check if there's an existing @lid conversation with this phone
+          const { data: lidConv } = await supabaseLookup
+            .from("conversations")
+            .select("id, remote_jid, lid")
+            .eq("user_id", instRec.user_id)
+            .eq("phone_number", resolvedPhone)
+            .eq("instance_name", instance)
+            .not("lid", "is", null)
+            .limit(1)
+            .maybeSingle();
+
+          if (lidConv && lidConv.remote_jid.includes("@lid")) {
+            // Migrate: update remote_jid to phone, keep lid
+            console.log(`[webhook] Migrating conv ${lidConv.id} from @lid to phone ${resolvedPhone}`);
+            await supabaseLookup.from("conversations")
+              .update({ remote_jid: remoteJid, phone_number: resolvedPhone })
+              .eq("id", lidConv.id);
+          } else if (lidConv) {
+            console.log(`[webhook] Found existing conv by phone ${resolvedPhone} with lid, using conv ${lidConv.id}`);
+            remoteJid = lidConv.remote_jid;
+          }
         }
       }
     }
