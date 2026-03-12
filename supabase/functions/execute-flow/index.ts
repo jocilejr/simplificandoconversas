@@ -182,7 +182,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, mediatype: "document", media: stepData.fileUrl, fileName, mimetype: "application/pdf" }),
+      body: JSON.stringify({ number: num, mediatype: "document", media: stepData.fileUrl, fileName, mimetype: "application/pdf" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
