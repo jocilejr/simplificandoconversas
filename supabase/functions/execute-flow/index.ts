@@ -118,7 +118,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, audio: stepData.audioUrl }),
+      body: JSON.stringify({ number: num, audio: stepData.audioUrl }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
