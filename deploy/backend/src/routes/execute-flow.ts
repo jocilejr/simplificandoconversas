@@ -569,7 +569,7 @@ router.post("/", async (req, res) => {
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
             } else {
-              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
