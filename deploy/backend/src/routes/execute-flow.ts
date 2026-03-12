@@ -257,10 +257,34 @@ router.post("/", async (req, res) => {
     let resolvedConversationId = conversationId || null;
     if (!resolvedConversationId && jid && instanceName) {
       const { data: convLookup } = await serviceClient
-        .from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid)
+        .from("conversations").select("id, phone_number").eq("user_id", userId).eq("remote_jid", jid)
         .eq("instance_name", instanceName).limit(1).single();
-      if (convLookup) resolvedConversationId = convLookup.id;
+      if (convLookup) {
+        resolvedConversationId = convLookup.id;
+        // If sendNumber is still @lid, try to resolve from conversation phone_number
+        if (sendNumber.includes("@lid") && convLookup.phone_number) {
+          sendNumber = convLookup.phone_number.includes("@") ? convLookup.phone_number : `${convLookup.phone_number}@s.whatsapp.net`;
+          console.log(`[execute-flow] Resolved sendNumber from conversation phone_number: ${sendNumber}`);
+        }
+      }
     }
+
+    // Also try lookup by lid if still unresolved
+    if (sendNumber.includes("@lid") && instanceName) {
+      const { data: lidConv } = await serviceClient
+        .from("conversations").select("phone_number").eq("user_id", userId).eq("lid", jid)
+        .eq("instance_name", instanceName).limit(1).maybeSingle();
+      if (lidConv?.phone_number) {
+        sendNumber = lidConv.phone_number.includes("@") ? lidConv.phone_number : `${lidConv.phone_number}@s.whatsapp.net`;
+        console.log(`[execute-flow] Resolved sendNumber from lid lookup: ${sendNumber}`);
+      }
+    }
+
+    if (sendNumber.includes("@lid")) {
+      console.error(`[execute-flow] WARN: Could not resolve phone for @lid ${jid}, messages will likely fail`);
+    }
+
+    console.log(`[execute-flow] sendNumber=${sendNumber}, jid=${jid}`);
 
     console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
 
