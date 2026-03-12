@@ -227,7 +227,7 @@ async function executeStep(
         await fetch(`${baseUrl}/message/sendPresence/${instanceName}`, {
           method: "POST",
           headers: { apikey: apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ number: jid, presence }),
+          body: JSON.stringify({ number: num, presence }),
         });
       } catch (e) {
         console.log(`[execute-flow] sendPresence error:`, e);
