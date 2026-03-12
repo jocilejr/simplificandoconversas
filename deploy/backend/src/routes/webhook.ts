@@ -265,28 +265,43 @@ router.post("/*", async (req, res) => {
 
     const contactName = !fromMe ? (data.pushName || null) : null;
 
-    const upsertData: Record<string, unknown> = {
-      user_id: userId,
-      remote_jid: remoteJid,
-      last_message: lastMessagePreview,
-      last_message_at: new Date().toISOString(),
-      instance_name: instance,
-    };
-    if (contactName) {
-      upsertData.contact_name = contactName;
-    }
-    if (resolvedPhone) {
-      upsertData.phone_number = resolvedPhone;
-    }
-    if (lidValue) {
-      upsertData.lid = lidValue;
-    }
+    let conv: { id: string } | null = null;
+    let convError: any = null;
 
-    const { data: conv, error: convError } = await supabase
-      .from("conversations")
-      .upsert(upsertData, { onConflict: "user_id,remote_jid,instance_name" })
-      .select("id")
-      .single();
+    if (existingConvId) {
+      // Update existing conv found by lid or phone_number
+      const updateData: Record<string, unknown> = {
+        last_message: lastMessagePreview,
+        last_message_at: new Date().toISOString(),
+      };
+      if (contactName) updateData.contact_name = contactName;
+      if (resolvedPhone) updateData.phone_number = resolvedPhone;
+      if (lidValue) updateData.lid = lidValue;
+
+      const { error } = await supabase.from("conversations").update(updateData).eq("id", existingConvId);
+      conv = { id: existingConvId };
+      convError = error;
+    } else {
+      // No existing conv found — upsert with remote_jid as-is
+      const upsertData: Record<string, unknown> = {
+        user_id: userId,
+        remote_jid: remoteJid,
+        last_message: lastMessagePreview,
+        last_message_at: new Date().toISOString(),
+        instance_name: instance,
+      };
+      if (contactName) upsertData.contact_name = contactName;
+      if (resolvedPhone) upsertData.phone_number = resolvedPhone;
+      if (lidValue) upsertData.lid = lidValue;
+
+      const { data: upserted, error } = await supabase
+        .from("conversations")
+        .upsert(upsertData, { onConflict: "user_id,remote_jid,instance_name" })
+        .select("id")
+        .single();
+      conv = upserted;
+      convError = error;
+    }
 
     if (convError || !conv) {
       console.error("Failed to upsert conversation:", convError?.message || "no data returned");
