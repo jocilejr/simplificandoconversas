@@ -417,7 +417,7 @@ async function checkAndTriggerFlows(
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
       },
-      body: JSON.stringify({ flowId: flow.id, remoteJid, conversationId, userId, instanceName }),
+      body: JSON.stringify({ flowId: flow.id, remoteJid, conversationId, userId, instanceName, resolvedPhone }),
     })
       .then(r => r.json())
       .then(r => console.log(`Flow ${flow.id} trigger result:`, r))

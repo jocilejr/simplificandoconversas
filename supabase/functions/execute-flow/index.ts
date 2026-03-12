@@ -41,8 +41,10 @@ async function executeStep(
   instanceName: string,
   jid: string,
   serviceClient: any,
-  userId: string
+  userId: string,
+  sendNumber?: string
 ): Promise<string> {
+  const num = sendNumber || jid;
   const nodeType = stepData.type;
 
   if (nodeType === "trigger") {
@@ -54,7 +56,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, text: resolvedText }),
+      body: JSON.stringify({ number: num, text: resolvedText }),
     });
     const r = await resp.json();
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
@@ -85,7 +87,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }),
+      body: JSON.stringify({ number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
@@ -116,7 +118,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, audio: stepData.audioUrl }),
+      body: JSON.stringify({ number: num, audio: stepData.audioUrl }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
@@ -147,7 +149,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
+      body: JSON.stringify({ number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
@@ -180,7 +182,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, mediatype: "document", media: stepData.fileUrl, fileName, mimetype: "application/pdf" }),
+      body: JSON.stringify({ number: num, mediatype: "document", media: stepData.fileUrl, fileName, mimetype: "application/pdf" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
@@ -225,7 +227,7 @@ async function executeStep(
         await fetch(`${baseUrl}/message/sendPresence/${instanceName}`, {
           method: "POST",
           headers: { apikey: apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ number: jid, presence }),
+          body: JSON.stringify({ number: num, presence }),
         });
       } catch (e) {
         console.log(`[execute-flow] sendPresence error:`, e);
@@ -242,7 +244,7 @@ async function executeStep(
         await fetch(`${baseUrl}/message/sendPresence/${instanceName}`, {
           method: "POST",
           headers: { apikey: apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ number: jid, presence: "paused" }),
+          body: JSON.stringify({ number: num, presence: "paused" }),
         });
       } catch (e) {
         console.log(`[execute-flow] sendPresence paused error:`, e);
@@ -285,7 +287,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const isServiceRole = token === serviceRoleKey;
 
-    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName } = await req.json();
+    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName, resolvedPhone: bodyResolvedPhone } = await req.json();
 
     let userId: string;
     if (isServiceRole && bodyUserId) {
@@ -314,6 +316,15 @@ Deno.serve(async (req) => {
     }
 
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+
+    // Resolve sendNumber: if jid is @lid, use phone_number for Evolution API calls
+    let sendNumber = jid;
+    if (jid.includes("@lid")) {
+      if (bodyResolvedPhone) {
+        sendNumber = bodyResolvedPhone.includes("@") ? bodyResolvedPhone : `${bodyResolvedPhone}@s.whatsapp.net`;
+        console.log(`[execute-flow] Using resolvedPhone from webhook: ${sendNumber}`);
+      }
+    }
 
     // Run all initial queries in parallel for faster startup
     const [flowResult, profileResult, activeInstanceResult, activeExecsResult] = await Promise.all([
@@ -401,7 +412,7 @@ Deno.serve(async (req) => {
     if (!resolvedConversationId && jid && instanceName) {
       const { data: convLookup } = await serviceClient
         .from("conversations")
-        .select("id")
+        .select("id, phone_number")
         .eq("user_id", userId)
         .eq("remote_jid", jid)
         .eq("instance_name", instanceName)
@@ -410,9 +421,29 @@ Deno.serve(async (req) => {
       if (convLookup) {
         resolvedConversationId = convLookup.id;
         console.log(`[execute-flow] Auto-resolved conversation_id: ${resolvedConversationId}`);
+        if (sendNumber.includes("@lid") && convLookup.phone_number) {
+          sendNumber = convLookup.phone_number.includes("@") ? convLookup.phone_number : `${convLookup.phone_number}@s.whatsapp.net`;
+          console.log(`[execute-flow] Resolved sendNumber from conversation phone_number: ${sendNumber}`);
+        }
       }
     }
 
+    // Also try lookup by lid if still unresolved
+    if (sendNumber.includes("@lid") && instanceName) {
+      const { data: lidConv } = await serviceClient
+        .from("conversations").select("phone_number").eq("user_id", userId).eq("lid", jid)
+        .eq("instance_name", instanceName).limit(1).maybeSingle();
+      if (lidConv?.phone_number) {
+        sendNumber = lidConv.phone_number.includes("@") ? lidConv.phone_number : `${lidConv.phone_number}@s.whatsapp.net`;
+        console.log(`[execute-flow] Resolved sendNumber from lid lookup: ${sendNumber}`);
+      }
+    }
+
+    if (sendNumber.includes("@lid")) {
+      console.error(`[execute-flow] WARN: Could not resolve phone for @lid ${jid}, messages will likely fail`);
+    }
+
+    console.log(`[execute-flow] sendNumber=${sendNumber}, jid=${jid}`);
     console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
 
     const { data: execution, error: execErr } = await serviceClient
@@ -677,7 +708,7 @@ Deno.serve(async (req) => {
                const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
                 method: "POST",
                 headers: { apikey: apiKey, "Content-Type": "application/json" },
-                body: JSON.stringify({ number: jid, text: aiResponse }),
+                body: JSON.stringify({ number: sendNumber, text: aiResponse }),
               });
               const sendResult = await sendResp.json();
 
@@ -737,7 +768,7 @@ Deno.serve(async (req) => {
              const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
               method: "POST",
               headers: { apikey: apiKey, "Content-Type": "application/json" },
-              body: JSON.stringify({ number: jid, text: messageText }),
+              body: JSON.stringify({ number: sendNumber, text: messageText }),
             });
             const sendResult = await sendResp.json();
 
@@ -866,7 +897,7 @@ Deno.serve(async (req) => {
                const sendResp = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
                 method: "POST",
                 headers: { apikey: apiKey, "Content-Type": "application/json" },
-                body: JSON.stringify({ number: jid, text: messageText }),
+                body: JSON.stringify({ number: sendNumber, text: messageText }),
               });
               const sendResult = await sendResp.json();
 
@@ -973,13 +1004,13 @@ Deno.serve(async (req) => {
                 results.push(`group.${step.id}: action: ${actionType} (no-op)`);
               }
             } else {
-              const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, baseUrl, apiKey, instanceName, jid, serviceClient, userId);
+          const result = await executeStep(data, baseUrl, apiKey, instanceName, jid, serviceClient, userId, sendNumber);
           results.push(result);
         }
       } catch (err: any) {

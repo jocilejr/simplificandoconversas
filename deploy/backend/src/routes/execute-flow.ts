@@ -44,15 +44,16 @@ async function evolutionRequest(path: string, method: string = "POST", body?: an
 }
 
 async function executeStep(
-  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string
+  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string
 ): Promise<string> {
+  const num = sendNumber || jid;
   const nodeType = stepData.type;
 
   if (nodeType === "trigger") return "trigger: skipped";
 
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
-    const r = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: resolvedText });
+    const r = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText });
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -68,7 +69,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -83,7 +84,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    const r = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: jid, audio: stepData.audioUrl });
+    const r = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -98,7 +99,7 @@ async function executeStep(
   }
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -115,7 +116,7 @@ async function executeStep(
   if (nodeType === "sendFile" && (stepData as any).fileUrl) {
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: jid, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
+    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -141,7 +142,7 @@ async function executeStep(
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       const presence = presenceType === "recording" ? "recording" : "composing";
       try {
-        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence });
+        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence error:`, e);
       }
@@ -151,7 +152,7 @@ async function executeStep(
 
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       try {
-        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: jid, presence: "paused" });
+        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence: "paused" });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence paused error:`, e);
       }
@@ -178,7 +179,7 @@ router.post("/", async (req, res) => {
     const token = authHeader.replace("Bearer ", "");
     const isServiceRole = token === SERVICE_ROLE_KEY;
 
-    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName } = req.body;
+    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName, resolvedPhone: bodyResolvedPhone } = req.body;
 
     let userId: string;
     if (isServiceRole && bodyUserId) {
@@ -200,6 +201,16 @@ router.post("/", async (req, res) => {
     }
 
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+
+    // Resolve sendNumber: if jid is @lid, use phone_number for Evolution API calls
+    let sendNumber = jid;
+    if (jid.includes("@lid")) {
+      if (bodyResolvedPhone) {
+        sendNumber = bodyResolvedPhone.includes("@") ? bodyResolvedPhone : `${bodyResolvedPhone}@s.whatsapp.net`;
+        console.log(`[execute-flow] Using resolvedPhone from webhook: ${sendNumber}`);
+      }
+      // Will also try conversation lookup below
+    }
 
     let instanceName = bodyInstanceName;
     if (!instanceName) {
@@ -246,10 +257,34 @@ router.post("/", async (req, res) => {
     let resolvedConversationId = conversationId || null;
     if (!resolvedConversationId && jid && instanceName) {
       const { data: convLookup } = await serviceClient
-        .from("conversations").select("id").eq("user_id", userId).eq("remote_jid", jid)
+        .from("conversations").select("id, phone_number").eq("user_id", userId).eq("remote_jid", jid)
         .eq("instance_name", instanceName).limit(1).single();
-      if (convLookup) resolvedConversationId = convLookup.id;
+      if (convLookup) {
+        resolvedConversationId = convLookup.id;
+        // If sendNumber is still @lid, try to resolve from conversation phone_number
+        if (sendNumber.includes("@lid") && convLookup.phone_number) {
+          sendNumber = convLookup.phone_number.includes("@") ? convLookup.phone_number : `${convLookup.phone_number}@s.whatsapp.net`;
+          console.log(`[execute-flow] Resolved sendNumber from conversation phone_number: ${sendNumber}`);
+        }
+      }
     }
+
+    // Also try lookup by lid if still unresolved
+    if (sendNumber.includes("@lid") && instanceName) {
+      const { data: lidConv } = await serviceClient
+        .from("conversations").select("phone_number").eq("user_id", userId).eq("lid", jid)
+        .eq("instance_name", instanceName).limit(1).maybeSingle();
+      if (lidConv?.phone_number) {
+        sendNumber = lidConv.phone_number.includes("@") ? lidConv.phone_number : `${lidConv.phone_number}@s.whatsapp.net`;
+        console.log(`[execute-flow] Resolved sendNumber from lid lookup: ${sendNumber}`);
+      }
+    }
+
+    if (sendNumber.includes("@lid")) {
+      console.error(`[execute-flow] WARN: Could not resolve phone for @lid ${jid}, messages will likely fail`);
+    }
+
+    console.log(`[execute-flow] sendNumber=${sendNumber}, jid=${jid}`);
 
     console.log(`[execute-flow] Starting flow ${flowId} for ${jid}`);
 
@@ -404,7 +439,7 @@ router.post("/", async (req, res) => {
             const aiResponse = aiData?.choices?.[0]?.message?.content || "";
 
             if (data.aiAutoSend !== false && aiResponse) {
-              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: aiResponse });
+              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: aiResponse });
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -432,7 +467,7 @@ router.post("/", async (req, res) => {
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-            const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
+            const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText });
             const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
             if (conv) {
               await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -488,7 +523,7 @@ router.post("/", async (req, res) => {
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: jid, text: messageText });
+              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText });
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -534,13 +569,13 @@ router.post("/", async (req, res) => {
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
             } else {
-              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId);
+              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, instanceName, jid, serviceClient, userId);
+          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber);
           results.push(result);
         }
       } catch (err: any) {
