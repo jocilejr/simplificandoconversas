@@ -149,7 +149,7 @@ async function executeStep(
     const resp = await fetch(`${baseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { apikey: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: jid, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
+      body: JSON.stringify({ number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }),
     });
     const r = await resp.json();
     const { data: conv } = await serviceClient
