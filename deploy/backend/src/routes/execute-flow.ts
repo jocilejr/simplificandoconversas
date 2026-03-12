@@ -179,7 +179,7 @@ router.post("/", async (req, res) => {
     const token = authHeader.replace("Bearer ", "");
     const isServiceRole = token === SERVICE_ROLE_KEY;
 
-    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName } = req.body;
+    const { flowId, remoteJid, conversationId, userId: bodyUserId, resumeFromNodeId, instanceName: bodyInstanceName, resolvedPhone: bodyResolvedPhone } = req.body;
 
     let userId: string;
     if (isServiceRole && bodyUserId) {
