@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS public.conversations (
   last_message_at timestamptz DEFAULT now(),
   unread_count integer NOT NULL DEFAULT 0,
   instance_name text,
+  phone_number text,
+  lid text,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (user_id, remote_jid, instance_name)
 );
