@@ -1,15 +1,21 @@
+## Problema
 
-## Fix: supabase-js URL Path Mismatch + Chat Persistence — Concluído ✅
+O erro `foreign key constraint "flow_executions_conversation_id"` ocorre porque as tabelas `flow_executions`, `flow_timeouts` e `tracked_links` referenciam `conversations.id`. Ao tentar deletar conversas, essas linhas dependentes bloqueiam a exclusao.
 
-### Root Cause
-O backend usava `SUPABASE_URL=http://postgrest:3000`, mas o `supabase-js` adiciona `/rest/v1/` automaticamente, causando 404 no PostgREST.
+## Alteracoes
 
-### Mudanças realizadas
+### 1. `src/components/settings/ConnectionsSection.tsx` — handleDeleteAllConversations
 
-| Área | Mudança |
-|------|---------|
-| **nginx** | `server_name` do API server block agora aceita `nginx` e `localhost` como hostnames internos |
-| **docker-compose** | Backend `SUPABASE_URL` alterado de `http://postgrest:3000` → `http://nginx:80`; `depends_on` inclui `nginx` |
-| **portainer-stack** | Mesmas alterações do docker-compose |
-| **check-timeouts** | Logging melhorado com `Object.getOwnPropertyNames` para capturar erros raw |
-| **Evolution API** | `DATABASE_SAVE_DATA_CHATS` alterado de `false` → `true` em ambos os compose files |
+Adicionar delecao das tabelas dependentes **antes** de deletar conversations:
+
+```
+flow_timeouts → flow_executions → tracked_links → messages → conversation_labels → conversations
+```
+
+### 2. `src/hooks/useConversations.ts` — deleteConversation (individual)
+
+Mesma logica: antes de deletar uma conversa individual, deletar `flow_timeouts`, `flow_executions` e `tracked_links` associados a ela.
+
+### 3. Sobre o erro de edge function no sync
+
+Estou tendo erro no edge function do sync, mas ele funciona para puxar as conversas. (Isso ocorre na VPS)
