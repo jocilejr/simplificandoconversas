@@ -6,7 +6,7 @@ export function useContactPhoto(remoteJid: string | null) {
   return useQuery({
     queryKey: ["contact-photo", remoteJid],
     enabled: !!remoteJid,
-    staleTime: 1000 * 60 * 60,
+    staleTime: 1000 * 60 * 60 * 24,
     retry: false,
     queryFn: async () => {
       // Try cached first
@@ -45,7 +45,7 @@ export function useContactPhotos(remoteJids: string[]) {
   const query = useQuery({
     queryKey: ["contact-photos", key],
     enabled: remoteJids.length > 0,
-    staleTime: 1000 * 60 * 60,
+    staleTime: 1000 * 60 * 60 * 24,
     retry: false,
     queryFn: async () => {
       const { data } = await supabase
