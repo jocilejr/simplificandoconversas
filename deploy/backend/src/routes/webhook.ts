@@ -339,7 +339,7 @@ router.post("/*", async (req, res) => {
 
     if (!fromMe && messageContent && !flowResumed) {
       try {
-        await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance);
+        await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance, resolvedPhone);
       } catch (triggerErr: any) {
         console.error("Flow trigger error (non-fatal):", triggerErr);
       }
