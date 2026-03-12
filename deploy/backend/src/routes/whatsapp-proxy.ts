@@ -349,11 +349,8 @@ router.post("/", async (req, res) => {
               const rawJid = extractJid(chat);
               if (!rawJid) continue;
 
-              // Accept @lid as-is; will be migrated to real phone via webhook
+              const isLid = rawJid.includes("@lid");
               const resolvedJid = rawJid;
-              if (rawJid.includes("@lid")) {
-                console.log(`[sync-chats] ${instName}: Saving @lid ${rawJid} as-is (will migrate via webhook)`);
-              }
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
               const lastMsgContent = chat.lastMessage?.message?.conversation
@@ -364,23 +361,89 @@ router.post("/", async (req, res) => {
                 ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
 
-              // Determine phone_number: if JID is @s.whatsapp.net, extract number; if @lid, null
               const phoneNumber = resolvedJid.includes("@s.whatsapp.net")
                 ? resolvedJid.split("@")[0]
                 : null;
 
-              // Upsert conversation using resolved JID
-              const { data: convData, error: convErr } = await serviceClient.from("conversations").upsert({
-                user_id: userId,
-                remote_jid: resolvedJid,
-                contact_name: contactName,
-                instance_name: instName,
-                last_message: lastMsgContent,
-                last_message_at: lastTs,
-                phone_number: phoneNumber,
-              }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").maybeSingle();
-              if (convErr) console.error(`[sync-chats] Conv upsert error for ${resolvedJid}:`, convErr);
-              else console.log(`[sync-chats] Conv upserted for ${resolvedJid}: ${convData?.id} (${contactName})`);
+              // --- LID DEDUP LOGIC ---
+              let existingConv: any = null;
+
+              if (isLid) {
+                // Chat is @lid: check if we already have a conversation with this lid in this instance
+                const { data: byLid } = await serviceClient.from("conversations")
+                  .select("id, remote_jid")
+                  .eq("user_id", userId)
+                  .eq("lid", rawJid)
+                  .eq("instance_name", instName)
+                  .limit(1)
+                  .maybeSingle();
+                if (byLid) {
+                  existingConv = byLid;
+                  console.log(`[sync-chats] ${instName}: @lid ${rawJid} already exists as conv ${byLid.id} (remote_jid=${byLid.remote_jid}), updating`);
+                }
+              } else if (phoneNumber) {
+                // Chat is @s.whatsapp.net: check if there's an existing @lid conversation with this phone_number
+                const { data: byPhone } = await serviceClient.from("conversations")
+                  .select("id, remote_jid, lid")
+                  .eq("user_id", userId)
+                  .eq("phone_number", phoneNumber)
+                  .eq("instance_name", instName)
+                  .not("lid", "is", null)
+                  .limit(1)
+                  .maybeSingle();
+                if (byPhone) {
+                  existingConv = byPhone;
+                  console.log(`[sync-chats] ${instName}: phone ${phoneNumber} matches @lid conv ${byPhone.id} (lid=${byPhone.lid}), merging`);
+                }
+              }
+
+              let convData: any = null;
+              let convErr: any = null;
+
+              if (existingConv) {
+                // Update existing conversation instead of creating a new one
+                const updatePayload: Record<string, unknown> = {
+                  contact_name: contactName,
+                  last_message: lastMsgContent,
+                  last_message_at: lastTs,
+                };
+                if (phoneNumber) updatePayload.phone_number = phoneNumber;
+                if (isLid) updatePayload.lid = rawJid;
+                // If chat came as phone and we found an @lid conv, update remote_jid to phone
+                if (!isLid && existingConv.remote_jid.includes("@lid")) {
+                  updatePayload.remote_jid = resolvedJid;
+                }
+
+                const { data: updated, error: updateErr } = await serviceClient.from("conversations")
+                  .update(updatePayload)
+                  .eq("id", existingConv.id)
+                  .select("id")
+                  .maybeSingle();
+                convData = updated;
+                convErr = updateErr;
+              } else {
+                // No existing match — upsert normally
+                const upsertPayload: Record<string, unknown> = {
+                  user_id: userId,
+                  remote_jid: resolvedJid,
+                  contact_name: contactName,
+                  instance_name: instName,
+                  last_message: lastMsgContent,
+                  last_message_at: lastTs,
+                  phone_number: phoneNumber,
+                };
+                if (isLid) upsertPayload.lid = rawJid;
+
+                const { data: upserted, error: upsertErr } = await serviceClient.from("conversations").upsert(
+                  upsertPayload,
+                  { onConflict: "user_id,remote_jid,instance_name" }
+                ).select("id").maybeSingle();
+                convData = upserted;
+                convErr = upsertErr;
+              }
+
+              if (convErr) console.error(`[sync-chats] Conv error for ${resolvedJid}:`, convErr);
+              else console.log(`[sync-chats] Conv OK for ${resolvedJid}: ${convData?.id} (${contactName})`);
               totalSynced++;
 
               if (!convData) continue;

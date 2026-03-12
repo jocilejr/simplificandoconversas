@@ -272,6 +272,9 @@ router.post("/*", async (req, res) => {
     if (resolvedPhone) {
       upsertData.phone_number = resolvedPhone;
     }
+    if (lidValue) {
+      upsertData.lid = lidValue;
+    }
 
     const { data: conv, error: convError } = await supabase
       .from("conversations")
