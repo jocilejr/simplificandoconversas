@@ -840,6 +840,48 @@ router.post("/", async (req, res) => {
         break;
       }
 
+      case "debug-findcontacts": {
+        if (!instanceName) return res.status(400).json({ error: "No active instance" });
+        const rawContacts = await evolutionRequest(`/chat/findContacts/${encodeURIComponent(instanceName)}`, "POST", {});
+        const contactList = Array.isArray(rawContacts) ? rawContacts : [];
+        const individual = contactList.filter((c: any) => {
+          const jid = c.id || c.remoteJid || c.jid || "";
+          if (!jid) return false;
+          if (jid.includes("@g.us") || jid === "status@broadcast") return false;
+          return jid.includes("@s.whatsapp.net") || jid.includes("@lid");
+        });
+        result = {
+          totalContacts: contactList.length,
+          individualContacts: individual.length,
+          first10: individual.slice(0, 10).map((c: any) => ({
+            id: c.id || c.remoteJid || c.jid,
+            pushName: c.pushName,
+            name: c.name,
+            verifiedName: c.verifiedName,
+            keys: Object.keys(c),
+          })),
+        };
+        break;
+      }
+
+      case "debug-lightsync": {
+        await lightSync();
+        result = { ok: true, message: "lightSync() executed — check backend logs for details" };
+        break;
+      }
+
+      case "debug-conversations": {
+        const supabaseDb = getServiceClient();
+        const { data: convs, error: convErr } = await supabaseDb
+          .from("conversations")
+          .select("id, remote_jid, contact_name, phone_number, lid, instance_name, last_message, last_message_at")
+          .order("last_message_at", { ascending: false })
+          .limit(20);
+        if (convErr) return res.status(500).json({ error: convErr.message });
+        result = { total: convs?.length || 0, conversations: convs };
+        break;
+      }
+
       case "media-upload": {
         const { fileBase64, fileName: origName, mimetype } = params;
         if (!fileBase64 || !origName) {
