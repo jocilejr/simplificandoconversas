@@ -216,7 +216,13 @@ router.post("/*", async (req, res) => {
     else if (message.documentMessage) messageType = "document";
     else if (message.stickerMessage) messageType = "sticker";
 
-    const lastMessagePreview = truncate(messageContent || `[${messageType}]`, 100);
+    // Detect empty inbound messages (undecrypted) and apply placeholder
+    const isEmptyInbound = !fromMe && !messageContent.trim() && messageType === "text";
+    const finalContent = isEmptyInbound
+      ? "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar"
+      : messageContent;
+
+    const lastMessagePreview = truncate(finalContent || `[${messageType}]`, 100);
 
     if (fromMe && event === "send.message") {
       if (existingConvId) {
