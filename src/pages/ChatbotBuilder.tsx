@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers, Radio } from "lucide-react";
 import { FlowEditor } from "@/components/chatbot/FlowEditor";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   DropdownMenu,
