@@ -37,7 +37,10 @@ const ChatbotBuilder = () => {
           initialNodes={flow?.nodes || []}
           initialEdges={flow?.edges || []}
           initialInstanceNames={flow?.instance_names || []}
-          onBack={() => setEditingFlowId(null)}
+          onBack={() => {
+            queryClient.invalidateQueries({ queryKey: ["chatbot-flows"] });
+            setEditingFlowId(null);
+          }}
           onSave={async (name, nodes, edges, instanceNames) => {
             await updateFlow.mutateAsync({ id: editingFlowId, name, nodes, edges, instance_names: instanceNames });
           }}

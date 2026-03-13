@@ -926,7 +926,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
                 <PopoverContent align="end" className="w-64 p-2 space-y-3">
                   {[
                     { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
-                    { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
+                    { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage", "sendFile"] as FlowNodeType[] },
                     { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[] },
                     { label: "Ações", types: ["action"] as FlowNodeType[] },
                     { label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] },
