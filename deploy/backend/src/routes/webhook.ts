@@ -323,7 +323,7 @@ router.post("/*", async (req, res) => {
       conversation_id: conv.id,
       user_id: userId,
       remote_jid: remoteJid,
-      content: messageContent,
+      content: finalContent,
       message_type: messageType,
       direction: fromMe ? "outbound" : "inbound",
       status: "received",
