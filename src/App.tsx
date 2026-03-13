@@ -10,7 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Contacts from "./pages/Contacts";
 import Schedule from "./pages/Schedule";
 import ChatbotBuilder from "./pages/ChatbotBuilder";
-import Conversations from "./pages/Conversations";
+
 import SettingsPage from "./pages/SettingsPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
