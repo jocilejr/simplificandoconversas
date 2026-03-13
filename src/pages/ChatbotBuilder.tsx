@@ -16,6 +16,7 @@ import {
 const ChatbotBuilder = () => {
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const { data: flows, isLoading, createFlow, updateFlow, deleteFlow } = useChatbotFlows();
+  const queryClient = useQueryClient();
 
   const handleCreateFlow = async () => {
     try {
