@@ -1,61 +1,29 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Diagnóstico Manual do Light-Sync
+### Mudanças realizadas
 
-### Problema
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-O light-sync roda a cada 5 min mas os contatos "Aguardando mensagem" não aparecem. Precisamos entender **o que a Evolution API está retornando** nos endpoints `findChats` e `findContacts` para diagnosticar se o problema é na API ou na lógica de upsert.
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-### Mudanças
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-#### 1. `deploy/backend/src/routes/whatsapp-proxy.ts` — Novas ações de diagnóstico
+### Mudanças realizadas
 
-Adicionar 3 novas ações no switch/case:
-
-| Ação | O que faz |
-|------|-----------|
-| `debug-findcontacts` | Chama `/chat/findContacts/{instance}` e retorna os primeiros 10 contatos individuais com dados brutos |
-| `debug-lightsync` | Executa o `lightSync()` manualmente e retorna o resultado imediato |
-| `debug-conversations` | Lista as últimas 20 conversas do banco para comparar com o que a API retorna |
-
-Isso permite rodar via curl na VPS:
-```bash
-# Ver o que findChats retorna
-curl -X POST http://localhost:3001/api/whatsapp-proxy \
-  -H "Content-Type: application/json" \
-  -d '{"action":"debug-findchats"}'
-
-# Ver o que findContacts retorna  
-curl -X POST http://localhost:3001/api/whatsapp-proxy \
-  -H "Content-Type: application/json" \
-  -d '{"action":"debug-findcontacts"}'
-
-# Forçar light-sync agora
-curl -X POST http://localhost:3001/api/whatsapp-proxy \
-  -H "Content-Type: application/json" \
-  -d '{"action":"debug-lightsync"}'
-
-# Ver conversas no banco
-curl -X POST http://localhost:3001/api/whatsapp-proxy \
-  -H "Content-Type: application/json" \
-  -d '{"action":"debug-conversations"}'
-```
-
-#### 2. `deploy/backend/src/routes/light-sync.ts` — Logs mais detalhados
-
-Adicionar log de **cada JID processado** (não só os novos) para ver exatamente o que está sendo filtrado ou ignorado:
-- Log dos JIDs retornados por `findChats`
-- Log dos JIDs retornados por `findContacts`  
-- Log de quais já existem no banco vs quais são novos
-- Log de erros de upsert com payload completo
-
-### Fluxo de Diagnóstico
-
-Após deploy, o usuário poderá:
-1. Rodar `debug-findchats` → ver se os contatos "Aguardando" estão na resposta da API
-2. Rodar `debug-findcontacts` → ver se aparecem como contatos
-3. Rodar `debug-lightsync` → forçar execução e ver logs em tempo real
-4. Rodar `debug-conversations` → comparar o que está no banco
-
-Isso vai revelar exatamente onde os contatos estão sendo perdidos.
-
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
