@@ -10,7 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Contacts from "./pages/Contacts";
 import Schedule from "./pages/Schedule";
 import ChatbotBuilder from "./pages/ChatbotBuilder";
-import Conversations from "./pages/Conversations";
+
 import SettingsPage from "./pages/SettingsPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
@@ -33,7 +33,7 @@ const App = () => (
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
-              <Route path="/conversations" element={<Conversations />} />
+              
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>
