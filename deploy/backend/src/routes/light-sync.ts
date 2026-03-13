@@ -61,6 +61,13 @@ export async function lightSync() {
         return jid.includes("@s.whatsapp.net") || jid.includes("@lid");
       });
 
+      console.log(`[light-sync] findChats ${inst.instance_name}: ${chatList.length} total, ${individualChats.length} individual`);
+      // Log all JIDs for debugging
+      individualChats.forEach((chat: any) => {
+        const jid = chat.remoteJid || chat.jid || chat.chatId || chat.owner || "";
+        console.log(`[light-sync]   chat JID: ${jid} | name: ${chat.name || chat.pushName || "?"}`);
+      });
+
       let newCount = 0;
       for (const chat of individualChats) {
         const rawJid = chat.remoteJid || chat.jid || chat.chatId || chat.owner || "";
@@ -82,6 +89,7 @@ export async function lightSync() {
           if (data) exists = true;
         }
 
+        console.log(`[light-sync]   → ${rawJid}: ${exists ? "EXISTS" : "NEW"}`);
         if (exists) continue;
 
         // New conversation — extract last message info
