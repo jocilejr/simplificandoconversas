@@ -899,16 +899,21 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">
-              {saveStatus === "saving" && (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Salvando...
-                </span>
-              )}
-              {saveStatus === "saved" && (
-                <span className="flex items-center gap-1 text-[11px] text-primary">
-                  <Check className="h-3 w-3" /> Salvo
-                </span>
-              )}
+              <Button
+                variant={saveStatus === "saved" ? "outline" : "default"}
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleManualSave}
+                disabled={saveStatus === "saving"}
+              >
+                {saveStatus === "saving" ? (
+                  <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Salvando...</>
+                ) : saveStatus === "saved" ? (
+                  <><Check className="h-3 w-3 mr-1 text-primary" /> Salvo</>
+                ) : (
+                  <><Save className="h-3 w-3 mr-1" /> Salvar</>
+                )}
+              </Button>
               <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setHistoryOpen(true)}>
                 <History className="h-3 w-3 mr-1" /> Histórico
               </Button>
