@@ -17,24 +17,37 @@ async function evolutionRequest(path: string, method: string = "POST", body?: an
  * without fetching individual messages. Runs periodically to catch undecrypted/pending chats.
  */
 export async function lightSync() {
+  console.log("[light-sync] Starting sync for all instances...");
   const supabase = getServiceClient();
 
-  // Get all instances with their user_ids
+  // Get ALL instances (no is_active filter — check connection via Evolution API instead)
   const { data: instances, error: instErr } = await supabase
     .from("whatsapp_instances")
-    .select("instance_name, user_id")
-    .eq("is_active", true);
+    .select("instance_name, user_id");
 
-  if (instErr || !instances || instances.length === 0) return;
+  if (instErr) {
+    console.error("[light-sync] Error fetching instances:", instErr.message);
+    return;
+  }
+
+  if (!instances || instances.length === 0) {
+    console.log("[light-sync] No instances found in database");
+    return;
+  }
+
+  console.log(`[light-sync] Found ${instances.length} instance(s) to check`);
 
   for (const inst of instances) {
     try {
-      // Check connection state first
+      // Check connection state via Evolution API
       const stateResult = await evolutionRequest(
         `/instance/connectionState/${encodeURIComponent(inst.instance_name)}`, "GET"
       );
       const state = stateResult?.instance?.state || "close";
-      if (state !== "open") continue;
+      if (state !== "open") {
+        console.log(`[light-sync] ${inst.instance_name}: skipped (state=${state})`);
+        continue;
+      }
 
       const chatsResponse = await evolutionRequest(
         `/chat/findChats/${encodeURIComponent(inst.instance_name)}`, "POST", {}
@@ -48,7 +61,7 @@ export async function lightSync() {
         return jid.includes("@s.whatsapp.net") || jid.includes("@lid");
       });
 
-      let created = 0;
+      let newCount = 0;
       for (const chat of individualChats) {
         const rawJid = chat.remoteJid || chat.jid || chat.chatId || chat.owner || "";
         if (!rawJid) continue;
@@ -107,15 +120,15 @@ export async function lightSync() {
         if (error) {
           console.error(`[light-sync] Conv error for ${rawJid}:`, error.message);
         } else {
-          created++;
+          newCount++;
         }
       }
 
-      if (created > 0) {
-        console.log(`[light-sync] ${inst.instance_name}: ${created} new conversations created`);
-      }
+      console.log(`[light-sync] Done. ${inst.instance_name}: ${individualChats.length} chats found, ${newCount} new`);
     } catch (e: any) {
       console.error(`[light-sync] Error for ${inst.instance_name}:`, e.message);
     }
   }
+
+  console.log("[light-sync] Sync complete.");
 }
