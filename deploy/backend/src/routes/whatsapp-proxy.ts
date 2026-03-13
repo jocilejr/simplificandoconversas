@@ -611,6 +611,83 @@ router.post("/", async (req, res) => {
           console.error(`[sync-chats] Error resolving LID phones:`, e.message);
         }
 
+        // === CREATE CONVERSATIONS FOR CONTACTS NOT YET IN DB ===
+        try {
+          // Get all existing remote_jids and phone_numbers for this user
+          const { data: existingConvs } = await serviceClient.from("conversations")
+            .select("remote_jid, phone_number, lid")
+            .eq("user_id", userId);
+
+          const existingJids = new Set((existingConvs || []).map((c: any) => c.remote_jid));
+          const existingPhones = new Set((existingConvs || []).filter((c: any) => c.phone_number).map((c: any) => c.phone_number));
+          const existingLids = new Set((existingConvs || []).filter((c: any) => c.lid).map((c: any) => c.lid));
+
+          for (const instName of instancesToSync) {
+            const stateCheck = instanceStatuses.find((s: any) => s.instance === instName);
+            if (stateCheck?.connectionState !== "open") continue;
+
+            try {
+              const contacts = await evolutionRequest(
+                `/chat/findContacts/${encodeURIComponent(instName)}`, "POST", {}
+              );
+              const contactList = Array.isArray(contacts) ? contacts : [];
+              let created = 0;
+
+              for (const contact of contactList) {
+                const cJid = contact.id || contact.remoteJid || "";
+                if (!cJid) continue;
+                if (cJid.includes("@g.us") || cJid === "status@broadcast") continue;
+                if (!cJid.includes("@s.whatsapp.net") && !cJid.includes("@lid")) continue;
+
+                // Check if already exists by JID, phone, or LID
+                if (existingJids.has(cJid)) continue;
+
+                const cPhone = cJid.includes("@s.whatsapp.net") ? cJid.split("@")[0] : null;
+                if (cPhone && existingPhones.has(cPhone)) continue;
+
+                const cLid = contact.lid || null;
+                if (cLid && existingLids.has(cLid)) continue;
+
+                const cName = contact.pushName || contact.name || null;
+                const isLidContact = cJid.includes("@lid");
+
+                const insertPayload: Record<string, unknown> = {
+                  user_id: userId,
+                  remote_jid: cJid,
+                  contact_name: cName,
+                  instance_name: instName,
+                  last_message: null,
+                  last_message_at: new Date().toISOString(),
+                  phone_number: cPhone,
+                };
+                if (isLidContact) insertPayload.lid = cJid;
+                if (cLid && !isLidContact) insertPayload.lid = cLid;
+
+                const { error: insertErr } = await serviceClient.from("conversations").upsert(
+                  insertPayload,
+                  { onConflict: "user_id,remote_jid,instance_name" }
+                ).select("id").maybeSingle();
+
+                if (insertErr) {
+                  console.error(`[sync-chats] Contact create error for ${cJid}:`, insertErr);
+                } else {
+                  created++;
+                  // Track in sets to avoid duplicates within the same sync
+                  existingJids.add(cJid);
+                  if (cPhone) existingPhones.add(cPhone);
+                  if (cLid) existingLids.add(cLid);
+                }
+              }
+              console.log(`[sync-chats] ${instName}: created ${created} new conversations from findContacts`);
+              totalSynced += created;
+            } catch (e: any) {
+              console.error(`[sync-chats] findContacts create error for ${instName}:`, e.message);
+            }
+          }
+        } catch (e: any) {
+          console.error(`[sync-chats] Error creating contact conversations:`, e.message);
+        }
+
         try {
           // Get all conversations that DON'T have a photo yet
           const { data: allConvs } = await serviceClient.from("conversations")
