@@ -105,40 +105,33 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
   const reactFlowInstance = useReactFlow();
   const { saveSnapshot } = useFlowHistory(flowId);
 
-  // Autosave with debounce
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
+  // Manual save handler
+  const handleManualSave = useCallback(async () => {
     if (!onSave) return;
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     setSaveStatus("saving");
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await onSave(name, nodes, edges, instanceNames);
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus("idle"), 2000);
-      } catch {
-        toast.error("Erro ao salvar");
-        setSaveStatus("idle");
-      }
-    }, 1500);
-
-    // Save history snapshot every 30s max
-    if (!historyTimeoutRef.current) {
-      historyTimeoutRef.current = setTimeout(() => {
-        saveSnapshot.mutate({ name, nodes, edges });
-        historyTimeoutRef.current = null;
-      }, 30000);
+    try {
+      await onSave(name, nodes, edges, instanceNames);
+      saveSnapshot.mutate({ name, nodes, edges });
+      setSaveStatus("saved");
+      toast.success("Fluxo salvo!");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      toast.error("Erro ao salvar");
+      setSaveStatus("idle");
     }
+  }, [onSave, name, nodes, edges, instanceNames, saveSnapshot]);
 
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+  // Ctrl+S / Cmd+S shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleManualSave();
+      }
     };
-  }, [nodes, edges, name, instanceNames]);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleManualSave]);
 
   const handleRestore = useCallback((entry: FlowHistoryEntry) => {
     setNodes(entry.nodes as any[]);
