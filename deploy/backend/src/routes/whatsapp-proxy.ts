@@ -355,10 +355,19 @@ router.post("/", async (req, res) => {
               const resolvedJid = rawJid;
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
-              const lastMsgContent = chat.lastMessage?.message?.conversation
-                || chat.lastMessage?.message?.extendedTextMessage?.text
-                || chat.lastMessage?.message?.imageMessage?.caption
-                || (chat.lastMessage ? "[media]" : null);
+              let lastMsgContent: string | null = null;
+              if (chat.lastMessage) {
+                const msg = chat.lastMessage.message;
+                if (!msg) {
+                  lastMsgContent = "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar";
+                } else {
+                  lastMsgContent = msg.conversation
+                    || msg.extendedTextMessage?.text
+                    || msg.imageMessage?.caption
+                    || msg.videoMessage?.caption
+                    || (Object.keys(msg).filter((k: string) => k !== "messageContextInfo").length > 0 ? "[media]" : "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar");
+                }
+              }
               const lastTs = chat.lastMessage?.messageTimestamp
                 ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
@@ -516,7 +525,7 @@ router.post("/", async (req, res) => {
                     conversation_id: convData.id,
                     user_id: userId,
                     remote_jid: resolvedJid,
-                    content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
+                    content: msgContent || (msgType !== "text" ? `[${msgType}]` : "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar"),
                     message_type: msgType,
                     direction: isFromMe ? "outbound" : "inbound",
                     status: "delivered",
@@ -538,7 +547,71 @@ router.post("/", async (req, res) => {
           }
         }
 
-        // === FETCH PROFILE PHOTOS IN BATCH ===
+        // === RESOLVE PHONE NUMBERS FOR @lid CONTACTS VIA findContacts ===
+        try {
+          const { data: lidConvs } = await serviceClient.from("conversations")
+            .select("id, remote_jid, lid")
+            .eq("user_id", userId)
+            .is("phone_number", null)
+            .not("lid", "is", null);
+
+          if (lidConvs && lidConvs.length > 0) {
+            console.log(`[sync-chats] Resolving phone for ${lidConvs.length} @lid contacts without phone_number`);
+
+            for (const inst of activeInstances) {
+              const instName = inst.instance_name;
+              // findContacts returns contacts with their phone numbers
+              try {
+                const contacts = await evolutionRequest(
+                  `/chat/findContacts/${encodeURIComponent(instName)}`, "POST", {}
+                );
+                const contactList = Array.isArray(contacts) ? contacts : [];
+                console.log(`[sync-chats] ${instName}: findContacts returned ${contactList.length} contacts`);
+
+                let resolved = 0;
+                for (const conv of lidConvs) {
+                  const lidId = (conv.lid || conv.remote_jid).split("@")[0];
+                  // Find matching contact by lid
+                  const match = contactList.find((c: any) => {
+                    const cLid = (c.lid || "").split("@")[0];
+                    const cId = (c.id || c.remoteJid || "").split("@")[0];
+                    return cLid === lidId || cId === lidId;
+                  });
+
+                  if (match) {
+                    // Extract phone number from various possible fields
+                    const phone = match.pushName ? null : null; // pushName is not phone
+                    const matchPhone = match.number || match.phone ||
+                      (match.id?.includes("@s.whatsapp.net") ? match.id.split("@")[0] : null) ||
+                      (match.remoteJid?.includes("@s.whatsapp.net") ? match.remoteJid.split("@")[0] : null);
+                    const matchName = match.pushName || match.name || null;
+
+                    const updatePayload: Record<string, unknown> = {};
+                    if (matchPhone) updatePayload.phone_number = matchPhone;
+                    if (matchName && !conv.remote_jid) updatePayload.contact_name = matchName;
+
+                    if (matchPhone) {
+                      await serviceClient.from("conversations")
+                        .update({ phone_number: matchPhone, ...(matchName ? { contact_name: matchName } : {}) })
+                        .eq("id", conv.id);
+                      resolved++;
+                    } else if (matchName) {
+                      await serviceClient.from("conversations")
+                        .update({ contact_name: matchName })
+                        .eq("id", conv.id);
+                    }
+                  }
+                }
+                console.log(`[sync-chats] ${instName}: resolved ${resolved} phone numbers from findContacts`);
+              } catch (e: any) {
+                console.error(`[sync-chats] findContacts error for ${instName}:`, e.message);
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error(`[sync-chats] Error resolving LID phones:`, e.message);
+        }
+
         try {
           // Get all conversations that DON'T have a photo yet
           const { data: allConvs } = await serviceClient.from("conversations")
