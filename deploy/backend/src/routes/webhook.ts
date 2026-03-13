@@ -82,11 +82,21 @@ async function downloadAndUploadMedia(
 router.post("/*", async (req, res) => {
   try {
     const body = req.body;
-    console.log("Webhook event:", body.event, "instance:", body.instance);
-
     const event = body.event;
     const data = body.data;
     const instance = body.instance;
+
+    // Detailed logging for ALL webhook events
+    console.log("[webhook] INCOMING:", JSON.stringify({
+      event,
+      instance,
+      remoteJid: data?.key?.remoteJid,
+      fromMe: data?.key?.fromMe,
+      hasMessage: !!data?.message,
+      messageKeys: data?.message ? Object.keys(data.message) : [],
+      stubType: data?.messageStubType,
+      messageTimestamp: data?.messageTimestamp,
+    }));
 
     if (event === "messages.update" && data) {
       try {
