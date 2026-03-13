@@ -97,18 +97,8 @@ export function AppSidebar() {
                       className="hover:bg-sidebar-accent/80"
                       activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
                     >
-                      <div className="relative">
-                        <item.icon className="h-5 w-5" />
-                        {item.badge && (
-                          <span className="absolute -top-1.5 -right-1.5 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-sidebar-background" />
-                        )}
-                      </div>
+                      <item.icon className="h-5 w-5" />
                       {!collapsed && <span className="text-sm">{item.title}</span>}
-                      {!collapsed && item.badge && (
-                        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500/15 px-1.5 text-[10px] font-semibold text-green-500">
-                          {unreadCount}
-                        </span>
-                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
