@@ -150,6 +150,10 @@ export async function lightSync() {
         });
 
         console.log(`[light-sync] findContacts ${inst.instance_name}: ${individualContacts.length} individual contacts`);
+        individualContacts.forEach((c: any) => {
+          const jid = c.id || c.remoteJid || c.jid || "";
+          console.log(`[light-sync]   contact JID: ${jid} | pushName: ${c.pushName || c.name || "?"}`);
+        });
 
         for (const contact of individualContacts) {
           const rawJid = contact.id || contact.remoteJid || contact.jid || "";
@@ -171,6 +175,7 @@ export async function lightSync() {
             if (data) exists = true;
           }
 
+          console.log(`[light-sync]   → ${rawJid}: ${exists ? "EXISTS" : "NEW"}`);
           if (exists) continue;
 
           const upsertPayload: Record<string, unknown> = {
