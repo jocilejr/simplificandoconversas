@@ -525,7 +525,7 @@ router.post("/", async (req, res) => {
                     conversation_id: convData.id,
                     user_id: userId,
                     remote_jid: resolvedJid,
-                    content: msgContent || (msgType !== "text" ? `[${msgType}]` : null),
+                    content: msgContent || (msgType !== "text" ? `[${msgType}]` : "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar"),
                     message_type: msgType,
                     direction: isFromMe ? "outbound" : "inbound",
                     status: "delivered",

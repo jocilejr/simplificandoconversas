@@ -67,7 +67,10 @@ function formatPhone(num: string) {
 function displayName(conv: Conversation) {
   if (conv.contact_name) return conv.contact_name;
   if (conv.phone_number) return formatPhone(conv.phone_number);
-  if (isLidJid(conv.remote_jid)) return formatJid(conv.remote_jid);
+  if (isLidJid(conv.remote_jid)) {
+    const lid = formatJid(conv.remote_jid);
+    return `Contato ${lid.slice(-4)}`;
+  }
   return formatJid(conv.remote_jid);
 }
 
