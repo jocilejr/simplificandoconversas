@@ -1,19 +1,38 @@
 
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
+## Correção: Mensagens não descriptografadas devem criar conversa e mostrar aviso
 
-### Mudanças realizadas
+### Problema atual
+Quando o WhatsApp não consegue descriptografar uma mensagem, o webhook recebe `data.message` vazio. Atualmente o conteúdo fica como `""` e o preview fica `"[text]"`, mas a conversa pode não aparecer corretamente.
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Solução
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+**Arquivo:** `deploy/backend/src/routes/webhook.ts`
+
+Após extrair `messageContent` (linha ~208), detectar mensagens inbound vazias e substituir por um placeholder:
+
+```typescript
+// Após linha 208
+const isEmptyInbound = !fromMe && !messageContent.trim() && messageType === "text";
+const finalContent = isEmptyInbound 
+  ? "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar" 
+  : messageContent;
+```
+
+Usar `finalContent` em vez de `messageContent` no restante do código:
+- Na variável `lastMessagePreview` (linha 219)
+- No insert da mensagem (campo `content`, ~linha 305)
+
+Isso garante que:
+1. A conversa é criada/atualizada normalmente (contato aparece no chat)
+2. A mensagem aparece com o aviso ao invés de ficar vazia
+3. O fluxo não é disparado (já que `finalContent` não casa com keywords)
+
+### Mudanças
+
+| Local | Mudança |
+|-------|---------|
+| `webhook.ts` ~linha 208 | Detectar mensagem inbound vazia e substituir por placeholder |
+| `webhook.ts` ~linha 219 | Usar `finalContent` no `lastMessagePreview` |
+| `webhook.ts` ~linha 305 | Usar `finalContent` no insert da mensagem |
+
