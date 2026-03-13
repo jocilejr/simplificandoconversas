@@ -91,9 +91,11 @@ export function ConversationList({
   const [search, setSearch] = useState("");
 
   const filtered = conversations?.filter((c) => {
+    const s = search.toLowerCase();
     const matchSearch =
-      (c.contact_name || "").toLowerCase().includes(search.toLowerCase()) ||
-      c.remote_jid.includes(search);
+      (c.contact_name || "").toLowerCase().includes(s) ||
+      c.remote_jid.includes(search) ||
+      (c.phone_number || "").includes(search);
     const matchInstance =
       !selectedInstance || c.instance_name === selectedInstance;
     return matchSearch && matchInstance;

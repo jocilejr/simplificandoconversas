@@ -8,6 +8,7 @@ import whatsappProxyRouter from "./routes/whatsapp-proxy";
 import linkRedirectRouter from "./routes/link-redirect";
 import healthDbRouter from "./routes/health-db";
 import { processTimeouts } from "./routes/check-timeouts";
+import { lightSync } from "./routes/light-sync";
 
 const app = express();
 app.use(cors());
@@ -20,7 +21,6 @@ app.use("/api/link-redirect", linkRedirectRouter);
 app.use("/api/webhook", webhookRouter);
 
 // Health
-// Health
 app.use("/api/health/db", healthDbRouter);
 app.get("/health", (_, res) => res.json({ ok: true }));
 
@@ -30,6 +30,15 @@ cron.schedule("*/30 * * * * *", async () => {
     await processTimeouts();
   } catch (err: any) {
     console.error("[cron] check-timeouts error:", err.message);
+  }
+});
+
+// Light sync every 5 minutes — catches undecrypted/pending chats
+cron.schedule("*/5 * * * *", async () => {
+  try {
+    await lightSync();
+  } catch (err: any) {
+    console.error("[cron] light-sync error:", err.message);
   }
 });
 
