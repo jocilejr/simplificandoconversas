@@ -111,6 +111,16 @@ router.post("/*", async (req, res) => {
       return res.json({ ok: true, skipped: event });
     }
 
+    // Handle messages with messageStubType (protocol messages, undecrypted, etc.)
+    // These may not have message content but we still want to create/update the conversation
+    const hasStubType = !!data.messageStubType;
+    const hasNoMessage = !data.message || Object.keys(data.message).length === 0;
+    const isStubOnly = hasStubType && hasNoMessage;
+    
+    if (isStubOnly) {
+      console.log(`[webhook] Stub-only message (stubType=${data.messageStubType}), ensuring conversation exists`);
+    }
+
     const key = data.key || {};
     let remoteJid = key.remoteJid || data.remoteJid;
     const fromMe = key.fromMe ?? data.fromMe ?? false;
