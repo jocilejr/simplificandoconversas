@@ -124,7 +124,74 @@ export async function lightSync() {
         }
       }
 
-      console.log(`[light-sync] Done. ${inst.instance_name}: ${individualChats.length} chats found, ${newCount} new`);
+      console.log(`[light-sync] findChats done. ${inst.instance_name}: ${individualChats.length} chats, ${newCount} new`);
+
+      // === Phase 2: findContacts fallback ===
+      let contactNewCount = 0;
+      try {
+        const contactsResponse = await evolutionRequest(
+          `/chat/findContacts/${encodeURIComponent(inst.instance_name)}`, "POST", {}
+        );
+        const contactList = Array.isArray(contactsResponse) ? contactsResponse : [];
+
+        const individualContacts = contactList.filter((c: any) => {
+          const jid = c.id || c.remoteJid || c.jid || "";
+          if (!jid) return false;
+          if (jid.includes("@g.us") || jid === "status@broadcast") return false;
+          return jid.includes("@s.whatsapp.net") || jid.includes("@lid");
+        });
+
+        console.log(`[light-sync] findContacts ${inst.instance_name}: ${individualContacts.length} individual contacts`);
+
+        for (const contact of individualContacts) {
+          const rawJid = contact.id || contact.remoteJid || contact.jid || "";
+          if (!rawJid) continue;
+
+          const isLid = rawJid.includes("@lid");
+          const phoneNumber = rawJid.includes("@s.whatsapp.net") ? rawJid.split("@")[0] : null;
+          const contactName = contact.pushName || contact.name || contact.verifiedName || null;
+
+          // Check if conversation already exists
+          let exists = false;
+          if (isLid) {
+            const { data } = await supabase.from("conversations")
+              .select("id").eq("user_id", inst.user_id).eq("lid", rawJid).eq("instance_name", inst.instance_name).limit(1).maybeSingle();
+            if (data) exists = true;
+          } else {
+            const { data } = await supabase.from("conversations")
+              .select("id").eq("user_id", inst.user_id).eq("remote_jid", rawJid).eq("instance_name", inst.instance_name).limit(1).maybeSingle();
+            if (data) exists = true;
+          }
+
+          if (exists) continue;
+
+          const upsertPayload: Record<string, unknown> = {
+            user_id: inst.user_id,
+            remote_jid: rawJid,
+            contact_name: contactName,
+            instance_name: inst.instance_name,
+            last_message: "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar",
+            last_message_at: new Date().toISOString(),
+            phone_number: phoneNumber,
+          };
+          if (isLid) upsertPayload.lid = rawJid;
+
+          const { error } = await supabase.from("conversations").upsert(
+            upsertPayload,
+            { onConflict: "user_id,remote_jid,instance_name" }
+          );
+          if (error) {
+            console.error(`[light-sync] Contact conv error for ${rawJid}:`, error.message);
+          } else {
+            contactNewCount++;
+          }
+        }
+
+        console.log(`[light-sync] findContacts done. ${inst.instance_name}: ${contactNewCount} new from contacts`);
+      } catch (contactErr: any) {
+        console.error(`[light-sync] findContacts error for ${inst.instance_name}:`, contactErr.message);
+      }
+
     } catch (e: any) {
       console.error(`[light-sync] Error for ${inst.instance_name}:`, e.message);
     }
