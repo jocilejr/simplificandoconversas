@@ -1,35 +1,29 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Garantir que contatos apareçam mesmo sem mensagens
-
-### Situação atual
-
-O `sync-chats` já cria conversas sem exigir mensagens — se o `findChats` da Evolution retorna o contato, ele aparece. O problema é que o `findChats` **não retorna todos os contatos** (alguns só aparecem no WhatsApp Web mas não na resposta da API).
-
-### Plano
-
-#### 1. Adicionar `fetchContacts` como fonte complementar no sync-chats
-
-**Arquivo:** `deploy/backend/src/routes/whatsapp-proxy.ts`
-
-Após o loop de `findChats`, adicionar uma chamada ao endpoint `/chat/findContacts/{instance}` da Evolution API para buscar **todos os contatos** da agenda do WhatsApp. Para cada contato retornado que **não tenha conversa no banco**, criar uma conversa com:
-- `remote_jid` do contato
-- `contact_name` do contato
-- `last_message: null`
-- `last_message_at: now()`
-- `phone_number` extraído do JID (se `@s.whatsapp.net`)
-
-Isso garante que mesmo contatos sem mensagem apareçam na lista.
-
-#### 2. Garantir que a UI exiba conversas sem mensagens corretamente
-
-**Arquivo:** `src/components/conversations/ChatPanel.tsx`
-
-Verificar que o estado vazio do chat (quando `messages` é array vazio) mostra uma mensagem amigável como "Nenhuma mensagem ainda" em vez de loading infinito ou tela em branco. (Provavelmente já funciona, mas confirmar.)
-
-### Arquivos modificados
+### Mudanças realizadas
 
 | Arquivo | Mudança |
 |---------|---------|
-| `deploy/backend/src/routes/whatsapp-proxy.ts` | Adicionar `findContacts` como fonte complementar para criar conversas de contatos sem mensagem |
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
+
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+
+### Mudanças realizadas
+
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
