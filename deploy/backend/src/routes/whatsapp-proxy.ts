@@ -558,8 +558,7 @@ router.post("/", async (req, res) => {
           if (lidConvs && lidConvs.length > 0) {
             console.log(`[sync-chats] Resolving phone for ${lidConvs.length} @lid contacts without phone_number`);
 
-            for (const inst of activeInstances) {
-              const instName = inst.instance_name;
+            for (const instName of instancesToSync) {
               // findContacts returns contacts with their phone numbers
               try {
                 const contacts = await evolutionRequest(
