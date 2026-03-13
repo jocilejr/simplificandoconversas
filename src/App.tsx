@@ -33,7 +33,7 @@ const App = () => (
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
-              <Route path="/conversations" element={<Conversations />} />
+              
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>
