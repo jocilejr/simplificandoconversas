@@ -1,36 +1,29 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Correção do Light-Sync e Tratamento de Mensagens Não Descriptografadas
+### Mudanças realizadas
 
-### Problema Principal
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-O `lightSync()` em `deploy/backend/src/routes/light-sync.ts` linha 26 filtra por `.eq("is_active", true)`, mas as instâncias no banco têm `is_active = false` (valor default). Resultado: a query retorna zero instâncias, a função sai silenciosamente na linha 28, e nenhum log aparece.
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-### Sobre a descriptografia
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-A descriptografia de mensagens do WhatsApp depende da troca de chaves entre o celular e o servidor (Evolution API). Quando o celular está offline ou a troca de chaves falha, a mensagem fica como "Aguardando mensagem". O sistema **não pode** forçar a descriptografia — isso é uma limitação do protocolo WhatsApp. O que podemos fazer é:
+### Mudanças realizadas
 
-1. **Capturar o contato imediatamente** mesmo sem conteúdo descriptografado
-2. **Re-verificar periodicamente** se a mensagem foi descriptografada (o celular precisa ficar online)
-
-### Mudanças
-
-#### 1. `deploy/backend/src/routes/light-sync.ts`
-- Remover filtro `.eq("is_active", true)` — buscar todas as instâncias
-- Verificar conexão via Evolution API (`connectionState`) em vez de flag do banco
-- Adicionar logs de início/fim para confirmar execução
-- Adicionar log de summary mesmo quando zero conversas novas
-
-#### 2. `deploy/backend/src/routes/webhook.ts`
-- Tratar eventos `messages.upsert` com `messageStubType` (mensagens sem conteúdo) criando a conversa com placeholder
-- Não pular mensagens vazias de contatos individuais
-
-#### 3. `src/components/conversations/ConversationList.tsx`
-- Confirmar que busca por `phone_number` já está incluída (feito anteriormente)
-
-### Resultado Esperado
-
-Após deploy:
-- `docker logs deploy-backend-1 --tail 50 2>&1 | grep "light-sync"` mostrará logs a cada 5 min
-- Conversas com mensagens não descriptografadas aparecerão na app automaticamente
-
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
