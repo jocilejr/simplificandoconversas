@@ -55,7 +55,6 @@ export function useChatbotFlows() {
       if (error) throw error;
       return data as ChatbotFlow;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chatbot-flows"] }),
   });
 
   const deleteFlow = useMutation({
