@@ -1,19 +1,47 @@
 
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
+## Correção: Execução deve respeitar conexões
 
-### Mudanças realizadas
+### Problema
+Linha 331 (`execute-flow.ts` backend) e linha 504 (edge function):
+```typescript
+startNodes = nodes.filter((n: any) => !targetsSet.has(n.id));
+```
+Qualquer nó sem conexão de entrada é tratado como ponto de partida — incluindo nós completamente desconectados. O fluxo deve ser linear: começa no trigger e segue **apenas** pelas conexões (edges).
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Correção
+Em ambos os arquivos, substituir a lógica de `startNodes` por:
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+1. Buscar apenas nós do tipo `trigger` (ou `groupBlock` contendo trigger)
+2. Se não encontrar trigger, buscar o primeiro nó sem entrada **que tenha pelo menos uma saída**
+3. Nós sem nenhuma conexão (entrada ou saída) são ignorados completamente
+
+```typescript
+const sourcesSet = new Set(edges.map((e: any) => e.source));
+
+startNodes = nodes.filter((n: any) => {
+  const d = n.data || {};
+  if (d.type === "trigger") return true;
+  if (d.type === "groupBlock" && d.steps) {
+    return d.steps.some((s: any) => s.data?.type === "trigger");
+  }
+  return false;
+});
+
+if (startNodes.length === 0) {
+  // Fallback: primeiro nó conectado (tem saída mas não tem entrada)
+  startNodes = nodes.filter((n: any) =>
+    !targetsSet.has(n.id) && sourcesSet.has(n.id)
+  );
+  if (startNodes.length === 0 && nodes.length > 0) {
+    startNodes.push(nodes[0]);
+  }
+}
+```
+
+### Arquivos
+| Arquivo | Linhas | Mudança |
+|---------|--------|---------|
+| `deploy/backend/src/routes/execute-flow.ts` | 324-333 | Nova lógica de startNodes |
+| `supabase/functions/execute-flow/index.ts` | 495-508 | Mesma correção |
+
