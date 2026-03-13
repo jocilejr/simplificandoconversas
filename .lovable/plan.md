@@ -1,29 +1,37 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Plano: Remover funcionalidade de Chat/Conversas
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### O que será feito
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+Remover completamente a tela de Conversas e todos os componentes/hooks relacionados ao chat, simplificando a aplicação para focar nas funcionalidades que já funcionam (Dashboard, Contatos, Agendamentos, Fluxos, Configurações).
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+### Alterações
 
-### Mudanças realizadas
+#### 1. `src/App.tsx` — Remover rota `/conversations`
+- Remover import de `Conversations`
+- Remover a linha `<Route path="/conversations" ...>`
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+#### 2. `src/components/AppSidebar.tsx` — Remover item "Conversas" do menu
+- Remover o item `{ title: "Conversas", ... }` do array `mainItems`
+- Remover o estado `unreadCount` e o `useEffect` que faz polling de conversas não lidas
+- Remover import de `MessageSquare`
+
+#### 3. Deletar arquivos de componentes de chat
+- `src/pages/Conversations.tsx`
+- `src/components/conversations/ChatPanel.tsx`
+- `src/components/conversations/ConversationList.tsx`
+- `src/components/conversations/RightPanel.tsx`
+- `src/components/conversations/ContactAvatar.tsx`
+- `src/components/conversations/WhatsAppAudioPlayer.tsx`
+
+#### 4. Deletar hooks exclusivos do chat
+- `src/hooks/useMessages.ts`
+- `src/hooks/useConversations.ts`
+- `src/hooks/useFlowExecutions.ts`
+
+#### 5. Verificar e limpar referências restantes
+- Verificar se `useContactPhoto.ts` e `useLabels.ts` são usados em outras páginas (Contatos, etc.) — manter se sim, deletar se não.
+
+> **Nota:** Tabelas do banco (conversations, messages, etc.) permanecem intactas. Nenhuma migração necessária. A funcionalidade pode ser reativada no futuro.
+
