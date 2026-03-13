@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Plus, History, Check, Loader2, icons, Radio } from "lucide-react";
+import { ArrowLeft, Plus, History, Check, Loader2, Save, icons, Radio } from "lucide-react";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   AlertDialog,
@@ -98,9 +98,6 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
   const { instances } = useWhatsAppInstances();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInitialMount = useRef(true);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; flowPos: { x: number; y: number } } | null>(null);
@@ -108,40 +105,33 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
   const reactFlowInstance = useReactFlow();
   const { saveSnapshot } = useFlowHistory(flowId);
 
-  // Autosave with debounce
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
+  // Manual save handler
+  const handleManualSave = useCallback(async () => {
     if (!onSave) return;
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     setSaveStatus("saving");
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await onSave(name, nodes, edges, instanceNames);
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus("idle"), 2000);
-      } catch {
-        toast.error("Erro ao salvar");
-        setSaveStatus("idle");
-      }
-    }, 1500);
-
-    // Save history snapshot every 30s max
-    if (!historyTimeoutRef.current) {
-      historyTimeoutRef.current = setTimeout(() => {
-        saveSnapshot.mutate({ name, nodes, edges });
-        historyTimeoutRef.current = null;
-      }, 30000);
+    try {
+      await onSave(name, nodes, edges, instanceNames);
+      saveSnapshot.mutate({ name, nodes, edges });
+      setSaveStatus("saved");
+      toast.success("Fluxo salvo!");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      toast.error("Erro ao salvar");
+      setSaveStatus("idle");
     }
+  }, [onSave, name, nodes, edges, instanceNames, saveSnapshot]);
 
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+  // Ctrl+S / Cmd+S shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleManualSave();
+      }
     };
-  }, [nodes, edges, name, instanceNames]);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleManualSave]);
 
   const handleRestore = useCallback((entry: FlowHistoryEntry) => {
     setNodes(entry.nodes as any[]);
@@ -909,16 +899,21 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">
-              {saveStatus === "saving" && (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Salvando...
-                </span>
-              )}
-              {saveStatus === "saved" && (
-                <span className="flex items-center gap-1 text-[11px] text-primary">
-                  <Check className="h-3 w-3" /> Salvo
-                </span>
-              )}
+              <Button
+                variant={saveStatus === "saved" ? "outline" : "default"}
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleManualSave}
+                disabled={saveStatus === "saving"}
+              >
+                {saveStatus === "saving" ? (
+                  <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Salvando...</>
+                ) : saveStatus === "saved" ? (
+                  <><Check className="h-3 w-3 mr-1 text-primary" /> Salvo</>
+                ) : (
+                  <><Save className="h-3 w-3 mr-1" /> Salvar</>
+                )}
+              </Button>
               <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setHistoryOpen(true)}>
                 <History className="h-3 w-3 mr-1" /> Histórico
               </Button>
@@ -931,7 +926,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
                 <PopoverContent align="end" className="w-64 p-2 space-y-3">
                   {[
                     { label: "Gatilhos", types: ["trigger"] as FlowNodeType[] },
-                    { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage"] as FlowNodeType[] },
+                    { label: "Mensagens", types: ["sendText", "sendAudio", "sendVideo", "sendImage", "sendFile"] as FlowNodeType[] },
                     { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[] },
                     { label: "Ações", types: ["action"] as FlowNodeType[] },
                     { label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] },

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers, Radio } from "lucide-react";
 import { FlowEditor } from "@/components/chatbot/FlowEditor";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -15,6 +16,7 @@ import {
 const ChatbotBuilder = () => {
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const { data: flows, isLoading, createFlow, updateFlow, deleteFlow } = useChatbotFlows();
+  const queryClient = useQueryClient();
 
   const handleCreateFlow = async () => {
     try {
@@ -35,7 +37,10 @@ const ChatbotBuilder = () => {
           initialNodes={flow?.nodes || []}
           initialEdges={flow?.edges || []}
           initialInstanceNames={flow?.instance_names || []}
-          onBack={() => setEditingFlowId(null)}
+          onBack={() => {
+            queryClient.invalidateQueries({ queryKey: ["chatbot-flows"] });
+            setEditingFlowId(null);
+          }}
           onSave={async (name, nodes, edges, instanceNames) => {
             await updateFlow.mutateAsync({ id: editingFlowId, name, nodes, edges, instance_names: instanceNames });
           }}
