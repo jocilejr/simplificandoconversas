@@ -322,14 +322,32 @@ router.post("/", async (req, res) => {
     }
 
     const targetsSet = new Set(edges.map((e: any) => e.target));
+    const sourcesSet = new Set(edges.map((e: any) => e.source));
     let startNodes: any[];
 
     if (resumeFromNodeId) {
       const resumeNode = nodes.find((n: any) => n.id === resumeFromNodeId);
       startNodes = resumeNode ? [resumeNode] : [];
     } else {
-      startNodes = nodes.filter((n: any) => !targetsSet.has(n.id));
-      if (startNodes.length === 0 && nodes.length > 0) startNodes.push(nodes[0]);
+      // Prioridade 1: nós do tipo trigger (standalone ou dentro de groupBlock)
+      startNodes = nodes.filter((n: any) => {
+        const d = n.data || {};
+        if (d.type === "trigger") return true;
+        if (d.type === "groupBlock" && d.steps) {
+          return d.steps.some((s: any) => s.data?.type === "trigger");
+        }
+        return false;
+      });
+
+      // Fallback: primeiro nó sem entrada que tenha pelo menos uma saída (conectado)
+      if (startNodes.length === 0) {
+        startNodes = nodes.filter((n: any) =>
+          !targetsSet.has(n.id) && sourcesSet.has(n.id)
+        );
+        if (startNodes.length === 0 && nodes.length > 0) {
+          startNodes.push(nodes[0]);
+        }
+      }
     }
 
     const visited = new Set<string>();
