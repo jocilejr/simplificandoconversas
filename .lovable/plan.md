@@ -1,4 +1,3 @@
-
 ## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
 ### Root Cause
@@ -17,3 +16,14 @@ O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamad
 1. `bodyResolvedPhone` do webhook (mais rápido)
 2. `phone_number` da conversa por `remote_jid` lookup
 3. `phone_number` da conversa por `lid` lookup
+
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+
+### Mudanças realizadas
+
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
