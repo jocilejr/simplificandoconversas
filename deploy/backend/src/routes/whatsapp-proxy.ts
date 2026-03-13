@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { lightSync } from "./light-sync";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
