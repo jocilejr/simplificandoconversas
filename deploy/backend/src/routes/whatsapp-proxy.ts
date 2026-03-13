@@ -355,10 +355,19 @@ router.post("/", async (req, res) => {
               const resolvedJid = rawJid;
 
               const contactName = chat.name || chat.pushName || chat.contact?.pushName || null;
-              const lastMsgContent = chat.lastMessage?.message?.conversation
-                || chat.lastMessage?.message?.extendedTextMessage?.text
-                || chat.lastMessage?.message?.imageMessage?.caption
-                || (chat.lastMessage ? "[media]" : null);
+              let lastMsgContent: string | null = null;
+              if (chat.lastMessage) {
+                const msg = chat.lastMessage.message;
+                if (!msg) {
+                  lastMsgContent = "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar";
+                } else {
+                  lastMsgContent = msg.conversation
+                    || msg.extendedTextMessage?.text
+                    || msg.imageMessage?.caption
+                    || msg.videoMessage?.caption
+                    || (Object.keys(msg).filter((k: string) => k !== "messageContextInfo").length > 0 ? "[media]" : "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar");
+                }
+              }
               const lastTs = chat.lastMessage?.messageTimestamp
                 ? new Date(Number(chat.lastMessage.messageTimestamp) * 1000).toISOString()
                 : new Date().toISOString();
