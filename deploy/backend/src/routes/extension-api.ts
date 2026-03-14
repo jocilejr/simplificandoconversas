@@ -31,49 +31,53 @@ router.get("/dashboard", async (req, res) => {
   const userId = requireAuth(req, res);
   if (!userId) return;
 
-  const sb = getServiceClient();
+  try {
+    const sb = getServiceClient();
 
-  const [flowsRes, contactsRes, execRes, instancesRes, recentRes] = await Promise.all([
-    sb.from("chatbot_flows").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("active", true),
-    sb.from("conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
-    sb.from("flow_executions").select("id", { count: "exact", head: true }).eq("user_id", userId).in("status", ["running", "waiting"]),
-    sb.from("whatsapp_instances").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("is_active", true),
-    sb.from("flow_executions")
-      .select("id, flow_id, status, remote_jid, created_at, instance_name")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(10),
-  ]);
-
-  // Enrich recent with flow names and contact names
-  const recentExecs = recentRes.data || [];
-  let enrichedRecent: any[] = [];
-  if (recentExecs.length > 0) {
-    const flowIds = [...new Set(recentExecs.map((e: any) => e.flow_id).filter(Boolean))];
-    const jids = [...new Set(recentExecs.map((e: any) => e.remote_jid).filter(Boolean))];
-
-    const [flowsLookup, convsLookup] = await Promise.all([
-      flowIds.length > 0 ? sb.from("chatbot_flows").select("id, name").in("id", flowIds) : { data: [] },
-      jids.length > 0 ? sb.from("conversations").select("remote_jid, contact_name, phone_number").eq("user_id", userId).in("remote_jid", jids) : { data: [] },
+    const [flowsRes, contactsRes, execRes, instancesRes, recentRes] = await Promise.all([
+      sb.from("chatbot_flows").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("active", true),
+      sb.from("conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
+      sb.from("flow_executions").select("id", { count: "exact", head: true }).eq("user_id", userId).in("status", ["running", "waiting"]),
+      sb.from("whatsapp_instances").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("is_active", true),
+      sb.from("flow_executions")
+        .select("id, flow_id, status, remote_jid, created_at, instance_name")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(10),
     ]);
 
-    const flowMap = new Map((flowsLookup.data || []).map((f: any) => [f.id, f.name]));
-    const convMap = new Map((convsLookup.data || []).map((c: any) => [c.remote_jid, c.contact_name || c.phone_number]));
+    const recentExecs = recentRes.data || [];
+    let enrichedRecent: any[] = [];
+    if (recentExecs.length > 0) {
+      const flowIds = [...new Set(recentExecs.map((e: any) => e.flow_id).filter(Boolean))];
+      const jids = [...new Set(recentExecs.map((e: any) => e.remote_jid).filter(Boolean))];
 
-    enrichedRecent = recentExecs.map((ex: any) => ({
-      ...ex,
-      flow_name: flowMap.get(ex.flow_id) || "Fluxo",
-      contact_name: convMap.get(ex.remote_jid) || null,
-    }));
+      const [flowsLookup, convsLookup] = await Promise.all([
+        flowIds.length > 0 ? sb.from("chatbot_flows").select("id, name").in("id", flowIds) : { data: [] },
+        jids.length > 0 ? sb.from("conversations").select("remote_jid, contact_name, phone_number").eq("user_id", userId).in("remote_jid", jids) : { data: [] },
+      ]);
+
+      const flowMap = new Map((flowsLookup.data || []).map((f: any) => [f.id, f.name]));
+      const convMap = new Map((convsLookup.data || []).map((c: any) => [c.remote_jid, c.contact_name || c.phone_number]));
+
+      enrichedRecent = recentExecs.map((ex: any) => ({
+        ...ex,
+        flow_name: flowMap.get(ex.flow_id) || "Fluxo",
+        contact_name: convMap.get(ex.remote_jid) || null,
+      }));
+    }
+
+    res.json({
+      activeFlows: flowsRes.count || 0,
+      totalContacts: contactsRes.count || 0,
+      runningExecutions: execRes.count || 0,
+      totalInstances: instancesRes.count || 0,
+      recentExecutions: enrichedRecent,
+    });
+  } catch (err: any) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
   }
-
-  res.json({
-    activeFlows: flowsRes.count || 0,
-    totalContacts: contactsRes.count || 0,
-    runningExecutions: execRes.count || 0,
-    totalInstances: instancesRes.count || 0,
-    recentExecutions: enrichedRecent,
-  });
 });
 
 // ── GET /api/ext/detect-instance ──
@@ -104,15 +108,21 @@ router.get("/contact-cross", async (req, res) => {
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   if (!phone) return res.status(400).json({ error: "phone required" });
 
+  const excludeInstance = req.query.excludeInstance as string || "";
   const sb = getServiceClient();
 
   // Find all conversations with this phone number across all instances
-  const { data: conversations } = await sb
+  let query = sb
     .from("conversations")
     .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
     .eq("user_id", userId)
-    .eq("phone_number", phone)
-    .order("last_message_at", { ascending: false });
+    .eq("phone_number", phone);
+
+  if (excludeInstance) {
+    query = query.neq("instance_name", excludeInstance);
+  }
+
+  const { data: conversations } = await query.order("last_message_at", { ascending: false });
 
   res.json({ conversations: conversations || [] });
 });

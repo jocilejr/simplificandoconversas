@@ -27,6 +27,10 @@
     link: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
     refresh: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>',
     user: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    activity: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+    server: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>',
+    history: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
   };
 
   // ── Create Sidebar ──
@@ -41,8 +45,8 @@
       <span class="sc-instance-badge" id="sc-instance-badge">Detectando...</span>
     </div>
     <div class="sc-tab-bar">
-      <button class="sc-tab active" data-tab="dashboard">Dashboard</button>
-      <button class="sc-tab" data-tab="contact">Contato</button>
+      <button class="sc-tab active" data-tab="dashboard">${ICONS.activity} Dashboard</button>
+      <button class="sc-tab" data-tab="contact">${ICONS.user} Contato</button>
     </div>
     <div class="sc-body" id="sc-body">
       <div class="sc-loader"><div class="sc-dot-pulse"><span></span><span></span><span></span></div></div>
@@ -98,9 +102,6 @@
 
   // ── Detect Instance ──
   async function detectInstance() {
-    // Try to get the logged-in user's phone from WhatsApp Web DOM
-    // The phone is visible in the profile/settings area
-    // For now, we ask the backend to detect based on stored instances
     try {
       const result = await apiCall("detect-instance");
       if (result && result.instance) {
@@ -156,23 +157,32 @@
   }
 
   // ── Load Data ──
+  let dashboardRetries = 0;
+
   async function loadDashboard() {
     try {
       dashboardData = await apiCall("dashboard-stats");
+      dashboardRetries = 0;
       if (currentTab === "dashboard") renderCurrentTab();
     } catch (e) {
       dashboardData = { error: e.message };
       if (currentTab === "dashboard") renderCurrentTab();
+      // Retry once after 2s
+      if (dashboardRetries < 1) {
+        dashboardRetries++;
+        setTimeout(loadDashboard, 2000);
+      }
     }
   }
 
   async function loadContactData() {
     if (!currentPhone) return;
     try {
+      const excludeParam = detectedInstance ? `&excludeInstance=${encodeURIComponent(detectedInstance.instance_name)}` : '';
       const [status, flows, cross] = await Promise.all([
         apiCall("contact-status", { phone: currentPhone }),
         apiCall("flows"),
-        apiCall("contact-cross", { phone: currentPhone }),
+        apiCall("contact-cross", { phone: currentPhone, excludeInstance: detectedInstance?.instance_name || '' }),
       ]);
       contactData = status;
       flowsData = flows;
@@ -206,7 +216,15 @@
       return;
     }
     if (dashboardData.error) {
-      body.innerHTML = `<div class="sc-empty">Erro: ${dashboardData.error}<br><small>Configure a extensao no popup</small></div>`;
+      body.innerHTML = `
+        <div class="sc-error-state">
+          <div class="sc-error-icon">!</div>
+          <div class="sc-error-title">Falha ao carregar</div>
+          <div class="sc-error-desc">${dashboardData.error}</div>
+          <button class="sc-btn sc-btn-secondary" id="sc-retry-dashboard">${ICONS.refresh} Tentar novamente</button>
+        </div>`;
+      const retryBtn = body.querySelector("#sc-retry-dashboard");
+      if (retryBtn) retryBtn.addEventListener("click", () => { dashboardData = null; renderCurrentTab(); loadDashboard(); });
       return;
     }
 
@@ -214,29 +232,50 @@
     let html = '';
 
     // Stats
-    html += '<div class="sc-section"><div class="sc-section-title">Resumo</div>';
+    html += '<div class="sc-section">';
+    html += '<div class="sc-section-header"><div class="sc-section-title">Resumo Geral</div></div>';
     html += '<div class="sc-stats-grid">';
-    html += `<div class="sc-stat-card accent-green"><div class="sc-stat-value">${d.activeFlows || 0}</div><div class="sc-stat-label">Fluxos Ativos</div></div>`;
-    html += `<div class="sc-stat-card accent-blue"><div class="sc-stat-value">${d.totalContacts || 0}</div><div class="sc-stat-label">Contatos</div></div>`;
-    html += `<div class="sc-stat-card accent-yellow"><div class="sc-stat-value">${d.runningExecutions || 0}</div><div class="sc-stat-label">Em Execucao</div></div>`;
-    html += `<div class="sc-stat-card accent-purple"><div class="sc-stat-value">${d.totalInstances || 0}</div><div class="sc-stat-label">Instancias</div></div>`;
+    html += `<div class="sc-stat-card accent-green">
+      <div class="sc-stat-icon green">${ICONS.bolt}</div>
+      <div class="sc-stat-content"><div class="sc-stat-value">${d.activeFlows || 0}</div><div class="sc-stat-label">Fluxos Ativos</div></div>
+    </div>`;
+    html += `<div class="sc-stat-card accent-blue">
+      <div class="sc-stat-icon blue">${ICONS.users}</div>
+      <div class="sc-stat-content"><div class="sc-stat-value">${d.totalContacts || 0}</div><div class="sc-stat-label">Contatos</div></div>
+    </div>`;
+    html += `<div class="sc-stat-card accent-yellow">
+      <div class="sc-stat-icon yellow">${ICONS.activity}</div>
+      <div class="sc-stat-content"><div class="sc-stat-value">${d.runningExecutions || 0}</div><div class="sc-stat-label">Em Execucao</div></div>
+    </div>`;
+    html += `<div class="sc-stat-card accent-purple">
+      <div class="sc-stat-icon purple">${ICONS.server}</div>
+      <div class="sc-stat-content"><div class="sc-stat-value">${d.totalInstances || 0}</div><div class="sc-stat-label">Instancias</div></div>
+    </div>`;
     html += '</div></div>';
 
     // Recent executions
     if (d.recentExecutions && d.recentExecutions.length > 0) {
-      html += '<div class="sc-section"><div class="sc-section-title">Execucoes Recentes</div>';
+      html += '<div class="sc-section">';
+      html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.history} Execucoes Recentes</div></div>`;
       d.recentExecutions.slice(0, 8).forEach((ex) => {
         const statusClass = ex.status === "running" ? "running" : ex.status === "waiting" ? "waiting" : ex.status === "completed" ? "completed" : "none";
+        const statusLabel = ex.status === "running" ? "Rodando" : ex.status === "waiting" ? "Aguardando" : ex.status === "completed" ? "Concluido" : ex.status === "cancelled" ? "Cancelado" : ex.status;
         const timeAgo = formatTimeAgo(ex.created_at);
         html += `
           <div class="sc-recent-item">
+            <div class="sc-recent-dot ${statusClass}"></div>
             <div class="sc-recent-item-info">
               <div class="sc-recent-item-name">${ex.flow_name || "Fluxo"}</div>
               <div class="sc-recent-item-meta">${ex.contact_name || ex.remote_jid?.split("@")[0] || "—"} · ${timeAgo}</div>
             </div>
-            <span class="sc-status-badge ${statusClass}">${ex.status}</span>
+            <span class="sc-status-badge ${statusClass}">${statusLabel}</span>
           </div>`;
       });
+      html += '</div>';
+    } else {
+      html += '<div class="sc-section">';
+      html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.history} Execucoes Recentes</div></div>`;
+      html += '<div class="sc-empty-state"><div class="sc-empty-icon">${ICONS.inbox}</div><div class="sc-empty-text">Nenhuma execucao recente</div></div>';
       html += '</div>';
     }
 
@@ -260,7 +299,15 @@
     }
 
     if (contactData.error) {
-      body.innerHTML = `<div class="sc-empty">Erro: ${contactData.error}</div>`;
+      body.innerHTML = `
+        <div class="sc-error-state">
+          <div class="sc-error-icon">!</div>
+          <div class="sc-error-title">Falha ao carregar contato</div>
+          <div class="sc-error-desc">${contactData.error}</div>
+          <button class="sc-btn sc-btn-secondary" id="sc-retry-contact">${ICONS.refresh} Tentar novamente</button>
+        </div>`;
+      const retryBtn = body.querySelector("#sc-retry-contact");
+      if (retryBtn) retryBtn.addEventListener("click", () => { contactData = null; renderCurrentTab(); loadContactData(); });
       return;
     }
 
@@ -282,31 +329,33 @@
         <div class="sc-contact-avatar">${initials}</div>
         <div class="sc-contact-info">
           <div class="sc-contact-name">${displayName}</div>
-          <div class="sc-contact-phone">${displayPhone ? "+" + displayPhone : ""}</div>
+          ${displayPhone ? `<div class="sc-contact-phone">+${displayPhone}</div>` : ''}
         </div>
-        <button class="sc-btn sc-btn-secondary" id="sc-refresh-contact" title="Atualizar">${ICONS.refresh}</button>
+        <button class="sc-btn sc-btn-secondary sc-btn-icon" id="sc-refresh-contact" title="Atualizar">${ICONS.refresh}</button>
       </div>`;
 
     // Tags
     if (tags.length > 0) {
-      html += '<div class="sc-section"><div class="sc-section-title">Tags</div><div class="sc-tags">';
+      html += '<div class="sc-section"><div class="sc-section-header"><div class="sc-section-title">${ICONS.tag} Tags</div></div><div class="sc-tags">';
       tags.forEach((t) => { html += `<span class="sc-tag">${t.tag_name}</span>`; });
       html += '</div></div>';
     }
 
     // Active executions
-    html += '<div class="sc-section"><div class="sc-section-title">Fluxo Ativo</div>';
     const activeExecs = executions.filter((e) => e.status === "running" || e.status === "waiting");
+    html += '<div class="sc-section">';
+    html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.play} Fluxo Ativo</div></div>`;
     if (activeExecs.length === 0) {
-      html += '<span class="sc-status-badge none">Nenhum fluxo ativo</span>';
+      html += '<div class="sc-inactive-flow"><span class="sc-status-badge none">Nenhum fluxo ativo</span></div>';
     } else {
       activeExecs.forEach((ex) => {
         const statusClass = ex.status === "running" ? "running" : "waiting";
+        const statusLabel = ex.status === "running" ? "Rodando" : "Aguardando";
         html += `
-          <div class="sc-flow-item">
-            <div>
+          <div class="sc-active-flow-card ${statusClass}">
+            <div class="sc-active-flow-info">
               <div class="sc-flow-name">${ex.flow_name || "Fluxo"}</div>
-              <span class="sc-status-badge ${statusClass}">${ICONS.play} ${ex.status}</span>
+              <span class="sc-status-badge ${statusClass}">${statusLabel}</span>
             </div>
             <button class="sc-btn sc-btn-danger" data-action="pause" data-id="${ex.id}">${ICONS.stop} Parar</button>
           </div>`;
@@ -314,14 +363,15 @@
     }
     html += '</div>';
 
-    // Cross-instance conversations
+    // Cross-instance conversations (only OTHER instances)
     if (crossInstances.length > 0) {
-      html += '<div class="sc-section"><div class="sc-section-title">Conversas em Outros Numeros</div>';
+      html += '<div class="sc-section">';
+      html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.link} Outros Numeros</div></div>`;
       crossInstances.forEach((conv) => {
         html += `
           <div class="sc-cross-card">
             <div class="sc-cross-card-header">
-              <span class="sc-cross-instance-name">${ICONS.link} ${conv.instance_name || "—"}</span>
+              <span class="sc-cross-instance-name">${conv.instance_name || "—"}</span>
               <span class="sc-cross-date">${conv.last_message_at ? formatTimeAgo(conv.last_message_at) : ""}</span>
             </div>
             <div class="sc-cross-last-msg">${conv.last_message || "Sem mensagens"}</div>
@@ -331,9 +381,10 @@
     }
 
     // Trigger flow
-    html += '<div class="sc-section"><div class="sc-section-title">Disparar Fluxo</div>';
+    html += '<div class="sc-section">';
+    html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.send} Disparar Fluxo</div></div>`;
     if (flows.length === 0) {
-      html += '<div class="sc-empty">Nenhum fluxo disponivel</div>';
+      html += '<div class="sc-empty-state"><div class="sc-empty-text">Nenhum fluxo disponivel</div></div>';
     } else {
       flows.forEach((f) => {
         html += `
@@ -348,15 +399,17 @@
     // Execution history
     const historyExecs = contactData.history || [];
     if (historyExecs.length > 0) {
-      html += '<div class="sc-section"><div class="sc-section-title">Historico</div>';
+      html += '<div class="sc-section">';
+      html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.history} Historico</div></div>`;
       historyExecs.slice(0, 10).forEach((ex) => {
         const dotClass = ex.status === "completed" ? "completed" : ex.status === "cancelled" ? "cancelled" : "running";
+        const statusLabel = ex.status === "completed" ? "Concluido" : ex.status === "cancelled" ? "Cancelado" : ex.status;
         html += `
           <div class="sc-history-item">
             <div class="sc-history-dot ${dotClass}"></div>
             <div class="sc-history-info">
               <div class="sc-history-name">${ex.flow_name || "Fluxo"}</div>
-              <div class="sc-history-date">${formatTimeAgo(ex.created_at)} · ${ex.status}</div>
+              <div class="sc-history-date">${formatTimeAgo(ex.created_at)} · ${statusLabel}</div>
             </div>
           </div>`;
       });
