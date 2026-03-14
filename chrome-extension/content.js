@@ -362,7 +362,7 @@
     }
 
     // Active executions
-    const activeExecs = executions.filter((e) => e.status === "running" || e.status === "waiting");
+    const activeExecs = executions.filter((e) => ["running", "waiting", "waiting_click", "waiting_reply"].includes(e.status));
     html += '<div class="sc-section">';
     html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.play} Fluxo Ativo</div></div>`;
     if (activeExecs.length === 0) {
