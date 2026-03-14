@@ -1,50 +1,53 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Correcao: 3 Problemas da Extensao Chrome
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Problema 1: Dashboard com erro (nao e Nginx)
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+Se a aba Contato funciona, o Nginx esta correto. O problema esta no endpoint `/api/ext/dashboard` que nao tem `try/catch` — qualquer erro no `Promise.all` retorna 500 sem resposta JSON, e o `background.js` interpreta como erro. Vou adicionar try/catch no endpoint e tambem melhorar o tratamento de erro no `content.js` com retry automatico.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+**`deploy/backend/src/routes/extension-api.ts`** — Wrap do handler `/dashboard` em try/catch com resposta de erro JSON adequada.
 
-### Mudanças realizadas
+**`chrome-extension/content.js`** — Dashboard com retry (1 tentativa apos 2s em caso de erro).
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+### Problema 2: Cross-instance mostrando propria instancia
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+O endpoint `contact-cross` retorna todas as conversas, incluindo da instancia atual. A extensao deve enviar o `excludeInstance` e o backend deve filtra-lo.
 
-### Redesign completo do overlay para sidebar fixa
+**`deploy/backend/src/routes/extension-api.ts`** — Aceitar query param `excludeInstance` e filtrar com `.neq("instance_name", excludeInstance)`.
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+**`chrome-extension/content.js`** — Ao chamar `contact-cross`, incluir `excludeInstance=${detectedInstance.instance_name}` na URL.
 
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-- Ícones SVG inline (sem emojis)
+**`chrome-extension/background.js`** — Atualizar a action `contact-cross` para passar `excludeInstance` na query string.
+
+### Problema 3: Design feio e desorganizado
+
+Reescrita completa do CSS e da estrutura HTML gerada no `content.js`:
+
+**`chrome-extension/styles.css`** — Polimento total:
+- Espacamento mais generoso entre secoes (24px)
+- Cards com sombra sutil e bordas mais suaves
+- Stat cards com icone dentro (fundo colorido translucido)
+- Tipografia com hierarquia mais clara (titulos maiores, labels menores)
+- Secao "Fluxo Ativo" com borda lateral verde quando ativo
+- Lista de fluxos para disparar com hover mais visivel
+- Empty states com icone + texto centralizado
+- Execucoes recentes com layout mais compacto
+
+**`chrome-extension/content.js`** — Melhorias na renderizacao:
+- Dashboard: icones nos stat cards, secao de resumo mais visual
+- Contato: avatar com gradiente, secoes com separadores visuais claros
+- Melhor tratamento de nomes longos (ellipsis)
+
+### Arquivos alterados
+1. `chrome-extension/content.js`
+2. `chrome-extension/styles.css`
+3. `chrome-extension/background.js`
+4. `deploy/backend/src/routes/extension-api.ts`
+
+### Apos deploy
+```bash
+docker compose build backend
+docker compose up -d --force-recreate backend nginx
+```
+
