@@ -133,7 +133,7 @@ router.get("/contact-cross", async (req, res) => {
 
 // ── GET /api/ext/flows ──
 router.get("/flows", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const sb = getServiceClient();
