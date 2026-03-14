@@ -1,50 +1,29 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Problema: Fluxo ativo não aparece na sidebar do contato
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Causa Raiz
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+Dois problemas encontrados:
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+1. **Backend filtra status incompletos** — O endpoint `/contact-status` (linha 182) busca execuções ativas com `.in("status", ["running", "waiting"])`, mas ignora `waiting_click` e `waiting_reply`. O mesmo ocorre no dashboard (linha 40). Como o fluxo do screenshot está em `WAITING_CLICK`, ele não aparece como ativo.
 
-### Mudanças realizadas
+2. **Sidebar não mostra esses status** — O `content.js` (linha 365) filtra `activeExecs` apenas por `running` e `waiting`, e os labels de status (linhas 372-373) não tratam `waiting_click`/`waiting_reply`.
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+### Correções
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+**1. `deploy/backend/src/routes/extension-api.ts`**
+- Linha 40 (dashboard): adicionar `waiting_click` e `waiting_reply` ao filtro de execuções ativas
+- Linha 182 (contact-status): adicionar `waiting_click` e `waiting_reply` ao filtro de execuções ativas
 
-### Redesign completo do overlay para sidebar fixa
+**2. `chrome-extension/content.js`**
+- Linha 365: incluir `waiting_click` e `waiting_reply` no filtro `activeExecs`
+- Linhas 372-373: adicionar labels para os novos status (`Aguardando Clique`, `Aguardando Resposta`)
+- Linha 282 (dashboard recent): adicionar labels para `waiting_click` e `waiting_reply`
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+### Após deploy
+```bash
+docker compose build backend && docker compose up -d --force-recreate backend
+```
+E atualizar a extensão em `chrome://extensions`.
 
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-- Ícones SVG inline (sem emojis)
