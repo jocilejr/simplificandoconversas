@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   Dialog,
@@ -35,6 +35,7 @@ import {
   RefreshCw,
   RotateCcw,
   MessageSquareX,
+  Settings,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -62,6 +63,7 @@ export function ConnectionsSection() {
   const [syncing, setSyncing] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [delayInput, setDelayInput] = useState<Record<string, string>>({});
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
@@ -335,31 +337,53 @@ export function ConnectionsSection() {
                   <Star className="h-3.5 w-3.5 mr-1" /> Ativar
                 </Button>
               )}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => {
+                      const current = ((inst as any).message_delay_ms || 2000) / 1000;
+                      setDelayInput((prev) => ({ ...prev, [inst.instance_name]: String(current) }));
+                    }}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-3" align="end">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground">Intervalo entre mensagens</label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10}
+                        step={0.5}
+                        value={delayInput[inst.instance_name] ?? String(((inst as any).message_delay_ms || 2000) / 1000)}
+                        onChange={(e) => setDelayInput((prev) => ({ ...prev, [inst.instance_name]: e.target.value }))}
+                        className="h-8 text-sm"
+                      />
+                      <span className="text-xs text-muted-foreground shrink-0">seg</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full h-7 text-xs"
+                      onClick={() => {
+                        const val = parseFloat(delayInput[inst.instance_name] || "2");
+                        const clamped = Math.min(10, Math.max(1, val));
+                        updateDelay.mutate({ instanceName: inst.instance_name, delayMs: clamped * 1000 });
+                      }}
+                      disabled={updateDelay.isPending}
+                    >
+                      Salvar
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
-            </div>
-          </div>
-          {/* Message delay slider */}
-          <div className="mt-3 pt-3 border-t border-border/50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted-foreground">Intervalo entre mensagens</span>
-              <span className="text-xs font-medium text-primary">
-                {((inst as any).message_delay_ms || 2000) / 1000}s
-              </span>
-            </div>
-            <Slider
-              value={[((inst as any).message_delay_ms || 2000) / 1000]}
-              min={1}
-              max={10}
-              step={0.5}
-              onValueCommit={(value) => {
-                updateDelay.mutate({ instanceName: inst.instance_name, delayMs: value[0] * 1000 });
-              }}
-            />
-            <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-muted-foreground">1s</span>
-              <span className="text-[10px] text-muted-foreground">10s</span>
             </div>
           </div>
         </div>
