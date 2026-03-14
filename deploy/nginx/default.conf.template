@@ -104,6 +104,30 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Chrome Extension API
+    location /api/ext/ {
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' $cors_origin always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'authorization, content-type' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 86400;
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+        proxy_hide_header 'Access-Control-Allow-Origin';
+        proxy_hide_header 'Access-Control-Allow-Methods';
+        proxy_hide_header 'Access-Control-Allow-Headers';
+        proxy_hide_header 'Access-Control-Allow-Credentials';
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        proxy_pass http://backend:3001/api/ext/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Edge Functions compatibility → Backend Express
     location /functions/v1/ {
         if ($request_method = 'OPTIONS') {
