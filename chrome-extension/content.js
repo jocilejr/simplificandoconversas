@@ -531,14 +531,19 @@
     return `${days}d`;
   }
 
-  // ── Polling ──
+  // ── Polling (with backoff on errors) ──
   function startPolling() {
     stopPolling();
-    pollTimer = setInterval(() => {
-      detectContact();
-      if (currentTab === "dashboard") loadDashboard();
-      if (currentTab === "contact" && currentPhone) loadContactData();
-    }, 8000);
+    function poll() {
+      const interval = errorBackoffCycles > 0 ? 8000 + errorBackoffCycles * 6000 : 8000;
+      pollTimer = setTimeout(() => {
+        detectContact();
+        if (currentTab === "dashboard") loadDashboard();
+        if (currentTab === "contact" && currentPhone) loadContactData();
+        poll();
+      }, interval);
+    }
+    poll();
   }
 
   function stopPolling() {

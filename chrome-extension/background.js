@@ -113,6 +113,10 @@ async function apiFetch(path, options = {}) {
 
   if (!res.ok) {
     const text = await res.text();
+    // Detect HTML error pages (502/504 from Nginx) and return friendly message
+    if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("502 Bad Gateway") || text.includes("504 Gateway")) {
+      throw new Error(`Servidor temporariamente indisponivel (${res.status}). Tente novamente em instantes.`);
+    }
     throw new Error(`API ${res.status}: ${text}`);
   }
   return res.json();

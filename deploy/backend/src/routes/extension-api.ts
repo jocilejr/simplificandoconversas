@@ -222,6 +222,7 @@ router.get("/contact-status", async (req, res) => {
     .eq("user_id", userId)
     .eq("is_active", true);
 
+  console.log(`[ext-api] GET /contact-status?phone=${phone} ${Date.now() - start}ms`);
   res.json({
     contact: conv || null,
     executions: enriched,
