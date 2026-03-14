@@ -4,13 +4,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message)
     .then(sendResponse)
     .catch((err) => sendResponse({ error: err.message }));
-  return true; // async response
+  return true;
 });
 
 async function getConfig() {
   const result = await chrome.storage.local.get(["apiUrl", "authToken"]);
   if (!result.apiUrl || !result.authToken) {
-    throw new Error("Extensão não configurada. Clique no ícone para configurar.");
+    throw new Error("Extensao nao configurada. Clique no icone para configurar.");
   }
   return { apiUrl: result.apiUrl.replace(/\/+$/, ""), token: result.authToken };
 }
@@ -36,13 +36,13 @@ async function apiFetch(path, options = {}) {
 async function handleMessage(msg) {
   switch (msg.action) {
     case "contact-status":
-      return apiFetch(`/functions/v1/ext/contact-status?phone=${encodeURIComponent(msg.phone)}`);
+      return apiFetch(`/api/ext/contact-status?phone=${encodeURIComponent(msg.phone)}`);
 
     case "flows":
-      return apiFetch("/functions/v1/ext/flows");
+      return apiFetch("/api/ext/flows");
 
     case "trigger-flow":
-      return apiFetch("/functions/v1/ext/trigger-flow", {
+      return apiFetch("/api/ext/trigger-flow", {
         method: "POST",
         body: JSON.stringify({
           flowId: msg.flowId,
@@ -52,10 +52,19 @@ async function handleMessage(msg) {
       });
 
     case "pause-flow":
-      return apiFetch("/functions/v1/ext/pause-flow", {
+      return apiFetch("/api/ext/pause-flow", {
         method: "POST",
         body: JSON.stringify({ executionId: msg.executionId }),
       });
+
+    case "dashboard-stats":
+      return apiFetch("/api/ext/dashboard");
+
+    case "contact-cross":
+      return apiFetch(`/api/ext/contact-cross?phone=${encodeURIComponent(msg.phone)}`);
+
+    case "detect-instance":
+      return apiFetch("/api/ext/detect-instance");
 
     default:
       throw new Error("Unknown action: " + msg.action);
