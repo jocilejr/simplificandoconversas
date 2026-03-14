@@ -370,7 +370,7 @@
     } else {
       activeExecs.forEach((ex) => {
         const statusClass = ex.status === "running" ? "running" : "waiting";
-        const statusLabel = ex.status === "running" ? "Rodando" : "Aguardando";
+        const statusLabel = ex.status === "running" ? "Rodando" : ex.status === "waiting_click" ? "Aguardando Clique" : ex.status === "waiting_reply" ? "Aguardando Resposta" : "Aguardando";
         html += `
           <div class="sc-active-flow-card ${statusClass}">
             <div class="sc-active-flow-info">

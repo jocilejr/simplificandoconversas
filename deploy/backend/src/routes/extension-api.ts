@@ -179,7 +179,7 @@ router.get("/contact-status", async (req, res) => {
       .select("id, flow_id, status, current_node_index, waiting_node_id, instance_name, created_at")
       .eq("user_id", userId)
       .eq("remote_jid", jid)
-      .in("status", ["running", "waiting"]),
+      .in("status", ["running", "waiting", "waiting_click", "waiting_reply"]),
     sb.from("flow_executions")
       .select("id, flow_id, status, created_at")
       .eq("user_id", userId)
