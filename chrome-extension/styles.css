@@ -296,6 +296,25 @@
   background: rgba(0, 168, 132, 0.12);
   color: #00a884;
   border: 1px solid rgba(0, 168, 132, 0.2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sc-tag-remove {
+  background: none;
+  border: none;
+  color: #8696a0;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  margin-left: 2px;
+  border-radius: 50%;
+  transition: color 0.15s, background 0.15s;
+}
+.sc-tag-remove:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
 }
 
 /* ── Status Badges ── */
