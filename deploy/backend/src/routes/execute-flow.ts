@@ -556,7 +556,8 @@ router.post("/", async (req, res) => {
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText });
+              const queueGwfc = getMessageQueue(instanceName);
+              const sendResult = await queueGwfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `group.waitForClick→${sendNumber}`);
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
