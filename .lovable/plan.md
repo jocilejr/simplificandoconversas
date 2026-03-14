@@ -1,45 +1,50 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Diagnostico: Erro 404 na Extensao Chrome
+### Mudanças realizadas
 
-O problema e claro: o Nginx na VPS **nao tem um bloco `location`** para `/api/ext/`. A extensao chama `https://api.chatbotsimplificado.com/api/ext/dashboard`, mas o Nginx so tem rotas para `/functions/v1/`, `/rest/v1/`, `/auth/v1/`, etc. Qualquer caminho `/api/ext/*` cai no handler padrao do Nginx e retorna 404.
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-### Correcao
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-**Arquivo: `deploy/nginx/default.conf.template`**
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-Adicionar um bloco `location /api/ext/` no server do `API_DOMAIN` (antes do bloco `/functions/v1/`), proxying para `http://backend:3001/api/ext/`:
+### Mudanças realizadas
 
-```nginx
-# Chrome Extension API
-location /api/ext/ {
-    if ($request_method = 'OPTIONS') {
-        add_header 'Access-Control-Allow-Origin' $cors_origin always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' 'authorization, content-type' always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        add_header 'Access-Control-Max-Age' 86400;
-        add_header 'Content-Length' 0;
-        return 204;
-    }
-    proxy_hide_header 'Access-Control-Allow-Origin';
-    proxy_hide_header 'Access-Control-Allow-Methods';
-    proxy_hide_header 'Access-Control-Allow-Headers';
-    proxy_hide_header 'Access-Control-Allow-Credentials';
-    add_header 'Access-Control-Allow-Origin' $cors_origin always;
-    add_header 'Access-Control-Allow-Credentials' 'true' always;
-    proxy_pass http://backend:3001/api/ext/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-Apos o deploy, executar na VPS:
-```bash
-docker compose up -d --force-recreate nginx
-```
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-**Apenas 1 arquivo alterado. Nenhuma mudanca no backend ou na extensao.**
+### Redesign completo do overlay para sidebar fixa
 
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
+- Ícones SVG inline (sem emojis)
