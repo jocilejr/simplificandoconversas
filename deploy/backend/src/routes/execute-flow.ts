@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient, getAnonClient, SERVICE_ROLE_KEY } from "../lib/supabase";
+import { getMessageQueue } from "../lib/message-queue";
 import crypto from "crypto";
 
 const router = Router();
@@ -53,7 +54,8 @@ async function executeStep(
 
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
-    const r = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText });
+    const queue = getMessageQueue(instanceName);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText }), `sendText→${num}`);
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -69,7 +71,8 @@ async function executeStep(
   }
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const queue = getMessageQueue(instanceName);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendImage→${num}`);
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -84,7 +87,8 @@ async function executeStep(
   }
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
-    const r = await evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl });
+    const queue = getMessageQueue(instanceName);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl }), `sendAudio→${num}`);
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -99,7 +103,8 @@ async function executeStep(
   }
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const queue = getMessageQueue(instanceName);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendVideo→${num}`);
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -116,7 +121,8 @@ async function executeStep(
   if (nodeType === "sendFile" && (stepData as any).fileUrl) {
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" });
+    const queue = getMessageQueue(instanceName);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" }), `sendFile→${num}`);
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -457,7 +463,8 @@ router.post("/", async (req, res) => {
             const aiResponse = aiData?.choices?.[0]?.message?.content || "";
 
             if (data.aiAutoSend !== false && aiResponse) {
-              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: aiResponse });
+              const queue = getMessageQueue(instanceName);
+              const sendResult = await queue.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: aiResponse }), `aiAgent→${sendNumber}`);
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -485,7 +492,8 @@ router.post("/", async (req, res) => {
             const messageTemplate = data.clickMessage || "Acesse: {{link}}";
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-            const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText });
+            const queueWfc = getMessageQueue(instanceName);
+            const sendResult = await queueWfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `waitForClick→${sendNumber}`);
             const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
             if (conv) {
               await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -548,7 +556,8 @@ router.post("/", async (req, res) => {
               const messageTemplate = step.data.clickMessage || "Acesse: {{link}}";
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
-              const sendResult = await evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText });
+              const queueGwfc = getMessageQueue(instanceName);
+              const sendResult = await queueGwfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `group.waitForClick→${sendNumber}`);
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
