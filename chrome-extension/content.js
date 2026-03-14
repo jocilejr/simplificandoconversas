@@ -467,7 +467,6 @@
           showInlineError(btn, "Configure a instância no popup da extensão");
           return;
         }
-        }
         btn.disabled = true;
         btn.innerHTML = '<div class="sc-dot-pulse"><span></span><span></span><span></span></div>';
         try {
