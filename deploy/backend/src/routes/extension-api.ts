@@ -283,6 +283,26 @@ router.post("/trigger-flow", async (req, res) => {
   }
 });
 
+// ── DELETE /api/ext/remove-tag ──
+router.delete("/remove-tag", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const { remoteJid, tagName } = req.body;
+  if (!remoteJid || !tagName) return res.status(400).json({ error: "remoteJid and tagName required" });
+
+  const sb = getServiceClient();
+  const { error } = await sb
+    .from("contact_tags")
+    .delete()
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .eq("tag_name", tagName);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // ── POST /api/ext/pause-flow ──
 router.post("/pause-flow", async (req, res) => {
   const userId = await requireAuth(req, res);

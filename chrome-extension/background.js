@@ -153,6 +153,12 @@ async function handleMessage(msg) {
       return apiFetch(url);
     }
 
+    case "remove-tag":
+      return apiFetch("/api/ext/remove-tag", {
+        method: "DELETE",
+        body: JSON.stringify({ remoteJid: msg.remoteJid, tagName: msg.tagName }),
+      });
+
     case "list-instances":
       return apiFetch("/api/ext/list-instances");
 
