@@ -176,29 +176,37 @@
     }
   }
 
-  // ── Load Data ──
+  // ── Load Data (with in-flight guards & backoff) ──
   let dashboardRetries = 0;
+  let dashboardInFlight = false;
+  let contactInFlight = false;
+  let errorBackoffCycles = 0;
 
   async function loadDashboard() {
+    if (dashboardInFlight) return;
+    dashboardInFlight = true;
     try {
       dashboardData = await apiCall("dashboard-stats");
       dashboardRetries = 0;
+      errorBackoffCycles = 0;
       if (currentTab === "dashboard") renderCurrentTab();
     } catch (e) {
       dashboardData = { error: e.message };
+      errorBackoffCycles = Math.min(errorBackoffCycles + 1, 3);
       if (currentTab === "dashboard") renderCurrentTab();
-      // Retry once after 2s
       if (dashboardRetries < 1) {
         dashboardRetries++;
         setTimeout(loadDashboard, 2000);
       }
+    } finally {
+      dashboardInFlight = false;
     }
   }
 
   async function loadContactData() {
-    if (!currentPhone) return;
+    if (!currentPhone || contactInFlight) return;
+    contactInFlight = true;
     try {
-      const excludeParam = detectedInstance ? `&excludeInstance=${encodeURIComponent(detectedInstance.instance_name)}` : '';
       const [status, flows, cross] = await Promise.all([
         apiCall("contact-status", { phone: currentPhone }),
         apiCall("flows"),
@@ -207,10 +215,14 @@
       contactData = status;
       flowsData = flows;
       crossData = cross;
+      errorBackoffCycles = 0;
       if (currentTab === "contact") renderCurrentTab();
     } catch (e) {
       contactData = { error: e.message };
+      errorBackoffCycles = Math.min(errorBackoffCycles + 1, 3);
       if (currentTab === "contact") renderCurrentTab();
+    } finally {
+      contactInFlight = false;
     }
   }
 
@@ -519,14 +531,19 @@
     return `${days}d`;
   }
 
-  // ── Polling ──
+  // ── Polling (with backoff on errors) ──
   function startPolling() {
     stopPolling();
-    pollTimer = setInterval(() => {
-      detectContact();
-      if (currentTab === "dashboard") loadDashboard();
-      if (currentTab === "contact" && currentPhone) loadContactData();
-    }, 8000);
+    function poll() {
+      const interval = errorBackoffCycles > 0 ? 8000 + errorBackoffCycles * 6000 : 8000;
+      pollTimer = setTimeout(() => {
+        detectContact();
+        if (currentTab === "dashboard") loadDashboard();
+        if (currentTab === "contact" && currentPhone) loadContactData();
+        poll();
+      }, interval);
+    }
+    poll();
   }
 
   function stopPolling() {
