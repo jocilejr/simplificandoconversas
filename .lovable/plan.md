@@ -47,4 +47,12 @@ O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamad
 - Detecção automática de instância (sem seletor manual)
 - Toggle para abrir/fechar sidebar
 - Polling a cada 8s para atualização
+
+## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
+
+### Implementação
+| Arquivo | Mudança |
+|---------|---------|
+| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
+| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
 - Ícones SVG inline (sem emojis)
