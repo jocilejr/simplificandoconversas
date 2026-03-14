@@ -63,6 +63,7 @@ export function ConnectionsSection() {
   const [syncing, setSyncing] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [delayInput, setDelayInput] = useState<Record<string, string>>({});
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
