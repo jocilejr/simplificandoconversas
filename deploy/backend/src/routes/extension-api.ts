@@ -106,7 +106,7 @@ router.get("/list-instances", async (req, res) => {
 
 // ── GET /api/ext/contact-cross?phone=X ──
 router.get("/contact-cross", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
