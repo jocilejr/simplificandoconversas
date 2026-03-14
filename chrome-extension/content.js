@@ -467,7 +467,6 @@
           showInlineError(btn, "Configure a instância no popup da extensão");
           return;
         }
-        }
         btn.disabled = true;
         btn.innerHTML = '<div class="sc-dot-pulse"><span></span><span></span><span></span></div>';
         try {
@@ -537,10 +536,20 @@
     setTimeout(() => { if (errEl) errEl.remove(); }, 4000);
   }
 
-  // ── Init ──
+  // ── Init: wait for WhatsApp to fully render (not just #app shell) ──
+  function isWhatsAppReady() {
+    return !!(
+      document.querySelector('#side') ||
+      document.querySelector('div[data-testid="chat-list"]') ||
+      document.querySelector('#main header') ||
+      document.querySelector('div[data-testid="default-user"]')
+    );
+  }
+
   const waitForApp = setInterval(() => {
-    if (document.getElementById("app") || document.querySelector("#main")) {
+    if (isWhatsAppReady()) {
       clearInterval(waitForApp);
+      console.log("SC: WhatsApp ready, injecting sidebar");
       createSidebar();
       startObserver();
       loadInstanceFromStorage();
@@ -552,12 +561,18 @@
 
   // ── Watchdog: re-inject sidebar if WhatsApp destroys it ──
   setInterval(() => {
-    if (!document.getElementById("sc-sidebar") && (document.getElementById("app") || document.querySelector("#main"))) {
-      console.log("SC: Sidebar destroyed, re-injecting...");
+    if (!isWhatsAppReady()) return; // WhatsApp not ready yet, skip
+    if (!document.getElementById("sc-sidebar")) {
+      console.log("SC: Sidebar missing, re-injecting...");
+      // Clean up orphaned elements
+      const oldToggle = document.getElementById("sc-toggle-btn");
+      if (oldToggle) oldToggle.remove();
       createSidebar();
+      startObserver();
       loadInstanceFromStorage();
       loadDashboard();
       detectContact();
+      startPolling();
     }
   }, 3000);
 })();
