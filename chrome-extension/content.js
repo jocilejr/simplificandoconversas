@@ -541,6 +541,7 @@
   const waitForApp = setInterval(() => {
     if (document.getElementById("app") || document.querySelector("#main")) {
       clearInterval(waitForApp);
+      createSidebar();
       startObserver();
       loadInstanceFromStorage();
       loadDashboard();
@@ -548,4 +549,15 @@
       startPolling();
     }
   }, 1000);
+
+  // ── Watchdog: re-inject sidebar if WhatsApp destroys it ──
+  setInterval(() => {
+    if (!document.getElementById("sc-sidebar") && (document.getElementById("app") || document.querySelector("#main"))) {
+      console.log("SC: Sidebar destroyed, re-injecting...");
+      createSidebar();
+      loadInstanceFromStorage();
+      loadDashboard();
+      detectContact();
+    }
+  }, 3000);
 })();
