@@ -100,21 +100,31 @@
     });
   }
 
-  // ── Detect Instance ──
-  async function detectInstance() {
-    try {
-      const result = await apiCall("detect-instance");
-      if (result && result.instance) {
-        detectedInstance = result.instance;
+  // ── Load Instance from Storage ──
+  function loadInstanceFromStorage() {
+    chrome.storage.local.get(["selectedInstance"], (result) => {
+      if (result.selectedInstance && result.selectedInstance.instance_name) {
+        detectedInstance = result.selectedInstance;
         const badge = document.getElementById("sc-instance-badge");
         if (badge) {
           badge.innerHTML = `<span class="sc-connection-dot connected"></span> ${detectedInstance.instance_name}`;
         }
+      } else {
+        detectedInstance = null;
+        const badge = document.getElementById("sc-instance-badge");
+        if (badge) {
+          badge.innerHTML = `<span class="sc-connection-dot"></span> Não configurada`;
+        }
       }
-    } catch (e) {
-      console.log("SC: Instance detection failed", e.message);
-    }
+    });
   }
+
+  // Listen for storage changes (when user selects instance in popup)
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.selectedInstance) {
+      loadInstanceFromStorage();
+    }
+  });
 
   // ── Detect Contact ──
   function detectContact() {
