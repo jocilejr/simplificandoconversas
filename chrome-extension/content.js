@@ -484,6 +484,26 @@
         }
       });
     });
+
+    // Tag remove buttons
+    body.querySelectorAll(".sc-tag-remove").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const jid = btn.dataset.jid;
+        const tag = btn.dataset.tag;
+        if (!jid || !tag) return;
+        btn.disabled = true;
+        btn.style.opacity = "0.3";
+        try {
+          await apiCall("remove-tag", { remoteJid: jid, tagName: tag });
+          loadContactData();
+        } catch (err) {
+          alert("Erro ao remover tag: " + err.message);
+          btn.disabled = false;
+          btn.style.opacity = "1";
+        }
+      });
+    });
   }
 
   // ── Utilities ──
