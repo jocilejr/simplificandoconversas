@@ -1,24 +1,27 @@
 import { Router, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "";
+const GOTRUE_URL = process.env.GOTRUE_URL || "http://gotrue:9999";
 
-// ── Auth middleware ──
-function extractUserId(req: Request): string | null {
+// ── Auth middleware (validates token via GoTrue) ──
+async function extractUserId(req: Request): Promise<string | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return null;
   try {
-    const decoded = jwt.verify(auth.slice(7), JWT_SECRET) as any;
-    return decoded.sub || null;
+    const resp = await fetch(`${GOTRUE_URL}/user`, {
+      headers: { Authorization: auth },
+    });
+    if (!resp.ok) return null;
+    const user: any = await resp.json();
+    return user.id || null;
   } catch {
     return null;
   }
 }
 
-function requireAuth(req: Request, res: Response): string | null {
-  const userId = extractUserId(req);
+async function requireAuth(req: Request, res: Response): Promise<string | null> {
+  const userId = await extractUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
