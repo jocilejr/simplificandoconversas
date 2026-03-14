@@ -80,24 +80,26 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
-// ── GET /api/ext/detect-instance ──
-router.get("/detect-instance", async (req, res) => {
+// ── GET /api/ext/list-instances ──
+router.get("/list-instances", async (req, res) => {
   const userId = requireAuth(req, res);
   if (!userId) return;
 
-  const sb = getServiceClient();
+  try {
+    const sb = getServiceClient();
 
-  // Return the first active instance (user can have multiple)
-  const { data: instances } = await sb
-    .from("whatsapp_instances")
-    .select("id, instance_name, status, is_active")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .order("created_at")
-    .limit(1);
+    const { data: instances } = await sb
+      .from("whatsapp_instances")
+      .select("id, instance_name, status, is_active")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("created_at");
 
-  const instance = instances?.[0] || null;
-  res.json({ instance });
+    res.json({ instances: instances || [] });
+  } catch (err: any) {
+    console.error("List instances error:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
+  }
 });
 
 // ── GET /api/ext/contact-cross?phone=X ──

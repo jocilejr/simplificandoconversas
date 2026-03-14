@@ -100,21 +100,31 @@
     });
   }
 
-  // ── Detect Instance ──
-  async function detectInstance() {
-    try {
-      const result = await apiCall("detect-instance");
-      if (result && result.instance) {
-        detectedInstance = result.instance;
+  // ── Load Instance from Storage ──
+  function loadInstanceFromStorage() {
+    chrome.storage.local.get(["selectedInstance"], (result) => {
+      if (result.selectedInstance && result.selectedInstance.instance_name) {
+        detectedInstance = result.selectedInstance;
         const badge = document.getElementById("sc-instance-badge");
         if (badge) {
           badge.innerHTML = `<span class="sc-connection-dot connected"></span> ${detectedInstance.instance_name}`;
         }
+      } else {
+        detectedInstance = null;
+        const badge = document.getElementById("sc-instance-badge");
+        if (badge) {
+          badge.innerHTML = `<span class="sc-connection-dot"></span> Não configurada`;
+        }
       }
-    } catch (e) {
-      console.log("SC: Instance detection failed", e.message);
-    }
+    });
   }
+
+  // Listen for storage changes (when user selects instance in popup)
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.selectedInstance) {
+      loadInstanceFromStorage();
+    }
+  });
 
   // ── Detect Contact ──
   function detectContact() {
@@ -444,8 +454,9 @@
     body.querySelectorAll("[data-action='trigger']").forEach((btn) => {
       btn.addEventListener("click", async () => {
         if (!detectedInstance) {
-          alert("Instancia nao detectada. Verifique a conexao.");
+          showInlineError(btn, "Configure a instância no popup da extensão");
           return;
+        }
         }
         btn.disabled = true;
         btn.innerHTML = '<div class="sc-dot-pulse"><span></span><span></span><span></span></div>';
@@ -502,12 +513,26 @@
     observer.observe(target, { childList: true, subtree: true, characterData: true });
   }
 
+  // ── Inline error helper ──
+  function showInlineError(btn, msg) {
+    const parent = btn.closest(".sc-flow-item") || btn.parentElement;
+    let errEl = parent.querySelector(".sc-inline-error");
+    if (!errEl) {
+      errEl = document.createElement("div");
+      errEl.className = "sc-inline-error";
+      errEl.style.cssText = "color:#ef4444;font-size:11px;margin-top:4px;";
+      parent.appendChild(errEl);
+    }
+    errEl.textContent = msg;
+    setTimeout(() => { if (errEl) errEl.remove(); }, 4000);
+  }
+
   // ── Init ──
   const waitForApp = setInterval(() => {
     if (document.getElementById("app") || document.querySelector("#main")) {
       clearInterval(waitForApp);
       startObserver();
-      detectInstance();
+      loadInstanceFromStorage();
       loadDashboard();
       detectContact();
       startPolling();

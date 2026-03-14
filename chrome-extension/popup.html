@@ -26,14 +26,15 @@
       margin-bottom: 4px;
       margin-top: 12px;
     }
-    input {
+    input, select {
       width: 100%;
       padding: 8px 10px;
       border: 1px solid #d1d5db;
       border-radius: 6px;
       font-size: 13px;
+      background: #fff;
     }
-    input:focus { outline: none; border-color: #25d366; }
+    input:focus, select:focus { outline: none; border-color: #25d366; }
     .hint { font-size: 10px; color: #999; margin-top: 2px; }
     button {
       width: 100%;
@@ -60,6 +61,20 @@
     .divider { height: 1px; background: #e5e7eb; margin: 16px 0; }
     .login-section { display: none; }
     .login-section.show { display: block; }
+    .instance-loading { font-size: 11px; color: #999; margin-top: 6px; }
+    .instance-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 11px;
+      color: #16a34a;
+    }
+    .instance-status .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #16a34a;
+    }
   </style>
 </head>
 <body>
@@ -83,6 +98,15 @@
 
   <div id="loggedSection" class="login-section">
     <div style="font-size:13px; color:#16a34a; font-weight:600;">✓ Conectado</div>
+
+    <label for="instanceSelect">Instância ativa</label>
+    <select id="instanceSelect" disabled>
+      <option value="">Carregando...</option>
+    </select>
+    <div id="instanceStatus"></div>
+
+    <button id="refreshInstancesBtn" style="background:#075e54; margin-top:8px; padding:6px; font-size:12px;">↻ Atualizar instâncias</button>
+
     <button id="logoutBtn" style="background:#ef4444;">Desconectar</button>
   </div>
 
