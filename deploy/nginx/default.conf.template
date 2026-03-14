@@ -26,7 +26,11 @@ server {
     server_name ${API_DOMAIN} nginx localhost;
     client_max_body_size 50M;
 
+    # CORS: allow APP_DOMAIN and chrome-extension origins
     set $cors_origin "https://${APP_DOMAIN}";
+    if ($http_origin ~* "^chrome-extension://") {
+        set $cors_origin $http_origin;
+    }
 
     # PostgREST (supabase-js compatibility)
     location /rest/v1/ {
