@@ -513,12 +513,26 @@
     observer.observe(target, { childList: true, subtree: true, characterData: true });
   }
 
+  // ── Inline error helper ──
+  function showInlineError(btn, msg) {
+    const parent = btn.closest(".sc-flow-item") || btn.parentElement;
+    let errEl = parent.querySelector(".sc-inline-error");
+    if (!errEl) {
+      errEl = document.createElement("div");
+      errEl.className = "sc-inline-error";
+      errEl.style.cssText = "color:#ef4444;font-size:11px;margin-top:4px;";
+      parent.appendChild(errEl);
+    }
+    errEl.textContent = msg;
+    setTimeout(() => { if (errEl) errEl.remove(); }, 4000);
+  }
+
   // ── Init ──
   const waitForApp = setInterval(() => {
     if (document.getElementById("app") || document.querySelector("#main")) {
       clearInterval(waitForApp);
       startObserver();
-      detectInstance();
+      loadInstanceFromStorage();
       loadDashboard();
       detectContact();
       startPolling();
