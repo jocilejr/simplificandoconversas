@@ -1,24 +1,27 @@
 import { Router, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "";
+const GOTRUE_URL = process.env.GOTRUE_URL || "http://gotrue:9999";
 
-// ── Auth middleware ──
-function extractUserId(req: Request): string | null {
+// ── Auth middleware (validates token via GoTrue) ──
+async function extractUserId(req: Request): Promise<string | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return null;
   try {
-    const decoded = jwt.verify(auth.slice(7), JWT_SECRET) as any;
-    return decoded.sub || null;
+    const resp = await fetch(`${GOTRUE_URL}/user`, {
+      headers: { Authorization: auth },
+    });
+    if (!resp.ok) return null;
+    const user: any = await resp.json();
+    return user.id || null;
   } catch {
     return null;
   }
 }
 
-function requireAuth(req: Request, res: Response): string | null {
-  const userId = extractUserId(req);
+async function requireAuth(req: Request, res: Response): Promise<string | null> {
+  const userId = await extractUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
@@ -28,8 +31,7 @@ function requireAuth(req: Request, res: Response): string | null {
 
 // ── GET /api/ext/dashboard ──
 router.get("/dashboard", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+  const userId = await requireAuth(req, res);
 
   try {
     const sb = getServiceClient();
@@ -82,7 +84,7 @@ router.get("/dashboard", async (req, res) => {
 
 // ── GET /api/ext/list-instances ──
 router.get("/list-instances", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   try {
@@ -104,7 +106,7 @@ router.get("/list-instances", async (req, res) => {
 
 // ── GET /api/ext/contact-cross?phone=X ──
 router.get("/contact-cross", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
@@ -131,7 +133,7 @@ router.get("/contact-cross", async (req, res) => {
 
 // ── GET /api/ext/flows ──
 router.get("/flows", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const sb = getServiceClient();
@@ -155,7 +157,7 @@ router.get("/flows", async (req, res) => {
 
 // ── GET /api/ext/contact-status?phone=5511... ──
 router.get("/contact-status", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
@@ -227,7 +229,7 @@ router.get("/contact-status", async (req, res) => {
 
 // ── POST /api/ext/trigger-flow ──
 router.post("/trigger-flow", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const { flowId, phone, instanceName } = req.body;
@@ -271,7 +273,7 @@ router.post("/trigger-flow", async (req, res) => {
 
 // ── POST /api/ext/pause-flow ──
 router.post("/pause-flow", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const { executionId } = req.body;
