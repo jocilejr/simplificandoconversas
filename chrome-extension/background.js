@@ -60,8 +60,13 @@ async function handleMessage(msg) {
     case "dashboard-stats":
       return apiFetch("/api/ext/dashboard");
 
-    case "contact-cross":
-      return apiFetch(`/api/ext/contact-cross?phone=${encodeURIComponent(msg.phone)}`);
+    case "contact-cross": {
+      let url = `/api/ext/contact-cross?phone=${encodeURIComponent(msg.phone)}`;
+      if (msg.excludeInstance) {
+        url += `&excludeInstance=${encodeURIComponent(msg.excludeInstance)}`;
+      }
+      return apiFetch(url);
+    }
 
     case "detect-instance":
       return apiFetch("/api/ext/detect-instance");

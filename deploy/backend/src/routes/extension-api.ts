@@ -108,15 +108,21 @@ router.get("/contact-cross", async (req, res) => {
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   if (!phone) return res.status(400).json({ error: "phone required" });
 
+  const excludeInstance = req.query.excludeInstance as string || "";
   const sb = getServiceClient();
 
   // Find all conversations with this phone number across all instances
-  const { data: conversations } = await sb
+  let query = sb
     .from("conversations")
     .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
     .eq("user_id", userId)
-    .eq("phone_number", phone)
-    .order("last_message_at", { ascending: false });
+    .eq("phone_number", phone);
+
+  if (excludeInstance) {
+    query = query.neq("instance_name", excludeInstance);
+  }
+
+  const { data: conversations } = await query.order("last_message_at", { ascending: false });
 
   res.json({ conversations: conversations || [] });
 });
