@@ -229,7 +229,7 @@ router.get("/contact-status", async (req, res) => {
 
 // ── POST /api/ext/trigger-flow ──
 router.post("/trigger-flow", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const { flowId, phone, instanceName } = req.body;
