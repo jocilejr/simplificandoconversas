@@ -273,7 +273,7 @@ router.post("/trigger-flow", async (req, res) => {
 
 // ── POST /api/ext/pause-flow ──
 router.post("/pause-flow", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const { executionId } = req.body;
