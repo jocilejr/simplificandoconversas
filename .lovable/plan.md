@@ -1,50 +1,26 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Diagnostico: Sidebar Nao Aparece Apos F5
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Causa Raiz
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+O problema tem duas camadas:
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+1. **`#app` existe imediatamente no HTML estatico do WhatsApp Web**, entao o `waitForApp` dispara antes do WhatsApp terminar de renderizar. O WhatsApp SPA reconstroi o DOM e pode destruir ou deslocar elementos injetados.
 
-### Mudanças realizadas
+2. **O watchdog re-injeta a cada 3s**, mas o `createSidebar()` faz `document.body.appendChild(sidebar)` — se o WhatsApp manipular o body, o sidebar fica "enterrado" ou o `#app` nao recebe o atributo `data-sc-sidebar`.
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+3. **O `startObserver` e `startPolling` so sao chamados no `waitForApp` inicial**, mas nao no watchdog. Entao se o watchdog re-cria a sidebar, o polling e observer nao sao reiniciados.
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+### Correcoes
 
-### Redesign completo do overlay para sidebar fixa
+**`chrome-extension/content.js`**:
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+1. **Esperar pelo conteudo real do WhatsApp** — em vez de `#app` (que existe sempre), esperar por `#side` ou `div[data-testid="chat-list"]` que so aparecem quando o WhatsApp terminou de carregar
+2. **Watchdog mais robusto** — alem de re-criar sidebar, reiniciar observer e polling
+3. **Usar `document.body.appendChild` com verificacao** — garantir que o sidebar esta realmente visivel no DOM apos injecao
+4. **Remover elementos orfaos** — antes de re-injetar, limpar toggle button antigo tambem
 
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-- Ícones SVG inline (sem emojis)
+### Arquivos alterados
+1. `chrome-extension/content.js` — corrigir waitForApp selector, robustecer watchdog
+
