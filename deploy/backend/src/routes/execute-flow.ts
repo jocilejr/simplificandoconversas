@@ -219,16 +219,30 @@ router.post("/", async (req, res) => {
     }
 
     let instanceName = bodyInstanceName;
+    let messageDelayMs = 2000;
     if (!instanceName) {
       const { data: activeInst } = await serviceClient
         .from("whatsapp_instances")
-        .select("instance_name")
+        .select("instance_name, message_delay_ms")
         .eq("user_id", userId)
         .eq("is_active", true)
         .limit(1)
         .single();
       instanceName = activeInst?.instance_name;
+      messageDelayMs = activeInst?.message_delay_ms || 2000;
+    } else {
+      const { data: instData } = await serviceClient
+        .from("whatsapp_instances")
+        .select("message_delay_ms")
+        .eq("user_id", userId)
+        .eq("instance_name", instanceName)
+        .limit(1)
+        .single();
+      messageDelayMs = instData?.message_delay_ms || 2000;
     }
+
+    // Initialize queue with configured delay
+    getMessageQueue(instanceName, messageDelayMs);
 
     const [flowResult, profileResult, activeExecsResult] = await Promise.all([
       serviceClient.from("chatbot_flows").select("*").eq("id", flowId).eq("user_id", userId).single(),

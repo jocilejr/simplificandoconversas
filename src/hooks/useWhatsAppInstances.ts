@@ -9,6 +9,7 @@ export interface WhatsAppInstance {
   status: string;
   is_active: boolean;
   proxy_url: string | null;
+  message_delay_ms: number;
   created_at: string;
   updated_at: string;
 }
