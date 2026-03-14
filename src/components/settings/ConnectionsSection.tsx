@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   Dialog,
@@ -50,6 +51,7 @@ export function ConnectionsSection() {
     logoutInstance,
     deleteInstance,
     setActiveInstance,
+    updateDelay,
   } = useWhatsAppInstances();
 
   const [showNameDialog, setShowNameDialog] = useState(false);
@@ -336,6 +338,28 @@ export function ConnectionsSection() {
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
+            </div>
+          </div>
+          {/* Message delay slider */}
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Intervalo entre mensagens</span>
+              <span className="text-xs font-medium text-primary">
+                {((inst as any).message_delay_ms || 2000) / 1000}s
+              </span>
+            </div>
+            <Slider
+              value={[((inst as any).message_delay_ms || 2000) / 1000]}
+              min={1}
+              max={10}
+              step={0.5}
+              onValueCommit={(value) => {
+                updateDelay.mutate({ instanceName: inst.instance_name, delayMs: value[0] * 1000 });
+              }}
+            />
+            <div className="flex justify-between mt-1">
+              <span className="text-[10px] text-muted-foreground">1s</span>
+              <span className="text-[10px] text-muted-foreground">10s</span>
             </div>
           </div>
         </div>

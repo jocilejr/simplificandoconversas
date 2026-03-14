@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_instances ADD COLUMN message_delay_ms integer NOT NULL DEFAULT 2000;

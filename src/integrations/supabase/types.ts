@@ -540,6 +540,7 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean | null
+          message_delay_ms: number
           proxy_url: string | null
           status: string | null
           updated_at: string | null
@@ -550,6 +551,7 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean | null
+          message_delay_ms?: number
           proxy_url?: string | null
           status?: string | null
           updated_at?: string | null
@@ -560,6 +562,7 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean | null
+          message_delay_ms?: number
           proxy_url?: string | null
           status?: string | null
           updated_at?: string | null
