@@ -1,23 +1,30 @@
 /**
  * Anti-Ban Message Queue
  * Serializes all outbound WhatsApp messages per instance.
- * Minimum 2 seconds between each message send.
+ * Configurable delay between each message send.
  */
 
 interface QueueItem {
   fn: () => Promise<any>;
   resolve: (value: any) => void;
   reject: (err: any) => void;
-  label: string; // for logging
+  label: string;
 }
 
 class MessageQueue {
   private queue: QueueItem[] = [];
   private processing = false;
   private instanceName: string;
+  private delayMs: number;
 
-  constructor(instanceName: string) {
+  constructor(instanceName: string, delayMs: number = 2000) {
     this.instanceName = instanceName;
+    this.delayMs = delayMs;
+  }
+
+  setDelay(ms: number) {
+    this.delayMs = ms;
+    console.log(`[queue:${this.instanceName}] delay updated to ${ms}ms`);
   }
 
   enqueue<T>(fn: () => Promise<T>, label: string = ""): Promise<T> {
@@ -40,7 +47,7 @@ class MessageQueue {
     const item = this.queue.shift()!;
 
     try {
-      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length})`);
+      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
       const result = await item.fn();
       item.resolve(result);
     } catch (err) {
@@ -48,8 +55,7 @@ class MessageQueue {
       item.reject(err);
     }
 
-    // Wait 2 seconds before processing next message
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, this.delayMs));
     this.processNext();
   }
 }
@@ -57,10 +63,12 @@ class MessageQueue {
 // Global map: instanceName → MessageQueue
 const queues = new Map<string, MessageQueue>();
 
-export function getMessageQueue(instanceName: string): MessageQueue {
+export function getMessageQueue(instanceName: string, delayMs?: number): MessageQueue {
   if (!queues.has(instanceName)) {
-    queues.set(instanceName, new MessageQueue(instanceName));
-    console.log(`[queue] Created queue for instance: ${instanceName}`);
+    queues.set(instanceName, new MessageQueue(instanceName, delayMs || 2000));
+    console.log(`[queue] Created queue for instance: ${instanceName} (delay: ${delayMs || 2000}ms)`);
+  } else if (delayMs !== undefined) {
+    queues.get(instanceName)!.setDelay(delayMs);
   }
   return queues.get(instanceName)!;
 }
