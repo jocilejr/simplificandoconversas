@@ -179,6 +179,23 @@ export function useWhatsAppInstances() {
     },
   });
 
+  const updateDelay = useMutation({
+    mutationFn: async ({ instanceName, delayMs }: { instanceName: string; delayMs: number }) => {
+      const { error } = await supabase
+        .from("whatsapp_instances")
+        .update({ message_delay_ms: delayMs } as any)
+        .eq("instance_name", instanceName);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+      toast({ title: "Intervalo atualizado!" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao atualizar intervalo", description: err.message, variant: "destructive" });
+    },
+  });
+
   return {
     instances: mergedInstances,
     remoteInstances,
@@ -191,5 +208,6 @@ export function useWhatsAppInstances() {
     logoutInstance,
     deleteInstance,
     setActiveInstance,
+    updateDelay,
   };
 }
