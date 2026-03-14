@@ -278,8 +278,8 @@
       html += '<div class="sc-section">';
       html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.history} Execucoes Recentes</div></div>`;
       d.recentExecutions.slice(0, 8).forEach((ex) => {
-        const statusClass = ex.status === "running" ? "running" : ex.status === "waiting" ? "waiting" : ex.status === "completed" ? "completed" : "none";
-        const statusLabel = ex.status === "running" ? "Rodando" : ex.status === "waiting" ? "Aguardando" : ex.status === "completed" ? "Concluido" : ex.status === "cancelled" ? "Cancelado" : ex.status;
+        const statusClass = ex.status === "running" ? "running" : (ex.status === "waiting" || ex.status === "waiting_click" || ex.status === "waiting_reply") ? "waiting" : ex.status === "completed" ? "completed" : "none";
+        const statusLabel = ex.status === "running" ? "Rodando" : ex.status === "waiting" ? "Aguardando" : ex.status === "waiting_click" ? "Aguardando Clique" : ex.status === "waiting_reply" ? "Aguardando Resposta" : ex.status === "completed" ? "Concluido" : ex.status === "cancelled" ? "Cancelado" : ex.status;
         const timeAgo = formatTimeAgo(ex.created_at);
         html += `
           <div class="sc-recent-item">
