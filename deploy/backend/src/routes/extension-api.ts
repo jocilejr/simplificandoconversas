@@ -35,6 +35,7 @@ async function requireAuth(req: Request, res: Response): Promise<string | null> 
 
 // ── GET /api/ext/dashboard ──
 router.get("/dashboard", async (req, res) => {
+  const start = Date.now();
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
