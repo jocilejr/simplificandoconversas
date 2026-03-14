@@ -156,7 +156,7 @@ router.post("/trigger-flow", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ flowId, remoteJid, instanceName }),
     });
-    const result = await executeRes.json();
+    const result = await executeRes.json() as any;
     res.json({ ok: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
