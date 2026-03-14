@@ -75,6 +75,7 @@ router.get("/dashboard", async (req, res) => {
       }));
     }
 
+    console.log(`[ext-api] GET /dashboard ${Date.now() - start}ms`);
     res.json({
       activeFlows: flowsRes.count || 0,
       totalContacts: contactsRes.count || 0,
@@ -83,7 +84,7 @@ router.get("/dashboard", async (req, res) => {
       recentExecutions: enrichedRecent,
     });
   } catch (err: any) {
-    console.error("Dashboard error:", err);
+    console.error(`[ext-api] GET /dashboard error (${Date.now() - start}ms):`, err);
     res.status(500).json({ error: err.message || "Internal server error" });
   }
 });
