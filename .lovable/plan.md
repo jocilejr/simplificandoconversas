@@ -28,39 +28,23 @@ O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamad
 | **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
 | **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-## Extensão Chrome — Overlay no WhatsApp Web — Concluído ✅
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-### Arquivos criados
+### Redesign completo do overlay para sidebar fixa
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `chrome-extension/manifest.json` | Manifest V3 com content_scripts para WhatsApp Web |
-| `chrome-extension/content.js` | Injeta overlay flutuante, detecta contato ativo via MutationObserver |
-| `chrome-extension/background.js` | Service worker para chamadas autenticadas à API |
-| `chrome-extension/popup.html` + `popup.js` | Configuração: URL da API + login (email/senha via GoTrue) |
-| `chrome-extension/styles.css` | Estilos do painel overlay |
-| `chrome-extension/icons/` | Ícones da extensão |
-| `deploy/backend/src/routes/extension-api.ts` | Endpoints: flows, contact-status, trigger-flow, pause-flow |
-
-### Arquivos alterados
-
-| Arquivo | Mudança |
-|---------|---------|
-| `deploy/backend/src/index.ts` | Registrada rota `/api/ext` |
-| `deploy/nginx/default.conf.template` | CORS dinâmico aceita `chrome-extension://` origins |
-
-### Como instalar na VPS
-
-1. `update.sh` para deploy dos novos arquivos backend
-2. `docker compose up -d --force-recreate nginx` para aplicar CORS
-3. No Chrome: `chrome://extensions` → Modo desenvolvedor → "Carregar sem compactação" → selecionar pasta `chrome-extension/`
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
 ### Funcionalidades
-
-- Detecta contato aberto no WhatsApp Web automaticamente
-- Mostra fluxos ativos do contato com status (running/waiting)
-- Permite disparar qualquer fluxo ativo para o contato
-- Permite parar/cancelar fluxos em execução
-- Mostra tags do contato
-- Polling a cada 5s para atualização em tempo real
-- Autenticação via email/senha (mesmo login do app)
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
+- Ícones SVG inline (sem emojis)
