@@ -454,8 +454,9 @@
     body.querySelectorAll("[data-action='trigger']").forEach((btn) => {
       btn.addEventListener("click", async () => {
         if (!detectedInstance) {
-          alert("Instancia nao detectada. Verifique a conexao.");
+          showInlineError(btn, "Configure a instância no popup da extensão");
           return;
+        }
         }
         btn.disabled = true;
         btn.innerHTML = '<div class="sc-dot-pulse"><span></span><span></span><span></span></div>';
