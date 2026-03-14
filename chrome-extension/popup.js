@@ -12,13 +12,29 @@ const instanceSelect = document.getElementById("instanceSelect");
 const instanceStatus = document.getElementById("instanceStatus");
 const refreshInstancesBtn = document.getElementById("refreshInstancesBtn");
 
-// Load saved config
-chrome.storage.local.get(["apiUrl", "authToken", "selectedInstance"], (result) => {
+// Load saved config and validate session
+chrome.storage.local.get(["apiUrl", "authToken", "selectedInstance"], async (result) => {
   if (result.apiUrl) apiUrlInput.value = result.apiUrl;
   if (result.authToken) {
-    loginSection.classList.remove("show");
-    loggedSection.classList.add("show");
-    loadInstances(result.selectedInstance);
+    // Validate session before showing logged state
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: "validate-session" }, (resp) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else if (resp && resp.error) reject(new Error(resp.error));
+          else resolve(resp);
+        });
+      });
+      // Session valid
+      loginSection.classList.remove("show");
+      loggedSection.classList.add("show");
+      loadInstances(result.selectedInstance);
+    } catch (err) {
+      // Session invalid — force login
+      showStatus("Sessão expirada. Faça login novamente.", "error");
+      loginSection.classList.add("show");
+      loggedSection.classList.remove("show");
+    }
   }
 });
 
@@ -148,6 +164,11 @@ async function loadInstances(savedInstance) {
       instanceStatus.innerHTML = "";
     }
   } catch (err) {
+    // If session expired, show login
+    if (err.message.includes("expirada") || err.message.includes("login")) {
+      loginSection.classList.add("show");
+      loggedSection.classList.remove("show");
+    }
     instanceSelect.innerHTML = '<option value="">Erro ao carregar</option>';
     instanceStatus.innerHTML = `<div class="instance-loading" style="color:#dc2626;">${err.message}</div>`;
   }

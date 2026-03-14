@@ -7,18 +7,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-async function getConfig() {
-  const result = await chrome.storage.local.get(["apiUrl", "authToken"]);
+// ── JWT decode (no verification, just read payload) ──
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// ── Ensure fresh token before API calls ──
+async function ensureFreshToken() {
+  const result = await chrome.storage.local.get(["apiUrl", "authToken", "refreshToken"]);
   if (!result.apiUrl || !result.authToken) {
     throw new Error("Extensao nao configurada. Clique no icone para configurar.");
   }
-  return { apiUrl: result.apiUrl.replace(/\/+$/, ""), token: result.authToken };
+
+  const apiUrl = result.apiUrl.replace(/\/+$/, "");
+  const payload = decodeJwtPayload(result.authToken);
+
+  // If token expires within 60 seconds, refresh it
+  if (payload && payload.exp) {
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp - now < 60) {
+      if (!result.refreshToken) {
+        await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+        throw new Error("Sessao expirada. Faca login novamente no popup.");
+      }
+      const refreshed = await doRefreshToken(apiUrl, result.refreshToken);
+      return { apiUrl, token: refreshed.access_token };
+    }
+  }
+
+  return { apiUrl, token: result.authToken };
 }
 
+// ── Refresh token via GoTrue ──
+async function doRefreshToken(apiUrl, refreshToken) {
+  const res = await fetch(`${apiUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: "anon" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  if (!res.ok) {
+    await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+    throw new Error("Sessao expirada. Faca login novamente no popup.");
+  }
+
+  const data = await res.json();
+  if (!data.access_token) {
+    await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+    throw new Error("Sessao expirada. Faca login novamente no popup.");
+  }
+
+  await chrome.storage.local.set({
+    authToken: data.access_token,
+    refreshToken: data.refresh_token,
+  });
+
+  return data;
+}
+
+// ── API fetch with automatic 401 retry ──
 async function apiFetch(path, options = {}) {
-  const { apiUrl, token } = await getConfig();
+  const { apiUrl, token } = await ensureFreshToken();
   const url = `${apiUrl}${path}`;
-  const res = await fetch(url, {
+
+  let res = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -26,6 +85,32 @@ async function apiFetch(path, options = {}) {
       ...(options.headers || {}),
     },
   });
+
+  // On 401, try refresh once and retry
+  if (res.status === 401) {
+    const stored = await chrome.storage.local.get(["refreshToken"]);
+    if (stored.refreshToken) {
+      try {
+        const refreshed = await doRefreshToken(apiUrl, stored.refreshToken);
+        res = await fetch(url, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${refreshed.access_token}`,
+            ...(options.headers || {}),
+          },
+        });
+      } catch {
+        // refresh failed, will fall through to error below
+      }
+    }
+
+    if (res.status === 401) {
+      await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+      throw new Error("Sessao expirada. Faca login novamente no popup.");
+    }
+  }
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${res.status}: ${text}`);
@@ -69,6 +154,9 @@ async function handleMessage(msg) {
     }
 
     case "list-instances":
+      return apiFetch("/api/ext/list-instances");
+
+    case "validate-session":
       return apiFetch("/api/ext/list-instances");
 
     default:
