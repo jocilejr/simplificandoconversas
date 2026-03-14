@@ -1,66 +1,57 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Plano: Redesign da Extensao Chrome — Sidebar Profissional
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Conceito
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+Transformar o overlay atual (FAB + painel pequeno) em uma **sidebar fixa na direita** do WhatsApp Web, com layout profissional e duas abas: **Dashboard** (visao geral) e **Contato** (detalhes do contato aberto). A extensao detecta automaticamente qual instancia/numero esta sendo usada no WhatsApp Web, eliminando a necessidade de selecionar instancia manualmente.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+### Arquitetura da Sidebar
 
-### Mudanças realizadas
+```text
+WhatsApp Web
+├── Interface original (largura reduzida)
+└── Sidebar SC (direita, ~360px)
+    ├── Header (logo + status conexao)
+    ├── Tab Bar: [Dashboard] [Contato]
+    ├── Dashboard Tab:
+    │   ├── Cards resumo (leads ativos, fluxos rodando, tarefas)
+    │   ├── Atalhos rapidos (Meus Fluxos, Contatos, etc)
+    │   └── Ultimos fluxos disparados
+    └── Contato Tab (ativa ao abrir conversa):
+        ├── Nome + Telefone + Avatar
+        ├── Tags do contato
+        ├── Fluxo ativo (com botao pausar)
+        ├── Conversas em outros numeros (cross-instance)
+        ├── Disparar fluxo (lista de fluxos)
+        └── Historico de execucoes
+```
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+### Deteccao Automatica da Instancia
 
-## Extensão Chrome — Overlay no WhatsApp Web — Concluído ✅
+O content script vai extrair o numero do proprio usuario logado no WhatsApp Web (visivel no menu de perfil ou no header). Esse numero e enviado ao backend que faz match com `whatsapp_instances.instance_name` para identificar qual instancia esta ativa, eliminando o seletor manual.
 
-### Arquivos criados
+### Mudancas nos Arquivos
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/manifest.json` | Manifest V3 com content_scripts para WhatsApp Web |
-| `chrome-extension/content.js` | Injeta overlay flutuante, detecta contato ativo via MutationObserver |
-| `chrome-extension/background.js` | Service worker para chamadas autenticadas à API |
-| `chrome-extension/popup.html` + `popup.js` | Configuração: URL da API + login (email/senha via GoTrue) |
-| `chrome-extension/styles.css` | Estilos do painel overlay |
-| `chrome-extension/icons/` | Ícones da extensão |
-| `deploy/backend/src/routes/extension-api.ts` | Endpoints: flows, contact-status, trigger-flow, pause-flow |
+**Chrome Extension (reescrever):**
+- `content.js` — Sidebar fixa ao inves de FAB/painel flutuante. Detecta instancia automaticamente. Duas abas (Dashboard/Contato). Sincroniza dados do contato com backend ao abrir conversa.
+- `styles.css` — Layout completo da sidebar com design profissional escuro, cards, badges, tabs.
+- `background.js` — Adicionar novas actions: `dashboard-stats`, `contact-cross-instances`, `detect-instance`.
 
-### Arquivos alterados
+**Backend (novo endpoint + alteracao):**
+- `extension-api.ts` — Adicionar:
+  - `GET /api/ext/dashboard` — Stats agregados (leads ativos, fluxos rodando, execucoes recentes)
+  - `GET /api/ext/contact-cross?phone=X` — Conversas do mesmo telefone em todas as instancias
+  - `GET /api/ext/detect-instance?phone=X` — Identifica instancia pelo numero do WhatsApp logado
 
-| Arquivo | Mudança |
-|---------|---------|
-| `deploy/backend/src/index.ts` | Registrada rota `/api/ext` |
-| `deploy/nginx/default.conf.template` | CORS dinâmico aceita `chrome-extension://` origins |
+**Sem alteracoes em:** `manifest.json`, `popup.html/js`, `nginx`, `index.ts`
 
-### Como instalar na VPS
+### Design (inspirado na imagem 2)
 
-1. `update.sh` para deploy dos novos arquivos backend
-2. `docker compose up -d --force-recreate nginx` para aplicar CORS
-3. No Chrome: `chrome://extensions` → Modo desenvolvedor → "Carregar sem compactação" → selecionar pasta `chrome-extension/`
+- Fundo escuro (#111b21) consistente com o WhatsApp Web
+- Cards com bordas arredondadas e fundo levemente mais claro (#1f2c34)
+- Tipografia limpa, sem emojis, icones minimalistas via unicode/SVG inline
+- Tab bar com indicador verde ativo
+- Badges de status com cores semanticas (verde=ativo, amarelo=aguardando, cinza=inativo)
+- Secao "Conversas em outros numeros" mostrando cards por instancia
 
-### Funcionalidades
-
-- Detecta contato aberto no WhatsApp Web automaticamente
-- Mostra fluxos ativos do contato com status (running/waiting)
-- Permite disparar qualquer fluxo ativo para o contato
-- Permite parar/cancelar fluxos em execução
-- Mostra tags do contato
-- Polling a cada 5s para atualização em tempo real
-- Autenticação via email/senha (mesmo login do app)
