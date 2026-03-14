@@ -1,100 +1,66 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Plano: Extensao Chrome — Overlay no WhatsApp Web
+### Mudanças realizadas
 
-### Conceito
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-Uma extensao Chrome que injeta um painel flutuante na interface do WhatsApp Web. Ela detecta o contato aberto, consulta o backend da VPS e exibe controles para gerenciar fluxos daquele contato em tempo real.
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-### Arquitetura
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-```text
-WhatsApp Web (tab)
-  └── Content Script (injetado)
-        ├── Detecta contato aberto (phone/name do DOM)
-        ├── Renderiza painel flutuante (overlay)
-        └── Comunica com Background Script
-              └── Fetch API → VPS Backend (API_DOMAIN)
-                    ├── GET /api/ext/contact-status?phone=5511...
-                    ├── POST /api/ext/trigger-flow
-                    ├── POST /api/ext/pause-flow
-                    └── GET /api/ext/flows (lista fluxos disponiveis)
-```
+### Mudanças realizadas
 
-### Estrutura de arquivos (nova pasta `chrome-extension/`)
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-```
-chrome-extension/
-├── manifest.json          # Manifest V3, permissions, content_scripts
-├── content.js             # Injeta overlay no WhatsApp Web
-├── background.js          # Service worker para chamadas API
-├── popup.html             # Config (URL do backend, token)
-├── popup.js               # Logica do popup de config
-├── styles.css             # Estilo do painel overlay
-└── icons/                 # Icones 16/48/128px
-```
+## Extensão Chrome — Overlay no WhatsApp Web — Concluído ✅
 
-### Funcionalidades do Overlay
+### Arquivos criados
 
-1. **Detectar contato aberto**: Content script observa o DOM do WhatsApp Web (MutationObserver) para extrair o numero/nome do contato ativo
-2. **Painel flutuante**: Botao fixo no canto que expande um painel mostrando:
-   - Status do contato (se tem fluxo ativo, qual fluxo, status)
-   - Lista de fluxos disponiveis para disparar
-   - Botao "Pausar fluxo" / "Parar fluxo"
-   - Indicador de tags/etiquetas do contato
-3. **Configuracao**: Popup para inserir URL do backend (API_DOMAIN) e token de autenticacao
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/manifest.json` | Manifest V3 com content_scripts para WhatsApp Web |
+| `chrome-extension/content.js` | Injeta overlay flutuante, detecta contato ativo via MutationObserver |
+| `chrome-extension/background.js` | Service worker para chamadas autenticadas à API |
+| `chrome-extension/popup.html` + `popup.js` | Configuração: URL da API + login (email/senha via GoTrue) |
+| `chrome-extension/styles.css` | Estilos do painel overlay |
+| `chrome-extension/icons/` | Ícones da extensão |
+| `deploy/backend/src/routes/extension-api.ts` | Endpoints: flows, contact-status, trigger-flow, pause-flow |
 
-### Mudancas no Backend (VPS)
+### Arquivos alterados
 
-**Novo arquivo: `deploy/backend/src/routes/extension-api.ts`**
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/backend/src/index.ts` | Registrada rota `/api/ext` |
+| `deploy/nginx/default.conf.template` | CORS dinâmico aceita `chrome-extension://` origins |
 
-Endpoints dedicados para a extensao, autenticados via token JWT do usuario:
+### Como instalar na VPS
 
-- `GET /api/ext/flows` — Lista fluxos ativos do usuario
-- `GET /api/ext/contact-status?phone=5511...` — Retorna execucoes ativas, tags, e info do contato
-- `POST /api/ext/trigger-flow` — Dispara um fluxo para o contato (`{ flowId, phone, instanceName }`)
-- `POST /api/ext/pause-flow` — Pausa/cancela execucao ativa (`{ executionId }`)
+1. `update.sh` para deploy dos novos arquivos backend
+2. `docker compose up -d --force-recreate nginx` para aplicar CORS
+3. No Chrome: `chrome://extensions` → Modo desenvolvedor → "Carregar sem compactação" → selecionar pasta `chrome-extension/`
 
-**`deploy/backend/src/index.ts`** — Registrar a nova rota
+### Funcionalidades
 
-**`deploy/nginx/default.conf.template`** — Atualizar CORS para aceitar origem `chrome-extension://*`:
-- Mudar `$cors_origin` para aceitar multiplas origens (APP_DOMAIN + chrome-extension)
-- Ou usar `*` apenas nos endpoints `/api/ext/`
-
-### Detalhes tecnicos
-
-**Content Script (content.js)**:
-- Usa `MutationObserver` para detectar mudancas no header do chat do WhatsApp Web
-- Extrai o numero do contato do elemento `span[data-testid="conversation-info-header-chat-title"]` ou similar
-- Cria um `div` flutuante com z-index alto para o painel
-- Comunica com background.js via `chrome.runtime.sendMessage`
-
-**Background Script (background.js)**:
-- Recebe mensagens do content script
-- Faz fetch para o backend com autenticacao
-- Retorna dados ao content script
-- Polling a cada 5s para status atualizado do contato aberto
-
-**Autenticacao**:
-- Usuario faz login no app web normalmente
-- No popup da extensao, insere a URL do backend e faz login (email/senha)
-- Token JWT armazenado em `chrome.storage.local`
-- Enviado como `Authorization: Bearer <token>` em todas as chamadas
-
-### Arquivos alterados/criados
-
-**Novos (Chrome Extension)**:
-- `chrome-extension/manifest.json`
-- `chrome-extension/content.js`
-- `chrome-extension/background.js`
-- `chrome-extension/popup.html`
-- `chrome-extension/popup.js`
-- `chrome-extension/styles.css`
-
-**Novos (Backend)**:
-- `deploy/backend/src/routes/extension-api.ts`
-
-**Alterados (Backend)**:
-- `deploy/backend/src/index.ts` — registrar rota `/api/ext`
-- `deploy/nginx/default.conf.template` — CORS para chrome-extension
-
+- Detecta contato aberto no WhatsApp Web automaticamente
+- Mostra fluxos ativos do contato com status (running/waiting)
+- Permite disparar qualquer fluxo ativo para o contato
+- Permite parar/cancelar fluxos em execução
+- Mostra tags do contato
+- Polling a cada 5s para atualização em tempo real
+- Autenticação via email/senha (mesmo login do app)
