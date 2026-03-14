@@ -12,10 +12,14 @@ async function extractUserId(req: Request): Promise<string | null> {
     const resp = await fetch(`${GOTRUE_URL}/user`, {
       headers: { Authorization: auth },
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.log("[ext-api] Auth validation failed:", resp.status);
+      return null;
+    }
     const user: any = await resp.json();
     return user.id || null;
-  } catch {
+  } catch (err) {
+    console.log("[ext-api] Auth validation error:", (err as any).message);
     return null;
   }
 }
@@ -32,6 +36,7 @@ async function requireAuth(req: Request, res: Response): Promise<string | null> 
 // ── GET /api/ext/dashboard ──
 router.get("/dashboard", async (req, res) => {
   const userId = await requireAuth(req, res);
+  if (!userId) return;
 
   try {
     const sb = getServiceClient();
@@ -115,7 +120,6 @@ router.get("/contact-cross", async (req, res) => {
   const excludeInstance = req.query.excludeInstance as string || "";
   const sb = getServiceClient();
 
-  // Find all conversations with this phone number across all instances
   let query = sb
     .from("conversations")
     .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
@@ -175,7 +179,6 @@ router.get("/contact-status", async (req, res) => {
   const conv = convs?.[0];
   const jid = conv?.remote_jid || remoteJid;
 
-  // Active + history executions
   const [activeRes, historyRes] = await Promise.all([
     sb.from("flow_executions")
       .select("id, flow_id, status, current_node_index, waiting_node_id, instance_name, created_at")
@@ -194,7 +197,6 @@ router.get("/contact-status", async (req, res) => {
   const executions = activeRes.data || [];
   const historyExecs = historyRes.data || [];
 
-  // Enrich with flow names
   const allFlowIds = [...new Set([...executions, ...historyExecs].map((e: any) => e.flow_id).filter(Boolean))];
   let flowMap = new Map();
   if (allFlowIds.length > 0) {
@@ -205,7 +207,6 @@ router.get("/contact-status", async (req, res) => {
   const enriched = executions.map((ex: any) => ({ ...ex, flow_name: flowMap.get(ex.flow_id) || "Fluxo" }));
   const enrichedHistory = historyExecs.map((ex: any) => ({ ...ex, flow_name: flowMap.get(ex.flow_id) || "Fluxo" }));
 
-  // Tags
   const { data: tags } = await sb
     .from("contact_tags")
     .select("tag_name")
@@ -261,12 +262,23 @@ router.post("/trigger-flow", async (req, res) => {
   try {
     const executeRes = await fetch("http://localhost:3001/api/execute-flow", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: req.headers.authorization || "",
+      },
       body: JSON.stringify({ flowId, remoteJid, instanceName }),
     });
+
+    if (!executeRes.ok) {
+      const errText = await executeRes.text();
+      console.error("[ext-api] trigger-flow execute error:", executeRes.status, errText);
+      return res.status(executeRes.status).json({ error: errText });
+    }
+
     const result = await executeRes.json() as any;
     res.json({ ok: true, ...result });
   } catch (err: any) {
+    console.error("[ext-api] trigger-flow fetch error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

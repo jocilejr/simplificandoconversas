@@ -1,72 +1,50 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-## Plano de correção (após seu `update.sh`)
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Leitura do cenário atual
-- O backend já foi atualizado para validar token via `GET /user` (não usa mais `jwt.verify` local).
-- Mesmo assim, o erro persiste porque ainda há dois pontos frágeis:
-  1. **Sessão da extensão**: `background.js` usa `authToken` fixo, sem renovação automática e sem validação ao abrir.
-  2. **Trigger interno**: em `extension-api.ts`, o endpoint `/api/ext/trigger-flow` chama `/api/execute-flow` **sem header Authorization**, o que pode retornar `Unauthorized` no fluxo interno.
-- Também há uma inconsistência no `/dashboard`: falta `return` imediato após falha de auth.
+### Mudanças realizadas
 
-### O que será implementado
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-1. **Sessão robusta da extensão (token lifecycle)**
-   - Arquivo: `chrome-extension/background.js`
-   - Adicionar `ensureFreshToken()` antes de qualquer `apiFetch`:
-     - Ler `authToken` + `refreshToken` + `apiUrl`.
-     - Decodificar `exp` do JWT.
-     - Se estiver expirado (ou perto de expirar), chamar `POST /auth/v1/token?grant_type=refresh_token`.
-     - Salvar novo `access_token` e `refresh_token`.
-   - Adicionar retry único em `apiFetch` para 401:
-     - tenta refresh
-     - repete request 1 vez
-     - se falhar, limpa sessão e retorna erro orientando relogin.
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-2. **Validação imediata no popup**
-   - Arquivo: `chrome-extension/popup.js`
-   - Ao abrir popup com token salvo:
-     - validar sessão rapidamente (ou tentar refresh silencioso).
-     - se inválida, forçar estado de login (não ficar “logado falso”).
-   - Isso evita o caso “instalei agora mas já estava com token antigo no storage”.
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-3. **Correção do trigger no backend**
-   - Arquivo: `deploy/backend/src/routes/extension-api.ts`
-   - Em `/api/ext/trigger-flow`:
-     - encaminhar `Authorization` original para `POST /api/execute-flow`.
-     - se `execute-flow` retornar erro (`!ok`), **propagar status e mensagem reais** ao cliente (não mascarar).
-   - Resultado: erro correto e execução real quando autorizado.
+### Mudanças realizadas
 
-4. **Hardening de auth nas rotas ext**
-   - Arquivo: `deploy/backend/src/routes/extension-api.ts`
-   - Garantir `if (!userId) return;` em todas as rotas após `requireAuth` (incluindo dashboard), para evitar execução após 401.
-   - Logs curtos de diagnóstico em falhas de auth (sem expor token).
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-### Arquivos impactados
-- `chrome-extension/background.js`
-- `chrome-extension/popup.js`
-- `deploy/backend/src/routes/extension-api.ts`
-- (Opcional de UX) `chrome-extension/content.js` para mensagem mais amigável quando sessão expira
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-### Fluxo final esperado
-```text
-[Popup login]
-   -> salva access_token + refresh_token (+ exp)
-[Usuário clica "Disparar fluxo" no WhatsApp]
-   -> background ensureFreshToken()
-   -> /api/ext/trigger-flow (Bearer válido)
-   -> backend requireAuth via /user OK
-   -> backend chama /api/execute-flow com Authorization encaminhado
-   -> fluxo dispara com sucesso
-```
+### Redesign completo do overlay para sidebar fixa
 
-### Validação pós-implementação
-1. Login no popup e carregar instâncias.
-2. Abrir contato no WhatsApp Web e disparar fluxo.
-3. Simular expiração (token velho) e repetir:
-   - deve renovar automaticamente sem pedir login imediato.
-4. Se refresh inválido:
-   - extensão deve deslogar e pedir novo login (erro claro, sem loop).
-5. Confirmar que “Unauthorized” não aparece no disparo quando sessão está válida.
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-### Observação importante
-- Os erros `503` vistos no preview web (`/functions/v1/whatsapp-proxy`) são de outro caminho (ambiente cloud/stub), não do endpoint da extensão (`/api/ext/*` na VPS). Este plano foca especificamente no problema real da extensão.
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
+- Ícones SVG inline (sem emojis)
