@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient, getAnonClient, SERVICE_ROLE_KEY } from "../lib/supabase";
+import { getMessageQueue } from "../lib/message-queue";
 import crypto from "crypto";
 
 const router = Router();
