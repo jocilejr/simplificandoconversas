@@ -71,7 +71,8 @@ async function executeStep(
   }
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
-    const r = await evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" });
+    const queue = getMessageQueue(instanceName);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendImage→${num}`);
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
