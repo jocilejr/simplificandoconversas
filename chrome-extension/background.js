@@ -68,8 +68,8 @@ async function handleMessage(msg) {
       return apiFetch(url);
     }
 
-    case "detect-instance":
-      return apiFetch("/api/ext/detect-instance");
+    case "list-instances":
+      return apiFetch("/api/ext/list-instances");
 
     default:
       throw new Error("Unknown action: " + msg.action);
