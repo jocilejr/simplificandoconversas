@@ -1,49 +1,50 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Corrigir: Pausa de fluxo não interrompe envio de mensagens
+### Mudanças realizadas
 
-### Problema identificado
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-O motor de execução (`execute-flow.ts`) tem **dois pontos cegos** para cancelamento:
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-1. **Verificação a cada 3 nós**: A checagem de status `cancelled` só ocorre quando `nodeIndex % 3 === 0` (linha 366). Entre as verificações, o fluxo continua enviando mensagens normalmente.
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-2. **Dentro de grupos**: O loop interno de `groupBlock` (linhas 522-580) itera por todos os steps **sem nenhuma verificação de cancelamento**. Se o grupo tem 5 mensagens, todas serão enviadas mesmo após o comando de pausa.
+### Mudanças realizadas
 
-### Correção
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-**Arquivo: `deploy/backend/src/routes/execute-flow.ts`**
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-1. **Checar cancelamento em TODOS os nós** — remover a condição `nodeIndex % 3 === 0`, verificando status a cada nó processado (exceto o primeiro):
+### Redesign completo do overlay para sidebar fixa
 
-```typescript
-// ANTES (linha 366)
-if (nodeIndex > 0 && nodeIndex % 3 === 0) {
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-// DEPOIS
-if (nodeIndex > 0) {
-```
-
-2. **Adicionar verificação de cancelamento dentro do loop de grupo** — antes de cada step interno do `groupBlock`, consultar o status da execução:
-
-```typescript
-// Dentro do for loop de group steps (antes de executar cada step)
-const { data: groupStatusCheck } = await serviceClient
-  .from("flow_executions").select("status").eq("id", executionId).single();
-if (groupStatusCheck?.status === "cancelled" || groupStatusCheck?.status === "paused") {
-  results.push(`group: ${groupStatusCheck.status} at step ${si}`);
-  groupPaused = true;
-  break;
-}
-```
-
-### Resultado esperado
-- Ao clicar "Parar" na extensão, o status é setado para `cancelled` no banco
-- Na próxima iteração do loop (seja nó ou step de grupo), o motor detecta e interrompe imediatamente
-- Latência máxima de parada: tempo de 1 envio de mensagem (~1-2s), em vez de potencialmente N mensagens
-
-### Após deploy
-```bash
-cd /opt/chatbot/deploy && docker compose build backend && docker compose up -d --force-recreate backend
-```
-
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
+- Ícones SVG inline (sem emojis)

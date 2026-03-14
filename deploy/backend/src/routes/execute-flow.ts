@@ -363,7 +363,7 @@ router.post("/", async (req, res) => {
       if (visited.has(node.id)) continue;
       visited.add(node.id);
 
-      if (nodeIndex > 0 && nodeIndex % 3 === 0) {
+      if (nodeIndex > 0) {
         const { data: statusCheck } = await serviceClient.from("flow_executions").select("status").eq("id", executionId).single();
         if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
           results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
@@ -522,6 +522,13 @@ router.post("/", async (req, res) => {
         } else if ((nodeType === "group" || nodeType === "groupBlock") && data.steps) {
           let groupPaused = false;
           for (let si = 0; si < data.steps.length; si++) {
+            // Check cancellation before each group step
+            const { data: groupStatusCheck } = await serviceClient.from("flow_executions").select("status").eq("id", executionId).single();
+            if (groupStatusCheck?.status === "cancelled" || groupStatusCheck?.status === "paused") {
+              results.push(`group: ${groupStatusCheck.status} at step ${si}`);
+              groupPaused = true;
+              break;
+            }
             const step = data.steps[si];
             if (step.data.type === "waitForClick") {
               const clickUrl = step.data.clickUrl;
