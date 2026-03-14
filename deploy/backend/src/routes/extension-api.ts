@@ -163,6 +163,7 @@ router.get("/flows", async (req, res) => {
 
 // ── GET /api/ext/contact-status?phone=5511... ──
 router.get("/contact-status", async (req, res) => {
+  const start = Date.now();
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
