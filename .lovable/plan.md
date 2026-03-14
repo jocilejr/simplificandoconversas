@@ -1,57 +1,50 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Plano: Redesign da Extensao Chrome — Sidebar Profissional
+### Mudanças realizadas
 
-### Conceito
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-Transformar o overlay atual (FAB + painel pequeno) em uma **sidebar fixa na direita** do WhatsApp Web, com layout profissional e duas abas: **Dashboard** (visao geral) e **Contato** (detalhes do contato aberto). A extensao detecta automaticamente qual instancia/numero esta sendo usada no WhatsApp Web, eliminando a necessidade de selecionar instancia manualmente.
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-### Arquitetura da Sidebar
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-```text
-WhatsApp Web
-├── Interface original (largura reduzida)
-└── Sidebar SC (direita, ~360px)
-    ├── Header (logo + status conexao)
-    ├── Tab Bar: [Dashboard] [Contato]
-    ├── Dashboard Tab:
-    │   ├── Cards resumo (leads ativos, fluxos rodando, tarefas)
-    │   ├── Atalhos rapidos (Meus Fluxos, Contatos, etc)
-    │   └── Ultimos fluxos disparados
-    └── Contato Tab (ativa ao abrir conversa):
-        ├── Nome + Telefone + Avatar
-        ├── Tags do contato
-        ├── Fluxo ativo (com botao pausar)
-        ├── Conversas em outros numeros (cross-instance)
-        ├── Disparar fluxo (lista de fluxos)
-        └── Historico de execucoes
-```
+### Mudanças realizadas
 
-### Deteccao Automatica da Instancia
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-O content script vai extrair o numero do proprio usuario logado no WhatsApp Web (visivel no menu de perfil ou no header). Esse numero e enviado ao backend que faz match com `whatsapp_instances.instance_name` para identificar qual instancia esta ativa, eliminando o seletor manual.
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-### Mudancas nos Arquivos
+### Redesign completo do overlay para sidebar fixa
 
-**Chrome Extension (reescrever):**
-- `content.js` — Sidebar fixa ao inves de FAB/painel flutuante. Detecta instancia automaticamente. Duas abas (Dashboard/Contato). Sincroniza dados do contato com backend ao abrir conversa.
-- `styles.css` — Layout completo da sidebar com design profissional escuro, cards, badges, tabs.
-- `background.js` — Adicionar novas actions: `dashboard-stats`, `contact-cross-instances`, `detect-instance`.
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-**Backend (novo endpoint + alteracao):**
-- `extension-api.ts` — Adicionar:
-  - `GET /api/ext/dashboard` — Stats agregados (leads ativos, fluxos rodando, execucoes recentes)
-  - `GET /api/ext/contact-cross?phone=X` — Conversas do mesmo telefone em todas as instancias
-  - `GET /api/ext/detect-instance?phone=X` — Identifica instancia pelo numero do WhatsApp logado
-
-**Sem alteracoes em:** `manifest.json`, `popup.html/js`, `nginx`, `index.ts`
-
-### Design (inspirado na imagem 2)
-
-- Fundo escuro (#111b21) consistente com o WhatsApp Web
-- Cards com bordas arredondadas e fundo levemente mais claro (#1f2c34)
-- Tipografia limpa, sem emojis, icones minimalistas via unicode/SVG inline
-- Tab bar com indicador verde ativo
-- Badges de status com cores semanticas (verde=ativo, amarelo=aguardando, cinza=inativo)
-- Secao "Conversas em outros numeros" mostrando cards por instancia
-
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
+- Ícones SVG inline (sem emojis)
