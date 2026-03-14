@@ -1,50 +1,46 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Corrigir "Unauthorized" na extensao
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Causa Raiz
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+O `extension-api.ts` usa `jwt.verify(token, JWT_SECRET)` (biblioteca jsonwebtoken) para validar o token. O GoTrue assina com **ES256** (assimetrico), mas o `jwt.verify` tenta validar com HS256 usando a secret simetrica -- falha sempre.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+Enquanto isso, o `whatsapp-proxy.ts` (linhas 73-79) valida corretamente chamando `GET ${GOTRUE_URL}/user` com o Bearer token, delegando a validacao ao proprio GoTrue.
 
-### Mudanças realizadas
+### Correcao
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+**Arquivo: `deploy/backend/src/routes/extension-api.ts`**
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+Substituir a validacao JWT local pelo mesmo padrao do `whatsapp-proxy.ts`:
 
-### Redesign completo do overlay para sidebar fixa
+1. Remover `import jwt` e `const JWT_SECRET`
+2. Reescrever `extractUserId` como funcao async que chama `GET ${GOTRUE_URL}/user` com o Bearer token
+3. Tornar `requireAuth` async
+4. Atualizar todas as rotas para usar `await requireAuth(req, res)`
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+Codigo do novo `extractUserId`:
+```typescript
+const GOTRUE_URL = process.env.GOTRUE_URL || "http://gotrue:9999";
 
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-- Ícones SVG inline (sem emojis)
+async function extractUserId(req: Request): Promise<string | null> {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) return null;
+  try {
+    const resp = await fetch(`${GOTRUE_URL}/user`, {
+      headers: { Authorization: auth },
+    });
+    if (!resp.ok) return null;
+    const user: any = await resp.json();
+    return user.id || null;
+  } catch {
+    return null;
+  }
+}
+```
+
+### Apos deploy
+```bash
+docker compose build backend && docker compose up -d --force-recreate backend
+```
+
