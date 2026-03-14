@@ -96,15 +96,8 @@
     if (app) app.setAttribute("data-sc-sidebar", "open");
   }
 
-  // ── Tab switching ──
-  sidebar.querySelectorAll(".sc-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      currentTab = tab.dataset.tab;
-      sidebar.querySelectorAll(".sc-tab").forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      renderCurrentTab();
-    });
-  });
+
+
 
   // ── API Communication ──
   function apiCall(action, data) {
