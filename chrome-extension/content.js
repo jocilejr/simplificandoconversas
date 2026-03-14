@@ -33,51 +33,68 @@
     history: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
   };
 
-  // ── Create Sidebar ──
-  const sidebar = document.createElement("div");
-  sidebar.id = "sc-sidebar";
-  sidebar.innerHTML = `
-    <div class="sc-sidebar-header">
-      <div class="sc-sidebar-logo">
-        <div class="sc-logo-icon">${ICONS.bolt}</div>
-        <span>SC Flows</span>
+  // ── Create Sidebar (called after WhatsApp app is ready) ──
+  let sidebar, toggleBtn;
+
+  function createSidebar() {
+    // Don't duplicate
+    if (document.getElementById("sc-sidebar")) return;
+
+    sidebar = document.createElement("div");
+    sidebar.id = "sc-sidebar";
+    sidebar.innerHTML = `
+      <div class="sc-sidebar-header">
+        <div class="sc-sidebar-logo">
+          <div class="sc-logo-icon">${ICONS.bolt}</div>
+          <span>SC Flows</span>
+        </div>
+        <span class="sc-instance-badge" id="sc-instance-badge">Carregando...</span>
       </div>
-      <span class="sc-instance-badge" id="sc-instance-badge">Detectando...</span>
-    </div>
-    <div class="sc-tab-bar">
-      <button class="sc-tab active" data-tab="dashboard">${ICONS.activity} Dashboard</button>
-      <button class="sc-tab" data-tab="contact">${ICONS.user} Contato</button>
-    </div>
-    <div class="sc-body" id="sc-body">
-      <div class="sc-loader"><div class="sc-dot-pulse"><span></span><span></span><span></span></div></div>
-    </div>
-  `;
-  document.body.appendChild(sidebar);
+      <div class="sc-tab-bar">
+        <button class="sc-tab active" data-tab="dashboard">${ICONS.activity} Dashboard</button>
+        <button class="sc-tab" data-tab="contact">${ICONS.user} Contato</button>
+      </div>
+      <div class="sc-body" id="sc-body">
+        <div class="sc-loader"><div class="sc-dot-pulse"><span></span><span></span><span></span></div></div>
+      </div>
+    `;
+    document.body.appendChild(sidebar);
 
-  // ── Toggle Button ──
-  const toggleBtn = document.createElement("button");
-  toggleBtn.id = "sc-toggle-btn";
-  toggleBtn.innerHTML = ICONS.chevronRight;
-  document.body.appendChild(toggleBtn);
+    // Toggle Button
+    toggleBtn = document.createElement("button");
+    toggleBtn.id = "sc-toggle-btn";
+    toggleBtn.innerHTML = ICONS.chevronRight;
+    document.body.appendChild(toggleBtn);
 
-  toggleBtn.addEventListener("click", () => {
-    sidebarOpen = !sidebarOpen;
-    sidebar.classList.toggle("collapsed", !sidebarOpen);
-    toggleBtn.classList.toggle("collapsed", !sidebarOpen);
-    toggleBtn.innerHTML = sidebarOpen ? ICONS.chevronRight : ICONS.chevronLeft;
+    toggleBtn.addEventListener("click", () => {
+      sidebarOpen = !sidebarOpen;
+      sidebar.classList.toggle("collapsed", !sidebarOpen);
+      toggleBtn.classList.toggle("collapsed", !sidebarOpen);
+      toggleBtn.innerHTML = sidebarOpen ? ICONS.chevronRight : ICONS.chevronLeft;
+      const app = document.getElementById("app");
+      if (app) app.setAttribute("data-sc-sidebar", sidebarOpen ? "open" : "closed");
+      if (sidebarOpen) {
+        startPolling();
+        refresh();
+      } else {
+        stopPolling();
+      }
+    });
+
+    // Tab switching
+    sidebar.querySelectorAll(".sc-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        currentTab = tab.dataset.tab;
+        sidebar.querySelectorAll(".sc-tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        renderCurrentTab();
+      });
+    });
+
+    // Shrink WhatsApp
     const app = document.getElementById("app");
-    if (app) app.setAttribute("data-sc-sidebar", sidebarOpen ? "open" : "closed");
-    if (sidebarOpen) {
-      startPolling();
-      refresh();
-    } else {
-      stopPolling();
-    }
-  });
-
-  // Shrink WhatsApp on load
-  const app = document.getElementById("app");
-  if (app) app.setAttribute("data-sc-sidebar", "open");
+    if (app) app.setAttribute("data-sc-sidebar", "open");
+  }
 
   // ── Tab switching ──
   sidebar.querySelectorAll(".sc-tab").forEach((tab) => {
