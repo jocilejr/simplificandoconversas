@@ -84,7 +84,7 @@ router.get("/dashboard", async (req, res) => {
 
 // ── GET /api/ext/list-instances ──
 router.get("/list-instances", async (req, res) => {
-  const userId = requireAuth(req, res);
+  const userId = await requireAuth(req, res);
   if (!userId) return;
 
   try {
