@@ -363,7 +363,7 @@ router.post("/", async (req, res) => {
       if (visited.has(node.id)) continue;
       visited.add(node.id);
 
-      if (nodeIndex > 0 && nodeIndex % 3 === 0) {
+      if (nodeIndex > 0) {
         const { data: statusCheck } = await serviceClient.from("flow_executions").select("status").eq("id", executionId).single();
         if (statusCheck?.status === "cancelled" || statusCheck?.status === "paused") {
           results.push(`execution ${statusCheck.status} at node ${nodeIndex}`);
