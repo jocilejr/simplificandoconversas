@@ -340,6 +340,28 @@ export function ConnectionsSection() {
               </Button>
             </div>
           </div>
+          {/* Message delay slider */}
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Intervalo entre mensagens</span>
+              <span className="text-xs font-medium text-primary">
+                {((inst as any).message_delay_ms || 2000) / 1000}s
+              </span>
+            </div>
+            <Slider
+              value={[((inst as any).message_delay_ms || 2000) / 1000]}
+              min={1}
+              max={10}
+              step={0.5}
+              onValueCommit={(value) => {
+                updateDelay.mutate({ instanceName: inst.instance_name, delayMs: value[0] * 1000 });
+              }}
+            />
+            <div className="flex justify-between mt-1">
+              <span className="text-[10px] text-muted-foreground">1s</span>
+              <span className="text-[10px] text-muted-foreground">10s</span>
+            </div>
+          </div>
         </div>
       ))}
 
