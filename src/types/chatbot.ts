@@ -188,6 +188,12 @@ export const nodeTypeConfig: Record<
     icon: "Link",
     description: "Envia link rastreável e aguarda o clique para continuar",
   },
+  metaPixel: {
+    label: "Pixel Meta",
+    color: "#1877F2",
+    icon: "Activity",
+    description: "Dispara evento para a Meta Conversions API",
+  },
 };
 
 export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
