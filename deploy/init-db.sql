@@ -351,6 +351,26 @@ BEGIN
   END IF;
 END $$;
 
+-- Meta Pixels table (multiple pixels per user)
+CREATE TABLE IF NOT EXISTS public.meta_pixels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Meu Pixel',
+  pixel_id text NOT NULL,
+  access_token text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.meta_pixels ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meta_pixels' AND policyname = 'Users can manage own pixels') THEN
+    CREATE POLICY "Users can manage own pixels" ON public.meta_pixels FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+
+GRANT ALL ON public.meta_pixels TO anon, authenticated, service_role;
+
 -- Create profiles for any existing users that don't have one
 INSERT INTO public.profiles (user_id, full_name)
 SELECT id, raw_user_meta_data->>'full_name'
