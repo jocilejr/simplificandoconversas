@@ -79,6 +79,11 @@ export interface FlowNodeData {
   clickPreviewTitle?: string;
   clickPreviewDescription?: string;
   clickPreviewImage?: string;
+  // Meta Pixel
+  pixelEventName?: "Lead" | "Purchase" | "CompleteRegistration" | "ViewContent" | "InitiateCheckout" | "Subscribe" | "Contact" | "Custom";
+  pixelCustomEventName?: string;
+  pixelEventValue?: number;
+  pixelCurrency?: string;
   // Dock indicator
   isDockTarget?: boolean;
   [key: string]: unknown;
