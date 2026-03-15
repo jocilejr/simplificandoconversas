@@ -447,9 +447,9 @@ router.post("/", async (req, res) => {
             results.push(`action: ${actionType} "${actionValue}" (no-op)`);
           }
         } else if (nodeType === "metaPixel") {
-          // Try to get pixel from meta_pixels table by selectedPixelId, fallback to profile
-          let pixelId = profile?.meta_pixel_id;
-          let accessToken = profile?.meta_access_token;
+          // Get pixel from meta_pixels table by selectedPixelId
+          let pixelId: string | null = null;
+          let accessToken: string | null = null;
 
           if (data.selectedPixelId) {
             const { data: pixelRow } = await serviceClient
