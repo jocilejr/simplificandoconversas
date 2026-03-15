@@ -659,6 +659,29 @@ router.post("/", async (req, res) => {
                 await serviceClient.from("contact_tags").delete().eq("user_id", userId).eq("remote_jid", jid).ilike("tag_name", actionValue.toLowerCase());
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
+            } else if (step.data.type === "metaPixel") {
+              const pixelId = profile?.meta_pixel_id;
+              const accessToken = profile?.meta_access_token;
+              if (!pixelId || !accessToken) {
+                results.push(`group.${step.id}: metaPixel: error - credenciais não configuradas`);
+              } else {
+                const eventName = step.data.pixelCustomEventName || step.data.pixelEventName || "Lead";
+                const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+                const hashedPhone = crypto.createHash("sha256").update(phone).digest("hex");
+                const eventData: any = { event_name: eventName, event_time: Math.floor(Date.now() / 1000), action_source: "system_generated", user_data: { ph: [hashedPhone], external_id: [hashedPhone] } };
+                const customData: any = {};
+                if (step.data.pixelEventValue != null && step.data.pixelEventValue !== "") customData.value = Number(step.data.pixelEventValue);
+                if (step.data.pixelCurrency) customData.currency = step.data.pixelCurrency;
+                if (Object.keys(customData).length > 0) eventData.custom_data = customData;
+                try {
+                  const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: [eventData], access_token: accessToken }) });
+                  const metaResult = await metaResp.json();
+                  console.log(`[execute-flow] group.metaPixel response:`, JSON.stringify(metaResult));
+                  results.push(`group.${step.id}: metaPixel: ok (${eventName})`);
+                } catch (pixelErr: any) {
+                  results.push(`group.${step.id}: metaPixel: error - ${pixelErr.message}`);
+                }
+              }
             } else {
               const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
