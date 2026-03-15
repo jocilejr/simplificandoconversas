@@ -14,7 +14,8 @@ export type FlowNodeType =
   | "action"
   | "groupBlock"
   | "aiAgent"
-  | "waitForClick";
+  | "waitForClick"
+  | "metaPixel";
 
 export interface FlowStepData {
   id: string;
@@ -78,6 +79,11 @@ export interface FlowNodeData {
   clickPreviewTitle?: string;
   clickPreviewDescription?: string;
   clickPreviewImage?: string;
+  // Meta Pixel
+  pixelEventName?: "Lead" | "Purchase" | "CompleteRegistration" | "ViewContent" | "InitiateCheckout" | "Subscribe" | "Contact" | "Custom";
+  pixelCustomEventName?: string;
+  pixelEventValue?: number;
+  pixelCurrency?: string;
   // Dock indicator
   isDockTarget?: boolean;
   [key: string]: unknown;
@@ -182,6 +188,12 @@ export const nodeTypeConfig: Record<
     icon: "Link",
     description: "Envia link rastreável e aguarda o clique para continuar",
   },
+  metaPixel: {
+    label: "Pixel Meta",
+    color: "#1877F2",
+    icon: "Activity",
+    description: "Dispara evento para a Meta Conversions API",
+  },
 };
 
 export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
@@ -212,5 +224,11 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
     clickMessage: "Clique no link para continuar: {{link}}",
     clickTimeout: 0,
     clickTimeoutUnit: "minutes",
+  },
+  metaPixel: {
+    pixelEventName: "Lead",
+    pixelCustomEventName: "",
+    pixelEventValue: undefined,
+    pixelCurrency: "BRL",
   },
 };

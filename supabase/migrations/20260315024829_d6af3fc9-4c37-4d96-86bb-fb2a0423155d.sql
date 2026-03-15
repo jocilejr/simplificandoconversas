@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN meta_pixel_id text DEFAULT NULL, ADD COLUMN meta_access_token text DEFAULT NULL;

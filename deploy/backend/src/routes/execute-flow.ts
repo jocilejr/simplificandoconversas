@@ -169,6 +169,8 @@ async function executeStep(
 
   if (nodeType === "aiAgent") return "aiAgent: handled-externally";
 
+  if (nodeType === "metaPixel") return "metaPixel: handled-externally";
+
   return `${nodeType}: no-op`;
 }
 
@@ -246,7 +248,7 @@ router.post("/", async (req, res) => {
 
     const [flowResult, profileResult, activeExecsResult] = await Promise.all([
       serviceClient.from("chatbot_flows").select("*").eq("id", flowId).eq("user_id", userId).single(),
-      serviceClient.from("profiles").select("openai_api_key, app_public_url").eq("user_id", userId).single(),
+      serviceClient.from("profiles").select("openai_api_key, app_public_url, meta_pixel_id, meta_access_token").eq("user_id", userId).single(),
       !resumeFromNodeId
         ? serviceClient.from("flow_executions").select("id").eq("user_id", userId).eq("remote_jid", jid).in("status", ["running", "waiting_click", "waiting_reply"]).limit(1)
         : Promise.resolve({ data: null }),
@@ -444,6 +446,47 @@ router.post("/", async (req, res) => {
           } else {
             results.push(`action: ${actionType} "${actionValue}" (no-op)`);
           }
+        } else if (nodeType === "metaPixel") {
+          const pixelId = profile?.meta_pixel_id;
+          const accessToken = profile?.meta_access_token;
+          if (!pixelId || !accessToken) {
+            results.push("metaPixel: error - Pixel ID ou Access Token não configurado");
+          } else {
+            const eventName = data.pixelCustomEventName || data.pixelEventName || "Lead";
+            const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+            const hashedPhone = crypto.createHash("sha256").update(phone).digest("hex");
+
+            const eventData: any = {
+              event_name: eventName,
+              event_time: Math.floor(Date.now() / 1000),
+              action_source: "system_generated",
+              user_data: {
+                ph: [hashedPhone],
+                external_id: [hashedPhone],
+              },
+            };
+
+            const customData: any = {};
+            if (data.pixelEventValue != null && data.pixelEventValue !== "") {
+              customData.value = Number(data.pixelEventValue);
+            }
+            if (data.pixelCurrency) customData.currency = data.pixelCurrency;
+            if (Object.keys(customData).length > 0) eventData.custom_data = customData;
+
+            try {
+              const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ data: [eventData], access_token: accessToken }),
+              });
+              const metaResult = await metaResp.json();
+              console.log(`[execute-flow] metaPixel response:`, JSON.stringify(metaResult));
+              results.push(`metaPixel: ok (${eventName})`);
+            } catch (pixelErr: any) {
+              console.error(`[execute-flow] metaPixel error:`, pixelErr);
+              results.push(`metaPixel: error - ${pixelErr.message}`);
+            }
+          }
         } else if (nodeType === "aiAgent") {
           const openaiKey = profile?.openai_api_key || process.env.OPENAI_API_KEY;
           if (!openaiKey) {
@@ -615,6 +658,29 @@ router.post("/", async (req, res) => {
               } else if (actionType === "remove_tag" && actionValue) {
                 await serviceClient.from("contact_tags").delete().eq("user_id", userId).eq("remote_jid", jid).ilike("tag_name", actionValue.toLowerCase());
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
+              }
+            } else if (step.data.type === "metaPixel") {
+              const pixelId = profile?.meta_pixel_id;
+              const accessToken = profile?.meta_access_token;
+              if (!pixelId || !accessToken) {
+                results.push(`group.${step.id}: metaPixel: error - credenciais não configuradas`);
+              } else {
+                const eventName = step.data.pixelCustomEventName || step.data.pixelEventName || "Lead";
+                const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+                const hashedPhone = crypto.createHash("sha256").update(phone).digest("hex");
+                const eventData: any = { event_name: eventName, event_time: Math.floor(Date.now() / 1000), action_source: "system_generated", user_data: { ph: [hashedPhone], external_id: [hashedPhone] } };
+                const customData: any = {};
+                if (step.data.pixelEventValue != null && step.data.pixelEventValue !== "") customData.value = Number(step.data.pixelEventValue);
+                if (step.data.pixelCurrency) customData.currency = step.data.pixelCurrency;
+                if (Object.keys(customData).length > 0) eventData.custom_data = customData;
+                try {
+                  const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: [eventData], access_token: accessToken }) });
+                  const metaResult = await metaResp.json();
+                  console.log(`[execute-flow] group.metaPixel response:`, JSON.stringify(metaResult));
+                  results.push(`group.${step.id}: metaPixel: ok (${eventName})`);
+                } catch (pixelErr: any) {
+                  results.push(`group.${step.id}: metaPixel: error - ${pixelErr.message}`);
+                }
               }
             } else {
               const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
