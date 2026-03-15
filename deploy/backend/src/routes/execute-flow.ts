@@ -447,8 +447,23 @@ router.post("/", async (req, res) => {
             results.push(`action: ${actionType} "${actionValue}" (no-op)`);
           }
         } else if (nodeType === "metaPixel") {
-          const pixelId = profile?.meta_pixel_id;
-          const accessToken = profile?.meta_access_token;
+          // Try to get pixel from meta_pixels table by selectedPixelId, fallback to profile
+          let pixelId = profile?.meta_pixel_id;
+          let accessToken = profile?.meta_access_token;
+
+          if (data.selectedPixelId) {
+            const { data: pixelRow } = await serviceClient
+              .from("meta_pixels")
+              .select("pixel_id, access_token")
+              .eq("id", data.selectedPixelId)
+              .eq("user_id", userId)
+              .single();
+            if (pixelRow) {
+              pixelId = pixelRow.pixel_id;
+              accessToken = pixelRow.access_token;
+            }
+          }
+
           if (!pixelId || !accessToken) {
             results.push("metaPixel: error - Pixel ID ou Access Token não configurado");
           } else {
@@ -460,16 +475,11 @@ router.post("/", async (req, res) => {
               event_name: eventName,
               event_time: Math.floor(Date.now() / 1000),
               action_source: "system_generated",
-              user_data: {
-                ph: [hashedPhone],
-                external_id: [hashedPhone],
-              },
+              user_data: { ph: [hashedPhone], external_id: [hashedPhone] },
             };
 
             const customData: any = {};
-            if (data.pixelEventValue != null && data.pixelEventValue !== "") {
-              customData.value = Number(data.pixelEventValue);
-            }
+            if (data.pixelEventValue != null && data.pixelEventValue !== "") customData.value = Number(data.pixelEventValue);
             if (data.pixelCurrency) customData.currency = data.pixelCurrency;
             if (Object.keys(customData).length > 0) eventData.custom_data = customData;
 
