@@ -248,7 +248,7 @@ router.post("/", async (req, res) => {
 
     const [flowResult, profileResult, activeExecsResult] = await Promise.all([
       serviceClient.from("chatbot_flows").select("*").eq("id", flowId).eq("user_id", userId).single(),
-      serviceClient.from("profiles").select("openai_api_key, app_public_url, meta_pixel_id, meta_access_token").eq("user_id", userId).single(),
+      serviceClient.from("profiles").select("openai_api_key, app_public_url").eq("user_id", userId).single(),
       !resumeFromNodeId
         ? serviceClient.from("flow_executions").select("id").eq("user_id", userId).eq("remote_jid", jid).in("status", ["running", "waiting_click", "waiting_reply"]).limit(1)
         : Promise.resolve({ data: null }),
@@ -447,9 +447,9 @@ router.post("/", async (req, res) => {
             results.push(`action: ${actionType} "${actionValue}" (no-op)`);
           }
         } else if (nodeType === "metaPixel") {
-          // Try to get pixel from meta_pixels table by selectedPixelId, fallback to profile
-          let pixelId = profile?.meta_pixel_id;
-          let accessToken = profile?.meta_access_token;
+          // Get pixel from meta_pixels table by selectedPixelId
+          let pixelId: string | null = null;
+          let accessToken: string | null = null;
 
           if (data.selectedPixelId) {
             const { data: pixelRow } = await serviceClient
@@ -670,8 +670,8 @@ router.post("/", async (req, res) => {
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
             } else if (step.data.type === "metaPixel") {
-              let pixelId = profile?.meta_pixel_id;
-              let accessToken = profile?.meta_access_token;
+              let pixelId: string | null = null;
+              let accessToken: string | null = null;
 
               if (step.data.selectedPixelId) {
                 const { data: pixelRow } = await serviceClient

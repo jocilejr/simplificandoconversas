@@ -436,8 +436,6 @@ export type Database = {
           created_at: string
           full_name: string | null
           id: string
-          meta_access_token: string | null
-          meta_pixel_id: string | null
           openai_api_key: string | null
           updated_at: string
           user_id: string
@@ -448,8 +446,6 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
-          meta_access_token?: string | null
-          meta_pixel_id?: string | null
           openai_api_key?: string | null
           updated_at?: string
           user_id: string
@@ -460,8 +456,6 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
-          meta_access_token?: string | null
-          meta_pixel_id?: string | null
           openai_api_key?: string | null
           updated_at?: string
           user_id?: string
