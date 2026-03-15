@@ -61,6 +61,11 @@ function renderDescription(d: FlowNodeData): React.ReactNode {
       const prompt = d.aiSystemPrompt ? d.aiSystemPrompt.substring(0, 40) + (d.aiSystemPrompt.length > 40 ? "..." : "") : "Sem prompt";
       return `${model} · ${prompt}`;
     }
+    case "metaPixel": {
+      const evName = d.pixelCustomEventName || d.pixelEventName || "Lead";
+      const val = d.pixelEventValue ? ` · R$${d.pixelEventValue}` : "";
+      return `${evName}${val}`;
+    }
     default:
       return "";
   }
