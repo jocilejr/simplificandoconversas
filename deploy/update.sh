@@ -12,6 +12,7 @@ source "$DEPLOY_DIR/.env"
 # Pull latest code
 echo "[1/4] Pulling latest code..."
 cd "$REPO_ROOT"
+git checkout -- .
 git pull origin main
 
 # Rebuild frontend
