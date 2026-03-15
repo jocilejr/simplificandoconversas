@@ -670,8 +670,8 @@ router.post("/", async (req, res) => {
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
             } else if (step.data.type === "metaPixel") {
-              let pixelId = profile?.meta_pixel_id;
-              let accessToken = profile?.meta_access_token;
+              let pixelId: string | null = null;
+              let accessToken: string | null = null;
 
               if (step.data.selectedPixelId) {
                 const { data: pixelRow } = await serviceClient
