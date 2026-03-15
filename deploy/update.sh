@@ -59,6 +59,10 @@ DO $$ BEGIN
   END IF;
 END $$;
 GRANT ALL ON public.meta_pixels TO anon, authenticated, service_role;
+
+-- Remove legacy columns from profiles
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS meta_pixel_id;
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS meta_access_token;
 EOSQL
 echo "✓ Migrations aplicadas"
 
