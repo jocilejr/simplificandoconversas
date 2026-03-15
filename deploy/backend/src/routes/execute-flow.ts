@@ -677,13 +677,16 @@ router.post("/", async (req, res) => {
               let accessToken: string | null = null;
 
               if (step.data.selectedPixelId) {
-                const { data: pixelRow } = await serviceClient
+                const { data: pixelRow, error: pixelQueryError } = await serviceClient
                   .from("meta_pixels")
                   .select("pixel_id, access_token")
                   .eq("id", step.data.selectedPixelId)
                   .eq("user_id", userId)
                   .single();
-                if (pixelRow) {
+                if (pixelQueryError) {
+                  console.error(`[execute-flow] group metaPixel query error:`, JSON.stringify(pixelQueryError));
+                  results.push(`group.${step.id}: metaPixel: error - falha ao buscar pixel: ${pixelQueryError.message || JSON.stringify(pixelQueryError)}`);
+                } else if (pixelRow) {
                   pixelId = pixelRow.pixel_id;
                   accessToken = pixelRow.access_token;
                 }
