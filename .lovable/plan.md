@@ -1,58 +1,53 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Plano: Nó Meta Pixel com value/currency dinâmicos
 
+O plano anterior está correto, mas o payload da Conversions API deve usar os valores configurados no nó do fluxo — sem nada hardcodado.
+
+### Mudanças
+
+**1. Migração SQL** — adicionar `meta_pixel_id` e `meta_access_token` à tabela `profiles`
+
+**2. `src/types/chatbot.ts`** — novo tipo `metaPixel` com campos:
+- `pixelEventName`: select (Lead, Purchase, CompleteRegistration, ViewContent, InitiateCheckout, Subscribe, Contact, Custom)
+- `pixelCustomEventName`: string (quando Custom)
+- `pixelEventValue`: number (opcional, definido pelo usuário no fluxo)
+- `pixelCurrency`: string (default "BRL", editável no fluxo)
+
+**3. `src/components/chatbot/PropertiesPanel.tsx`** — campos do nó:
+- Select de evento
+- Input de nome custom (condicional)
+- Input numérico de valor (R$)
+- Input de moeda (default BRL)
+
+**4. `src/components/chatbot/NodePalette.tsx`** — adicionar na categoria "Rastreamento"
+
+**5. `deploy/backend/src/routes/execute-flow.ts`**:
+- Query de profile inclui `meta_pixel_id, meta_access_token`
+- Handler `metaPixel` no `executeStep`:
+```ts
+const eventName = step.pixelCustomEventName || step.pixelEventName || "Lead";
+const customData: any = {};
+if (step.pixelEventValue) customData.value = step.pixelEventValue;
+if (step.pixelCurrency) customData.currency = step.pixelCurrency;
+
+// POST graph.facebook.com/v21.0/{pixel_id}/events
+// data[0].custom_data = customData (só inclui se tiver value)
+```
+Ou seja: `value` e `currency` vêm diretamente do que o usuário configurou no nó do fluxo. Se não preencheu valor, `custom_data` fica vazio.
+
+**6. `src/components/settings/AppSection.tsx`** — inputs Pixel ID e Access Token
+
+**7. `src/hooks/useProfile.ts`** — incluir campos no mutation
+
+### Arquivos impactados
 | Arquivo | Mudança |
 |---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+| Migração SQL | +2 colunas em `profiles` |
+| `src/types/chatbot.ts` | Tipo `metaPixel` + campos |
+| `PropertiesPanel.tsx` | UI do nó |
+| `NodePalette.tsx` | Categoria Rastreamento |
+| `execute-flow.ts` | Handler + query profile |
+| `AppSection.tsx` | Inputs credenciais Meta |
+| `useProfile.ts` | Campos no mutation |
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
-
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
-
-### Mudanças realizadas
-
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
-
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
-
-### Redesign completo do overlay para sidebar fixa
-
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
-
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-
-## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
-
-### Implementação
-| Arquivo | Mudança |
-|---------|---------|
-| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
-| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
-- Ícones SVG inline (sem emojis)
