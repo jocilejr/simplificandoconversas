@@ -14,7 +14,8 @@ export type FlowNodeType =
   | "action"
   | "groupBlock"
   | "aiAgent"
-  | "waitForClick";
+  | "waitForClick"
+  | "metaPixel";
 
 export interface FlowStepData {
   id: string;
