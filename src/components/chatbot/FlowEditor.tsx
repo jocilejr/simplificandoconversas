@@ -930,6 +930,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
                     { label: "Lógica", types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[] },
                     { label: "Ações", types: ["action"] as FlowNodeType[] },
                     { label: "Inteligência Artificial", types: ["aiAgent"] as FlowNodeType[] },
+                    { label: "Rastreamento", types: ["metaPixel"] as FlowNodeType[] },
                   ].map((cat) => (
                     <div key={cat.label}>
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">{cat.label}</p>
