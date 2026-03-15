@@ -94,14 +94,17 @@ export function useMetaPixels() {
 
   const updatePixel = useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; name?: string; pixel_id?: string; access_token?: string }) => {
-      const { error } = await supabase
+      const res = await supabase
         .from("meta_pixels")
         .update(updates)
-        .eq("id", id);
+        .eq("id", id)
+        .select();
 
-      if (error) {
-        console.error("[updatePixel] Error:", error);
-        throw error;
+      if (res.error) {
+        console.error("[updatePixel] Error:", JSON.stringify(res.error), "status:", res.status);
+        const err: any = res.error;
+        err._httpStatus = res.status;
+        throw err;
       }
     },
     onSuccess: () => {
