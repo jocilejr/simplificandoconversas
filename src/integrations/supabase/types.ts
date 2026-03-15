@@ -402,6 +402,33 @@ export type Database = {
           },
         ]
       }
+      meta_pixels: {
+        Row: {
+          access_token: string
+          created_at: string
+          id: string
+          name: string
+          pixel_id: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          id?: string
+          name?: string
+          pixel_id: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          id?: string
+          name?: string
+          pixel_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           app_public_url: string | null
