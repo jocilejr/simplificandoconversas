@@ -15,9 +15,15 @@ function parseSupabaseError(err: unknown): { message: string; status?: number; d
   if (err && typeof err === "object") {
     const e = err as Record<string, unknown>;
     const message = (e.message as string) || "Erro desconhecido";
-    const status = typeof e.status === "number" ? e.status : typeof e.code === "string" ? parseInt(e.code, 10) : undefined;
+    const httpStatus = typeof e._httpStatus === "number" ? e._httpStatus : undefined;
+    const code = e.code as string;
+    const status = httpStatus || (typeof e.status === "number" ? e.status : undefined);
     const details = (e.details as string) || (e.hint as string) || undefined;
-    return { message, status: isNaN(status as number) ? undefined : status, details };
+
+    if (code?.startsWith("PGRST") || (status && status >= 400)) {
+      return { message: message || `HTTP ${status}`, status, details };
+    }
+    return { message, status, details };
   }
   if (err instanceof Error) return { message: err.message };
   return { message: String(err) };
