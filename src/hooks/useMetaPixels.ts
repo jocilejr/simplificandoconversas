@@ -15,9 +15,15 @@ function parseSupabaseError(err: unknown): { message: string; status?: number; d
   if (err && typeof err === "object") {
     const e = err as Record<string, unknown>;
     const message = (e.message as string) || "Erro desconhecido";
-    const status = typeof e.status === "number" ? e.status : typeof e.code === "string" ? parseInt(e.code, 10) : undefined;
+    const httpStatus = typeof e._httpStatus === "number" ? e._httpStatus : undefined;
+    const code = e.code as string;
+    const status = httpStatus || (typeof e.status === "number" ? e.status : undefined);
     const details = (e.details as string) || (e.hint as string) || undefined;
-    return { message, status: isNaN(status as number) ? undefined : status, details };
+
+    if (code?.startsWith("PGRST") || (status && status >= 400)) {
+      return { message: message || `HTTP ${status}`, status, details };
+    }
+    return { message, status, details };
   }
   if (err instanceof Error) return { message: err.message };
   return { message: String(err) };
@@ -58,18 +64,21 @@ export function useMetaPixels() {
     mutationFn: async (pixel: { name: string; pixel_id: string; access_token: string }) => {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) {
-        console.error("[addPixel] Auth error:", authError);
+        console.error("[addPixel] Auth error:", JSON.stringify(authError));
         throw new Error("Sessão expirada. Faça login novamente.");
       }
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase
+      const res = await supabase
         .from("meta_pixels")
-        .insert({ ...pixel, user_id: user.id });
+        .insert({ ...pixel, user_id: user.id })
+        .select();
 
-      if (error) {
-        console.error("[addPixel] Insert error:", error);
-        throw error;
+      if (res.error) {
+        console.error("[addPixel] Insert error:", JSON.stringify(res.error), "status:", res.status);
+        const err: any = res.error;
+        err._httpStatus = res.status;
+        throw err;
       }
     },
     onSuccess: () => {
@@ -85,14 +94,17 @@ export function useMetaPixels() {
 
   const updatePixel = useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; name?: string; pixel_id?: string; access_token?: string }) => {
-      const { error } = await supabase
+      const res = await supabase
         .from("meta_pixels")
         .update(updates)
-        .eq("id", id);
+        .eq("id", id)
+        .select();
 
-      if (error) {
-        console.error("[updatePixel] Error:", error);
-        throw error;
+      if (res.error) {
+        console.error("[updatePixel] Error:", JSON.stringify(res.error), "status:", res.status);
+        const err: any = res.error;
+        err._httpStatus = res.status;
+        throw err;
       }
     },
     onSuccess: () => {
@@ -108,14 +120,16 @@ export function useMetaPixels() {
 
   const deletePixel = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const res = await supabase
         .from("meta_pixels")
         .delete()
         .eq("id", id);
 
-      if (error) {
-        console.error("[deletePixel] Error:", error);
-        throw error;
+      if (res.error) {
+        console.error("[deletePixel] Error:", JSON.stringify(res.error), "status:", res.status);
+        const err: any = res.error;
+        err._httpStatus = res.status;
+        throw err;
       }
     },
     onSuccess: () => {

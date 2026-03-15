@@ -1,66 +1,58 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Diagnóstico
+### Mudanças realizadas
 
-A screenshot mostra que na VPS o `POST /rest/v1/meta_pixels` retorna **404**, e o console exibe `[addPixel] Insert error: {}` -- o objeto de erro do Supabase está vazio. Por isso `parseSupabaseError` retorna "Erro desconhecido" com status/details undefined.
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-O problema tem duas camadas:
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-1. **VPS**: PostgREST ainda não enxerga `meta_pixels` (o `update.sh` com as correções de NOTIFY + restart pode não ter sido rodado ainda, ou o deploy anterior falhou antes dessa etapa).
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-2. **Frontend**: O erro retornado pelo Supabase client para 404 é um objeto vazio `{}`, então o parser não consegue extrair informação útil. Precisamos capturar o status HTTP diretamente do response.
+### Mudanças realizadas
 
-## Correção no Frontend
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-**Arquivo: `src/hooks/useMetaPixels.ts`**
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-Alterar o `addPixel.mutationFn` para verificar o `status` e `statusText` da resposta, não apenas o `error` object. Usar `.select()` no insert para obter a resposta completa, e checar manualmente o HTTP status:
+### Redesign completo do overlay para sidebar fixa
 
-```typescript
-const res = await supabase
-  .from("meta_pixels")
-  .insert({ ...pixel, user_id: user.id })
-  .select();
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-if (res.error) {
-  console.error("[addPixel] Insert error:", JSON.stringify(res.error));
-  // Attach HTTP status if available
-  const err: any = res.error;
-  err._httpStatus = res.status;
-  throw err;
-}
-```
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
 
-Atualizar `parseSupabaseError` para extrair `_httpStatus` ou checar se `code` contém "PGRST":
+## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
 
-```typescript
-function parseSupabaseError(err: unknown): { message: string; status?: number; details?: string } {
-  if (err && typeof err === "object") {
-    const e = err as Record<string, unknown>;
-    const message = (e.message as string) || "Erro desconhecido";
-    const httpStatus = (e._httpStatus as number) || undefined;
-    const code = e.code as string;
-    const status = httpStatus || (typeof e.status === "number" ? e.status : undefined);
-    const details = (e.details as string) || (e.hint as string) || undefined;
-    
-    // Detect 404 from PGRST code or empty error on non-200 status
-    if (code?.startsWith("PGRST") || (status && status >= 400)) {
-      return { message: message || `HTTP ${status}`, status, details };
-    }
-    return { message, status, details };
-  }
-  if (err instanceof Error) return { message: err.message };
-  return { message: String(err) };
-}
-```
-
-Aplicar o mesmo padrão `.select()` + `res.status` nos mutations `updatePixel` e `deletePixel`.
-
-Além disso, usar `JSON.stringify` nos `console.error` para garantir que objetos vazios/circulares sejam visíveis.
-
-## Resultado Esperado
-
-- Na VPS após rodar `update.sh` atualizado: tabela visível, insert funciona.
-- Se PostgREST ainda retornar 404: toast mostra "Tabela de pixels não disponível no backend. Rode o update da VPS novamente." em vez de "Erro desconhecido".
-- Console mostra dados estruturados para debug.
-
+### Implementação
+| Arquivo | Mudança |
+|---------|---------|
+| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
+| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
+- Ícones SVG inline (sem emojis)
