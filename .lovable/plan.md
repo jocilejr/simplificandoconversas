@@ -1,58 +1,23 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Diagnóstico: "Erro ao adicionar pixel"
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+A tabela `meta_pixels` existe no banco, o schema está correto, e as políticas RLS estão configuradas adequadamente. O problema mais provável é que o **token JWT do usuário está expirado** (o token capturado mostra `exp: ~2026-03-13`, mas a data atual é 2026-03-15), e o auto-refresh pode ter falhado silenciosamente, fazendo com que a requisição de insert seja rejeitada pelo RLS.
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+Além disso, o hook `useMetaPixels` usa casts `as any` desnecessários (a tabela `meta_pixels` JÁ existe nos types gerados), o que esconde possíveis erros de tipagem.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+## Correções
 
-### Mudanças realizadas
+### 1. Remover casts `as any` do hook `useMetaPixels`
+- A tabela `meta_pixels` já está nos types do Supabase, então os casts são desnecessários e escondem erros
+- Remover todos os `as any` das chamadas `.from()`, `.insert()`, `.update()` e do retorno
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+### 2. Melhorar tratamento de erro
+- Adicionar `err.message` na descrição do toast de erro (já está lá, mas garantir que a mensagem real do Supabase apareça)
+- Adicionar um `console.error` antes do toast para facilitar debug futuro
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+### 3. Forçar refresh de sessão antes do insert
+- No `mutationFn` do `addPixel`, usar `supabase.auth.getUser()` (que já faz refresh automático) - isso já está implementado, mas verificar se o token retornado está válido
 
-### Redesign completo do overlay para sidebar fixa
+Essas mudanças vão: (a) melhorar a tipagem, (b) mostrar o erro real do Supabase no toast, e (c) garantir que a sessão esteja válida antes do insert.
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
-
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-
-## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
-
-### Implementação
-| Arquivo | Mudança |
-|---------|---------|
-| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
-| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
-- Ícones SVG inline (sem emojis)
