@@ -11,6 +11,7 @@ import { X, Trash2, Unlink, icons } from "lucide-react";
 import { type FlowNode, type FlowNodeData, type FlowStepData, nodeTypeConfig } from "@/types/chatbot";
 import { TextFormatToolbar } from "@/components/chatbot/TextFormatToolbar";
 import { MediaUpload } from "@/components/chatbot/MediaUpload";
+import { useMetaPixels } from "@/hooks/useMetaPixels";
 
 interface PropertiesPanelProps {
   node: FlowNode;
