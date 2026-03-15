@@ -25,7 +25,7 @@ EOF
 if command -v bun &> /dev/null; then
   bun install && bun run build
 else
-  npm ci && npm run build
+  npm install && npm run build
 fi
 
 # Verify build succeeded
