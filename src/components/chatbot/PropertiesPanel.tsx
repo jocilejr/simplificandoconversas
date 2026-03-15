@@ -401,6 +401,63 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
   );
 }
 
+function MetaPixelFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<FlowNodeData>) => void }) {
+  const { pixels, isLoading } = useMetaPixels();
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Pixel</Label>
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Carregando...</p>
+        ) : pixels.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhum pixel configurado. Adicione em Configurações → Aplicação.</p>
+        ) : (
+          <Select value={d.selectedPixelId || ""} onValueChange={(v) => update({ selectedPixelId: v })}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione um pixel" /></SelectTrigger>
+            <SelectContent>
+              {pixels.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name} ({p.pixel_id})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Evento</Label>
+        <Select value={d.pixelEventName || "Lead"} onValueChange={(v) => update({ pixelEventName: v as any })}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Lead">Lead</SelectItem>
+            <SelectItem value="Purchase">Purchase</SelectItem>
+            <SelectItem value="CompleteRegistration">CompleteRegistration</SelectItem>
+            <SelectItem value="ViewContent">ViewContent</SelectItem>
+            <SelectItem value="InitiateCheckout">InitiateCheckout</SelectItem>
+            <SelectItem value="Subscribe">Subscribe</SelectItem>
+            <SelectItem value="Contact">Contact</SelectItem>
+            <SelectItem value="Custom">Personalizado</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {d.pixelEventName === "Custom" && (
+        <div className="space-y-1.5">
+          <Label className="text-xs">Nome do evento personalizado</Label>
+          <Input value={d.pixelCustomEventName || ""} onChange={(e) => update({ pixelCustomEventName: e.target.value })} placeholder="Ex: MeuEvento" className="h-8 text-xs" />
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <Label className="text-xs">Valor (opcional)</Label>
+        <Input type="number" value={d.pixelEventValue ?? ""} onChange={(e) => update({ pixelEventValue: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="Ex: 29.90" className="h-8 text-xs" step="0.01" min={0} />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Moeda</Label>
+        <Input value={d.pixelCurrency || "BRL"} onChange={(e) => update({ pixelCurrency: e.target.value })} placeholder="BRL" className="h-8 text-xs" />
+      </div>
+      <p className="text-[10px] text-muted-foreground">Configure pixels em Configurações → Aplicação.</p>
+    </>
+  );
+}
+
 export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, onUpdateStep, onDelete, onRemoveStep, onClose }: PropertiesPanelProps) {
   const d = node.data as FlowNodeData;
   const isGroup = d.type === "groupBlock" && d.steps;
