@@ -446,6 +446,47 @@ router.post("/", async (req, res) => {
           } else {
             results.push(`action: ${actionType} "${actionValue}" (no-op)`);
           }
+        } else if (nodeType === "metaPixel") {
+          const pixelId = profile?.meta_pixel_id;
+          const accessToken = profile?.meta_access_token;
+          if (!pixelId || !accessToken) {
+            results.push("metaPixel: error - Pixel ID ou Access Token não configurado");
+          } else {
+            const eventName = data.pixelCustomEventName || data.pixelEventName || "Lead";
+            const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+            const hashedPhone = crypto.createHash("sha256").update(phone).digest("hex");
+
+            const eventData: any = {
+              event_name: eventName,
+              event_time: Math.floor(Date.now() / 1000),
+              action_source: "system_generated",
+              user_data: {
+                ph: [hashedPhone],
+                external_id: [hashedPhone],
+              },
+            };
+
+            const customData: any = {};
+            if (data.pixelEventValue != null && data.pixelEventValue !== "") {
+              customData.value = Number(data.pixelEventValue);
+            }
+            if (data.pixelCurrency) customData.currency = data.pixelCurrency;
+            if (Object.keys(customData).length > 0) eventData.custom_data = customData;
+
+            try {
+              const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ data: [eventData], access_token: accessToken }),
+              });
+              const metaResult = await metaResp.json();
+              console.log(`[execute-flow] metaPixel response:`, JSON.stringify(metaResult));
+              results.push(`metaPixel: ok (${eventName})`);
+            } catch (pixelErr: any) {
+              console.error(`[execute-flow] metaPixel error:`, pixelErr);
+              results.push(`metaPixel: error - ${pixelErr.message}`);
+            }
+          }
         } else if (nodeType === "aiAgent") {
           const openaiKey = profile?.openai_api_key || process.env.OPENAI_API_KEY;
           if (!openaiKey) {

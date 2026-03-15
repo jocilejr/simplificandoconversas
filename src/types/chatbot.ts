@@ -225,4 +225,10 @@ export const defaultNodeData: Record<FlowNodeType, Partial<FlowNodeData>> = {
     clickTimeout: 0,
     clickTimeoutUnit: "minutes",
   },
+  metaPixel: {
+    pixelEventName: "Lead",
+    pixelCustomEventName: "",
+    pixelEventValue: undefined,
+    pixelCurrency: "BRL",
+  },
 };

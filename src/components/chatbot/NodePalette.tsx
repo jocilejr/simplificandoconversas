@@ -27,6 +27,10 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
       label: "Inteligência Artificial",
       types: ["aiAgent"] as FlowNodeType[],
     },
+    {
+      label: "Rastreamento",
+      types: ["metaPixel"] as FlowNodeType[],
+    },
   ];
 
   return (
