@@ -120,14 +120,16 @@ export function useMetaPixels() {
 
   const deletePixel = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const res = await supabase
         .from("meta_pixels")
         .delete()
         .eq("id", id);
 
-      if (error) {
-        console.error("[deletePixel] Error:", error);
-        throw error;
+      if (res.error) {
+        console.error("[deletePixel] Error:", JSON.stringify(res.error), "status:", res.status);
+        const err: any = res.error;
+        err._httpStatus = res.status;
+        throw err;
       }
     },
     onSuccess: () => {
