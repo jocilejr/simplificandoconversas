@@ -43,6 +43,7 @@ echo "✓ Frontend copiado com sucesso"
 
 # Run DB migrations for new tables
 echo "[2.5/4] Running database migrations..."
+cd "$DEPLOY_DIR"
 docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'EOSQL'
 CREATE TABLE IF NOT EXISTS public.meta_pixels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
