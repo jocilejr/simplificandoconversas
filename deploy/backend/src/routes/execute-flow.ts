@@ -670,8 +670,22 @@ router.post("/", async (req, res) => {
                 results.push(`group.${step.id}: action: remove_tag "${actionValue}"`);
               }
             } else if (step.data.type === "metaPixel") {
-              const pixelId = profile?.meta_pixel_id;
-              const accessToken = profile?.meta_access_token;
+              let pixelId = profile?.meta_pixel_id;
+              let accessToken = profile?.meta_access_token;
+
+              if (step.data.selectedPixelId) {
+                const { data: pixelRow } = await serviceClient
+                  .from("meta_pixels")
+                  .select("pixel_id, access_token")
+                  .eq("id", step.data.selectedPixelId)
+                  .eq("user_id", userId)
+                  .single();
+                if (pixelRow) {
+                  pixelId = pixelRow.pixel_id;
+                  accessToken = pixelRow.access_token;
+                }
+              }
+
               if (!pixelId || !accessToken) {
                 results.push(`group.${step.id}: metaPixel: error - credenciais não configuradas`);
               } else {
