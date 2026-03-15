@@ -1,49 +1,58 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-Objetivo: corrigir definitivamente o erro **404 ao adicionar Meta Pixel** no ambiente VPS (`POST /rest/v1/meta_pixels`) e melhorar o diagnóstico no frontend.
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-1) Diagnóstico consolidado
-- O erro não é de autenticação (sessão válida), é de rota/tabela no backend self-hosted.
-- O `POST /rest/v1/meta_pixels` retorna 404, indicando que a API REST não está “enxergando” `public.meta_pixels` naquele momento.
-- Pelos scripts atuais, isso pode ocorrer em dois cenários:
-  - migração não aplicada com sucesso em algum update;
-  - cache de schema da camada REST não recarregado após criar/alterar tabela.
-- O log no frontend aparece como `{}` porque o erro é tratado como `Error` simples e perde campos estruturados.
+### Mudanças realizadas
 
-2) Implementação proposta
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-A. Fortalecer o deploy para evitar 404 pós-migração (arquivo `deploy/update.sh`)
-- Após o bloco SQL de migração:
-  - validar explicitamente existência da tabela (`to_regclass('public.meta_pixels')`);
-  - se não existir, abortar update com erro claro.
-- Forçar recarga do schema REST após migração:
-  - executar `NOTIFY pgrst, 'reload schema';`
-  - e reiniciar serviço `postgrest` como fallback forte.
-- Manter `nginx` restart ao final (já existe), garantindo config/roteamento atualizado.
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-B. Melhorar diagnóstico no frontend (arquivo `src/hooks/useMetaPixels.ts`)
-- Trocar tratamento `onError(err: Error)` por parser de `unknown`:
-  - extrair `message`, `details`, `hint`, `code`, `status` quando disponíveis.
-- Mostrar toast com mensagem útil:
-  - exemplo para 404: “Tabela de pixels não disponível no backend. Rode o update da VPS novamente.”
-- Manter `console.error` estruturado para facilitar suporte.
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-C. (Opcional, mas recomendado) reduzir ruído de 503 em ambiente não-VPS (`src/hooks/useWhatsAppInstances.ts`)
-- Detectar resposta conhecida da função stub (“requires self-hosted backend”).
-- Interromper polling contínuo nesse caso (evita spam de requests/logs) e manter status “Servidor offline”.
+### Mudanças realizadas
 
-3) Validação (fim-a-fim)
-- Executar update na VPS e confirmar:
-  - migração concluída sem erro;
-  - serviço REST recarregado/reiniciado.
-- Testar na UI:
-  - abrir Configurações → Aplicação;
-  - adicionar pixel;
-  - validar no DevTools que `POST /rest/v1/meta_pixels` retorna **201/200**, não 404.
-- Validar UX de erro:
-  - se backend estiver inconsistente, toast deve explicar ação corretiva (não erro genérico).
-- Se etapa opcional for aplicada:
-  - abrir aba Conexões em ambiente não-VPS e confirmar que não há loop infinito de 503.
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-4) Impacto e risco
-- Baixo risco: mudanças localizadas em script de update e tratamento de erro no hook.
-- Sem alteração de regra de negócio dos fluxos; foco em confiabilidade de deploy + observabilidade.
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
+
+### Redesign completo do overlay para sidebar fixa
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
+
+## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
+
+### Implementação
+| Arquivo | Mudança |
+|---------|---------|
+| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
+| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
+- Ícones SVG inline (sem emojis)

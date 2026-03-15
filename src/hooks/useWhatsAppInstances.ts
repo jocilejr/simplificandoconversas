@@ -55,15 +55,24 @@ export function useWhatsAppInstances() {
         body: { action: "fetch-instances" },
       });
       if (error) throw error;
+      // Detect stub response from non-VPS environment
+      if (data?.error?.includes?.("self-hosted") || data?.info?.includes?.("VPS")) {
+        return "stub" as const;
+      }
       const list = Array.isArray(data) ? data : data?.instances || [];
       return list.map(parseRemoteInstance) as RemoteInstance[];
     },
-    refetchInterval: 10000,
+    refetchInterval: (query) => {
+      // Stop polling if we got a stub response
+      if (query.state.data === "stub") return false;
+      return 10000;
+    },
     retry: 1,
   });
 
-  const remoteInstances = remoteData || [];
-  const isServerConnected = !isServerError && remoteData !== undefined;
+  const remoteInstances = (remoteData && remoteData !== "stub") ? remoteData : [];
+  const isStubResponse = remoteData === "stub";
+  const isServerConnected = !isServerError && remoteData !== undefined && !isStubResponse;
 
   const mergedInstances = instances.map((inst) => {
     const remote = remoteInstances.find((ri) => ri.name === inst.instance_name);
