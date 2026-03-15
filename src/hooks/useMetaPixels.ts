@@ -64,18 +64,21 @@ export function useMetaPixels() {
     mutationFn: async (pixel: { name: string; pixel_id: string; access_token: string }) => {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) {
-        console.error("[addPixel] Auth error:", authError);
+        console.error("[addPixel] Auth error:", JSON.stringify(authError));
         throw new Error("Sessão expirada. Faça login novamente.");
       }
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase
+      const res = await supabase
         .from("meta_pixels")
-        .insert({ ...pixel, user_id: user.id });
+        .insert({ ...pixel, user_id: user.id })
+        .select();
 
-      if (error) {
-        console.error("[addPixel] Insert error:", error);
-        throw error;
+      if (res.error) {
+        console.error("[addPixel] Insert error:", JSON.stringify(res.error), "status:", res.status);
+        const err: any = res.error;
+        err._httpStatus = res.status;
+        throw err;
       }
     },
     onSuccess: () => {
