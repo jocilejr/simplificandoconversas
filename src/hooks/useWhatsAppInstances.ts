@@ -70,8 +70,9 @@ export function useWhatsAppInstances() {
     retry: 1,
   });
 
-  const remoteInstances = remoteData || [];
-  const isServerConnected = !isServerError && remoteData !== undefined;
+  const remoteInstances = (remoteData && remoteData !== "stub") ? remoteData : [];
+  const isStubResponse = remoteData === "stub";
+  const isServerConnected = !isServerError && remoteData !== undefined && !isStubResponse;
 
   const mergedInstances = instances.map((inst) => {
     const remote = remoteInstances.find((ri) => ri.name === inst.instance_name);
