@@ -4,21 +4,92 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useProfile } from "@/hooks/useProfile";
-import { Loader2 } from "lucide-react";
+import { useMetaPixels, type MetaPixel } from "@/hooks/useMetaPixels";
+import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+
+function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
+  pixel: MetaPixel;
+  onUpdate: (id: string, data: { name?: string; pixel_id?: string; access_token?: string }) => void;
+  onDelete: (id: string) => void;
+  isDeleting: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(pixel.name);
+  const [pixelId, setPixelId] = useState(pixel.pixel_id);
+  const [accessToken, setAccessToken] = useState(pixel.access_token);
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{pixel.name}</p>
+          <p className="text-xs text-muted-foreground truncate">ID: {pixel.pixel_id}</p>
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setEditing(true)}>
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => onDelete(pixel.id)} disabled={isDeleting}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 rounded-lg border border-primary/50 bg-secondary/30 space-y-2">
+      <div className="space-y-1.5">
+        <Label className="text-xs">Nome</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-xs" />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Pixel ID</Label>
+        <Input value={pixelId} onChange={(e) => setPixelId(e.target.value)} className="h-8 text-xs" />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Access Token</Label>
+        <Input type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} className="h-8 text-xs" />
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" className="text-xs" onClick={() => { onUpdate(pixel.id, { name, pixel_id: pixelId, access_token: accessToken }); setEditing(false); }}>
+          <Check className="h-3 w-3 mr-1" /> Salvar
+        </Button>
+        <Button variant="outline" size="sm" className="text-xs" onClick={() => setEditing(false)}>
+          <X className="h-3 w-3 mr-1" /> Cancelar
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function AppSection() {
   const { profile, updateProfile } = useProfile();
+  const { pixels, isLoading: pixelsLoading, addPixel, updatePixel, deletePixel } = useMetaPixels();
   const [appPublicUrl, setAppPublicUrl] = useState("");
-  const [metaPixelId, setMetaPixelId] = useState("");
-  const [metaAccessToken, setMetaAccessToken] = useState("");
+  const [showAddPixel, setShowAddPixel] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPixelId, setNewPixelId] = useState("");
+  const [newAccessToken, setNewAccessToken] = useState("");
 
   useEffect(() => {
     if (profile) {
       setAppPublicUrl(profile.app_public_url || "");
-      setMetaPixelId((profile as any).meta_pixel_id || "");
-      setMetaAccessToken((profile as any).meta_access_token || "");
     }
   }, [profile]);
+
+  const handleAddPixel = () => {
+    if (!newPixelId.trim() || !newAccessToken.trim()) return;
+    addPixel.mutate(
+      { name: newName || `Pixel ${pixels.length + 1}`, pixel_id: newPixelId, access_token: newAccessToken },
+      {
+        onSuccess: () => {
+          setNewName("");
+          setNewPixelId("");
+          setNewAccessToken("");
+          setShowAddPixel(false);
+        },
+      }
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -53,39 +124,69 @@ export function AppSection() {
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-lg">Meta Pixel (Conversions API)</CardTitle>
+          <CardTitle className="text-lg">Meta Pixels (Conversions API)</CardTitle>
           <CardDescription>
-            Configure o Pixel ID e Access Token para disparar eventos server-side via nó "Pixel Meta" nos fluxos.
+            Gerencie múltiplos pixels. Cada pixel poderá ser selecionado individualmente nos nós "Pixel Meta" dos fluxos.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Pixel ID</Label>
-            <Input
-              placeholder="123456789012345"
-              value={metaPixelId}
-              onChange={(e) => setMetaPixelId(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Access Token</Label>
-            <Input
-              type="password"
-              placeholder="EAAxxxxxxxx..."
-              value={metaAccessToken}
-              onChange={(e) => setMetaAccessToken(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Gere em Meta Events Manager → Configurações → Conversions API → Gerar Token de Acesso.
-            </p>
-          </div>
-          <Button
-            onClick={() => updateProfile.mutate({ meta_pixel_id: metaPixelId, meta_access_token: metaAccessToken })}
-            disabled={updateProfile.isPending}
-          >
-            {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Salvar
-          </Button>
+          {pixelsLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              {pixels.length === 0 && !showAddPixel && (
+                <p className="text-sm text-muted-foreground">Nenhum pixel configurado. Adicione um para começar.</p>
+              )}
+              <div className="space-y-2">
+                {pixels.map((pixel) => (
+                  <PixelRow
+                    key={pixel.id}
+                    pixel={pixel}
+                    onUpdate={(id, data) => updatePixel.mutate({ id, ...data })}
+                    onDelete={(id) => deletePixel.mutate(id)}
+                    isDeleting={deletePixel.isPending}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {showAddPixel && (
+            <div className="p-3 rounded-lg border border-dashed border-primary/50 space-y-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Nome (identificação)</Label>
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Ex: Pixel Principal" className="h-8 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Pixel ID</Label>
+                <Input value={newPixelId} onChange={(e) => setNewPixelId(e.target.value)} placeholder="123456789012345" className="h-8 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Access Token</Label>
+                <Input type="password" value={newAccessToken} onChange={(e) => setNewAccessToken(e.target.value)} placeholder="EAAxxxxxxxx..." className="h-8 text-xs" />
+                <p className="text-[10px] text-muted-foreground">
+                  Gere em Meta Events Manager → Configurações → Conversions API → Gerar Token de Acesso.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" className="text-xs" onClick={handleAddPixel} disabled={addPixel.isPending}>
+                  {addPixel.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                  <Check className="h-3 w-3 mr-1" /> Adicionar
+                </Button>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowAddPixel(false)}>
+                  <X className="h-3 w-3 mr-1" /> Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!showAddPixel && (
+            <Button variant="outline" size="sm" onClick={() => setShowAddPixel(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Adicionar Pixel
+            </Button>
+          )}
         </CardContent>
       </Card>
     </div>
