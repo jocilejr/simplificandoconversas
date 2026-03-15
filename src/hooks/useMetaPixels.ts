@@ -11,6 +11,28 @@ export interface MetaPixel {
   created_at: string;
 }
 
+function parseSupabaseError(err: unknown): { message: string; status?: number; details?: string } {
+  if (err && typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    const message = (e.message as string) || "Erro desconhecido";
+    const status = typeof e.status === "number" ? e.status : typeof e.code === "string" ? parseInt(e.code, 10) : undefined;
+    const details = (e.details as string) || (e.hint as string) || undefined;
+    return { message, status: isNaN(status as number) ? undefined : status, details };
+  }
+  if (err instanceof Error) return { message: err.message };
+  return { message: String(err) };
+}
+
+function friendlyErrorMessage(parsed: { message: string; status?: number }): string {
+  if (parsed.status === 404 || parsed.message?.includes("404")) {
+    return "Tabela de pixels não disponível no backend. Rode o update da VPS novamente.";
+  }
+  if (parsed.message?.includes("JWT") || parsed.message?.includes("token")) {
+    return "Sessão expirada. Faça login novamente.";
+  }
+  return parsed.message;
+}
+
 export function useMetaPixels() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -54,9 +76,10 @@ export function useMetaPixels() {
       queryClient.invalidateQueries({ queryKey: ["meta-pixels"] });
       toast({ title: "Pixel adicionado!" });
     },
-    onError: (err: Error) => {
-      console.error("[addPixel] Mutation error:", err);
-      toast({ title: "Erro ao adicionar pixel", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      const parsed = parseSupabaseError(err);
+      console.error("[addPixel] Mutation error:", parsed);
+      toast({ title: "Erro ao adicionar pixel", description: friendlyErrorMessage(parsed), variant: "destructive" });
     },
   });
 
@@ -76,9 +99,10 @@ export function useMetaPixels() {
       queryClient.invalidateQueries({ queryKey: ["meta-pixels"] });
       toast({ title: "Pixel atualizado!" });
     },
-    onError: (err: Error) => {
-      console.error("[updatePixel] Error:", err);
-      toast({ title: "Erro ao atualizar", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      const parsed = parseSupabaseError(err);
+      console.error("[updatePixel] Error:", parsed);
+      toast({ title: "Erro ao atualizar", description: friendlyErrorMessage(parsed), variant: "destructive" });
     },
   });
 
@@ -98,9 +122,10 @@ export function useMetaPixels() {
       queryClient.invalidateQueries({ queryKey: ["meta-pixels"] });
       toast({ title: "Pixel removido!" });
     },
-    onError: (err: Error) => {
-      console.error("[deletePixel] Error:", err);
-      toast({ title: "Erro ao remover", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      const parsed = parseSupabaseError(err);
+      console.error("[deletePixel] Error:", parsed);
+      toast({ title: "Erro ao remover", description: friendlyErrorMessage(parsed), variant: "destructive" });
     },
   });
 

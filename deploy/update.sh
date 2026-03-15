@@ -65,8 +65,23 @@ GRANT ALL ON public.meta_pixels TO anon, authenticated, service_role;
 -- Remove legacy columns from profiles
 ALTER TABLE public.profiles DROP COLUMN IF EXISTS meta_pixel_id;
 ALTER TABLE public.profiles DROP COLUMN IF EXISTS meta_access_token;
+
+-- Force PostgREST schema cache reload
+NOTIFY pgrst, 'reload schema';
 EOSQL
 echo "✓ Migrations aplicadas"
+
+# Validate meta_pixels table exists
+TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.meta_pixels');")
+if [ "$TABLE_EXISTS" = "" ] || [ "$TABLE_EXISTS" = " " ]; then
+  echo "❌ Tabela meta_pixels não encontrada após migração! Abortando."
+  exit 1
+fi
+echo "✓ Tabela meta_pixels verificada"
+
+# Restart PostgREST to guarantee schema reload
+docker compose restart postgrest 2>/dev/null || echo "⚠ PostgREST não encontrado (ok se não usar)"
+echo "✓ PostgREST schema recarregado"
 
 echo "[3/4] Rebuilding containers..."
 cd "$DEPLOY_DIR"
