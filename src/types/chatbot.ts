@@ -80,6 +80,7 @@ export interface FlowNodeData {
   clickPreviewDescription?: string;
   clickPreviewImage?: string;
   // Meta Pixel
+  selectedPixelId?: string;
   pixelEventName?: "Lead" | "Purchase" | "CompleteRegistration" | "ViewContent" | "InitiateCheckout" | "Subscribe" | "Contact" | "Custom";
   pixelCustomEventName?: string;
   pixelEventValue?: number;
