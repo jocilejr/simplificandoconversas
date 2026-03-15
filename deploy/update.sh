@@ -41,7 +41,27 @@ rm -rf "$DEPLOY_DIR/frontend/"*
 cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
 echo "✓ Frontend copiado com sucesso"
 
-# Rebuild and restart containers
+# Run DB migrations for new tables
+echo "[2.5/4] Running database migrations..."
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'EOSQL'
+CREATE TABLE IF NOT EXISTS public.meta_pixels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Meu Pixel',
+  pixel_id text NOT NULL,
+  access_token text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.meta_pixels ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meta_pixels' AND policyname = 'Users can manage own pixels') THEN
+    CREATE POLICY "Users can manage own pixels" ON public.meta_pixels FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.meta_pixels TO anon, authenticated, service_role;
+EOSQL
+echo "✓ Migrations aplicadas"
+
 echo "[3/4] Rebuilding containers..."
 cd "$DEPLOY_DIR"
 docker compose build --no-cache backend
