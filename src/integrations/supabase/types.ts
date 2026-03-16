@@ -47,6 +47,7 @@ export type Database = {
           id: string
           listen_rules: string | null
           max_context_messages: number | null
+          reply_stop_contexts: string | null
           reply_system_prompt: string | null
           user_id: string
         }
@@ -55,6 +56,7 @@ export type Database = {
           id?: string
           listen_rules?: string | null
           max_context_messages?: number | null
+          reply_stop_contexts?: string | null
           reply_system_prompt?: string | null
           user_id: string
         }
@@ -63,6 +65,7 @@ export type Database = {
           id?: string
           listen_rules?: string | null
           max_context_messages?: number | null
+          reply_stop_contexts?: string | null
           reply_system_prompt?: string | null
           user_id?: string
         }
