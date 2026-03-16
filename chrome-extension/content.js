@@ -211,14 +211,16 @@
     if (!currentPhone || contactInFlight) return;
     contactInFlight = true;
     try {
-      const [status, flows, cross] = await Promise.all([
+      const [status, flows, cross, aiStatus] = await Promise.all([
         apiCall("contact-status", { phone: currentPhone }),
         apiCall("flows"),
         apiCall("contact-cross", { phone: currentPhone, excludeInstance: detectedInstance?.instance_name || '' }),
+        apiCall("ai-status", { phone: currentPhone }),
       ]);
       contactData = status;
       flowsData = flows;
       crossData = cross;
+      aiStatusData = aiStatus;
       errorBackoffCycles = 0;
       if (currentTab === "contact") renderCurrentTab();
     } catch (e) {
