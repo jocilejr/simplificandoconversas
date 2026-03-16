@@ -205,10 +205,10 @@
       newPhone = digits;
       newName = null;
     } else {
-      // Header shows a saved name — try to extract phone from the contact info drawer
-      const drawerPhone = extractPhoneFromDrawer();
-      if (drawerPhone) {
-        newPhone = drawerPhone;
+      // Header shows a saved name — try to extract phone from UI elements
+      const uiPhone = extractPhoneFromUI();
+      if (uiPhone) {
+        newPhone = uiPhone;
         newName = raw; // keep name for display
       } else {
         newPhone = null;
