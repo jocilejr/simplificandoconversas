@@ -599,8 +599,15 @@ async function checkAndAutoReply(
   }
 
   const config = configRes.data || {};
-  const systemPrompt = config.reply_system_prompt || "Você é um assistente de vendas profissional. Responda de forma objetiva e cordial.";
+  const basePrompt = config.reply_system_prompt || "Você é um assistente de vendas profissional. Responda de forma objetiva e cordial.";
+  const stopContexts = config.reply_stop_contexts || "";
   const maxContext = config.max_context_messages || 10;
+
+  // Inject stop contexts into system prompt
+  let systemPrompt = basePrompt;
+  if (stopContexts.trim()) {
+    systemPrompt += `\n\nIMPORTANTE — Quando detectar qualquer uma das seguintes situações na mensagem do contato, você DEVE responder EXATAMENTE com "[HUMAN_NEEDED]" (sem nada mais). Situações:\n${stopContexts}`;
+  }
 
   // Fetch recent messages for context
   const { data: recentMsgs } = await supabase
