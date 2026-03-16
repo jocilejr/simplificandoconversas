@@ -56,3 +56,21 @@ O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamad
 | **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
 | **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
 - Ícones SVG inline (sem emojis)
+
+## Fase 1: Lembretes por Contato — Concluído ✅
+
+### Mudanças realizadas
+
+| Arquivo | Mudança |
+|---------|---------|
+| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
+| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
+| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
+| **src/App.tsx** | Rota `/reminders` adicionada |
+| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
+| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
+
+### Próximas fases
+- Fase 2: Dashboard com dados reais
+- Fase 3: IA Auto-Resposta em tempo real
+- Fase 4: Redesign do Layout
