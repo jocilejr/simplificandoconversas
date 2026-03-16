@@ -336,4 +336,81 @@ router.post("/pause-flow", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── GET /api/ext/reminders ──
+router.get("/reminders", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const filter = (req.query.filter as string) || "all";
+  const sb = getServiceClient();
+
+  let query = sb
+    .from("reminders")
+    .select("*")
+    .eq("user_id", userId)
+    .order("due_date", { ascending: true });
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+
+  if (filter === "pending") query = query.eq("completed", false);
+  else if (filter === "overdue") query = query.eq("completed", false).lt("due_date", todayStart);
+  else if (filter === "today") query = query.gte("due_date", todayStart).lt("due_date", todayEnd);
+  else if (filter === "completed") query = query.eq("completed", true);
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ reminders: data || [] });
+});
+
+// ── POST /api/ext/reminders ──
+router.post("/reminders", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const { title, description, phone_number, contact_name, due_date, remote_jid, instance_name } = req.body;
+  if (!title || !due_date || !remote_jid) {
+    return res.status(400).json({ error: "title, due_date, remote_jid required" });
+  }
+
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from("reminders")
+    .insert({
+      user_id: userId,
+      title,
+      description: description || null,
+      phone_number: phone_number || null,
+      contact_name: contact_name || null,
+      due_date,
+      remote_jid,
+      instance_name: instance_name || null,
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json(data);
+});
+
+// ── PATCH /api/ext/reminders/:id ──
+router.patch("/reminders/:id", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const { completed } = req.body;
+
+  const sb = getServiceClient();
+  const { error } = await sb
+    .from("reminders")
+    .update({ completed })
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 export default router;
