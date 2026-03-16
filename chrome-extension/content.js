@@ -7,6 +7,7 @@
   let currentContactName = null;
   let detectedInstance = null;
   let sidebarOpen = true;
+  let manualPhoneOverride = null; // Tracks manually entered phone to prevent detectContact from resetting
   let pollTimer = null;
   let dashboardData = null;
   let contactData = null;
