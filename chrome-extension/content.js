@@ -242,7 +242,7 @@
   function refresh() {
     detectContact();
     loadDashboard();
-    if (currentPhone) loadContactData();
+    if (currentPhone || currentContactName) loadContactData();
   }
 
   // ── Render ──
