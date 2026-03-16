@@ -698,23 +698,28 @@ async function checkAndAutoListen(
 
   const listenRules = configRes.data?.listen_rules || "Detecte menções a pagamentos, datas, prazos e promessas.";
   const phone = remoteJid.split("@")[0];
-  const now = new Date().toISOString();
+  const brasiliaDate = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const diasSemana = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+  const now = brasiliaDate.toISOString().replace("T", " ").slice(0, 16);
+  const diaSemanaAtual = diasSemana[brasiliaDate.getUTCDay()];
 
   const systemPrompt = `Você é um analisador de mensagens de WhatsApp. Sua tarefa é analisar a mensagem do contato e determinar se ela contém informações relevantes para criar um lembrete.
 
 Regras do usuário: ${listenRules}
 
-REGRAS DE DATA IMPORTANTES:
-- Data/hora atual: ${now}
+REGRAS DE DATA E HORÁRIO:
+- Agora é ${diaSemanaAtual}, ${now} (horário de Brasília, UTC-3).
 - Quando o contato mencionar "dia X" (ex: "dia 12", "dia 5"): se o dia X do mês atual já passou, agende para o dia X do PRÓXIMO mês. Se ainda não passou, use o mês atual.
 - Quando mencionar um dia da semana (ex: "segunda", "quarta", "sexta"): se esse dia da semana já passou nesta semana, agende para o mesmo dia da PRÓXIMA semana. Se ainda não passou, use esta semana.
 - "semana que vem" = próxima semana.
 - "mês que vem" = próximo mês.
 - "amanhã" = dia seguinte ao atual.
 - "hoje" = dia atual.
-- NUNCA gere uma due_date no passado (anterior a ${now}). Se o cálculo resultar em data passada, avance para o próximo período (próximo mês ou próxima semana).
-- Se não houver data específica mencionada, use amanhã às 09:00.
-- Sempre use horário comercial (09:00) quando o contato não especificar horário.
+- Quando o contato mencionar horários como "6 da tarde", "3 da manhã", "10h", interprete literalmente no horário de Brasília. Exemplos: "6 da tarde" = 18:00, "3 da tarde" = 15:00, "meio-dia" = 12:00, "6 da manhã" = 06:00.
+- Sempre use horário comercial (09:00 Brasília) quando o contato NÃO especificar horário.
+- IMPORTANTE: Todas as datas/horas retornadas em due_date devem estar em UTC (ISO 8601). Converta de Brasília para UTC somando 3 horas. Exemplo: 18:00 Brasília = 21:00 UTC.
+- NUNCA gere uma due_date no passado. Se o cálculo resultar em data/hora passada, avance para o próximo período (próximo dia, próxima semana ou próximo mês).
+- Se não houver data específica mencionada, use amanhã às 09:00 Brasília (= 12:00 UTC).
 
 Se a mensagem contiver algo relevante, responda usando a ferramenta create_reminder.
 Se NÃO houver nada relevante, responda usando a ferramenta no_action.
