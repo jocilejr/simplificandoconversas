@@ -134,15 +134,16 @@ async function handleMessage(msg) {
     case "flows":
       return apiFetch("/api/ext/flows");
 
-    case "trigger-flow":
+    case "trigger-flow": {
+      const triggerBody = { flowId: msg.flowId, instanceName: msg.instanceName };
+      if (msg.phone) triggerBody.phone = msg.phone;
+      if (msg.remoteJid) triggerBody.remoteJid = msg.remoteJid;
+      if (msg.name) triggerBody.name = msg.name;
       return apiFetch("/api/ext/trigger-flow", {
         method: "POST",
-        body: JSON.stringify({
-          flowId: msg.flowId,
-          phone: msg.phone,
-          instanceName: msg.instanceName,
-        }),
+        body: JSON.stringify(triggerBody),
       });
+    }
 
     case "pause-flow":
       return apiFetch("/api/ext/pause-flow", {

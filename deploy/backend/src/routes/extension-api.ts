@@ -33,6 +33,40 @@ async function requireAuth(req: Request, res: Response): Promise<string | null> 
   return userId;
 }
 
+// ── Contact resolver helper ──
+async function resolveContact(sb: any, userId: string, phone?: string, name?: string, instanceName?: string) {
+  if (phone) {
+    const remoteJid = `${phone}@s.whatsapp.net`;
+    const { data: convs } = await sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, lid")
+      .eq("user_id", userId)
+      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
+      .order("last_message_at", { ascending: false });
+    if (convs && convs.length > 0) {
+      // Prefer match on current instance
+      const match = (instanceName ? convs.find((c: any) => c.instance_name === instanceName) : null) || convs[0];
+      return match;
+    }
+    return null;
+  }
+  if (name) {
+    // Try case-insensitive search with ilike, prioritize current instance
+    const { data: convs } = await sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, lid")
+      .eq("user_id", userId)
+      .ilike("contact_name", name)
+      .order("last_message_at", { ascending: false });
+    if (convs && convs.length > 0) {
+      const match = (instanceName ? convs.find((c: any) => c.instance_name === instanceName) : null) || convs[0];
+      return match;
+    }
+    return null;
+  }
+  return null;
+}
+
 // ── GET /api/ext/dashboard ──
 router.get("/dashboard", async (req, res) => {
   const start = Date.now();
@@ -158,7 +192,7 @@ router.get("/contact-cross", async (req, res) => {
       .from("conversations")
       .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
       .eq("user_id", userId)
-      .eq("contact_name", name);
+      .ilike("contact_name", name);
   }
 
   if (excludeInstance) {
@@ -202,30 +236,11 @@ router.get("/contact-status", async (req, res) => {
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   const name = (req.query.name as string || "").trim();
+  const instanceName = (req.query.instance as string || "").trim();
   if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const sb = getServiceClient();
-
-  let conv: any = null;
-  if (phone) {
-    const remoteJid = `${phone}@s.whatsapp.net`;
-    const { data: convs } = await sb
-      .from("conversations")
-      .select("id, remote_jid, contact_name, phone_number, lid")
-      .eq("user_id", userId)
-      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`);
-    conv = convs?.[0];
-  } else {
-    // Lookup by contact name
-    const { data: convs } = await sb
-      .from("conversations")
-      .select("id, remote_jid, contact_name, phone_number, lid")
-      .eq("user_id", userId)
-      .eq("contact_name", name)
-      .order("last_message_at", { ascending: false })
-      .limit(1);
-    conv = convs?.[0];
-  }
+  const conv = await resolveContact(sb, userId, phone || undefined, name || undefined, instanceName || undefined);
 
   const jid = conv?.remote_jid || (phone ? `${phone}@s.whatsapp.net` : null);
   if (!jid) {
@@ -287,13 +302,26 @@ router.post("/trigger-flow", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
-  const { flowId, phone, instanceName } = req.body;
-  if (!flowId || !phone || !instanceName) {
-    return res.status(400).json({ error: "flowId, phone, instanceName required" });
+  const { flowId, phone, instanceName, remoteJid: bodyRemoteJid, name: bodyName } = req.body;
+  if (!flowId || !instanceName) {
+    return res.status(400).json({ error: "flowId, instanceName required" });
   }
 
-  const cleaned = phone.replace(/\D/g, "");
-  const remoteJid = `${cleaned}@s.whatsapp.net`;
+  let remoteJid: string;
+  if (bodyRemoteJid) {
+    remoteJid = bodyRemoteJid;
+  } else if (phone) {
+    const cleaned = phone.replace(/\D/g, "");
+    remoteJid = `${cleaned}@s.whatsapp.net`;
+  } else if (bodyName) {
+    // Resolve by name
+    const sb2 = getServiceClient();
+    const conv = await resolveContact(sb2, userId, undefined, bodyName, instanceName);
+    if (!conv?.remote_jid) return res.status(400).json({ error: "Contato não encontrado pelo nome" });
+    remoteJid = conv.remote_jid;
+  } else {
+    return res.status(400).json({ error: "phone, remoteJid or name required" });
+  }
 
   const sb = getServiceClient();
 
@@ -473,29 +501,7 @@ router.get("/ai-status", async (req, res) => {
   if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const sb = getServiceClient();
-
-  let conv: any = null;
-  if (phone) {
-    const remoteJid = `${phone}@s.whatsapp.net`;
-    const { data } = await sb
-      .from("conversations")
-      .select("remote_jid")
-      .eq("user_id", userId)
-      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
-      .limit(1)
-      .maybeSingle();
-    conv = data;
-  } else {
-    const { data } = await sb
-      .from("conversations")
-      .select("remote_jid")
-      .eq("user_id", userId)
-      .eq("contact_name", name)
-      .order("last_message_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    conv = data;
-  }
+  const conv = await resolveContact(sb, userId, phone || undefined, name || undefined);
 
   const jid = conv?.remote_jid || (phone ? `${phone}@s.whatsapp.net` : null);
   if (!jid) {

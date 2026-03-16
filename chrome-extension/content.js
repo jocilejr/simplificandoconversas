@@ -402,8 +402,10 @@
     const flows = flowsData?.flows || [];
     const crossInstances = crossData?.conversations || [];
 
-    const displayName = contact?.contact_name || currentContactName || currentPhone;
-    const displayPhone = contact?.phone_number || (currentPhone.match(/^\d+$/) ? currentPhone : "");
+    const displayName = contact?.contact_name || currentContactName || currentPhone || "?";
+    const resolvedPhone = contact?.phone_number || (currentPhone && currentPhone.match(/^\d+$/) ? currentPhone : "");
+    const resolvedRemoteJid = contact?.remote_jid || (resolvedPhone ? `${resolvedPhone}@s.whatsapp.net` : "");
+    const displayPhone = resolvedPhone;
     const initials = displayName.substring(0, 2).toUpperCase();
 
     let html = '';
@@ -628,11 +630,15 @@
         btn.disabled = true;
         btn.innerHTML = '<div class="sc-dot-pulse"><span></span><span></span><span></span></div>';
         try {
-          await apiCall("trigger-flow", {
-            flowId: btn.dataset.id,
-            phone: currentPhone,
-            instanceName: detectedInstance.instance_name,
-          });
+          const triggerData = { flowId: btn.dataset.id, instanceName: detectedInstance.instance_name };
+          if (resolvedPhone) {
+            triggerData.phone = resolvedPhone;
+          } else if (resolvedRemoteJid) {
+            triggerData.remoteJid = resolvedRemoteJid;
+          } else if (currentContactName) {
+            triggerData.name = currentContactName;
+          }
+          await apiCall("trigger-flow", triggerData);
           loadContactData();
         } catch (e) {
           alert("Erro: " + e.message);
@@ -684,7 +690,7 @@
       pollTimer = setTimeout(() => {
         detectContact();
         if (currentTab === "dashboard") loadDashboard();
-        if (currentTab === "contact" && currentPhone) loadContactData();
+        if (currentTab === "contact" && (currentPhone || currentContactName)) loadContactData();
         poll();
       }, interval);
     }
