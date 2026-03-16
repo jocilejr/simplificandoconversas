@@ -7,6 +7,7 @@
   let currentContactName = null;
   let detectedInstance = null;
   let sidebarOpen = true;
+  let manualPhoneOverride = null; // Tracks manually entered phone to prevent detectContact from resetting
   let pollTimer = null;
   let dashboardData = null;
   let contactData = null;
@@ -149,7 +150,10 @@
       setTimeout(() => { input.style.borderColor = ''; }, 1500);
       return;
     }
+    // Preserve currentContactName so detectContact knows the header context
+    // (don't clear it — it's the name shown in the header)
     currentPhone = digits;
+    manualPhoneOverride = digits; // Lock this phone until contact changes
     contactData = null;
     crossData = null;
     aiStatusData = null;
@@ -168,6 +172,7 @@
       if (currentPhone !== null || currentContactName !== null) {
         currentPhone = null;
         currentContactName = null;
+        manualPhoneOverride = null;
         contactData = null;
         crossData = null;
         if (currentTab === "contact") renderCurrentTab();
@@ -184,14 +189,21 @@
       newPhone = digits;
       newName = null;
     } else {
-      // Header shows a saved name — no automatic phone extraction
       newPhone = null;
       newName = raw;
+    }
+
+    // If we have a manual override and the header still shows the same name, keep the manual phone
+    if (manualPhoneOverride && newName && newName === currentContactName) {
+      // Same contact header, manual phone is active — don't reset
+      return;
     }
 
     const identifier = newPhone || newName;
     const prevIdentifier = currentPhone || currentContactName;
     if (identifier !== prevIdentifier) {
+      // Contact actually changed — clear manual override
+      manualPhoneOverride = null;
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
