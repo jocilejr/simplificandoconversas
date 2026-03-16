@@ -175,6 +175,7 @@
       currentContactName = newName;
       contactData = null;
       crossData = null;
+      aiStatusData = null;
       loadContactData();
     }
   }
