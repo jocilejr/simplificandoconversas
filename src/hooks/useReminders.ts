@@ -25,14 +25,14 @@ export function useReminders(filter: ReminderFilter = "all") {
   return useQuery({
     queryKey: ["reminders", filter],
     queryFn: async () => {
-      let query = supabase
-        .from("reminders")
-        .select("*")
-        .order("due_date", { ascending: true });
-
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+
+      let query = (supabase as any)
+        .from("reminders")
+        .select("*")
+        .order("due_date", { ascending: true });
 
       if (filter === "pending") {
         query = query.eq("completed", false);
@@ -68,14 +68,14 @@ export function useCreateReminder() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("reminders")
         .insert({ ...reminder, user_id: user.id })
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return data as Reminder;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
@@ -92,7 +92,7 @@ export function useToggleReminder() {
 
   return useMutation({
     mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("reminders")
         .update({ completed })
         .eq("id", id);
@@ -109,7 +109,7 @@ export function useDeleteReminder() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("reminders").delete().eq("id", id);
+      const { error } = await (supabase as any).from("reminders").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

@@ -34,7 +34,7 @@ const App = () => (
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/schedule" element={<Schedule />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
-              
+              <Route path="/reminders" element={<Reminders />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>

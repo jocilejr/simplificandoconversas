@@ -59,7 +59,7 @@ export function AppSidebar() {
     { title: "Contatos", url: "/contacts", icon: Users },
     { title: "Agendamentos", url: "/schedule", icon: CalendarClock },
     { title: "Fluxos", url: "/chatbot", icon: Workflow },
-    
+    { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
 
   return (
