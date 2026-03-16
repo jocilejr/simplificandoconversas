@@ -402,8 +402,10 @@
     const flows = flowsData?.flows || [];
     const crossInstances = crossData?.conversations || [];
 
-    const displayName = contact?.contact_name || currentContactName || currentPhone;
-    const displayPhone = contact?.phone_number || (currentPhone.match(/^\d+$/) ? currentPhone : "");
+    const displayName = contact?.contact_name || currentContactName || currentPhone || "?";
+    const resolvedPhone = contact?.phone_number || (currentPhone && currentPhone.match(/^\d+$/) ? currentPhone : "");
+    const resolvedRemoteJid = contact?.remote_jid || (resolvedPhone ? `${resolvedPhone}@s.whatsapp.net` : "");
+    const displayPhone = resolvedPhone;
     const initials = displayName.substring(0, 2).toUpperCase();
 
     let html = '';
