@@ -139,17 +139,24 @@
     }
   });
 
-  // ── Extract phone from WhatsApp Contact Info drawer ──
-  function extractPhoneFromDrawer() {
-    // Try several selectors where WhatsApp shows the phone number in the right-side panel
+  // ── Extract phone from WhatsApp UI (drawer, header subtitle, side panel) ──
+  function extractPhoneFromUI() {
+    // Broader set of selectors to find phone numbers anywhere in the visible UI
     const selectors = [
-      // Contact info drawer — phone number in the "about" or phone section
+      // Header subtitle area (shows phone when name is in title)
+      'header span[data-testid="conversation-info-header-chat-subtitle"]',
+      'header div._amig span[dir="auto"]:not(:first-child)',
+      '#main header div > span:nth-child(2)',
+      // Contact info drawer
       'div[data-testid="contact-info-drawer"] span.selectable-text span',
       'div[data-testid="contact-info-drawer"] span[data-testid="selectable-text"]',
-      // Right panel section with phone
+      // Right panel / contact info section
       'section span[data-testid="selectable-text"]',
-      // Generic: any span in the right drawer area containing a phone pattern
       '#app div[tabindex] section span[dir="auto"]',
+      // The "phone" row inside contact info
+      'div[data-testid="chat-info-drawer"] span[dir="auto"]',
+      // Fallback: any visible element in the right side panel
+      'div[data-testid="conversation-panel-wrapper"] + div span[dir="auto"]',
     ];
 
     for (const sel of selectors) {
@@ -161,11 +168,13 @@
         if (phoneMatch) {
           const digits = phoneMatch[0].replace(/\D/g, '');
           if (digits.length >= 10 && digits.length <= 15) {
+            console.log('[SC] extractPhoneFromUI found:', digits, 'via selector:', sel);
             return digits;
           }
         }
       }
     }
+    console.log('[SC] extractPhoneFromUI: no phone found in UI');
     return null;
   }
 
