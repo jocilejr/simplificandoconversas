@@ -505,6 +505,60 @@
       });
     }
 
+    // AI Reply toggle
+    const aiReplyToggle = document.getElementById("sc-ai-reply-toggle");
+    if (aiReplyToggle) {
+      aiReplyToggle.addEventListener("change", async () => {
+        const enabled = aiReplyToggle.checked;
+        if (!detectedInstance) {
+          aiReplyToggle.checked = !enabled;
+          return;
+        }
+        aiReplyToggle.disabled = true;
+        try {
+          await apiCall("ai-reply-toggle", {
+            remoteJid: aiRemoteJid,
+            instanceName: detectedInstance.instance_name,
+            enabled,
+          });
+          aiStatusData = { ...aiStatusData, reply: enabled };
+          loadContactData();
+        } catch (e) {
+          aiReplyToggle.checked = !enabled;
+          alert("Erro: " + e.message);
+        } finally {
+          aiReplyToggle.disabled = false;
+        }
+      });
+    }
+
+    // AI Listen toggle
+    const aiListenToggle = document.getElementById("sc-ai-listen-toggle");
+    if (aiListenToggle) {
+      aiListenToggle.addEventListener("change", async () => {
+        const enabled = aiListenToggle.checked;
+        if (!detectedInstance) {
+          aiListenToggle.checked = !enabled;
+          return;
+        }
+        aiListenToggle.disabled = true;
+        try {
+          await apiCall("ai-listen-toggle", {
+            remoteJid: aiRemoteJid,
+            instanceName: detectedInstance.instance_name,
+            enabled,
+          });
+          aiStatusData = { ...aiStatusData, listen: enabled };
+          loadContactData();
+        } catch (e) {
+          aiListenToggle.checked = !enabled;
+          alert("Erro: " + e.message);
+        } finally {
+          aiListenToggle.disabled = false;
+        }
+      });
+    }
+
     body.querySelectorAll("[data-action='pause']").forEach((btn) => {
       btn.addEventListener("click", async () => {
         btn.disabled = true;
