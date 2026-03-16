@@ -15,6 +15,43 @@
   let crossData = null;
   let aiStatusData = null;
 
+  const MANUAL_PHONE_MAP_KEY = "scManualPhoneByContactV1";
+  let manualPhoneByContact = {};
+
+  function normalizeContactKey(name, instanceName) {
+    return `${(instanceName || "global").trim().toLowerCase()}::${(name || "").trim().toLowerCase()}`;
+  }
+
+  function loadManualPhoneMap(onLoaded) {
+    chrome.storage.local.get([MANUAL_PHONE_MAP_KEY], (result) => {
+      manualPhoneByContact = (result && result[MANUAL_PHONE_MAP_KEY]) || {};
+      if (typeof onLoaded === "function") onLoaded();
+    });
+  }
+
+  function saveManualPhoneForContact(name, phone) {
+    const normalizedName = (name || "").trim();
+    if (!normalizedName || !phone) return;
+
+    const instanceKey = detectedInstance?.instance_name || "global";
+    manualPhoneByContact[normalizeContactKey(normalizedName, instanceKey)] = phone;
+    manualPhoneByContact[normalizeContactKey(normalizedName, "global")] = phone;
+
+    chrome.storage.local.set({ [MANUAL_PHONE_MAP_KEY]: manualPhoneByContact });
+  }
+
+  function getManualPhoneForContact(name) {
+    const normalizedName = (name || "").trim();
+    if (!normalizedName) return null;
+
+    const instanceKey = detectedInstance?.instance_name || "global";
+    return (
+      manualPhoneByContact[normalizeContactKey(normalizedName, instanceKey)] ||
+      manualPhoneByContact[normalizeContactKey(normalizedName, "global")] ||
+      null
+    );
+  }
+
   // ── SVG Icons ──
   const ICONS = {
     bolt: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
@@ -150,10 +187,11 @@
       setTimeout(() => { input.style.borderColor = ''; }, 1500);
       return;
     }
-    // Preserve currentContactName so detectContact knows the header context
-    // (don't clear it — it's the name shown in the header)
+
     currentPhone = digits;
     manualPhoneOverride = digits; // Lock this phone until contact changes
+    saveManualPhoneForContact(currentContactName, digits);
+
     contactData = null;
     crossData = null;
     aiStatusData = null;
@@ -195,15 +233,22 @@
 
     // If we have a manual override and the header still shows the same name, keep the manual phone
     if (manualPhoneOverride && newName && newName === currentContactName) {
-      // Same contact header, manual phone is active — don't reset
       return;
+    }
+
+    let appliedPersistedPhone = false;
+    if (!newPhone && newName) {
+      const persistedPhone = getManualPhoneForContact(newName);
+      if (persistedPhone) {
+        newPhone = persistedPhone;
+        appliedPersistedPhone = true;
+      }
     }
 
     const identifier = newPhone || newName;
     const prevIdentifier = currentPhone || currentContactName;
     if (identifier !== prevIdentifier) {
-      // Contact actually changed — clear manual override
-      manualPhoneOverride = null;
+      manualPhoneOverride = appliedPersistedPhone ? newPhone : null;
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
@@ -802,8 +847,10 @@
       createSidebar();
       startObserver();
       loadInstanceFromStorage();
+      loadManualPhoneMap(() => {
+        detectContact();
+      });
       loadDashboard();
-      detectContact();
       startPolling();
     }
   }, 1000);
@@ -819,8 +866,10 @@
       createSidebar();
       startObserver();
       loadInstanceFromStorage();
+      loadManualPhoneMap(() => {
+        detectContact();
+      });
       loadDashboard();
-      detectContact();
       startPolling();
     }
   }, 3000);
