@@ -42,7 +42,7 @@ router.get("/dashboard", async (req, res) => {
   try {
     const sb = getServiceClient();
 
-    const [flowsRes, contactsRes, execRes, instancesRes, recentRes] = await Promise.all([
+    const [flowsRes, contactsRes, execRes, instancesRes, recentRes, remindersRes] = await Promise.all([
       sb.from("chatbot_flows").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("active", true),
       sb.from("conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
       sb.from("flow_executions").select("id", { count: "exact", head: true }).eq("user_id", userId).in("status", ["running", "waiting", "waiting_click", "waiting_reply"]),
@@ -52,6 +52,12 @@ router.get("/dashboard", async (req, res) => {
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(10),
+      sb.from("reminders")
+        .select("id, title, description, due_date, completed, contact_name, phone_number")
+        .eq("user_id", userId)
+        .eq("completed", false)
+        .order("due_date", { ascending: true })
+        .limit(15),
     ]);
 
     const recentExecs = recentRes.data || [];
