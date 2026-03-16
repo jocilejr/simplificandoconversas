@@ -12,6 +12,7 @@ import Schedule from "./pages/Schedule";
 import ChatbotBuilder from "./pages/ChatbotBuilder";
 
 import SettingsPage from "./pages/SettingsPage";
+import Reminders from "./pages/Reminders";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 
