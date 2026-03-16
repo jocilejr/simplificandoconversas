@@ -35,7 +35,7 @@ router.post("/meta-pixel-test", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: [eventData], access_token }),
     });
-    const metaResult = await metaResp.json();
+    const metaResult = (await metaResp.json()) as any;
     return res.json({ ok: !metaResult.error, meta_response: metaResult, sent_payload: eventData });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err.message });
