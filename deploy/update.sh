@@ -95,6 +95,17 @@ docker compose up -d
 docker compose restart nginx
 echo "✓ Nginx reiniciado"
 
+# Post-deploy health check
+echo "[5/5] Verificando backend..."
+sleep 3
+HEALTH=$(docker compose exec -T backend wget -qO- http://localhost:3001/api/health/version 2>/dev/null || echo '{"ok":false}')
+echo "   Health: $HEALTH"
+if echo "$HEALTH" | grep -q '"ok":true'; then
+  echo "✓ Backend respondendo corretamente"
+else
+  echo "⚠ Backend não respondeu ao health check. Verifique logs: docker compose logs backend --tail=20"
+fi
+
 echo ""
 echo "✅ Atualização concluída!"
 echo "   Frontend: ${APP_URL}"

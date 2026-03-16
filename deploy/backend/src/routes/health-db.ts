@@ -1,7 +1,46 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import crypto from "crypto";
 
 const router = Router();
+const BUILD_TIME = new Date().toISOString();
+
+// GET /api/health/version — identify which build is running
+router.get("/version", (_req, res) => {
+  res.json({ ok: true, build_time: BUILD_TIME, node_env: process.env.NODE_ENV || "production" });
+});
+
+// POST /api/health/meta-pixel-test — isolated pixel fire test
+router.post("/meta-pixel-test", async (req, res) => {
+  const { pixel_id, access_token, phone } = req.body || {};
+  if (!pixel_id || !access_token) {
+    return res.status(400).json({ ok: false, error: "pixel_id and access_token required" });
+  }
+  const phoneHash = phone
+    ? crypto.createHash("sha256").update(phone.replace(/\D/g, "")).digest("hex")
+    : undefined;
+  const eventData: any = {
+    event_name: "Lead",
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: "system_generated",
+    user_data: {},
+  };
+  if (phoneHash) {
+    eventData.user_data.ph = [phoneHash];
+    eventData.user_data.external_id = [phoneHash];
+  }
+  try {
+    const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixel_id}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [eventData], access_token }),
+    });
+    const metaResult = await metaResp.json();
+    return res.json({ ok: !metaResult.error, meta_response: metaResult, sent_payload: eventData });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 router.get("/", async (_req, res) => {
   const supabaseUrl = process.env.SUPABASE_URL || "NOT SET";
@@ -10,19 +49,21 @@ router.get("/", async (_req, res) => {
   try {
     const client = getServiceClient();
     
-    // Test 1: Simple select
     const { data: instances, error: instErr } = await client
       .from("whatsapp_instances")
       .select("id, instance_name, user_id")
       .limit(5);
 
-    // Test 2: Simple select on conversations
     const { data: convs, error: convErr } = await client
       .from("conversations")
       .select("id")
       .limit(1);
 
-    // Test 3: Try an upsert with a dummy that we'll rollback (just test permissions)
+    const { data: pixels, error: pixelErr } = await client
+      .from("meta_pixels")
+      .select("id, pixel_id, user_id")
+      .limit(5);
+
     const testId = "00000000-0000-0000-0000-000000000000";
     const { error: upsertErr } = await client
       .from("whatsapp_instances")
@@ -32,6 +73,7 @@ router.get("/", async (_req, res) => {
 
     return res.json({
       ok: true,
+      build_time: BUILD_TIME,
       config: {
         SUPABASE_URL: supabaseUrl,
         SERVICE_ROLE_KEY: serviceRoleKey,
@@ -50,6 +92,12 @@ router.get("/", async (_req, res) => {
           error: convErr || null,
           rowCount: convs?.length ?? 0,
         },
+        meta_pixels: {
+          success: !pixelErr,
+          error: pixelErr || null,
+          rowCount: pixels?.length ?? 0,
+          sample: pixels?.map(p => ({ id: p.id, pixel_id: p.pixel_id, user_id: p.user_id })),
+        },
         select_by_user: {
           success: !upsertErr,
           error: upsertErr || null,
@@ -59,6 +107,7 @@ router.get("/", async (_req, res) => {
   } catch (err: any) {
     return res.status(500).json({
       ok: false,
+      build_time: BUILD_TIME,
       config: { SUPABASE_URL: supabaseUrl, SERVICE_ROLE_KEY: serviceRoleKey },
       error: err.message,
       stack: err.stack,

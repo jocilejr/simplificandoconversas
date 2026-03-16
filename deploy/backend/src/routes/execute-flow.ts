@@ -494,7 +494,12 @@ router.post("/", async (req, res) => {
               });
               const metaResult = await metaResp.json();
               console.log(`[execute-flow] metaPixel response:`, JSON.stringify(metaResult));
-              results.push(`metaPixel: ok (${eventName})`);
+              if (metaResult.error) {
+                console.error(`[execute-flow] metaPixel API error:`, JSON.stringify(metaResult.error));
+                results.push(`metaPixel: error - Meta API: ${metaResult.error.message || JSON.stringify(metaResult.error)}`);
+              } else {
+                results.push(`metaPixel: ok (${eventName})`);
+              }
             } catch (pixelErr: any) {
               console.error(`[execute-flow] metaPixel error:`, pixelErr);
               results.push(`metaPixel: error - ${pixelErr.message}`);
@@ -707,7 +712,12 @@ router.post("/", async (req, res) => {
                   const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: [eventData], access_token: accessToken }) });
                   const metaResult = await metaResp.json();
                   console.log(`[execute-flow] group.metaPixel response:`, JSON.stringify(metaResult));
-                  results.push(`group.${step.id}: metaPixel: ok (${eventName})`);
+                  if (metaResult.error) {
+                    console.error(`[execute-flow] group.metaPixel API error:`, JSON.stringify(metaResult.error));
+                    results.push(`group.${step.id}: metaPixel: error - Meta API: ${metaResult.error.message || JSON.stringify(metaResult.error)}`);
+                  } else {
+                    results.push(`group.${step.id}: metaPixel: ok (${eventName})`);
+                  }
                 } catch (pixelErr: any) {
                   results.push(`group.${step.id}: metaPixel: error - ${pixelErr.message}`);
                 }

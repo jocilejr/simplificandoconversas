@@ -23,7 +23,7 @@ app.use("/api/webhook", webhookRouter);
 app.use("/api/ext", extensionApiRouter);
 
 // Health
-app.use("/api/health/db", healthDbRouter);
+app.use("/api/health", healthDbRouter);
 app.get("/health", (_, res) => res.json({ ok: true }));
 
 // Check timeouts every 30 seconds
