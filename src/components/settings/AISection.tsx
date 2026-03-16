@@ -91,6 +91,18 @@ export function AISection() {
             </p>
           </div>
           <div className="space-y-2">
+            <Label>Contextos de Não Resposta</Label>
+            <Textarea
+              placeholder="Quando o contato disser que já pagou&#10;Pedidos de cancelamento&#10;Reclamações graves&#10;Solicitação de reembolso"
+              value={replyStopContexts}
+              onChange={(e) => setReplyStopContexts(e.target.value)}
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              Situações onde a IA deve parar de responder e desativar o toggle automaticamente, deixando um humano assumir
+            </p>
+          </div>
+          <div className="space-y-2">
             <Label>Mensagens de Contexto: {maxContext}</Label>
             <Slider
               value={[maxContext]}
