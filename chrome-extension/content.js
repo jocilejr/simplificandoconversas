@@ -48,8 +48,8 @@
     sidebar.innerHTML = `
       <div class="sc-sidebar-header">
         <div class="sc-sidebar-logo">
-          <div class="sc-logo-icon">${ICONS.bolt}</div>
-          <span>SC Flows</span>
+          <img src="${chrome.runtime.getURL('icons/logo-ov.png')}" class="sc-logo-img" alt="Logo">
+          <span>Origem Viva</span>
         </div>
         <span class="sc-instance-badge" id="sc-instance-badge">Carregando...</span>
       </div>
