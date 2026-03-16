@@ -151,6 +151,7 @@
       return;
     }
     currentPhone = digits;
+    manualPhoneOverride = digits; // Lock this phone until contact changes
     contactData = null;
     crossData = null;
     aiStatusData = null;
