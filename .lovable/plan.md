@@ -1,76 +1,78 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Plano: IA Escuta ativa por padrão para todos os contatos sem fluxo ativo
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Situação atual
+- A IA Escuta só funciona se existir um registro na tabela `ai_listen_contacts` com `enabled=true` para aquele contato específico
+- Na extensão, o toggle "IA Escuta" começa desligado até o usuário ativar manualmente
+- Isso exige ativação manual contato por contato
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+### Mudanças
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+**1. Backend — `deploy/backend/src/routes/webhook.ts` (função `checkAndAutoListen`)**
 
-### Mudanças realizadas
+Inverter a lógica: em vez de exigir um registro `ai_listen_contacts` com `enabled=true`, verificar se existe um registro com `enabled=false` (opt-out). Se não houver registro ou se `enabled=true`, a escuta funciona.
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+Também adicionar verificação de fluxo ativo — se o contato tem fluxo ativo, pular a escuta:
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+```
+// Substituir linhas 679-688 por:
+// Check if user explicitly disabled listen for this contact
+const { data: aiListenOff } = await supabase
+  .from("ai_listen_contacts")
+  .select("id")
+  .eq("user_id", userId)
+  .eq("remote_jid", remoteJid)
+  .eq("enabled", false)
+  .maybeSingle();
 
-### Redesign completo do overlay para sidebar fixa
+if (aiListenOff) return; // User explicitly disabled
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+// Skip if contact has active flow
+const { data: activeFlows } = await supabase
+  .from("flow_executions")
+  .select("id")
+  .eq("user_id", userId)
+  .eq("remote_jid", remoteJid)
+  .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
+  .limit(1);
 
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
+if (activeFlows && activeFlows.length > 0) return;
+```
 
-## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
+**2. Backend — `deploy/backend/src/routes/extension-api.ts` (GET ai-status)**
 
-### Implementação
-| Arquivo | Mudança |
-|---------|---------|
-| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
-| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
-- Ícones SVG inline (sem emojis)
+Alterar a resposta do endpoint `ai-status` (linhas 542-546): retornar `listen: true` por padrão quando não existe registro (em vez de `false`). Retornar `false` apenas se existir registro com `enabled=false`:
 
-## Fase 1: Lembretes por Contato — Concluído ✅
+```
+listen: listenRes.data ? listenRes.data.enabled : true,  // default true
+```
 
-### Mudanças realizadas
+**3. Backend — `deploy/backend/src/routes/extension-api.ts` (POST ai-listen-toggle)**
 
-| Arquivo | Mudança |
-|---------|---------|
-| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
-| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
-| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
-| **src/App.tsx** | Rota `/reminders` adicionada |
-| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
-| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
+Ajustar a lógica do toggle (linhas 594-624): quando desativado, fazer upsert com `enabled=false` em vez de deletar o registro. Quando ativado, deletar o registro (volta ao padrão ativo):
 
-### Próximas fases
-- Fase 2: Dashboard com dados reais
-- Fase 3: IA Auto-Resposta em tempo real
-- Fase 4: Redesign do Layout
+```
+if (enabled) {
+  // Remove opt-out record (default is enabled)
+  await sb.from("ai_listen_contacts").delete()
+    .eq("user_id", userId).eq("remote_jid", remoteJid);
+} else {
+  // Insert opt-out record
+  await sb.from("ai_listen_contacts").upsert({
+    user_id: userId, remote_jid: remoteJid,
+    instance_name: instanceName, enabled: false,
+  }, { onConflict: "user_id,remote_jid,instance_name" });
+}
+```
+
+**4. Extensão — `chrome-extension/content.js`**
+
+Nenhuma mudança necessária na extensão. O toggle já renderiza com base no valor retornado pela API (`aiListenEnabled`). Como a API agora retorna `true` por padrão, o toggle já aparecerá ativo automaticamente.
+
+### Resumo do comportamento novo
+- **Sem registro na tabela** → IA Escuta ATIVA (padrão)
+- **Registro com `enabled=false`** → IA Escuta DESATIVADA (opt-out explícito)
+- **Contato com fluxo ativo** → IA Escuta PULADA (mesmo se ativa)
+- **Toggle na extensão** → Começa ligado por padrão
+
