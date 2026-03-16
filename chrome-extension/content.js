@@ -248,12 +248,14 @@
     const identifier = newPhone || newName;
     const prevIdentifier = currentPhone || currentContactName;
     if (identifier !== prevIdentifier) {
+      contactLoadGeneration++; // Invalidate any in-flight requests for previous contact
       manualPhoneOverride = appliedPersistedPhone ? newPhone : null;
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
       crossData = null;
       aiStatusData = null;
+      if (currentTab === "contact") renderCurrentTab(); // Immediately show loading state
       loadContactData();
     }
   }
@@ -262,6 +264,7 @@
   let dashboardRetries = 0;
   let dashboardInFlight = false;
   let contactInFlight = false;
+  let contactLoadGeneration = 0; // Increments on contact change to discard stale responses
   let errorBackoffCycles = 0;
 
   async function loadDashboard() {
@@ -287,7 +290,7 @@
 
   async function loadContactData() {
     if (!currentPhone && !currentContactName) return;
-    if (contactInFlight) return;
+    const myGeneration = contactLoadGeneration;
     contactInFlight = true;
     try {
       const lookupParam = currentPhone
@@ -300,6 +303,8 @@
         apiCall("contact-cross", { ...lookupParam, excludeInstance: detectedInstance?.instance_name || '' }),
         apiCall("ai-status", { ...lookupParam, ...instanceParam }),
       ]);
+      // Discard stale response if contact changed while request was in-flight
+      if (myGeneration !== contactLoadGeneration) return;
       contactData = status;
       flowsData = flows;
       crossData = cross;
@@ -307,11 +312,12 @@
       errorBackoffCycles = 0;
       if (currentTab === "contact") renderCurrentTab();
     } catch (e) {
+      if (myGeneration !== contactLoadGeneration) return;
       contactData = { error: e.message };
       errorBackoffCycles = Math.min(errorBackoffCycles + 1, 3);
       if (currentTab === "contact") renderCurrentTab();
     } finally {
-      contactInFlight = false;
+      if (myGeneration === contactLoadGeneration) contactInFlight = false;
     }
   }
 
