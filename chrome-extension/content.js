@@ -630,11 +630,15 @@
         btn.disabled = true;
         btn.innerHTML = '<div class="sc-dot-pulse"><span></span><span></span><span></span></div>';
         try {
-          await apiCall("trigger-flow", {
-            flowId: btn.dataset.id,
-            phone: currentPhone,
-            instanceName: detectedInstance.instance_name,
-          });
+          const triggerData = { flowId: btn.dataset.id, instanceName: detectedInstance.instance_name };
+          if (resolvedPhone) {
+            triggerData.phone = resolvedPhone;
+          } else if (resolvedRemoteJid) {
+            triggerData.remoteJid = resolvedRemoteJid;
+          } else if (currentContactName) {
+            triggerData.name = currentContactName;
+          }
+          await apiCall("trigger-flow", triggerData);
           loadContactData();
         } catch (e) {
           alert("Erro: " + e.message);
