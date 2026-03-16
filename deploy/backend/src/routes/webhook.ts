@@ -639,7 +639,7 @@ async function checkAndAutoReply(
       return;
     }
 
-    const completion = await openaiRes.json();
+    const completion = await openaiRes.json() as any;
     const reply = completion.choices?.[0]?.message?.content;
     if (!reply) return;
 
