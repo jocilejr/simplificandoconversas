@@ -236,30 +236,11 @@ router.get("/contact-status", async (req, res) => {
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   const name = (req.query.name as string || "").trim();
+  const instanceName = (req.query.instance as string || "").trim();
   if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const sb = getServiceClient();
-
-  let conv: any = null;
-  if (phone) {
-    const remoteJid = `${phone}@s.whatsapp.net`;
-    const { data: convs } = await sb
-      .from("conversations")
-      .select("id, remote_jid, contact_name, phone_number, lid")
-      .eq("user_id", userId)
-      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`);
-    conv = convs?.[0];
-  } else {
-    // Lookup by contact name
-    const { data: convs } = await sb
-      .from("conversations")
-      .select("id, remote_jid, contact_name, phone_number, lid")
-      .eq("user_id", userId)
-      .eq("contact_name", name)
-      .order("last_message_at", { ascending: false })
-      .limit(1);
-    conv = convs?.[0];
-  }
+  const conv = await resolveContact(sb, userId, phone || undefined, name || undefined, instanceName || undefined);
 
   const jid = conv?.remote_jid || (phone ? `${phone}@s.whatsapp.net` : null);
   if (!jid) {
