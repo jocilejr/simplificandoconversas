@@ -650,6 +650,14 @@ async function checkAndAutoReply(
     const reply = completion.choices?.[0]?.message?.content;
     if (!reply) return;
 
+    // Check if AI determined a human is needed — disable auto-reply for this contact
+    if (reply.trim() === "[HUMAN_NEEDED]") {
+      await supabase.from("ai_auto_reply_contacts").delete()
+        .eq("user_id", userId).eq("remote_jid", remoteJid);
+      console.log(`[ai-reply] Disabled for ${remoteJid} — human needed`);
+      return;
+    }
+
     // Send via Evolution API
     await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {
       number: remoteJid.replace("@s.whatsapp.net", "").replace("@lid", ""),

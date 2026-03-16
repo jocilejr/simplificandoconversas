@@ -116,7 +116,7 @@ export function AISection() {
             </p>
           </div>
           <Button
-            onClick={() => updateConfig.mutate({ reply_system_prompt: systemPrompt, max_context_messages: maxContext })}
+            onClick={() => updateConfig.mutate({ reply_system_prompt: systemPrompt, max_context_messages: maxContext, reply_stop_contexts: replyStopContexts })}
             disabled={updateConfig.isPending}
           >
             {updateConfig.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
