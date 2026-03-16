@@ -254,11 +254,12 @@
       const lookupParam = currentPhone
         ? { phone: currentPhone }
         : { name: currentContactName };
+      const instanceParam = detectedInstance?.instance_name ? { instance: detectedInstance.instance_name } : {};
       const [status, flows, cross, aiStatus] = await Promise.all([
-        apiCall("contact-status", lookupParam),
+        apiCall("contact-status", { ...lookupParam, ...instanceParam }),
         apiCall("flows"),
         apiCall("contact-cross", { ...lookupParam, excludeInstance: detectedInstance?.instance_name || '' }),
-        apiCall("ai-status", lookupParam),
+        apiCall("ai-status", { ...lookupParam, ...instanceParam }),
       ]);
       contactData = status;
       flowsData = flows;

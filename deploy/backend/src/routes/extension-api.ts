@@ -44,9 +44,22 @@ async function resolveContact(sb: any, userId: string, phone?: string, name?: st
       .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
       .order("last_message_at", { ascending: false });
     if (convs && convs.length > 0) {
-      // Prefer match on current instance
       const match = (instanceName ? convs.find((c: any) => c.instance_name === instanceName) : null) || convs[0];
       return match;
+    }
+    // Fallback: try partial match on last 8 digits of phone
+    const last8 = phone.slice(-8);
+    if (last8.length === 8) {
+      const { data: partialConvs } = await sb
+        .from("conversations")
+        .select("id, remote_jid, contact_name, phone_number, instance_name, lid")
+        .eq("user_id", userId)
+        .like("phone_number", `%${last8}`)
+        .order("last_message_at", { ascending: false });
+      if (partialConvs && partialConvs.length > 0) {
+        const match = (instanceName ? partialConvs.find((c: any) => c.instance_name === instanceName) : null) || partialConvs[0];
+        return match;
+      }
     }
     return null;
   }
@@ -61,6 +74,11 @@ async function resolveContact(sb: any, userId: string, phone?: string, name?: st
     if (convs && convs.length > 0) {
       const match = (instanceName ? convs.find((c: any) => c.instance_name === instanceName) : null) || convs[0];
       return match;
+    }
+    // Fallback: extract digits from the name in case it contains a phone-like pattern
+    const nameDigits = name.replace(/\D/g, "");
+    if (nameDigits.length >= 8) {
+      return resolveContact(sb, userId, nameDigits, undefined, instanceName);
     }
     return null;
   }
