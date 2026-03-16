@@ -501,29 +501,7 @@ router.get("/ai-status", async (req, res) => {
   if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const sb = getServiceClient();
-
-  let conv: any = null;
-  if (phone) {
-    const remoteJid = `${phone}@s.whatsapp.net`;
-    const { data } = await sb
-      .from("conversations")
-      .select("remote_jid")
-      .eq("user_id", userId)
-      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
-      .limit(1)
-      .maybeSingle();
-    conv = data;
-  } else {
-    const { data } = await sb
-      .from("conversations")
-      .select("remote_jid")
-      .eq("user_id", userId)
-      .eq("contact_name", name)
-      .order("last_message_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    conv = data;
-  }
+  const conv = await resolveContact(sb, userId, phone || undefined, name || undefined);
 
   const jid = conv?.remote_jid || (phone ? `${phone}@s.whatsapp.net` : null);
   if (!jid) {

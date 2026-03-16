@@ -690,7 +690,7 @@
       pollTimer = setTimeout(() => {
         detectContact();
         if (currentTab === "dashboard") loadDashboard();
-        if (currentTab === "contact" && currentPhone) loadContactData();
+        if (currentTab === "contact" && (currentPhone || currentContactName)) loadContactData();
         poll();
       }, interval);
     }
