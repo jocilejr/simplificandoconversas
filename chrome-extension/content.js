@@ -166,7 +166,8 @@
       newPhone = digits;
       newName = null;
     } else {
-      newPhone = raw;
+      // Contact has a saved name, not a phone number
+      newPhone = null;
       newName = raw;
     }
 
