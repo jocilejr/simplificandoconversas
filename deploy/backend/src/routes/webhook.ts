@@ -406,7 +406,8 @@ async function checkAndTriggerFlows(
     .eq("user_id", userId)
     .eq("active", true);
 
-  if (flowsErr || !flows || flows.length === 0) return;
+  if (flowsErr || !flows || flows.length === 0) return false;
+  let triggered = false;
 
   const contentLower = messageContent.trim().toLowerCase();
 
