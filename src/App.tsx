@@ -8,7 +8,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Contacts from "./pages/Contacts";
-import Schedule from "./pages/Schedule";
+
 import ChatbotBuilder from "./pages/ChatbotBuilder";
 
 import SettingsPage from "./pages/SettingsPage";
