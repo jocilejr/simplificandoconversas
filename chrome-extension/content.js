@@ -211,14 +211,18 @@
   }
 
   async function loadContactData() {
-    if (!currentPhone || contactInFlight) return;
+    if (!currentPhone && !currentContactName) return;
+    if (contactInFlight) return;
     contactInFlight = true;
     try {
+      const lookupParam = currentPhone
+        ? { phone: currentPhone }
+        : { name: currentContactName };
       const [status, flows, cross, aiStatus] = await Promise.all([
-        apiCall("contact-status", { phone: currentPhone }),
+        apiCall("contact-status", lookupParam),
         apiCall("flows"),
-        apiCall("contact-cross", { phone: currentPhone, excludeInstance: detectedInstance?.instance_name || '' }),
-        apiCall("ai-status", { phone: currentPhone }),
+        apiCall("contact-cross", { ...lookupParam, excludeInstance: detectedInstance?.instance_name || '' }),
+        apiCall("ai-status", lookupParam),
       ]);
       contactData = status;
       flowsData = flows;
