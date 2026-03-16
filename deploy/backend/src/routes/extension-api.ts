@@ -81,6 +81,22 @@ router.get("/dashboard", async (req, res) => {
       }));
     }
 
+    // Sort reminders: today (Brasilia) first, then by due_date
+    const allReminders = remindersRes.data || [];
+    const brNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const todayStart = new Date(brNow.getFullYear(), brNow.getMonth(), brNow.getDate()).getTime();
+    const todayEnd = todayStart + 86400000;
+
+    const sortedReminders = allReminders.sort((a: any, b: any) => {
+      const aTime = new Date(a.due_date).getTime();
+      const bTime = new Date(b.due_date).getTime();
+      const aIsToday = aTime >= todayStart && aTime < todayEnd;
+      const bIsToday = bTime >= todayStart && bTime < todayEnd;
+      if (aIsToday && !bIsToday) return -1;
+      if (!aIsToday && bIsToday) return 1;
+      return aTime - bTime;
+    }).slice(0, 10);
+
     console.log(`[ext-api] GET /dashboard ${Date.now() - start}ms`);
     res.json({
       activeFlows: flowsRes.count || 0,
@@ -88,6 +104,7 @@ router.get("/dashboard", async (req, res) => {
       runningExecutions: execRes.count || 0,
       totalInstances: instancesRes.count || 0,
       recentExecutions: enrichedRecent,
+      reminders: sortedReminders,
     });
   } catch (err: any) {
     console.error(`[ext-api] GET /dashboard error (${Date.now() - start}ms):`, err);

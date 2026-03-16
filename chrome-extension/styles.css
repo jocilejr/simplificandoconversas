@@ -70,10 +70,16 @@
   font-weight: 600;
   letter-spacing: -0.3px;
 }
+.sc-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+}
 .sc-logo-icon {
   width: 28px;
   height: 28px;
-  background: linear-gradient(135deg, #00a884, #25d366);
+  background: linear-gradient(135deg, #c5a55a, #d4b96a);
   border-radius: 8px;
   display: flex;
   align-items: center;
