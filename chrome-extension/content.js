@@ -393,7 +393,17 @@
           <div class="sc-no-contact-icon">${ICONS.user}</div>
           <div class="sc-no-contact-title">Nenhum contato selecionado</div>
           <div class="sc-no-contact-desc">Abra uma conversa no WhatsApp para ver os detalhes do contato</div>
+          <div class="sc-manual-phone-section" style="margin-top:20px;width:100%;">
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="sc-manual-phone-empty" class="sc-manual-input" placeholder="Ex: 5589981340810" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid #233040;background:#111b21;color:#e9edef;font-size:13px;outline:none;">
+              <button class="sc-btn sc-btn-primary" id="sc-manual-search-empty">${ICONS.send} Buscar</button>
+            </div>
+          </div>
         </div>`;
+      const searchBtn = body.querySelector('#sc-manual-search-empty');
+      const phoneInput = body.querySelector('#sc-manual-phone-empty');
+      if (searchBtn) searchBtn.addEventListener('click', () => handleManualPhoneSubmit('sc-manual-phone-empty'));
+      if (phoneInput) phoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleManualPhoneSubmit('sc-manual-phone-empty'); });
       return;
     }
 
