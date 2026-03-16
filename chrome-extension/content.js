@@ -166,11 +166,14 @@
       newPhone = digits;
       newName = null;
     } else {
-      newPhone = raw;
+      // Contact has a saved name, not a phone number
+      newPhone = null;
       newName = raw;
     }
 
-    if (newPhone !== currentPhone) {
+    const identifier = newPhone || newName;
+    const prevIdentifier = currentPhone || currentContactName;
+    if (identifier !== prevIdentifier) {
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
@@ -208,14 +211,18 @@
   }
 
   async function loadContactData() {
-    if (!currentPhone || contactInFlight) return;
+    if (!currentPhone && !currentContactName) return;
+    if (contactInFlight) return;
     contactInFlight = true;
     try {
+      const lookupParam = currentPhone
+        ? { phone: currentPhone }
+        : { name: currentContactName };
       const [status, flows, cross, aiStatus] = await Promise.all([
-        apiCall("contact-status", { phone: currentPhone }),
+        apiCall("contact-status", lookupParam),
         apiCall("flows"),
-        apiCall("contact-cross", { phone: currentPhone, excludeInstance: detectedInstance?.instance_name || '' }),
-        apiCall("ai-status", { phone: currentPhone }),
+        apiCall("contact-cross", { ...lookupParam, excludeInstance: detectedInstance?.instance_name || '' }),
+        apiCall("ai-status", lookupParam),
       ]);
       contactData = status;
       flowsData = flows;
@@ -235,7 +242,7 @@
   function refresh() {
     detectContact();
     loadDashboard();
-    if (currentPhone) loadContactData();
+    if (currentPhone || currentContactName) loadContactData();
   }
 
   // ── Render ──
@@ -361,7 +368,7 @@
   }
 
   function renderContact(body) {
-    if (!currentPhone) {
+    if (!currentPhone && !currentContactName) {
       body.innerHTML = `
         <div class="sc-no-contact">
           <div class="sc-no-contact-icon">${ICONS.user}</div>

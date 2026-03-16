@@ -124,8 +124,12 @@ async function apiFetch(path, options = {}) {
 
 async function handleMessage(msg) {
   switch (msg.action) {
-    case "contact-status":
-      return apiFetch(`/api/ext/contact-status?phone=${encodeURIComponent(msg.phone)}`);
+    case "contact-status": {
+      let url = `/api/ext/contact-status?`;
+      if (msg.phone) url += `phone=${encodeURIComponent(msg.phone)}`;
+      else if (msg.name) url += `name=${encodeURIComponent(msg.name)}`;
+      return apiFetch(url);
+    }
 
     case "flows":
       return apiFetch("/api/ext/flows");
@@ -150,7 +154,9 @@ async function handleMessage(msg) {
       return apiFetch("/api/ext/dashboard");
 
     case "contact-cross": {
-      let url = `/api/ext/contact-cross?phone=${encodeURIComponent(msg.phone)}`;
+      let url = `/api/ext/contact-cross?`;
+      if (msg.phone) url += `phone=${encodeURIComponent(msg.phone)}`;
+      else if (msg.name) url += `name=${encodeURIComponent(msg.name)}`;
       if (msg.excludeInstance) {
         url += `&excludeInstance=${encodeURIComponent(msg.excludeInstance)}`;
       }
@@ -169,8 +175,12 @@ async function handleMessage(msg) {
     case "validate-session":
       return apiFetch("/api/ext/list-instances");
 
-    case "ai-status":
-      return apiFetch(`/api/ext/ai-status?phone=${encodeURIComponent(msg.phone)}`);
+    case "ai-status": {
+      let url = `/api/ext/ai-status?`;
+      if (msg.phone) url += `phone=${encodeURIComponent(msg.phone)}`;
+      else if (msg.name) url += `name=${encodeURIComponent(msg.name)}`;
+      return apiFetch(url);
+    }
 
     case "ai-reply-toggle":
       return apiFetch("/api/ext/ai-reply-toggle", {

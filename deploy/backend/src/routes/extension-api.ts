@@ -134,22 +134,32 @@ router.get("/list-instances", async (req, res) => {
   }
 });
 
-// ── GET /api/ext/contact-cross?phone=X ──
+// ── GET /api/ext/contact-cross?phone=X or ?name=X ──
 router.get("/contact-cross", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
-  if (!phone) return res.status(400).json({ error: "phone required" });
+  const name = (req.query.name as string || "").trim();
+  if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const excludeInstance = req.query.excludeInstance as string || "";
   const sb = getServiceClient();
 
-  let query = sb
-    .from("conversations")
-    .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
-    .eq("user_id", userId)
-    .eq("phone_number", phone);
+  let query: any;
+  if (phone) {
+    query = sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
+      .eq("user_id", userId)
+      .eq("phone_number", phone);
+  } else {
+    query = sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
+      .eq("user_id", userId)
+      .eq("contact_name", name);
+  }
 
   if (excludeInstance) {
     query = query.neq("instance_name", excludeInstance);
@@ -191,19 +201,36 @@ router.get("/contact-status", async (req, res) => {
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
-  if (!phone) return res.status(400).json({ error: "phone required" });
+  const name = (req.query.name as string || "").trim();
+  if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const sb = getServiceClient();
-  const remoteJid = `${phone}@s.whatsapp.net`;
 
-  const { data: convs } = await sb
-    .from("conversations")
-    .select("id, remote_jid, contact_name, phone_number, lid")
-    .eq("user_id", userId)
-    .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`);
+  let conv: any = null;
+  if (phone) {
+    const remoteJid = `${phone}@s.whatsapp.net`;
+    const { data: convs } = await sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, lid")
+      .eq("user_id", userId)
+      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`);
+    conv = convs?.[0];
+  } else {
+    // Lookup by contact name
+    const { data: convs } = await sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, lid")
+      .eq("user_id", userId)
+      .eq("contact_name", name)
+      .order("last_message_at", { ascending: false })
+      .limit(1);
+    conv = convs?.[0];
+  }
 
-  const conv = convs?.[0];
-  const jid = conv?.remote_jid || remoteJid;
+  const jid = conv?.remote_jid || (phone ? `${phone}@s.whatsapp.net` : null);
+  if (!jid) {
+    return res.json({ contact: null, executions: [], history: [], tags: [], instances: [] });
+  }
 
   const [activeRes, historyRes] = await Promise.all([
     sb.from("flow_executions")
@@ -436,27 +463,44 @@ router.patch("/reminders/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── GET /api/ext/ai-status?phone=X ──
+// ── GET /api/ext/ai-status?phone=X or ?name=X ──
 router.get("/ai-status", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
-  if (!phone) return res.status(400).json({ error: "phone required" });
+  const name = (req.query.name as string || "").trim();
+  if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const sb = getServiceClient();
-  const remoteJid = `${phone}@s.whatsapp.net`;
 
-  // Find conversation to get the actual remote_jid (might be @lid)
-  const { data: conv } = await sb
-    .from("conversations")
-    .select("remote_jid")
-    .eq("user_id", userId)
-    .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
-    .limit(1)
-    .maybeSingle();
+  let conv: any = null;
+  if (phone) {
+    const remoteJid = `${phone}@s.whatsapp.net`;
+    const { data } = await sb
+      .from("conversations")
+      .select("remote_jid")
+      .eq("user_id", userId)
+      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
+      .limit(1)
+      .maybeSingle();
+    conv = data;
+  } else {
+    const { data } = await sb
+      .from("conversations")
+      .select("remote_jid")
+      .eq("user_id", userId)
+      .eq("contact_name", name)
+      .order("last_message_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    conv = data;
+  }
 
-  const jid = conv?.remote_jid || remoteJid;
+  const jid = conv?.remote_jid || (phone ? `${phone}@s.whatsapp.net` : null);
+  if (!jid) {
+    return res.json({ reply: false, listen: false, remoteJid: null });
+  }
 
   const [replyRes, listenRes] = await Promise.all([
     sb.from("ai_auto_reply_contacts")
