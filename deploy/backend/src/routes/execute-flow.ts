@@ -492,7 +492,7 @@ router.post("/", async (req, res) => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ data: [eventData], access_token: accessToken }),
               });
-              const metaResult = await metaResp.json();
+              const metaResult = (await metaResp.json()) as any;
               console.log(`[execute-flow] metaPixel response:`, JSON.stringify(metaResult));
               if (metaResult.error) {
                 console.error(`[execute-flow] metaPixel API error:`, JSON.stringify(metaResult.error));
