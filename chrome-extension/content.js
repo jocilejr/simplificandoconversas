@@ -317,6 +317,46 @@
       html += '</div>';
     }
 
+    // Reminders section
+    const reminders = d.reminders || [];
+    html += '<div class="sc-section">';
+    html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.clock} Lembretes</div></div>`;
+    if (reminders.length > 0) {
+      reminders.forEach((r) => {
+        const due = new Date(r.due_date);
+        const now = new Date();
+        const brNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+        const brDue = new Date(due.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+        const todayStart = new Date(brNow.getFullYear(), brNow.getMonth(), brNow.getDate());
+        const todayEnd = new Date(todayStart.getTime() + 86400000);
+        
+        let statusClass = 'future';
+        let statusLabel = brDue.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        if (r.completed) {
+          statusClass = 'completed';
+          statusLabel = 'Concluído';
+        } else if (brDue < todayStart) {
+          statusClass = 'overdue';
+          statusLabel = 'Atrasado';
+        } else if (brDue >= todayStart && brDue < todayEnd) {
+          statusClass = 'today';
+          statusLabel = brDue.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+        }
+        
+        html += `
+          <div class="sc-reminder-item ${statusClass}">
+            <div class="sc-reminder-info">
+              <div class="sc-reminder-title">${r.title}</div>
+              <div class="sc-reminder-meta">${r.contact_name || r.phone_number || ''} ${r.description ? '· ' + r.description.substring(0, 40) : ''}</div>
+            </div>
+            <span class="sc-reminder-badge ${statusClass}">${statusLabel}</span>
+          </div>`;
+      });
+    } else {
+      html += '<div class="sc-empty-state"><div class="sc-empty-text">Nenhum lembrete pendente</div></div>';
+    }
+    html += '</div>';
+
     body.innerHTML = html;
   }
 
