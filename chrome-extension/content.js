@@ -233,15 +233,22 @@
 
     // If we have a manual override and the header still shows the same name, keep the manual phone
     if (manualPhoneOverride && newName && newName === currentContactName) {
-      // Same contact header, manual phone is active — don't reset
       return;
+    }
+
+    let appliedPersistedPhone = false;
+    if (!newPhone && newName) {
+      const persistedPhone = getManualPhoneForContact(newName);
+      if (persistedPhone) {
+        newPhone = persistedPhone;
+        appliedPersistedPhone = true;
+      }
     }
 
     const identifier = newPhone || newName;
     const prevIdentifier = currentPhone || currentContactName;
     if (identifier !== prevIdentifier) {
-      // Contact actually changed — clear manual override
-      manualPhoneOverride = null;
+      manualPhoneOverride = appliedPersistedPhone ? newPhone : null;
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
