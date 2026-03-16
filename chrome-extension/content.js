@@ -596,6 +596,12 @@
       });
     }
 
+    // Manual phone resolve listeners
+    const manualSearchBtn = document.getElementById('sc-manual-search-resolve');
+    const manualPhoneInput = document.getElementById('sc-manual-phone-resolve');
+    if (manualSearchBtn) manualSearchBtn.addEventListener('click', () => handleManualPhoneSubmit('sc-manual-phone-resolve'));
+    if (manualPhoneInput) manualPhoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleManualPhoneSubmit('sc-manual-phone-resolve'); });
+
     // AI Reply toggle
     const aiReplyToggle = document.getElementById("sc-ai-reply-toggle");
     if (aiReplyToggle) {
