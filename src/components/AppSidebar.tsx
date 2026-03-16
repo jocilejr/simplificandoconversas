@@ -4,7 +4,6 @@ import {
   CalendarClock,
   Workflow,
   Settings,
-  Zap,
   LogOut,
   Send,
   Bell,
