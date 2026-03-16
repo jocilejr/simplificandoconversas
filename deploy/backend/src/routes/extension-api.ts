@@ -33,6 +33,40 @@ async function requireAuth(req: Request, res: Response): Promise<string | null> 
   return userId;
 }
 
+// ── Contact resolver helper ──
+async function resolveContact(sb: any, userId: string, phone?: string, name?: string, instanceName?: string) {
+  if (phone) {
+    const remoteJid = `${phone}@s.whatsapp.net`;
+    const { data: convs } = await sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, lid")
+      .eq("user_id", userId)
+      .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
+      .order("last_message_at", { ascending: false });
+    if (convs && convs.length > 0) {
+      // Prefer match on current instance
+      const match = (instanceName ? convs.find((c: any) => c.instance_name === instanceName) : null) || convs[0];
+      return match;
+    }
+    return null;
+  }
+  if (name) {
+    // Try case-insensitive search with ilike, prioritize current instance
+    const { data: convs } = await sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, lid")
+      .eq("user_id", userId)
+      .ilike("contact_name", name)
+      .order("last_message_at", { ascending: false });
+    if (convs && convs.length > 0) {
+      const match = (instanceName ? convs.find((c: any) => c.instance_name === instanceName) : null) || convs[0];
+      return match;
+    }
+    return null;
+  }
+  return null;
+}
+
 // ── GET /api/ext/dashboard ──
 router.get("/dashboard", async (req, res) => {
   const start = Date.now();
