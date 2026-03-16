@@ -557,4 +557,228 @@ async function handleMessageStatusUpdate(data: any, instance: string) {
   }
 }
 
+// ── AI Auto-Reply ──
+async function checkAndAutoReply(
+  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string
+) {
+  // Check if AI reply is enabled for this contact
+  const { data: aiReply } = await supabase
+    .from("ai_auto_reply_contacts")
+    .select("id, enabled")
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .eq("enabled", true)
+    .maybeSingle();
+
+  if (!aiReply) return;
+
+  // Double-check no active flow
+  const { data: activeFlows } = await supabase
+    .from("flow_executions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
+    .limit(1);
+
+  if (activeFlows && activeFlows.length > 0) {
+    console.log(`[ai-reply] Skipping: active flow for ${remoteJid}`);
+    return;
+  }
+
+  // Get user's OpenAI key and AI config
+  const [profileRes, configRes] = await Promise.all([
+    supabase.from("profiles").select("openai_api_key").eq("user_id", userId).single(),
+    supabase.from("ai_config").select("*").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  const openaiKey = profileRes.data?.openai_api_key;
+  if (!openaiKey) {
+    console.log(`[ai-reply] No OpenAI key for user ${userId}`);
+    return;
+  }
+
+  const config = configRes.data || {};
+  const systemPrompt = config.reply_system_prompt || "Você é um assistente de vendas profissional. Responda de forma objetiva e cordial.";
+  const maxContext = config.max_context_messages || 10;
+
+  // Fetch recent messages for context
+  const { data: recentMsgs } = await supabase
+    .from("messages")
+    .select("content, direction, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(maxContext);
+
+  const contextMessages = (recentMsgs || []).reverse().map((m: any) => ({
+    role: m.direction === "inbound" ? "user" : "assistant",
+    content: m.content || "",
+  }));
+
+  // Call OpenAI
+  try {
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...contextMessages,
+        ],
+        max_tokens: 500,
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const errText = await openaiRes.text();
+      console.error(`[ai-reply] OpenAI error ${openaiRes.status}:`, errText);
+      return;
+    }
+
+    const completion = await openaiRes.json();
+    const reply = completion.choices?.[0]?.message?.content;
+    if (!reply) return;
+
+    // Send via Evolution API
+    await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {
+      number: remoteJid.replace("@s.whatsapp.net", "").replace("@lid", ""),
+      text: reply,
+    });
+
+    // Save outbound message
+    await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      user_id: userId,
+      remote_jid: remoteJid,
+      content: reply,
+      message_type: "text",
+      direction: "outbound",
+      status: "sent",
+    });
+
+    // Update conversation
+    await supabase.from("conversations").update({
+      last_message: truncate(reply, 100),
+      last_message_at: new Date().toISOString(),
+    }).eq("id", conversationId);
+
+    console.log(`[ai-reply] Sent reply to ${remoteJid}`);
+  } catch (e: any) {
+    console.error(`[ai-reply] Error:`, e.message);
+  }
+}
+
+// ── AI Listen (auto-create reminders) ──
+async function checkAndAutoListen(
+  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null
+) {
+  // Check if AI listen is enabled for this contact
+  const { data: aiListen } = await supabase
+    .from("ai_listen_contacts")
+    .select("id, enabled")
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .eq("enabled", true)
+    .maybeSingle();
+
+  if (!aiListen) return;
+
+  // Get user's OpenAI key and AI config
+  const [profileRes, configRes] = await Promise.all([
+    supabase.from("profiles").select("openai_api_key").eq("user_id", userId).single(),
+    supabase.from("ai_config").select("listen_rules").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  const openaiKey = profileRes.data?.openai_api_key;
+  if (!openaiKey) return;
+
+  const listenRules = configRes.data?.listen_rules || "Detecte menções a pagamentos, datas, prazos e promessas.";
+  const phone = remoteJid.split("@")[0];
+
+  const systemPrompt = `Você é um analisador de mensagens de WhatsApp. Sua tarefa é analisar a mensagem do contato e determinar se ela contém informações relevantes para criar um lembrete.
+
+Regras do usuário: ${listenRules}
+
+Se a mensagem contiver algo relevante, responda usando a ferramenta create_reminder.
+Se NÃO houver nada relevante, responda usando a ferramenta no_action.
+
+Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}.
+Data/hora atual: ${new Date().toISOString()}`;
+
+  try {
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: messageContent },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "create_reminder",
+              description: "Cria um lembrete quando a mensagem contém informação relevante",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Título curto do lembrete" },
+                  description: { type: "string", description: "Descrição detalhada" },
+                  due_date: { type: "string", description: "Data/hora do lembrete em ISO 8601. Se não houver data específica, use amanhã às 9h." },
+                },
+                required: ["title", "due_date"],
+                additionalProperties: false,
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "no_action",
+              description: "Nenhuma ação necessária — mensagem não contém informação relevante",
+              parameters: { type: "object", properties: {}, additionalProperties: false },
+            },
+          },
+        ],
+        tool_choice: "required",
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      console.error(`[ai-listen] OpenAI error ${openaiRes.status}`);
+      return;
+    }
+
+    const completion = await openaiRes.json();
+    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.function.name !== "create_reminder") return;
+
+    const args = JSON.parse(toolCall.function.arguments);
+    
+    await supabase.from("reminders").insert({
+      user_id: userId,
+      title: args.title,
+      description: args.description || null,
+      due_date: args.due_date,
+      remote_jid: remoteJid,
+      phone_number: phone,
+      contact_name: contactName || null,
+      instance_name: instanceName,
+    });
+
+    console.log(`[ai-listen] Created reminder for ${remoteJid}: ${args.title}`);
+  } catch (e: any) {
+    console.error(`[ai-listen] Error:`, e.message);
+  }
+}
+
 export default router;
