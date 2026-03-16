@@ -676,16 +676,27 @@ async function checkAndAutoReply(
 async function checkAndAutoListen(
   supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null
 ) {
-  // Check if AI listen is enabled for this contact
-  const { data: aiListen } = await supabase
+  // Check if user explicitly disabled listen for this contact (opt-out model)
+  const { data: aiListenOff } = await supabase
     .from("ai_listen_contacts")
-    .select("id, enabled")
+    .select("id")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
-    .eq("enabled", true)
+    .eq("enabled", false)
     .maybeSingle();
 
-  if (!aiListen) return;
+  if (aiListenOff) return; // User explicitly disabled
+
+  // Skip if contact has active flow
+  const { data: activeFlows } = await supabase
+    .from("flow_executions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("remote_jid", remoteJid)
+    .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
+    .limit(1);
+
+  if (activeFlows && activeFlows.length > 0) return;
 
   // Get user's OpenAI key and AI config
   const [profileRes, configRes] = await Promise.all([

@@ -541,7 +541,7 @@ router.get("/ai-status", async (req, res) => {
 
   res.json({
     reply: replyRes.data ? replyRes.data.enabled : false,
-    listen: listenRes.data ? listenRes.data.enabled : false,
+    listen: listenRes.data ? listenRes.data.enabled : true,
     remoteJid: jid,
   });
 });
@@ -602,22 +602,24 @@ router.post("/ai-listen-toggle", async (req, res) => {
   const sb = getServiceClient();
 
   if (enabled) {
+    // Remove opt-out record (default is enabled)
+    await sb
+      .from("ai_listen_contacts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid);
+  } else {
+    // Insert opt-out record
     const { error } = await sb
       .from("ai_listen_contacts")
       .upsert({
         user_id: userId,
         remote_jid: remoteJid,
         instance_name: instanceName,
-        enabled: true,
+        enabled: false,
       }, { onConflict: "user_id,remote_jid,instance_name" });
 
     if (error) return res.status(500).json({ error: error.message });
-  } else {
-    await sb
-      .from("ai_listen_contacts")
-      .delete()
-      .eq("user_id", userId)
-      .eq("remote_jid", remoteJid);
   }
 
   res.json({ ok: true, enabled });
