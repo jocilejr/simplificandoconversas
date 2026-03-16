@@ -171,7 +171,9 @@
       newName = raw;
     }
 
-    if (newPhone !== currentPhone) {
+    const identifier = newPhone || newName;
+    const prevIdentifier = currentPhone || currentContactName;
+    if (identifier !== prevIdentifier) {
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
