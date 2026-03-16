@@ -12,6 +12,7 @@
   let contactData = null;
   let flowsData = null;
   let crossData = null;
+  let aiStatusData = null;
 
   // ── SVG Icons ──
   const ICONS = {
@@ -31,6 +32,8 @@
     inbox: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
     server: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>',
     history: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
+    brain: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg>',
+    ear: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/><path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/></svg>',
   };
 
   // ── Create Sidebar (called after WhatsApp app is ready) ──
@@ -172,6 +175,7 @@
       currentContactName = newName;
       contactData = null;
       crossData = null;
+      aiStatusData = null;
       loadContactData();
     }
   }
@@ -207,14 +211,16 @@
     if (!currentPhone || contactInFlight) return;
     contactInFlight = true;
     try {
-      const [status, flows, cross] = await Promise.all([
+      const [status, flows, cross, aiStatus] = await Promise.all([
         apiCall("contact-status", { phone: currentPhone }),
         apiCall("flows"),
         apiCall("contact-cross", { phone: currentPhone, excludeInstance: detectedInstance?.instance_name || '' }),
+        apiCall("ai-status", { phone: currentPhone }),
       ]);
       contactData = status;
       flowsData = flows;
       crossData = cross;
+      aiStatusData = aiStatus;
       errorBackoffCycles = 0;
       if (currentTab === "contact") renderCurrentTab();
     } catch (e) {
@@ -366,6 +372,44 @@
         <button class="sc-btn sc-btn-secondary sc-btn-icon" id="sc-refresh-contact" title="Atualizar">${ICONS.refresh}</button>
       </div>`;
 
+    // AI Toggles
+    const hasActiveFlow = executions.some((e) => ["running", "waiting", "waiting_click", "waiting_reply"].includes(e.status));
+    const aiReplyEnabled = aiStatusData?.reply || false;
+    const aiListenEnabled = aiStatusData?.listen || false;
+    const aiRemoteJid = aiStatusData?.remoteJid || contact?.remote_jid || '';
+
+    html += '<div class="sc-section">';
+    html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.brain} Inteligência Artificial</div></div>`;
+    html += '<div class="sc-ai-toggles">';
+    
+    // AI Reply toggle
+    html += `
+      <div class="sc-ai-toggle-row">
+        <div class="sc-ai-toggle-info">
+          <span class="sc-ai-toggle-label">${ICONS.brain} IA Responde</span>
+          <span class="sc-ai-toggle-desc">${hasActiveFlow && !aiReplyEnabled ? 'Desativado (fluxo ativo)' : aiReplyEnabled ? 'Respondendo automaticamente' : 'Desativado'}</span>
+        </div>
+        <label class="sc-toggle ${hasActiveFlow && !aiReplyEnabled ? 'disabled' : ''}">
+          <input type="checkbox" id="sc-ai-reply-toggle" ${aiReplyEnabled ? 'checked' : ''} ${hasActiveFlow && !aiReplyEnabled ? 'disabled' : ''}>
+          <span class="sc-toggle-slider"></span>
+        </label>
+      </div>`;
+    
+    // AI Listen toggle
+    html += `
+      <div class="sc-ai-toggle-row">
+        <div class="sc-ai-toggle-info">
+          <span class="sc-ai-toggle-label">${ICONS.ear} IA Escuta</span>
+          <span class="sc-ai-toggle-desc">${aiListenEnabled ? 'Monitorando mensagens' : 'Desativado'}</span>
+        </div>
+        <label class="sc-toggle">
+          <input type="checkbox" id="sc-ai-listen-toggle" ${aiListenEnabled ? 'checked' : ''}>
+          <span class="sc-toggle-slider"></span>
+        </label>
+      </div>`;
+    
+    html += '</div></div>';
+
     // Tags
     if (tags.length > 0) {
       const remoteJid = contact?.remote_jid || '';
@@ -458,6 +502,60 @@
         contactData = null;
         renderCurrentTab();
         loadContactData();
+      });
+    }
+
+    // AI Reply toggle
+    const aiReplyToggle = document.getElementById("sc-ai-reply-toggle");
+    if (aiReplyToggle) {
+      aiReplyToggle.addEventListener("change", async () => {
+        const enabled = aiReplyToggle.checked;
+        if (!detectedInstance) {
+          aiReplyToggle.checked = !enabled;
+          return;
+        }
+        aiReplyToggle.disabled = true;
+        try {
+          await apiCall("ai-reply-toggle", {
+            remoteJid: aiRemoteJid,
+            instanceName: detectedInstance.instance_name,
+            enabled,
+          });
+          aiStatusData = { ...aiStatusData, reply: enabled };
+          loadContactData();
+        } catch (e) {
+          aiReplyToggle.checked = !enabled;
+          alert("Erro: " + e.message);
+        } finally {
+          aiReplyToggle.disabled = false;
+        }
+      });
+    }
+
+    // AI Listen toggle
+    const aiListenToggle = document.getElementById("sc-ai-listen-toggle");
+    if (aiListenToggle) {
+      aiListenToggle.addEventListener("change", async () => {
+        const enabled = aiListenToggle.checked;
+        if (!detectedInstance) {
+          aiListenToggle.checked = !enabled;
+          return;
+        }
+        aiListenToggle.disabled = true;
+        try {
+          await apiCall("ai-listen-toggle", {
+            remoteJid: aiRemoteJid,
+            instanceName: detectedInstance.instance_name,
+            enabled,
+          });
+          aiStatusData = { ...aiStatusData, listen: enabled };
+          loadContactData();
+        } catch (e) {
+          aiListenToggle.checked = !enabled;
+          alert("Erro: " + e.message);
+        } finally {
+          aiListenToggle.disabled = false;
+        }
       });
     }
 

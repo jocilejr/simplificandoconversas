@@ -413,4 +413,172 @@ router.patch("/reminders/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── GET /api/ext/ai-status?phone=X ──
+router.get("/ai-status", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const phone = (req.query.phone as string || "").replace(/\D/g, "");
+  if (!phone) return res.status(400).json({ error: "phone required" });
+
+  const sb = getServiceClient();
+  const remoteJid = `${phone}@s.whatsapp.net`;
+
+  // Find conversation to get the actual remote_jid (might be @lid)
+  const { data: conv } = await sb
+    .from("conversations")
+    .select("remote_jid")
+    .eq("user_id", userId)
+    .or(`remote_jid.eq.${remoteJid},phone_number.eq.${phone}`)
+    .limit(1)
+    .maybeSingle();
+
+  const jid = conv?.remote_jid || remoteJid;
+
+  const [replyRes, listenRes] = await Promise.all([
+    sb.from("ai_auto_reply_contacts")
+      .select("id, enabled")
+      .eq("user_id", userId)
+      .eq("remote_jid", jid)
+      .maybeSingle(),
+    sb.from("ai_listen_contacts")
+      .select("id, enabled")
+      .eq("user_id", userId)
+      .eq("remote_jid", jid)
+      .maybeSingle(),
+  ]);
+
+  res.json({
+    reply: replyRes.data ? replyRes.data.enabled : false,
+    listen: listenRes.data ? listenRes.data.enabled : false,
+    remoteJid: jid,
+  });
+});
+
+// ── POST /api/ext/ai-reply-toggle ──
+router.post("/ai-reply-toggle", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const { remoteJid, instanceName, enabled } = req.body;
+  if (!remoteJid || !instanceName) return res.status(400).json({ error: "remoteJid, instanceName required" });
+
+  const sb = getServiceClient();
+
+  if (enabled) {
+    // Check if any flow is active for this contact
+    const { data: activeFlows } = await sb
+      .from("flow_executions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
+      .limit(1);
+
+    if (activeFlows && activeFlows.length > 0) {
+      return res.status(409).json({ error: "Não é possível ativar IA enquanto um fluxo está ativo para este contato" });
+    }
+
+    const { error } = await sb
+      .from("ai_auto_reply_contacts")
+      .upsert({
+        user_id: userId,
+        remote_jid: remoteJid,
+        instance_name: instanceName,
+        enabled: true,
+      }, { onConflict: "user_id,remote_jid,instance_name" });
+
+    if (error) return res.status(500).json({ error: error.message });
+  } else {
+    await sb
+      .from("ai_auto_reply_contacts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid);
+  }
+
+  res.json({ ok: true, enabled });
+});
+
+// ── POST /api/ext/ai-listen-toggle ──
+router.post("/ai-listen-toggle", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const { remoteJid, instanceName, enabled } = req.body;
+  if (!remoteJid || !instanceName) return res.status(400).json({ error: "remoteJid, instanceName required" });
+
+  const sb = getServiceClient();
+
+  if (enabled) {
+    const { error } = await sb
+      .from("ai_listen_contacts")
+      .upsert({
+        user_id: userId,
+        remote_jid: remoteJid,
+        instance_name: instanceName,
+        enabled: true,
+      }, { onConflict: "user_id,remote_jid,instance_name" });
+
+    if (error) return res.status(500).json({ error: error.message });
+  } else {
+    await sb
+      .from("ai_listen_contacts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid);
+  }
+
+  res.json({ ok: true, enabled });
+});
+
+// ── GET /api/ext/ai-config ──
+router.get("/ai-config", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const sb = getServiceClient();
+  let { data, error } = await sb
+    .from("ai_config")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!data) {
+    // Create default config
+    const { data: newConfig, error: insertErr } = await sb
+      .from("ai_config")
+      .insert({ user_id: userId })
+      .select()
+      .single();
+    if (insertErr) return res.status(500).json({ error: insertErr.message });
+    data = newConfig;
+  }
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ── PATCH /api/ext/ai-config ──
+router.patch("/ai-config", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const { reply_system_prompt, listen_rules, max_context_messages } = req.body;
+  const sb = getServiceClient();
+
+  // Upsert config
+  const updates: any = {};
+  if (reply_system_prompt !== undefined) updates.reply_system_prompt = reply_system_prompt;
+  if (listen_rules !== undefined) updates.listen_rules = listen_rules;
+  if (max_context_messages !== undefined) updates.max_context_messages = max_context_messages;
+
+  const { error } = await sb
+    .from("ai_config")
+    .upsert({ user_id: userId, ...updates }, { onConflict: "user_id" });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 export default router;

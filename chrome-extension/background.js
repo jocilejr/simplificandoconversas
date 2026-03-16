@@ -169,6 +169,29 @@ async function handleMessage(msg) {
     case "validate-session":
       return apiFetch("/api/ext/list-instances");
 
+    case "ai-status":
+      return apiFetch(`/api/ext/ai-status?phone=${encodeURIComponent(msg.phone)}`);
+
+    case "ai-reply-toggle":
+      return apiFetch("/api/ext/ai-reply-toggle", {
+        method: "POST",
+        body: JSON.stringify({
+          remoteJid: msg.remoteJid,
+          instanceName: msg.instanceName,
+          enabled: msg.enabled,
+        }),
+      });
+
+    case "ai-listen-toggle":
+      return apiFetch("/api/ext/ai-listen-toggle", {
+        method: "POST",
+        body: JSON.stringify({
+          remoteJid: msg.remoteJid,
+          instanceName: msg.instanceName,
+          enabled: msg.enabled,
+        }),
+      });
+
     default:
       throw new Error("Unknown action: " + msg.action);
   }

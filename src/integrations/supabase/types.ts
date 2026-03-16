@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_auto_reply_contacts: {
+        Row: {
+          created_at: string | null
+          enabled: boolean | null
+          id: string
+          instance_name: string
+          remote_jid: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          instance_name: string
+          remote_jid: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          instance_name?: string
+          remote_jid?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_config: {
+        Row: {
+          created_at: string | null
+          id: string
+          listen_rules: string | null
+          max_context_messages: number | null
+          reply_system_prompt: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          listen_rules?: string | null
+          max_context_messages?: number | null
+          reply_system_prompt?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          listen_rules?: string | null
+          max_context_messages?: number | null
+          reply_system_prompt?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_listen_contacts: {
+        Row: {
+          created_at: string | null
+          enabled: boolean | null
+          id: string
+          instance_name: string
+          remote_jid: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          instance_name: string
+          remote_jid: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          instance_name?: string
+          remote_jid?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       chatbot_flow_history: {
         Row: {
           created_at: string
