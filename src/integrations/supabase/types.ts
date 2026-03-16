@@ -486,6 +486,48 @@ export type Database = {
         }
         Relationships: []
       }
+      reminders: {
+        Row: {
+          completed: boolean | null
+          contact_name: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string
+          id: string
+          instance_name: string | null
+          phone_number: string | null
+          remote_jid: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          contact_name?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date: string
+          id?: string
+          instance_name?: string | null
+          phone_number?: string | null
+          remote_jid: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          contact_name?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string
+          id?: string
+          instance_name?: string | null
+          phone_number?: string | null
+          remote_jid?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tracked_links: {
         Row: {
           clicked: boolean | null

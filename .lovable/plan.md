@@ -1,112 +1,76 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Plano: Lembretes, IA Auto-Resposta, Dashboard Real e Redesign
+### Mudanças realizadas
 
-Este e um projeto grande. Vou dividir em 4 fases incrementais para entregar valor rapido sem quebrar nada.
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
----
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-### Fase 1: Tabela de Lembretes + CRUD no painel web + endpoint para extensao
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-**Banco de dados** — nova tabela `reminders`:
-```sql
-CREATE TABLE public.reminders (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  remote_jid text NOT NULL,
-  instance_name text,
-  contact_name text,
-  phone_number text,
-  title text NOT NULL,
-  description text,
-  due_date timestamptz NOT NULL,
-  completed boolean DEFAULT false,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can manage own reminders" ON public.reminders
-  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
-```
+### Mudanças realizadas
 
-**Frontend** — nova pagina `/reminders`:
-- Lista de lembretes com filtros (pendentes / concluidos / atrasados)
-- Formulario para criar lembrete associado a contato (nome, telefone, data, descricao)
-- Badges visuais: vermelho para atrasados, amarelo para hoje, verde para futuros
-- Rota adicionada no `App.tsx` e item no `AppSidebar`
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-**Backend (extensao)** — novos endpoints em `extension-api.ts`:
-- `GET /api/ext/reminders` — lista lembretes do usuario
-- `POST /api/ext/reminders` — criar lembrete a partir da sidebar
-- `PATCH /api/ext/reminders/:id` — marcar como concluido
-- Extensao Chrome exibe lembretes na aba de contato e permite criar novos
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
----
+### Redesign completo do overlay para sidebar fixa
 
-### Fase 2: Dashboard com dados reais
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-**Substituir dados mockados** no `Dashboard.tsx`:
-- Hook `useDashboardStats` que consulta via backend `/api/ext/dashboard` (ja existe e retorna `activeFlows`, `totalContacts`, `runningExecutions`, `totalInstances`, `recentExecutions`)
-- Cards de stats alimentados com dados reais
-- Lista de "Atividade Recente" alimentada por `recentExecutions` do backend
-- Indicador de lembretes pendentes para hoje
-- Atalhos rapidos funcional (links para as paginas corretas)
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
 
----
+## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
 
-### Fase 3: IA Auto-Resposta em tempo real
+### Implementação
+| Arquivo | Mudança |
+|---------|---------|
+| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
+| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
+- Ícones SVG inline (sem emojis)
 
-**Banco de dados** — nova tabela `ai_auto_reply_configs`:
-```sql
-CREATE TABLE public.ai_auto_reply_configs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  instance_name text NOT NULL,
-  enabled boolean DEFAULT false,
-  system_prompt text DEFAULT 'Voce e um assistente de vendas...',
-  max_context_messages int DEFAULT 10,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(user_id, instance_name)
-);
--- RLS similar
-```
+## Fase 1: Lembretes por Contato — Concluído ✅
 
-**Logica no webhook** (`webhook.ts`):
-- Ao receber mensagem inbound, verificar se `ai_auto_reply_configs` esta ativo para aquela instancia
-- Se ativo E nenhum fluxo em execucao para aquele contato:
-  - Buscar ultimas N mensagens da conversa como contexto
-  - Chamar OpenAI (usando chave do perfil do usuario) para gerar resposta
-  - Enviar resposta via Evolution API
-  - Salvar mensagem de resposta no banco
+### Mudanças realizadas
 
-**Frontend** — nova secao em Settings ou pagina dedicada:
-- Toggle de ativacao por instancia
-- Editor de system prompt
-- Configuracao de quantidade de mensagens de contexto
+| Arquivo | Mudança |
+|---------|---------|
+| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
+| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
+| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
+| **src/App.tsx** | Rota `/reminders` adicionada |
+| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
+| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
 
-**Extensao** — indicador visual na sidebar mostrando que IA esta ativa para aquela instancia
-
----
-
-### Fase 4: Redesign do Layout
-
-**AppLayout / AppSidebar:**
-- Sidebar com icones mais refinados e badges de notificacao (lembretes atrasados, fluxos ativos)
-- Header com breadcrumb contextual e busca global
-
-**Dashboard redesign:**
-- Cards com micro-graficos (sparklines) usando dados de 7 dias
-- Secao de lembretes do dia em destaque
-- Grid responsivo melhorado com 3 colunas no desktop
-
-**Paginas existentes:**
-- Contatos: tabela real com dados do banco, busca funcional
-- Agendamentos: integrar com lembretes
-
----
-
-### Ordem de implementacao sugerida
-
-Recomendo comecar pela **Fase 1 (Lembretes)** pois e autocontida, agrega valor imediato tanto no painel web quanto na extensao, e cria a base para as notificacoes do Dashboard.
-
-Posso implementar fase por fase. Qual fase voce quer que eu comece?
-
+### Próximas fases
+- Fase 2: Dashboard com dados reais
+- Fase 3: IA Auto-Resposta em tempo real
+- Fase 4: Redesign do Layout
