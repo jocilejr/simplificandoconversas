@@ -847,8 +847,10 @@
       createSidebar();
       startObserver();
       loadInstanceFromStorage();
+      loadManualPhoneMap(() => {
+        detectContact();
+      });
       loadDashboard();
-      detectContact();
       startPolling();
     }
   }, 1000);
@@ -864,8 +866,10 @@
       createSidebar();
       startObserver();
       loadInstanceFromStorage();
+      loadManualPhoneMap(() => {
+        detectContact();
+      });
       loadDashboard();
-      detectContact();
       startPolling();
     }
   }, 3000);
