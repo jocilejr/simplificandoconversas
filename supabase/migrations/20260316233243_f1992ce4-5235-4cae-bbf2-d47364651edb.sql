@@ -1,0 +1,1 @@
+ALTER TABLE ai_config ADD COLUMN IF NOT EXISTS reply_stop_contexts text DEFAULT '';

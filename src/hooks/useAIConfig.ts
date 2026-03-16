@@ -39,6 +39,7 @@ export function useAIConfig() {
       reply_system_prompt?: string;
       listen_rules?: string;
       max_context_messages?: number;
+      reply_stop_contexts?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");

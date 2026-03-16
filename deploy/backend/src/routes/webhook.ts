@@ -599,8 +599,15 @@ async function checkAndAutoReply(
   }
 
   const config = configRes.data || {};
-  const systemPrompt = config.reply_system_prompt || "Você é um assistente de vendas profissional. Responda de forma objetiva e cordial.";
+  const basePrompt = config.reply_system_prompt || "Você é um assistente de vendas profissional. Responda de forma objetiva e cordial.";
+  const stopContexts = config.reply_stop_contexts || "";
   const maxContext = config.max_context_messages || 10;
+
+  // Inject stop contexts into system prompt
+  let systemPrompt = basePrompt;
+  if (stopContexts.trim()) {
+    systemPrompt += `\n\nIMPORTANTE — Quando detectar qualquer uma das seguintes situações na mensagem do contato, você DEVE responder EXATAMENTE com "[HUMAN_NEEDED]" (sem nada mais). Situações:\n${stopContexts}`;
+  }
 
   // Fetch recent messages for context
   const { data: recentMsgs } = await supabase
@@ -642,6 +649,14 @@ async function checkAndAutoReply(
     const completion = await openaiRes.json() as any;
     const reply = completion.choices?.[0]?.message?.content;
     if (!reply) return;
+
+    // Check if AI determined a human is needed — disable auto-reply for this contact
+    if (reply.trim() === "[HUMAN_NEEDED]") {
+      await supabase.from("ai_auto_reply_contacts").delete()
+        .eq("user_id", userId).eq("remote_jid", remoteJid);
+      console.log(`[ai-reply] Disabled for ${remoteJid} — human needed`);
+      return;
+    }
 
     // Send via Evolution API
     await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {

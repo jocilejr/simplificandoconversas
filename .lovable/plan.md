@@ -1,59 +1,76 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Plano: Desativar IA Responde quando contexto de parada for atingido
+### Mudanças realizadas
 
-### Comportamento desejado
-Quando a IA detectar que a mensagem do contato se encaixa em um "contexto de não resposta" (ex: "já paguei"), ela deve **desativar o toggle "IA Responde"** para aquele contato (deletar o registro de `ai_auto_reply_contacts`), e não apenas silenciar naquela mensagem.
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-### Alterações
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-**1. Banco de dados — nova coluna na `ai_config`**
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-Migration para adicionar `reply_stop_contexts`:
-```sql
-ALTER TABLE ai_config ADD COLUMN IF NOT EXISTS reply_stop_contexts text DEFAULT '';
-```
+### Mudanças realizadas
 
-Também atualizar `deploy/init-db.sql` para incluir a coluna.
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-**2. Backend — `deploy/backend/src/routes/webhook.ts` (função `checkAndAutoReply`)**
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-- Carregar `reply_stop_contexts` do `config` (já carregado na linha 592)
-- Se houver contextos de parada, injetar no prompt: instruir o modelo a retornar `[HUMAN_NEEDED]` quando detectar essas situações
-- Após receber a resposta do modelo, se for `[HUMAN_NEEDED]`:
-  - **Deletar** o registro de `ai_auto_reply_contacts` para aquele `user_id` + `remote_jid` (desativa o toggle)
-  - Não enviar mensagem
-  - Retornar sem fazer nada
+### Redesign completo do overlay para sidebar fixa
 
-```typescript
-// Após obter reply (linha 643):
-if (reply.trim() === "[HUMAN_NEEDED]") {
-  // Desativar IA Responde para este contato
-  await supabase.from("ai_auto_reply_contacts").delete()
-    .eq("user_id", userId).eq("remote_jid", remoteJid);
-  console.log(`[ai-reply] Disabled for ${remoteJid} — human needed`);
-  return;
-}
-```
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-**3. Frontend — `src/components/settings/AISection.tsx`**
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
 
-Adicionar campo "Contextos de Não Resposta" na seção "IA Responde":
-- Textarea com placeholder explicativo
-- Salvar junto com os outros campos via `updateConfig.mutate`
+## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
 
-**4. Hook — `src/hooks/useAIConfig.ts`**
+### Implementação
+| Arquivo | Mudança |
+|---------|---------|
+| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
+| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
+- Ícones SVG inline (sem emojis)
 
-Adicionar `reply_stop_contexts` ao tipo aceito pelo `mutationFn`.
+## Fase 1: Lembretes por Contato — Concluído ✅
 
-**5. Extensão — sem mudanças de código**
+### Mudanças realizadas
 
-O toggle já reflete o estado da API. Quando o registro for deletado no banco, na próxima consulta `GET /ai-status` o toggle aparecerá desligado automaticamente. Se a extensão já estiver aberta, o toggle atualizará no próximo polling.
+| Arquivo | Mudança |
+|---------|---------|
+| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
+| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
+| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
+| **src/App.tsx** | Rota `/reminders` adicionada |
+| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
+| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
 
-### Resumo do fluxo
-1. Contato envia "já paguei" → webhook chama `checkAndAutoReply`
-2. Modelo recebe prompt com contextos de parada → retorna `[HUMAN_NEEDED]`
-3. Backend deleta registro em `ai_auto_reply_contacts` → toggle desativa
-4. Nenhuma mensagem é enviada ao contato
-5. Na extensão, o toggle "IA Responde" aparece desligado
-
+### Próximas fases
+- Fase 2: Dashboard com dados reais
+- Fase 3: IA Auto-Resposta em tempo real
+- Fase 4: Redesign do Layout

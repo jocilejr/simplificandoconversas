@@ -423,6 +423,7 @@ CREATE TABLE IF NOT EXISTS public.ai_config (
   reply_system_prompt text DEFAULT 'Você é um assistente de vendas profissional. Responda de forma objetiva e cordial.',
   listen_rules text DEFAULT 'Detecte menções a pagamentos, datas, prazos, promessas de pagamento e compromissos importantes. Crie lembretes apenas quando houver informação concreta.',
   max_context_messages int DEFAULT 10,
+  reply_stop_contexts text DEFAULT '',
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.ai_config ENABLE ROW LEVEL SECURITY;

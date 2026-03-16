@@ -16,6 +16,7 @@ export function AISection() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [listenRules, setListenRules] = useState("");
   const [maxContext, setMaxContext] = useState(10);
+  const [replyStopContexts, setReplyStopContexts] = useState("");
 
   useEffect(() => {
     if (profile) setOpenaiKey(profile.openai_api_key || "");
@@ -26,6 +27,7 @@ export function AISection() {
       setSystemPrompt(config.reply_system_prompt || "");
       setListenRules(config.listen_rules || "");
       setMaxContext(config.max_context_messages || 10);
+      setReplyStopContexts(config.reply_stop_contexts || "");
     }
   }, [config]);
 
@@ -89,6 +91,18 @@ export function AISection() {
             </p>
           </div>
           <div className="space-y-2">
+            <Label>Contextos de Não Resposta</Label>
+            <Textarea
+              placeholder="Quando o contato disser que já pagou&#10;Pedidos de cancelamento&#10;Reclamações graves&#10;Solicitação de reembolso"
+              value={replyStopContexts}
+              onChange={(e) => setReplyStopContexts(e.target.value)}
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              Situações onde a IA deve parar de responder e desativar o toggle automaticamente, deixando um humano assumir
+            </p>
+          </div>
+          <div className="space-y-2">
             <Label>Mensagens de Contexto: {maxContext}</Label>
             <Slider
               value={[maxContext]}
@@ -102,7 +116,7 @@ export function AISection() {
             </p>
           </div>
           <Button
-            onClick={() => updateConfig.mutate({ reply_system_prompt: systemPrompt, max_context_messages: maxContext })}
+            onClick={() => updateConfig.mutate({ reply_system_prompt: systemPrompt, max_context_messages: maxContext, reply_stop_contexts: replyStopContexts })}
             disabled={updateConfig.isPending}
           >
             {updateConfig.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
