@@ -16,6 +16,7 @@ export function AISection() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [listenRules, setListenRules] = useState("");
   const [maxContext, setMaxContext] = useState(10);
+  const [replyStopContexts, setReplyStopContexts] = useState("");
 
   useEffect(() => {
     if (profile) setOpenaiKey(profile.openai_api_key || "");
