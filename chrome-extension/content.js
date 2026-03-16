@@ -12,6 +12,7 @@
   let contactData = null;
   let flowsData = null;
   let crossData = null;
+  let aiStatusData = null;
 
   // ── SVG Icons ──
   const ICONS = {
