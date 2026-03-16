@@ -399,7 +399,7 @@ router.post("/*", async (req, res) => {
 
 async function checkAndTriggerFlows(
   supabase: any, userId: string, remoteJid: string, messageContent: string, conversationId: string, instanceName: string, resolvedPhone: string | null
-) {
+): Promise<boolean> {
   const { data: flows, error: flowsErr } = await supabase
     .from("chatbot_flows")
     .select("id, nodes, instance_names")
