@@ -262,6 +262,7 @@
   let dashboardRetries = 0;
   let dashboardInFlight = false;
   let contactInFlight = false;
+  let contactLoadGeneration = 0; // Increments on contact change to discard stale responses
   let errorBackoffCycles = 0;
 
   async function loadDashboard() {
