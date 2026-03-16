@@ -248,12 +248,14 @@
     const identifier = newPhone || newName;
     const prevIdentifier = currentPhone || currentContactName;
     if (identifier !== prevIdentifier) {
+      contactLoadGeneration++; // Invalidate any in-flight requests for previous contact
       manualPhoneOverride = appliedPersistedPhone ? newPhone : null;
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
       crossData = null;
       aiStatusData = null;
+      if (currentTab === "contact") renderCurrentTab(); // Immediately show loading state
       loadContactData();
     }
   }
