@@ -1,0 +1,1 @@
+ALTER TABLE public.ai_config ADD CONSTRAINT ai_config_user_id_unique UNIQUE (user_id);
