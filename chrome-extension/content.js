@@ -368,7 +368,7 @@
   }
 
   function renderContact(body) {
-    if (!currentPhone) {
+    if (!currentPhone && !currentContactName) {
       body.innerHTML = `
         <div class="sc-no-contact">
           <div class="sc-no-contact-icon">${ICONS.user}</div>
