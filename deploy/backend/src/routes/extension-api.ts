@@ -302,13 +302,26 @@ router.post("/trigger-flow", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
-  const { flowId, phone, instanceName } = req.body;
-  if (!flowId || !phone || !instanceName) {
-    return res.status(400).json({ error: "flowId, phone, instanceName required" });
+  const { flowId, phone, instanceName, remoteJid: bodyRemoteJid, name: bodyName } = req.body;
+  if (!flowId || !instanceName) {
+    return res.status(400).json({ error: "flowId, instanceName required" });
   }
 
-  const cleaned = phone.replace(/\D/g, "");
-  const remoteJid = `${cleaned}@s.whatsapp.net`;
+  let remoteJid: string;
+  if (bodyRemoteJid) {
+    remoteJid = bodyRemoteJid;
+  } else if (phone) {
+    const cleaned = phone.replace(/\D/g, "");
+    remoteJid = `${cleaned}@s.whatsapp.net`;
+  } else if (bodyName) {
+    // Resolve by name
+    const sb2 = getServiceClient();
+    const conv = await resolveContact(sb2, userId, undefined, bodyName, instanceName);
+    if (!conv?.remote_jid) return res.status(400).json({ error: "Contato não encontrado pelo nome" });
+    remoteJid = conv.remote_jid;
+  } else {
+    return res.status(400).json({ error: "phone, remoteJid or name required" });
+  }
 
   const sb = getServiceClient();
 
