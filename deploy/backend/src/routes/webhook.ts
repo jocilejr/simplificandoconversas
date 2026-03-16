@@ -363,11 +363,30 @@ router.post("/*", async (req, res) => {
       }
     }
 
+    let flowTriggered = false;
     if (!fromMe && messageContent && !flowResumed) {
       try {
-        await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance, resolvedPhone);
+        flowTriggered = await checkAndTriggerFlows(supabase, userId, remoteJid, messageContent, conv.id, instance, resolvedPhone);
       } catch (triggerErr: any) {
         console.error("Flow trigger error (non-fatal):", triggerErr);
+      }
+    }
+
+    // AI Auto-Reply: only if no flow was resumed or triggered
+    if (!fromMe && messageContent && !flowResumed && !flowTriggered) {
+      try {
+        await checkAndAutoReply(supabase, userId, remoteJid, conv.id, instance, messageContent);
+      } catch (aiErr: any) {
+        console.error("AI auto-reply error (non-fatal):", aiErr);
+      }
+    }
+
+    // AI Listen: runs independently — analyzes messages for reminders
+    if (!fromMe && messageContent) {
+      try {
+        await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, messageContent, contactName);
+      } catch (listenErr: any) {
+        console.error("AI listen error (non-fatal):", listenErr);
       }
     }
 
