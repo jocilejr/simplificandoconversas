@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Simplificando Conversas",
+  "name": "Chatbot Interno Origem Viva",
   "version": "1.0.0",
   "description": "Gerencie fluxos de chatbot diretamente no WhatsApp Web",
   "permissions": ["storage", "activeTab"],

@@ -4,7 +4,6 @@ import {
   CalendarClock,
   Workflow,
   Settings,
-  Zap,
   LogOut,
   Send,
   Bell,
@@ -66,12 +65,10 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="p-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
-            <Zap className="h-4.5 w-4.5 text-primary-foreground" />
-          </div>
+          <img src="/images/logo-ov.png" alt="Origem Viva" className="h-9 w-9 shrink-0 rounded-xl" />
           {!collapsed && (
-            <span className="text-base font-semibold tracking-tight text-sidebar-foreground">
-              Simplificando
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground leading-tight">
+              Chatbot Interno<br />Origem Viva
             </span>
           )}
         </div>

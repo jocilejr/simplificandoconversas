@@ -70,10 +70,16 @@
   font-weight: 600;
   letter-spacing: -0.3px;
 }
+.sc-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+}
 .sc-logo-icon {
   width: 28px;
   height: 28px;
-  background: linear-gradient(135deg, #00a884, #25d366);
+  background: linear-gradient(135deg, #c5a55a, #d4b96a);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -654,9 +660,55 @@
   border-radius: 50%;
 }
 .sc-toggle input:checked + .sc-toggle-slider {
-  background-color: #00a884;
+  background-color: #c5a55a;
 }
 .sc-toggle input:checked + .sc-toggle-slider:before {
   transform: translateX(16px);
   background-color: #fff;
 }
+
+/* ── Reminders ── */
+.sc-reminder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #111b21;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  border: 1px solid #1a2730;
+  transition: border-color 0.15s;
+}
+.sc-reminder-item.today { border-left: 3px solid #c5a55a; }
+.sc-reminder-item.overdue { border-left: 3px solid #ef4444; }
+.sc-reminder-item.completed { opacity: 0.5; }
+.sc-reminder-info { flex: 1; min-width: 0; }
+.sc-reminder-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e9edef;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-reminder-meta {
+  font-size: 11px;
+  color: #8696a0;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-reminder-badge {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sc-reminder-badge.today { background: rgba(197, 165, 90, 0.15); color: #c5a55a; }
+.sc-reminder-badge.overdue { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.sc-reminder-badge.future { background: rgba(134, 150, 160, 0.1); color: #8696a0; }
+.sc-reminder-badge.completed { background: rgba(0, 168, 132, 0.12); color: #00a884; }
