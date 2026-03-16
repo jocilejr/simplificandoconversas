@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   Users,
-  CalendarClock,
   Workflow,
   Settings,
   LogOut,
@@ -56,7 +55,6 @@ export function AppSidebar() {
   const mainItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Contatos", url: "/contacts", icon: Users },
-    { title: "Agendamentos", url: "/schedule", icon: CalendarClock },
     { title: "Fluxos", url: "/chatbot", icon: Workflow },
     { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
