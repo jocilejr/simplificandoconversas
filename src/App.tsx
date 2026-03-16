@@ -32,7 +32,7 @@ const App = () => (
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/contacts" element={<Contacts />} />
-              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/settings" element={<SettingsPage />} />
