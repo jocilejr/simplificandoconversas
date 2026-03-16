@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   Users,
-  CalendarClock,
   Workflow,
   Settings,
   LogOut,
