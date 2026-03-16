@@ -27,6 +27,7 @@ export function AISection() {
       setSystemPrompt(config.reply_system_prompt || "");
       setListenRules(config.listen_rules || "");
       setMaxContext(config.max_context_messages || 10);
+      setReplyStopContexts(config.reply_stop_contexts || "");
     }
   }, [config]);
 
