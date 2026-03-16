@@ -455,6 +455,7 @@ async function checkAndTriggerFlows(
     }
 
     console.log(`Triggering flow ${flow.id} for ${remoteJid} (keyword match)`);
+    triggered = true;
     const backendUrl = `http://localhost:${process.env.PORT || 3001}`;
 
     fetch(`${backendUrl}/api/execute-flow`, {
@@ -469,6 +470,7 @@ async function checkAndTriggerFlows(
       .then(r => console.log(`Flow ${flow.id} trigger result:`, r))
       .catch(e => console.error(`Flow ${flow.id} call error:`, e));
   }
+  return triggered;
 }
 
 async function checkAndResumeWaitingReply(
