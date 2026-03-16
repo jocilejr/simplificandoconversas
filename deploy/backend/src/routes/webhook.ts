@@ -698,16 +698,28 @@ async function checkAndAutoListen(
 
   const listenRules = configRes.data?.listen_rules || "Detecte menções a pagamentos, datas, prazos e promessas.";
   const phone = remoteJid.split("@")[0];
+  const now = new Date().toISOString();
 
   const systemPrompt = `Você é um analisador de mensagens de WhatsApp. Sua tarefa é analisar a mensagem do contato e determinar se ela contém informações relevantes para criar um lembrete.
 
 Regras do usuário: ${listenRules}
 
+REGRAS DE DATA IMPORTANTES:
+- Data/hora atual: ${now}
+- Quando o contato mencionar "dia X" (ex: "dia 12", "dia 5"): se o dia X do mês atual já passou, agende para o dia X do PRÓXIMO mês. Se ainda não passou, use o mês atual.
+- Quando mencionar um dia da semana (ex: "segunda", "quarta", "sexta"): se esse dia da semana já passou nesta semana, agende para o mesmo dia da PRÓXIMA semana. Se ainda não passou, use esta semana.
+- "semana que vem" = próxima semana.
+- "mês que vem" = próximo mês.
+- "amanhã" = dia seguinte ao atual.
+- "hoje" = dia atual.
+- NUNCA gere uma due_date no passado (anterior a ${now}). Se o cálculo resultar em data passada, avance para o próximo período (próximo mês ou próxima semana).
+- Se não houver data específica mencionada, use amanhã às 09:00.
+- Sempre use horário comercial (09:00) quando o contato não especificar horário.
+
 Se a mensagem contiver algo relevante, responda usando a ferramenta create_reminder.
 Se NÃO houver nada relevante, responda usando a ferramenta no_action.
 
-Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}.
-Data/hora atual: ${new Date().toISOString()}`;
+Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}.`;
 
   try {
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
