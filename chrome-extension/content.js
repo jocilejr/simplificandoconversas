@@ -187,10 +187,11 @@
       setTimeout(() => { input.style.borderColor = ''; }, 1500);
       return;
     }
-    // Preserve currentContactName so detectContact knows the header context
-    // (don't clear it — it's the name shown in the header)
+
     currentPhone = digits;
     manualPhoneOverride = digits; // Lock this phone until contact changes
+    saveManualPhoneForContact(currentContactName, digits);
+
     contactData = null;
     crossData = null;
     aiStatusData = null;
