@@ -494,7 +494,12 @@ router.post("/", async (req, res) => {
               });
               const metaResult = await metaResp.json();
               console.log(`[execute-flow] metaPixel response:`, JSON.stringify(metaResult));
-              results.push(`metaPixel: ok (${eventName})`);
+              if (metaResult.error) {
+                console.error(`[execute-flow] metaPixel API error:`, JSON.stringify(metaResult.error));
+                results.push(`metaPixel: error - Meta API: ${metaResult.error.message || JSON.stringify(metaResult.error)}`);
+              } else {
+                results.push(`metaPixel: ok (${eventName})`);
+              }
             } catch (pixelErr: any) {
               console.error(`[execute-flow] metaPixel error:`, pixelErr);
               results.push(`metaPixel: error - ${pixelErr.message}`);
