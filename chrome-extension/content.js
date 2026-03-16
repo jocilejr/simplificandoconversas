@@ -170,6 +170,7 @@
       if (currentPhone !== null || currentContactName !== null) {
         currentPhone = null;
         currentContactName = null;
+        manualPhoneOverride = null;
         contactData = null;
         crossData = null;
         if (currentTab === "contact") renderCurrentTab();
@@ -186,14 +187,21 @@
       newPhone = digits;
       newName = null;
     } else {
-      // Header shows a saved name — no automatic phone extraction
       newPhone = null;
       newName = raw;
+    }
+
+    // If we have a manual override and the header still shows the same name, keep the manual phone
+    if (manualPhoneOverride && newName && newName === currentContactName) {
+      // Same contact header, manual phone is active — don't reset
+      return;
     }
 
     const identifier = newPhone || newName;
     const prevIdentifier = currentPhone || currentContactName;
     if (identifier !== prevIdentifier) {
+      // Contact actually changed — clear manual override
+      manualPhoneOverride = null;
       currentPhone = newPhone;
       currentContactName = newName;
       contactData = null;
