@@ -541,7 +541,7 @@ router.get("/ai-status", async (req, res) => {
 
   res.json({
     reply: replyRes.data ? replyRes.data.enabled : false,
-    listen: listenRes.data ? listenRes.data.enabled : false,
+    listen: listenRes.data ? listenRes.data.enabled : true,
     remoteJid: jid,
   });
 });
