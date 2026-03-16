@@ -134,22 +134,32 @@ router.get("/list-instances", async (req, res) => {
   }
 });
 
-// ── GET /api/ext/contact-cross?phone=X ──
+// ── GET /api/ext/contact-cross?phone=X or ?name=X ──
 router.get("/contact-cross", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
-  if (!phone) return res.status(400).json({ error: "phone required" });
+  const name = (req.query.name as string || "").trim();
+  if (!phone && !name) return res.status(400).json({ error: "phone or name required" });
 
   const excludeInstance = req.query.excludeInstance as string || "";
   const sb = getServiceClient();
 
-  let query = sb
-    .from("conversations")
-    .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
-    .eq("user_id", userId)
-    .eq("phone_number", phone);
+  let query: any;
+  if (phone) {
+    query = sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
+      .eq("user_id", userId)
+      .eq("phone_number", phone);
+  } else {
+    query = sb
+      .from("conversations")
+      .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
+      .eq("user_id", userId)
+      .eq("contact_name", name);
+  }
 
   if (excludeInstance) {
     query = query.neq("instance_name", excludeInstance);
