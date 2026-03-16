@@ -372,6 +372,44 @@
         <button class="sc-btn sc-btn-secondary sc-btn-icon" id="sc-refresh-contact" title="Atualizar">${ICONS.refresh}</button>
       </div>`;
 
+    // AI Toggles
+    const hasActiveFlow = executions.some((e) => ["running", "waiting", "waiting_click", "waiting_reply"].includes(e.status));
+    const aiReplyEnabled = aiStatusData?.reply || false;
+    const aiListenEnabled = aiStatusData?.listen || false;
+    const aiRemoteJid = aiStatusData?.remoteJid || contact?.remote_jid || '';
+
+    html += '<div class="sc-section">';
+    html += `<div class="sc-section-header"><div class="sc-section-title">${ICONS.brain} Inteligência Artificial</div></div>`;
+    html += '<div class="sc-ai-toggles">';
+    
+    // AI Reply toggle
+    html += `
+      <div class="sc-ai-toggle-row">
+        <div class="sc-ai-toggle-info">
+          <span class="sc-ai-toggle-label">${ICONS.brain} IA Responde</span>
+          <span class="sc-ai-toggle-desc">${hasActiveFlow && !aiReplyEnabled ? 'Desativado (fluxo ativo)' : aiReplyEnabled ? 'Respondendo automaticamente' : 'Desativado'}</span>
+        </div>
+        <label class="sc-toggle ${hasActiveFlow && !aiReplyEnabled ? 'disabled' : ''}">
+          <input type="checkbox" id="sc-ai-reply-toggle" ${aiReplyEnabled ? 'checked' : ''} ${hasActiveFlow && !aiReplyEnabled ? 'disabled' : ''}>
+          <span class="sc-toggle-slider"></span>
+        </label>
+      </div>`;
+    
+    // AI Listen toggle
+    html += `
+      <div class="sc-ai-toggle-row">
+        <div class="sc-ai-toggle-info">
+          <span class="sc-ai-toggle-label">${ICONS.ear} IA Escuta</span>
+          <span class="sc-ai-toggle-desc">${aiListenEnabled ? 'Monitorando mensagens' : 'Desativado'}</span>
+        </div>
+        <label class="sc-toggle">
+          <input type="checkbox" id="sc-ai-listen-toggle" ${aiListenEnabled ? 'checked' : ''}>
+          <span class="sc-toggle-slider"></span>
+        </label>
+      </div>`;
+    
+    html += '</div></div>';
+
     // Tags
     if (tags.length > 0) {
       const remoteJid = contact?.remote_jid || '';
