@@ -175,8 +175,12 @@ async function handleMessage(msg) {
     case "validate-session":
       return apiFetch("/api/ext/list-instances");
 
-    case "ai-status":
-      return apiFetch(`/api/ext/ai-status?phone=${encodeURIComponent(msg.phone)}`);
+    case "ai-status": {
+      let url = `/api/ext/ai-status?`;
+      if (msg.phone) url += `phone=${encodeURIComponent(msg.phone)}`;
+      else if (msg.name) url += `name=${encodeURIComponent(msg.name)}`;
+      return apiFetch(url);
+    }
 
     case "ai-reply-toggle":
       return apiFetch("/api/ext/ai-reply-toggle", {
