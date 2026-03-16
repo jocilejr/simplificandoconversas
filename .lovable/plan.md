@@ -1,45 +1,76 @@
+## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
+### Root Cause
+O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-## Plano: Resolver detecção de contato quando header mostra nome salvo
+### Mudanças realizadas
 
-### Problema confirmado
-- Contato salvo no banco: `contact_name: "."`, `phone_number: 558981340810`
-- WhatsApp header mostra: "J Júnior" (alias local do telefone do usuário)
-- Extensão envia `name: "J Júnior"` → backend não encontra porque no banco é `"."`
-- Wildcard no backend não resolve: `"."` nunca bate com `"%J%nior%"`
+| Arquivo | Mudança |
+|---------|---------|
+| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
+| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
+| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
+| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
 
-### Solução: 2 frentes
+### Estratégia de resolução (3 camadas)
+1. `bodyResolvedPhone` do webhook (mais rápido)
+2. `phone_number` da conversa por `remote_jid` lookup
+3. `phone_number` da conversa por `lid` lookup
 
-**Frente 1 — Extensão (`chrome-extension/content.js`): Extrair telefone do drawer**
+## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
 
-Na função `detectContact()` (linha 143), quando o header mostra um nome (não um telefone), adicionar fallback:
-1. Procurar no DOM o painel de informações do contato que já está aberto ou acessível
-2. Extrair o telefone do elemento `span[data-testid="selectable-text"]` ou similar que mostra `+55 89 8134-0810`
-3. Limpar e usar como `currentPhone` em vez de depender do `currentContactName`
+### Mudanças realizadas
 
-Seletores candidatos para o telefone no drawer:
-- `section span[data-testid="selectable-text"]` contendo padrão `+\d{2}\s\d{2}`
-- `div[data-testid="contact-info-drawer"] span` com dígitos
+| Arquivo | Mudança |
+|---------|---------|
+| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
+| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
+| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
+| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
 
-Se o drawer não estiver aberto, manter o fallback por nome mas com a Frente 2.
+## Extensão Chrome — Sidebar Profissional — Concluído ✅
 
-**Frente 2 — Backend (`extension-api.ts`): Resolver por telefone parcial**
+### Redesign completo do overlay para sidebar fixa
 
-Na função `resolveContact()`, quando busca por nome falha:
-1. Extrair dígitos do nome (caso venha com formato de telefone parcial)
-2. Adicionar fallback: buscar em `phone_number` com `LIKE '%últimos8dígitos%'`
-3. Manter prioridade: `phone` > `remoteJid` > `name` > fallback parcial
+| Arquivo | Descrição |
+|---------|-----------|
+| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
+| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
+| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
+| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
 
-**Frente 3 — Extensão: Passar instância nos lookups**
+### Funcionalidades
+- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
+- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
+- Lista de execuções recentes com nomes de fluxo e contato
+- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
+- Detecção automática de instância (sem seletor manual)
+- Toggle para abrir/fechar sidebar
+- Polling a cada 8s para atualização
 
-Incluir `instance` nos calls de `contact-status` e `ai-status` (linha 221-225) para melhorar precisão multi-instância.
+## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
 
-### Arquivos alterados
-1. `chrome-extension/content.js` — `detectContact()` + `loadContactData()`
-2. `deploy/backend/src/routes/extension-api.ts` — `resolveContact()`
+### Implementação
+| Arquivo | Mudança |
+|---------|---------|
+| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
+| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
+- Ícones SVG inline (sem emojis)
 
-### Impacto
-- Zero breaking changes — fallback adicional, não substitui lógica existente
-- Contatos com alias local diferente do banco passam a funcionar
-- Contatos sem nome (armazenados como ".") são resolvidos pelo telefone do drawer
+## Fase 1: Lembretes por Contato — Concluído ✅
 
+### Mudanças realizadas
+
+| Arquivo | Mudança |
+|---------|---------|
+| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
+| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
+| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
+| **src/App.tsx** | Rota `/reminders` adicionada |
+| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
+| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
+
+### Próximas fases
+- Fase 2: Dashboard com dados reais
+- Fase 3: IA Auto-Resposta em tempo real
+- Fase 4: Redesign do Layout

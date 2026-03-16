@@ -139,6 +139,36 @@
     }
   });
 
+  // ── Extract phone from WhatsApp Contact Info drawer ──
+  function extractPhoneFromDrawer() {
+    // Try several selectors where WhatsApp shows the phone number in the right-side panel
+    const selectors = [
+      // Contact info drawer — phone number in the "about" or phone section
+      'div[data-testid="contact-info-drawer"] span.selectable-text span',
+      'div[data-testid="contact-info-drawer"] span[data-testid="selectable-text"]',
+      // Right panel section with phone
+      'section span[data-testid="selectable-text"]',
+      // Generic: any span in the right drawer area containing a phone pattern
+      '#app div[tabindex] section span[dir="auto"]',
+    ];
+
+    for (const sel of selectors) {
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        const text = el.textContent || '';
+        // Match phone patterns like +55 89 8134-0810 or 5589981340810
+        const phoneMatch = text.match(/\+?\d[\d\s\-()]{8,}/);
+        if (phoneMatch) {
+          const digits = phoneMatch[0].replace(/\D/g, '');
+          if (digits.length >= 10 && digits.length <= 15) {
+            return digits;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   // ── Detect Contact ──
   function detectContact() {
     const headerEl =
@@ -147,7 +177,7 @@
       document.querySelector("header ._amig span[dir='auto']");
 
     if (!headerEl) {
-      if (currentPhone !== null) {
+      if (currentPhone !== null || currentContactName !== null) {
         currentPhone = null;
         currentContactName = null;
         contactData = null;
@@ -166,9 +196,15 @@
       newPhone = digits;
       newName = null;
     } else {
-      // Contact has a saved name, not a phone number
-      newPhone = null;
-      newName = raw;
+      // Header shows a saved name — try to extract phone from the contact info drawer
+      const drawerPhone = extractPhoneFromDrawer();
+      if (drawerPhone) {
+        newPhone = drawerPhone;
+        newName = raw; // keep name for display
+      } else {
+        newPhone = null;
+        newName = raw;
+      }
     }
 
     const identifier = newPhone || newName;
@@ -218,11 +254,12 @@
       const lookupParam = currentPhone
         ? { phone: currentPhone }
         : { name: currentContactName };
+      const instanceParam = detectedInstance?.instance_name ? { instance: detectedInstance.instance_name } : {};
       const [status, flows, cross, aiStatus] = await Promise.all([
-        apiCall("contact-status", lookupParam),
+        apiCall("contact-status", { ...lookupParam, ...instanceParam }),
         apiCall("flows"),
         apiCall("contact-cross", { ...lookupParam, excludeInstance: detectedInstance?.instance_name || '' }),
-        apiCall("ai-status", lookupParam),
+        apiCall("ai-status", { ...lookupParam, ...instanceParam }),
       ]);
       contactData = status;
       flowsData = flows;
