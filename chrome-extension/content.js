@@ -139,43 +139,22 @@
     }
   });
 
-  // ── Extract phone from WhatsApp UI (drawer, header subtitle, side panel) ──
-  function extractPhoneFromUI() {
-    // Broader set of selectors to find phone numbers anywhere in the visible UI
-    const selectors = [
-      // Header subtitle area (shows phone when name is in title)
-      'header span[data-testid="conversation-info-header-chat-subtitle"]',
-      'header div._amig span[dir="auto"]:not(:first-child)',
-      '#main header div > span:nth-child(2)',
-      // Contact info drawer
-      'div[data-testid="contact-info-drawer"] span.selectable-text span',
-      'div[data-testid="contact-info-drawer"] span[data-testid="selectable-text"]',
-      // Right panel / contact info section
-      'section span[data-testid="selectable-text"]',
-      '#app div[tabindex] section span[dir="auto"]',
-      // The "phone" row inside contact info
-      'div[data-testid="chat-info-drawer"] span[dir="auto"]',
-      // Fallback: any visible element in the right side panel
-      'div[data-testid="conversation-panel-wrapper"] + div span[dir="auto"]',
-    ];
-
-    for (const sel of selectors) {
-      const els = document.querySelectorAll(sel);
-      for (const el of els) {
-        const text = el.textContent || '';
-        // Match phone patterns like +55 89 8134-0810 or 5589981340810
-        const phoneMatch = text.match(/\+?\d[\d\s\-()]{8,}/);
-        if (phoneMatch) {
-          const digits = phoneMatch[0].replace(/\D/g, '');
-          if (digits.length >= 10 && digits.length <= 15) {
-            console.log('[SC] extractPhoneFromUI found:', digits, 'via selector:', sel);
-            return digits;
-          }
-        }
-      }
+  // ── Manual phone input handler ──
+  function handleManualPhoneSubmit(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const digits = input.value.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 15) {
+      input.style.borderColor = '#ef4444';
+      setTimeout(() => { input.style.borderColor = ''; }, 1500);
+      return;
     }
-    console.log('[SC] extractPhoneFromUI: no phone found in UI');
-    return null;
+    currentPhone = digits;
+    contactData = null;
+    crossData = null;
+    aiStatusData = null;
+    renderCurrentTab();
+    loadContactData();
   }
 
   // ── Detect Contact ──
@@ -205,15 +184,9 @@
       newPhone = digits;
       newName = null;
     } else {
-      // Header shows a saved name — try to extract phone from UI elements
-      const uiPhone = extractPhoneFromUI();
-      if (uiPhone) {
-        newPhone = uiPhone;
-        newName = raw; // keep name for display
-      } else {
-        newPhone = null;
-        newName = raw;
-      }
+      // Header shows a saved name — no automatic phone extraction
+      newPhone = null;
+      newName = raw;
     }
 
     const identifier = newPhone || newName;
@@ -420,7 +393,17 @@
           <div class="sc-no-contact-icon">${ICONS.user}</div>
           <div class="sc-no-contact-title">Nenhum contato selecionado</div>
           <div class="sc-no-contact-desc">Abra uma conversa no WhatsApp para ver os detalhes do contato</div>
+          <div class="sc-manual-phone-section" style="margin-top:20px;width:100%;">
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="sc-manual-phone-empty" class="sc-manual-input" placeholder="Ex: 5589981340810" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid #233040;background:#111b21;color:#e9edef;font-size:13px;outline:none;">
+              <button class="sc-btn sc-btn-primary" id="sc-manual-search-empty">${ICONS.send} Buscar</button>
+            </div>
+          </div>
         </div>`;
+      const searchBtn = body.querySelector('#sc-manual-search-empty');
+      const phoneInput = body.querySelector('#sc-manual-phone-empty');
+      if (searchBtn) searchBtn.addEventListener('click', () => handleManualPhoneSubmit('sc-manual-phone-empty'));
+      if (phoneInput) phoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleManualPhoneSubmit('sc-manual-phone-empty'); });
       return;
     }
 
@@ -466,6 +449,19 @@
         </div>
         <button class="sc-btn sc-btn-secondary sc-btn-icon" id="sc-refresh-contact" title="Atualizar">${ICONS.refresh}</button>
       </div>`;
+
+    // Manual phone input when contact not resolved
+    if (!contact && !currentPhone) {
+      html += `
+        <div class="sc-section">
+          <div class="sc-section-header"><div class="sc-section-title">Contato não encontrado</div></div>
+          <div style="font-size:12px;color:#8696a0;margin-bottom:10px;">Digite o número para carregar os dados:</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="sc-manual-phone-resolve" class="sc-manual-input" placeholder="Ex: 5589981340810" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid #233040;background:#111b21;color:#e9edef;font-size:13px;outline:none;">
+            <button class="sc-btn sc-btn-primary" id="sc-manual-search-resolve">${ICONS.send} Buscar</button>
+          </div>
+        </div>`;
+    }
 
     // AI Toggles
     const hasActiveFlow = executions.some((e) => ["running", "waiting", "waiting_click", "waiting_reply"].includes(e.status));
@@ -599,6 +595,12 @@
         loadContactData();
       });
     }
+
+    // Manual phone resolve listeners
+    const manualSearchBtn = document.getElementById('sc-manual-search-resolve');
+    const manualPhoneInput = document.getElementById('sc-manual-phone-resolve');
+    if (manualSearchBtn) manualSearchBtn.addEventListener('click', () => handleManualPhoneSubmit('sc-manual-phone-resolve'));
+    if (manualPhoneInput) manualPhoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleManualPhoneSubmit('sc-manual-phone-resolve'); });
 
     // AI Reply toggle
     const aiReplyToggle = document.getElementById("sc-ai-reply-toggle");
