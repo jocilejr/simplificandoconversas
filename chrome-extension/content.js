@@ -450,6 +450,19 @@
         <button class="sc-btn sc-btn-secondary sc-btn-icon" id="sc-refresh-contact" title="Atualizar">${ICONS.refresh}</button>
       </div>`;
 
+    // Manual phone input when contact not resolved
+    if (!contact && !currentPhone) {
+      html += `
+        <div class="sc-section">
+          <div class="sc-section-header"><div class="sc-section-title">Contato não encontrado</div></div>
+          <div style="font-size:12px;color:#8696a0;margin-bottom:10px;">Digite o número para carregar os dados:</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="sc-manual-phone-resolve" class="sc-manual-input" placeholder="Ex: 5589981340810" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid #233040;background:#111b21;color:#e9edef;font-size:13px;outline:none;">
+            <button class="sc-btn sc-btn-primary" id="sc-manual-search-resolve">${ICONS.send} Buscar</button>
+          </div>
+        </div>`;
+    }
+
     // AI Toggles
     const hasActiveFlow = executions.some((e) => ["running", "waiting", "waiting_click", "waiting_reply"].includes(e.status));
     const aiReplyEnabled = aiStatusData?.reply || false;
