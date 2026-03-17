@@ -22,7 +22,8 @@ router.post("/meta-pixel-test", async (req, res) => {
   const eventData: any = {
     event_name: "Lead",
     event_time: Math.floor(Date.now() / 1000),
-    action_source: "system_generated",
+    event_id: crypto.randomUUID(),
+    action_source: "chat",
     user_data: {},
   };
   if (phoneHash) {
