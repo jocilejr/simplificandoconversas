@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useProfile } from "@/hooks/useProfile";
 import { useMetaPixels, type MetaPixel } from "@/hooks/useMetaPixels";
-import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Check, X, Eye, EyeOff, Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
   pixel: MetaPixel;
@@ -17,20 +18,39 @@ function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
   const [name, setName] = useState(pixel.name);
   const [pixelId, setPixelId] = useState(pixel.pixel_id);
   const [accessToken, setAccessToken] = useState(pixel.access_token);
+  const [showToken, setShowToken] = useState(false);
+  const [showEditToken, setShowEditToken] = useState(false);
+  const { toast } = useToast();
 
   if (!editing) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{pixel.name}</p>
-          <p className="text-xs text-muted-foreground truncate">ID: {pixel.pixel_id}</p>
+      <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-secondary/30">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{pixel.name}</p>
+            <p className="text-xs text-muted-foreground truncate">ID: {pixel.pixel_id}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => onDelete(pixel.id)} disabled={isDeleting}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setEditing(true)}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => onDelete(pixel.id)} disabled={isDeleting}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted-foreground font-mono truncate flex-1">
+            Token: {showToken ? pixel.access_token : `${pixel.access_token.substring(0, 20)}...`}
+          </p>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setShowToken(!showToken)}>
+            {showToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => {
+            navigator.clipboard.writeText(pixel.access_token);
+            toast({ title: "Token copiado!" });
+          }}>
+            <Copy className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
     );
   }
@@ -47,7 +67,12 @@ function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs">Access Token</Label>
-        <Input type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} className="h-8 text-xs" />
+        <div className="flex gap-1">
+          <Input type={showEditToken ? "text" : "password"} value={accessToken} onChange={(e) => setAccessToken(e.target.value)} className="h-8 text-xs flex-1" />
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setShowEditToken(!showEditToken)}>
+            {showEditToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
       </div>
       <div className="flex gap-2">
         <Button size="sm" className="text-xs" onClick={() => { onUpdate(pixel.id, { name, pixel_id: pixelId, access_token: accessToken }); setEditing(false); }}>
@@ -60,7 +85,6 @@ function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
     </div>
   );
 }
-
 export function AppSection() {
   const { profile, updateProfile } = useProfile();
   const { pixels, isLoading: pixelsLoading, addPixel, updatePixel, deletePixel } = useMetaPixels();
