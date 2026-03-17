@@ -475,9 +475,11 @@ router.post("/", async (req, res) => {
             const eventData: any = {
               event_name: eventName,
               event_time: Math.floor(Date.now() / 1000),
-              action_source: "system_generated",
+              event_id: crypto.randomUUID(),
+              action_source: "chat",
               user_data: { ph: [hashedPhone], external_id: [hashedPhone] },
             };
+            if (profile?.app_public_url) eventData.event_source_url = profile.app_public_url;
 
             const customData: any = {};
             if (data.pixelEventValue != null && data.pixelEventValue !== "") customData.value = Number(data.pixelEventValue);
