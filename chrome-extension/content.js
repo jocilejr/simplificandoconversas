@@ -436,7 +436,7 @@
           <div class="sc-reminder-item ${statusClass}">
             <div class="sc-reminder-info">
               <div class="sc-reminder-title">${r.title}</div>
-              <div class="sc-reminder-meta">${r.contact_name || r.phone_number || ''} ${r.description ? '· ' + r.description.substring(0, 40) : ''}</div>
+              <div class="sc-reminder-meta">${r.contact_name || ''}${r.contact_name && r.phone_number ? ' · ' : ''}${r.phone_number || ''}${r.description ? ' · ' + r.description.substring(0, 40) + '...' : ''}</div>
             </div>
             <span class="sc-reminder-badge ${statusClass}">${statusLabel}</span>
           </div>`;
