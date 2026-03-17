@@ -778,7 +778,6 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
                 type: "object",
                 properties: {
                   title: { type: "string", description: "Título curto do lembrete" },
-                  description: { type: "string", description: "Descrição detalhada" },
                   due_date: { type: "string", description: "Data/hora do lembrete em ISO 8601. Se não houver data específica, use amanhã às 9h." },
                 },
                 required: ["title", "due_date"],
@@ -809,11 +808,29 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
     if (!toolCall || toolCall.function.name !== "create_reminder") return;
 
     const args = JSON.parse(toolCall.function.arguments);
-    
+
+    // Fetch last 5 messages as context instead of AI-generated summary
+    const { data: lastMsgs } = await supabase
+      .from("messages")
+      .select("content, direction, created_at")
+      .eq("remote_jid", remoteJid)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    const contextLines = (lastMsgs || [])
+      .reverse()
+      .map((m: any) => {
+        const time = new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+        const sender = m.direction === "outbound" ? "Você" : (contactName || phone);
+        return `[${time}] ${sender}: ${m.content || "[mídia]"}`;
+      })
+      .join("\n");
+
     await supabase.from("reminders").insert({
       user_id: userId,
       title: args.title,
-      description: args.description || null,
+      description: contextLines || null,
       due_date: args.due_date,
       remote_jid: remoteJid,
       phone_number: phone,
