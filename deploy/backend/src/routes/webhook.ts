@@ -729,9 +729,12 @@ async function checkAndAutoListen(
   const now = brasiliaDate.toISOString().replace("T", " ").slice(0, 16);
   const diaSemanaAtual = diasSemana[brasiliaDate.getUTCDay()];
 
-  const systemPrompt = `Você é um analisador de mensagens de WhatsApp. Sua tarefa é analisar a mensagem do contato e determinar se ela contém informações relevantes para criar um lembrete.
+  const systemPrompt = `Você é um analisador de mensagens de WhatsApp. Sua ÚNICA tarefa é verificar se a mensagem se encaixa ESTRITAMENTE nas regras definidas abaixo.
 
-Regras do usuário: ${listenRules}
+REGRAS DE DETECÇÃO (definidas pelo usuário — siga ESTRITAMENTE, NÃO crie lembretes sobre outros assuntos):
+${listenRules}
+
+IMPORTANTE: Você deve criar um lembrete SOMENTE se a mensagem se encaixar claramente nas regras acima. Se a mensagem falar sobre qualquer outro assunto que NÃO esteja nas regras, use a ferramenta no_action. Na dúvida, SEMPRE use no_action.
 
 REGRAS DE DATA E HORÁRIO:
 - Agora é ${diaSemanaAtual}, ${now} (horário de Brasília, UTC-3).
@@ -747,8 +750,8 @@ REGRAS DE DATA E HORÁRIO:
 - NUNCA gere uma due_date no passado. Se o cálculo resultar em data/hora passada, avance para o próximo período (próximo dia, próxima semana ou próximo mês).
 - Se não houver data específica mencionada, use amanhã às 09:00 Brasília (= 12:00 UTC).
 
-Se a mensagem contiver algo relevante, responda usando a ferramenta create_reminder.
-Se NÃO houver nada relevante, responda usando a ferramenta no_action.
+Se a mensagem se encaixar nas REGRAS DE DETECÇÃO acima, responda usando a ferramenta create_reminder.
+Se NÃO se encaixar, responda usando a ferramenta no_action.
 
 Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}.`;
 
