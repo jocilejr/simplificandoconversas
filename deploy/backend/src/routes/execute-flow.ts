@@ -169,8 +169,6 @@ async function executeStep(
 
   if (nodeType === "aiAgent") return "aiAgent: handled-externally";
 
-  if (nodeType === "metaPixel") return "metaPixel: handled-externally";
-
   return `${nodeType}: no-op`;
 }
 
