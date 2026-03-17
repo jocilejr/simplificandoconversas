@@ -1,21 +1,76 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useRef } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, Upload, Tag } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users } from "lucide-react";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { useContacts } from "@/hooks/useContacts";
 
 const Contacts = () => {
+  const {
+    contacts, totalContacts, isLoading, search, setSearch,
+    tagFilter, setTagFilter, uniqueTags,
+    page, setPage, totalPages,
+    createContact, importCSV,
+  } = useContacts();
+
+  const [newOpen, setNewOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", phone: "", instance_name: "" });
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleCreate = () => {
+    if (!form.phone.trim()) return;
+    createContact.mutate(form, { onSuccess: () => { setNewOpen(false); setForm({ name: "", phone: "", instance_name: "" }); } });
+  };
+
+  const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.split("\n").filter(Boolean);
+      // skip header
+      const rows = lines.slice(1).map((line) => {
+        const cols = line.split(/[;,]/);
+        return { name: cols[0]?.trim() || "", phone: cols[1]?.trim() || "" };
+      }).filter((r) => r.phone);
+      if (rows.length === 0) return;
+      importCSV.mutate(rows, { onSuccess: () => setCsvOpen(false) });
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const formatPhone = (jid: string) => {
+    const num = jid.replace("@s.whatsapp.net", "");
+    if (num.length >= 12) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
+    return num;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Contatos</h1>
-          <p className="text-muted-foreground">Gerencie seus contatos e listas</p>
+          <p className="text-muted-foreground">{totalContacts} contato{totalContacts !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setCsvOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Importar CSV
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={() => setNewOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Novo Contato
           </Button>
         </div>
@@ -24,23 +79,149 @@ const Contacts = () => {
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar contatos..." className="pl-9" />
+          <Input placeholder="Buscar por nome ou telefone..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <Button variant="outline" size="icon">
-          <Tag className="h-4 w-4" />
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant={tagFilter ? "default" : "outline"} size="icon">
+              <Tag className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Filtrar por tag</p>
+              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { setTagFilter(null); setPage(1); }}>
+                Todas
+              </Button>
+              {uniqueTags.map((t) => (
+                <Button key={t} variant={tagFilter === t ? "secondary" : "ghost"} size="sm" className="w-full justify-start" onClick={() => { setTagFilter(t); setPage(1); }}>
+                  {t}
+                </Button>
+              ))}
+              {uniqueTags.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma tag encontrada</p>}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
+      {tagFilter && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Filtro:</span>
+          <Badge variant="secondary" className="cursor-pointer" onClick={() => { setTagFilter(null); setPage(1); }}>
+            {tagFilter} ✕
+          </Badge>
+        </div>
+      )}
+
       <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg">Lista de Contatos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-muted-foreground text-center py-8">
-            Nenhum contato cadastrado ainda. Importe um CSV ou adicione manualmente.
-          </div>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
+          ) : contacts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Users className="h-12 w-12 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">
+                {search || tagFilter ? "Nenhum contato encontrado com esses filtros." : "Nenhum contato cadastrado ainda. Importe um CSV ou adicione manualmente."}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Telefone</TableHead>
+                  <TableHead className="hidden md:table-cell">Instância</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tags</TableHead>
+                  <TableHead className="hidden lg:table-cell">Última mensagem</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {contacts.map((c) => (
+                  <TableRow key={c.remote_jid}>
+                    <TableCell className="font-medium">{c.contact_name || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{c.phone_number || formatPhone(c.remote_jid)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground text-xs">{c.instance_name || "—"}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <div className="flex gap-1 flex-wrap">
+                        {c.tags.map((t) => (
+                          <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground text-xs max-w-[200px] truncate">
+                      {c.last_message || "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-muted-foreground">{page} / {totalPages}</span>
+          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* New Contact Dialog */}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Contato</DialogTitle>
+            <DialogDescription>Adicione um contato manualmente.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do contato" />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone *</Label>
+              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="5511999999999" />
+            </div>
+            <div className="space-y-2">
+              <Label>Instância</Label>
+              <Input value={form.instance_name} onChange={(e) => setForm({ ...form, instance_name: e.target.value })} placeholder="Nome da instância (opcional)" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={!form.phone.trim() || createContact.isPending}>
+              {createContact.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CSV Import Dialog */}
+      <Dialog open={csvOpen} onOpenChange={setCsvOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Importar CSV</DialogTitle>
+            <DialogDescription>
+              O arquivo deve ter colunas <strong>nome</strong> e <strong>telefone</strong>, separadas por vírgula ou ponto-e-vírgula.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSV} />
+            <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()} disabled={importCSV.isPending}>
+              <Upload className="h-4 w-4 mr-2" />
+              {importCSV.isPending ? "Importando..." : "Selecionar arquivo CSV"}
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCsvOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
