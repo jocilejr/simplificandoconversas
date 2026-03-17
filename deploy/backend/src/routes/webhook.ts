@@ -778,7 +778,6 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
                 type: "object",
                 properties: {
                   title: { type: "string", description: "Título curto do lembrete" },
-                  description: { type: "string", description: "Descrição detalhada" },
                   due_date: { type: "string", description: "Data/hora do lembrete em ISO 8601. Se não houver data específica, use amanhã às 9h." },
                 },
                 required: ["title", "due_date"],
