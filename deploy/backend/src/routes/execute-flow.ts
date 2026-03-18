@@ -698,6 +698,8 @@ router.post("/", async (req, res) => {
               let pixelId: string | null = null;
               let accessToken: string | null = null;
 
+              console.log(`[execute-flow] group.metaPixel: selectedPixelId=${step.data.selectedPixelId}, userId=${userId}, jid=${jid}`);
+
               if (step.data.selectedPixelId) {
                 const { data: pixelRow, error: pixelQueryError } = await serviceClient
                   .from("meta_pixels")
@@ -711,6 +713,21 @@ router.post("/", async (req, res) => {
                 } else if (pixelRow) {
                   pixelId = pixelRow.pixel_id;
                   accessToken = pixelRow.access_token;
+                }
+              }
+
+              // Fallback: if no selectedPixelId or query failed, use first pixel for this user
+              if (!pixelId || !accessToken) {
+                console.log(`[execute-flow] group.metaPixel: no pixel found via selectedPixelId, trying fallback for user ${userId}`);
+                const { data: fallbackPixels } = await serviceClient
+                  .from("meta_pixels")
+                  .select("id, pixel_id, access_token")
+                  .eq("user_id", userId)
+                  .limit(1);
+                if (fallbackPixels?.[0]) {
+                  pixelId = fallbackPixels[0].pixel_id;
+                  accessToken = fallbackPixels[0].access_token;
+                  console.log(`[execute-flow] group.metaPixel: using fallback pixel ${fallbackPixels[0].id}`);
                 }
               }
 
