@@ -526,6 +526,7 @@ router.post("/", async (req, res) => {
               console.error(`[execute-flow] metaPixel error:`, pixelErr);
               results.push(`metaPixel: error - ${pixelErr.message}`);
             }
+            }
           }
         } else if (nodeType === "aiAgent") {
           const openaiKey = profile?.openai_api_key || process.env.OPENAI_API_KEY;
