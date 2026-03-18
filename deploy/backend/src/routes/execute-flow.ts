@@ -636,6 +636,8 @@ router.post("/", async (req, res) => {
               break;
             }
             const step = data.steps[si];
+            console.log(`[execute-flow] Group step ${si + 1}/${data.steps.length}: type=${step.data.type}, id=${step.id}`);
+            try {
             if (step.data.type === "waitForClick") {
               const clickUrl = step.data.clickUrl;
               if (!clickUrl) { results.push(`group.${step.id}: waitForClick: error`); continue; }
