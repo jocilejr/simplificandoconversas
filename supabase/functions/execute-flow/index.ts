@@ -648,6 +648,93 @@ Deno.serve(async (req) => {
           }
 
           // Continue to next nodes normally (don't skip)
+        } else if (nodeType === "metaPixel") {
+          // Meta Pixel: send server-side event via Conversions API
+          let pixelId: string | null = null;
+          let accessToken: string | null = null;
+
+          console.log(`[execute-flow] metaPixel: selectedPixelId=${data.selectedPixelId}, userId=${userId}, jid=${jid}`);
+
+          if (data.selectedPixelId) {
+            const { data: pixelRow, error: pixelQueryError } = await serviceClient
+              .from("meta_pixels")
+              .select("pixel_id, access_token")
+              .eq("id", data.selectedPixelId)
+              .eq("user_id", userId)
+              .single();
+            if (pixelQueryError) {
+              console.error(`[execute-flow] metaPixel query error:`, JSON.stringify(pixelQueryError));
+              results.push(`metaPixel: error - falha ao buscar pixel: ${pixelQueryError.message || JSON.stringify(pixelQueryError)}`);
+            } else if (pixelRow) {
+              pixelId = pixelRow.pixel_id;
+              accessToken = pixelRow.access_token;
+            }
+          }
+
+          // Fallback: use first pixel for this user
+          if (!pixelId || !accessToken) {
+            console.log(`[execute-flow] metaPixel: no pixel found via selectedPixelId, trying fallback for user ${userId}`);
+            const { data: fallbackPixels } = await serviceClient
+              .from("meta_pixels")
+              .select("id, pixel_id, access_token")
+              .eq("user_id", userId)
+              .limit(1);
+            if (fallbackPixels?.[0]) {
+              pixelId = fallbackPixels[0].pixel_id;
+              accessToken = fallbackPixels[0].access_token;
+              console.log(`[execute-flow] metaPixel: using fallback pixel ${fallbackPixels[0].id}`);
+            }
+          }
+
+          if (!pixelId || !accessToken) {
+            results.push("metaPixel: error - Pixel ID ou Access Token não configurado");
+          } else {
+            const eventName = data.pixelCustomEventName || data.pixelEventName || "Lead";
+            const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+
+            if (phone.length < 8) {
+              console.error(`[execute-flow] metaPixel: phone too short (${phone}), skipping`);
+              results.push(`metaPixel: error - telefone inválido (${phone})`);
+            } else {
+              const encoder = new TextEncoder();
+              const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(phone));
+              const hashedPhone = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+              const eventId = crypto.randomUUID();
+              const eventData: any = {
+                event_name: eventName,
+                event_time: Math.floor(Date.now() / 1000),
+                event_id: eventId,
+                action_source: "chat",
+                user_data: { ph: [hashedPhone], external_id: [hashedPhone] },
+              };
+              if (profile?.app_public_url) eventData.event_source_url = profile.app_public_url;
+
+              const customData: any = {};
+              if (data.pixelEventValue != null && data.pixelEventValue !== "") customData.value = Number(data.pixelEventValue);
+              if (data.pixelCurrency) customData.currency = data.pixelCurrency;
+              if (Object.keys(customData).length > 0) eventData.custom_data = customData;
+
+              try {
+                const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ data: [eventData], access_token: accessToken }),
+                });
+                const metaResult = await metaResp.json() as any;
+                console.log(`[execute-flow] metaPixel response:`, JSON.stringify(metaResult));
+                if (metaResult.error) {
+                  console.error(`[execute-flow] metaPixel API error:`, JSON.stringify(metaResult.error));
+                  results.push(`metaPixel: error - Meta API: ${metaResult.error.message || JSON.stringify(metaResult.error)}`);
+                } else {
+                  results.push(`metaPixel: ok (${eventName})`);
+                }
+              } catch (pixelErr: any) {
+                console.error(`[execute-flow] metaPixel error:`, pixelErr);
+                results.push(`metaPixel: error - ${pixelErr.message}`);
+              }
+            }
+          }
         } else if (nodeType === "aiAgent") {
           // AI Agent: call OpenAI with conversation history
           if (!profile.openai_api_key) {
@@ -1019,6 +1106,91 @@ Deno.serve(async (req) => {
               } else {
                 results.push(`group.${step.id}: action: ${actionType} (no-op)`);
               }
+            } else if (step.data.type === "metaPixel") {
+              // Meta Pixel inside group
+              let pixelId: string | null = null;
+              let accessToken: string | null = null;
+
+              console.log(`[execute-flow] group.metaPixel: selectedPixelId=${step.data.selectedPixelId}, userId=${userId}, jid=${jid}`);
+
+              if (step.data.selectedPixelId) {
+                const { data: pixelRow, error: pixelQueryError } = await serviceClient
+                  .from("meta_pixels")
+                  .select("pixel_id, access_token")
+                  .eq("id", step.data.selectedPixelId)
+                  .eq("user_id", userId)
+                  .single();
+                if (pixelQueryError) {
+                  console.error(`[execute-flow] group metaPixel query error:`, JSON.stringify(pixelQueryError));
+                  results.push(`group.${step.id}: metaPixel: error - falha ao buscar pixel: ${pixelQueryError.message || JSON.stringify(pixelQueryError)}`);
+                } else if (pixelRow) {
+                  pixelId = pixelRow.pixel_id;
+                  accessToken = pixelRow.access_token;
+                }
+              }
+
+              if (!pixelId || !accessToken) {
+                console.log(`[execute-flow] group.metaPixel: no pixel found via selectedPixelId, trying fallback for user ${userId}`);
+                const { data: fallbackPixels } = await serviceClient
+                  .from("meta_pixels")
+                  .select("id, pixel_id, access_token")
+                  .eq("user_id", userId)
+                  .limit(1);
+                if (fallbackPixels?.[0]) {
+                  pixelId = fallbackPixels[0].pixel_id;
+                  accessToken = fallbackPixels[0].access_token;
+                  console.log(`[execute-flow] group.metaPixel: using fallback pixel ${fallbackPixels[0].id}`);
+                }
+              }
+
+              if (!pixelId || !accessToken) {
+                results.push(`group.${step.id}: metaPixel: error - credenciais não configuradas`);
+              } else {
+                const eventName = step.data.pixelCustomEventName || step.data.pixelEventName || "Lead";
+                const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+
+                if (phone.length < 8) {
+                  console.error(`[execute-flow] group.metaPixel: phone too short (${phone}), skipping`);
+                  results.push(`group.${step.id}: metaPixel: error - telefone inválido (${phone})`);
+                } else {
+                  const encoder = new TextEncoder();
+                  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(phone));
+                  const hashedPhone = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+                  const eventId = crypto.randomUUID();
+                  const eventData: any = {
+                    event_name: eventName,
+                    event_time: Math.floor(Date.now() / 1000),
+                    event_id: eventId,
+                    action_source: "chat",
+                    user_data: { ph: [hashedPhone], external_id: [hashedPhone] },
+                  };
+                  if (profile?.app_public_url) eventData.event_source_url = profile.app_public_url;
+
+                  const customData: any = {};
+                  if (step.data.pixelEventValue != null && step.data.pixelEventValue !== "") customData.value = Number(step.data.pixelEventValue);
+                  if (step.data.pixelCurrency) customData.currency = step.data.pixelCurrency;
+                  if (Object.keys(customData).length > 0) eventData.custom_data = customData;
+
+                  try {
+                    const metaResp = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ data: [eventData], access_token: accessToken }),
+                    });
+                    const metaResult = await metaResp.json() as any;
+                    console.log(`[execute-flow] group.metaPixel response:`, JSON.stringify(metaResult));
+                    if (metaResult.error) {
+                      console.error(`[execute-flow] group.metaPixel API error:`, JSON.stringify(metaResult.error));
+                      results.push(`group.${step.id}: metaPixel: error - Meta API: ${metaResult.error.message || JSON.stringify(metaResult.error)}`);
+                    } else {
+                      results.push(`group.${step.id}: metaPixel: ok (${eventName})`);
+                    }
+                  } catch (pixelErr: any) {
+                    results.push(`group.${step.id}: metaPixel: error - ${pixelErr.message}`);
+                  }
+                }
+              }
             } else {
               const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
@@ -1044,7 +1216,7 @@ Deno.serve(async (req) => {
     console.log(`[execute-flow] Flow ${flowId} completed. Results:`, results);
     await serviceClient
       .from("flow_executions")
-      .update({ status: "completed" })
+      .update({ status: "completed", results: JSON.stringify(results) } as any)
       .eq("id", executionId)
       .eq("status", "running");
 
@@ -1056,7 +1228,7 @@ Deno.serve(async (req) => {
     if (executionId) {
       await serviceClient
         .from("flow_executions")
-        .update({ status: "completed" })
+        .update({ status: "completed", results: JSON.stringify([`error: ${err.message}`]) } as any)
         .eq("id", executionId);
     }
     return new Response(JSON.stringify({ error: err.message }), {
