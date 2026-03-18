@@ -357,7 +357,7 @@ router.post("/trigger-flow", async (req, res) => {
     .update({ status: "cancelled" })
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
-    .in("status", ["running", "waiting"]);
+    .in("status", ["running", "waiting", "waiting_click", "waiting_reply"]);
 
   // Respond immediately — execute in background
   res.status(202).json({ ok: true, queued: true });
