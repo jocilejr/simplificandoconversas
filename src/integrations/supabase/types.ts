@@ -310,6 +310,7 @@ export type Database = {
           id: string
           instance_name: string | null
           remote_jid: string
+          results: Json | null
           status: string
           updated_at: string
           user_id: string
@@ -323,6 +324,7 @@ export type Database = {
           id?: string
           instance_name?: string | null
           remote_jid: string
+          results?: Json | null
           status?: string
           updated_at?: string
           user_id: string
@@ -336,6 +338,7 @@ export type Database = {
           id?: string
           instance_name?: string | null
           remote_jid?: string
+          results?: Json | null
           status?: string
           updated_at?: string
           user_id?: string
