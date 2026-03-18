@@ -487,6 +487,11 @@ router.post("/", async (req, res) => {
           } else {
             const eventName = data.pixelCustomEventName || data.pixelEventName || "Lead";
             const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+
+            if (phone.length < 8) {
+              console.error(`[execute-flow] metaPixel: phone too short (${phone}), skipping`);
+              results.push(`metaPixel: error - telefone inválido (${phone})`);
+            } else {
             const hashedPhone = crypto.createHash("sha256").update(phone).digest("hex");
 
             const eventData: any = {
