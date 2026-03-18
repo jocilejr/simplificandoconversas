@@ -1228,7 +1228,7 @@ Deno.serve(async (req) => {
     if (executionId) {
       await serviceClient
         .from("flow_executions")
-        .update({ status: "completed" })
+        .update({ status: "completed", results: JSON.stringify([`error: ${err.message}`]) } as any)
         .eq("id", executionId);
     }
     return new Response(JSON.stringify({ error: err.message }), {
