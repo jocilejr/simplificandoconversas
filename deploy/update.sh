@@ -142,6 +142,9 @@ DO $$ BEGIN
 END $$;
 GRANT ALL ON public.reminders TO anon, authenticated, service_role;
 
+-- Add results column to flow_executions for audit
+ALTER TABLE public.flow_executions ADD COLUMN IF NOT EXISTS results jsonb DEFAULT NULL;
+
 -- Force PostgREST schema cache reload
 NOTIFY pgrst, 'reload schema';
 EOSQL

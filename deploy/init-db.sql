@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS public.flow_executions (
   current_node_index integer NOT NULL DEFAULT 0,
   instance_name text,
   waiting_node_id text,
+  results jsonb DEFAULT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
