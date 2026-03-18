@@ -1197,6 +1197,10 @@ Deno.serve(async (req) => {
               const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
+            } catch (stepErr: any) {
+              console.error(`[execute-flow] Group step ${si + 1}/${data.steps.length} (${step.data.type}) error:`, stepErr.message);
+              results.push(`group.${step.id}: ${step.data.type}: error - ${stepErr.message}`);
+            }
           }
           if (groupPaused) break;
         } else {
