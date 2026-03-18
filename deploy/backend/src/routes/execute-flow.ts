@@ -798,7 +798,7 @@ router.post("/", async (req, res) => {
     }
 
     console.log(`[execute-flow] Flow ${flowId} completed. Results:`, results);
-    await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId).eq("status", "running");
+    await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId);
 
     return res.json({ ok: true, executed: results, executionId });
   } catch (err: any) {

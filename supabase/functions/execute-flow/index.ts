@@ -1223,8 +1223,7 @@ Deno.serve(async (req) => {
     await serviceClient
       .from("flow_executions")
       .update({ status: "completed", results: JSON.stringify(results) } as any)
-      .eq("id", executionId)
-      .eq("status", "running");
+      .eq("id", executionId);
 
     return new Response(JSON.stringify({ ok: true, executed: results, executionId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
