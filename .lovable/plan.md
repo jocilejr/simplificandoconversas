@@ -1,76 +1,76 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Diagnóstico: Pixel Meta disparando para apenas 2 de 15+ contatos
+
+### Problema Raiz
+
+Pela imagem, o nó "Pixel Meta" está **dentro de um Grupo**, junto com "Ação" (tag parar-fluxo). O painel de propriedades mostra **"Pixel: Carregando..."** — isso indica que o `selectedPixelId` pode não estar persistido corretamente no JSON do fluxo.
+
+Quando o backend processa o nó e `step.data.selectedPixelId` é `undefined` ou vazio, ele cai direto no erro silencioso:
+```
+metaPixel: error - Pixel ID ou Access Token não configurado
+```
+
+As 2 marcações que funcionaram provavelmente foram de um momento em que o pixel estava selecionado e o fluxo foi salvo corretamente.
+
+### Problemas a Corrigir
+
+**1. Log insuficiente — impossível diagnosticar remotamente**
+O backend loga os resultados, mas não inclui o valor de `selectedPixelId` recebido. Precisamos de um log explícito mostrando o que chegou.
+
+**2. Sem fallback para pixel único**
+Se o usuário tem apenas 1 pixel configurado e o `selectedPixelId` não foi salvo no nó, o sistema deveria usar o pixel disponível automaticamente, em vez de falhar.
+
+**3. Resultados de execução não são salvos no banco**
+Os `results[]` são apenas logados no console e retornados no JSON da resposta HTTP. Não ficam salvos em `flow_executions`, dificultando auditoria.
+
+### Plano de Implementação
+
+**Arquivo: `deploy/backend/src/routes/execute-flow.ts`**
+
+Em ambos os blocos de metaPixel (standalone ~linha 447 e group ~linha 680):
+
+1. Adicionar log do `selectedPixelId` recebido:
+```typescript
+console.log(`[execute-flow] metaPixel: selectedPixelId=${data.selectedPixelId}, userId=${userId}`);
+```
+
+2. Adicionar fallback: se `selectedPixelId` estiver vazio/undefined, buscar o primeiro pixel do usuário:
+```typescript
+if (!data.selectedPixelId) {
+  // Fallback: use first pixel for this user
+  const { data: fallbackPixels } = await serviceClient
+    .from("meta_pixels")
+    .select("id, pixel_id, access_token")
+    .eq("user_id", userId)
+    .limit(1);
+  if (fallbackPixels?.[0]) {
+    pixelId = fallbackPixels[0].pixel_id;
+    accessToken = fallbackPixels[0].access_token;
+    console.log(`[execute-flow] metaPixel: using fallback pixel ${fallbackPixels[0].id}`);
+  }
+}
+```
+
+3. Salvar resultados na tabela `flow_executions` ao finalizar:
+```typescript
+await serviceClient.from("flow_executions")
+  .update({ status: "completed", results })
+  .eq("id", executionId).eq("status", "running");
+```
+
+Isso requer adicionar coluna `results` à tabela `flow_executions` (tipo `jsonb`, nullable, default `null`).
+
+### Resumo das Alterações
 
 | Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+|---|---|
+| `deploy/backend/src/routes/execute-flow.ts` | Fallback para pixel único + logs detalhados + salvar results |
+| Migration SQL | Adicionar coluna `results jsonb` em `flow_executions` |
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+Após o deploy, rode na VPS:
+```bash
+docker compose logs backend --tail=200 2>&1 | grep "metaPixel"
+```
+Isso vai mostrar exatamente o que está falhando em cada execução.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
-
-### Mudanças realizadas
-
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
-
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
-
-### Redesign completo do overlay para sidebar fixa
-
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
-
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-
-## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
-
-### Implementação
-| Arquivo | Mudança |
-|---------|---------|
-| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
-| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
-- Ícones SVG inline (sem emojis)
-
-## Fase 1: Lembretes por Contato — Concluído ✅
-
-### Mudanças realizadas
-
-| Arquivo | Mudança |
-|---------|---------|
-| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
-| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
-| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
-| **src/App.tsx** | Rota `/reminders` adicionada |
-| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
-| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
-
-### Próximas fases
-- Fase 2: Dashboard com dados reais
-- Fase 3: IA Auto-Resposta em tempo real
-- Fase 4: Redesign do Layout
