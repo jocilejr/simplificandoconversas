@@ -780,13 +780,13 @@ router.post("/", async (req, res) => {
     }
 
     console.log(`[execute-flow] Flow ${flowId} completed. Results:`, results);
-    await serviceClient.from("flow_executions").update({ status: "completed" }).eq("id", executionId).eq("status", "running");
+    await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId).eq("status", "running");
 
     return res.json({ ok: true, executed: results, executionId });
   } catch (err: any) {
     console.error("execute-flow error:", err);
     if (executionId) {
-      await serviceClient.from("flow_executions").update({ status: "completed" }).eq("id", executionId);
+      await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify([`error: ${err.message}`]) } as any).eq("id", executionId);
     }
     return res.status(500).json({ error: err.message });
   }
