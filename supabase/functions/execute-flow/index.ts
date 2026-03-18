@@ -959,6 +959,8 @@ Deno.serve(async (req) => {
           let groupPaused = false;
           for (let si = 0; si < data.steps.length; si++) {
             const step = data.steps[si];
+            console.log(`[execute-flow] Group step ${si + 1}/${data.steps.length}: type=${step.data.type}, id=${step.id}`);
+            try {
             if (step.data.type === "waitForClick") {
               const clickUrl = step.data.clickUrl;
               if (!clickUrl) {
@@ -1195,6 +1197,10 @@ Deno.serve(async (req) => {
               const stepResult = await executeStep(step.data, baseUrl, apiKey, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
+            } catch (stepErr: any) {
+              console.error(`[execute-flow] Group step ${si + 1}/${data.steps.length} (${step.data.type}) error:`, stepErr.message);
+              results.push(`group.${step.id}: ${step.data.type}: error - ${stepErr.message}`);
+            }
           }
           if (groupPaused) break;
         } else {
@@ -1217,8 +1223,7 @@ Deno.serve(async (req) => {
     await serviceClient
       .from("flow_executions")
       .update({ status: "completed", results: JSON.stringify(results) } as any)
-      .eq("id", executionId)
-      .eq("status", "running");
+      .eq("id", executionId);
 
     return new Response(JSON.stringify({ ok: true, executed: results, executionId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

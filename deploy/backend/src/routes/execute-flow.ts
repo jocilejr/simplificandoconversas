@@ -636,6 +636,8 @@ router.post("/", async (req, res) => {
               break;
             }
             const step = data.steps[si];
+            console.log(`[execute-flow] Group step ${si + 1}/${data.steps.length}: type=${step.data.type}, id=${step.id}`);
+            try {
             if (step.data.type === "waitForClick") {
               const clickUrl = step.data.clickUrl;
               if (!clickUrl) { results.push(`group.${step.id}: waitForClick: error`); continue; }
@@ -773,6 +775,10 @@ router.post("/", async (req, res) => {
               const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
               results.push(`group.${step.id}: ${stepResult}`);
             }
+            } catch (stepErr: any) {
+              console.error(`[execute-flow] Group step ${si + 1}/${data.steps.length} (${step.data.type}) error:`, stepErr.message);
+              results.push(`group.${step.id}: ${step.data.type}: error - ${stepErr.message}`);
+            }
           }
           if (groupPaused) break;
         } else {
@@ -792,7 +798,7 @@ router.post("/", async (req, res) => {
     }
 
     console.log(`[execute-flow] Flow ${flowId} completed. Results:`, results);
-    await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId).eq("status", "running");
+    await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId);
 
     return res.json({ ok: true, executed: results, executionId });
   } catch (err: any) {
