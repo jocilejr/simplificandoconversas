@@ -767,6 +767,7 @@ router.post("/", async (req, res) => {
                 } catch (pixelErr: any) {
                   results.push(`group.${step.id}: metaPixel: error - ${pixelErr.message}`);
                 }
+                }
               }
             } else {
               const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
