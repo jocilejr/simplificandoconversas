@@ -1,76 +1,85 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
+Objetivo: corrigir definitivamente o problema “nó Pixel Meta não está marcando corretamente”, removendo falsos positivos de disparo e garantindo rastreio confiável em todos os caminhos de execução.
 
-### Mudanças realizadas
+1) Diagnóstico consolidado (o que precisa ser corrigido)
+- O backend da VPS tem lógica de Pixel Meta, mas o fluxo de disparo da extensão pode retornar sucesso antes da execução real (retorno 202 em background), mascarando falhas.
+- O cancelamento pré-disparo na extensão cobre só `running/waiting` e ignora `waiting_click/waiting_reply`, o que pode bloquear novo disparo sem feedback claro.
+- A função de execução do ambiente cloud não está em paridade com a da VPS para Pixel Meta (sem branch dedicada), criando comportamento inconsistente entre ambientes.
+- Há fragilidade na resolução de telefone quando o contato está em `@lid`, o que pode reduzir/invalidar atribuição no evento.
+- Existe um bloqueio de build (`rollup` não resolvido) que precisa ser removido para estabilizar pipeline.
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+2) Plano de implementação (arquivos e mudanças)
+A. Corrigir build pipeline
+- Arquivo: `package.json`
+  - Adicionar `rollup` explicitamente em `devDependencies` (evitar dependência transitiva implícita do Vite).
+- Arquivos de lock: `package-lock.json` e/ou `bun.lock`
+  - Atualizar lockfile para refletir dependência explícita.
+Resultado esperado: `vite build` deixa de falhar com `Cannot find package 'rollup'`.
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+B. Paridade total do Pixel Meta no executor cloud
+- Arquivo: `supabase/functions/execute-flow/index.ts`
+  - Implementar branch `metaPixel` para nós standalone.
+  - Implementar branch `metaPixel` para steps dentro de `groupBlock`.
+  - Aplicar a mesma regra da VPS:
+    - busca por `selectedPixelId`;
+    - fallback para primeiro pixel do usuário;
+    - hash SHA-256 do telefone normalizado;
+    - envio para Graph API;
+    - tratamento explícito de `metaResult.error`.
+  - Incluir logs estruturados de Pixel com prefixo consistente.
+Resultado esperado: comportamento idêntico VPS/cloud para o nó Pixel Meta.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+C. Tornar disparo da extensão determinístico (sem “falso sucesso”)
+- Arquivo: `deploy/backend/src/routes/extension-api.ts` (rota `/trigger-flow`)
+  - Ajustar cancelamento de execuções para incluir `waiting_click` e `waiting_reply`.
+  - Antes de responder sucesso, fazer pré-validação de execução ativa para o mesmo contato+instância e retornar erro explícito se bloqueado.
+  - Manter processamento assíncrono, mas retornar estado real de “aceito para execução” apenas após pré-validações.
+Resultado esperado: quando o usuário “dispara”, ele recebe resposta coerente com a realidade e não um sucesso ilusório.
 
-### Mudanças realizadas
+D. Melhorar resolução de telefone para atribuição correta
+- Arquivos:
+  - `deploy/backend/src/routes/extension-api.ts`
+  - `deploy/backend/src/routes/execute-flow.ts`
+- Mudanças:
+  - Se `remoteJid` vier como `@lid`, resolver telefone antes do disparo e repassar `resolvedPhone`.
+  - No bloco de Pixel, validar telefone normalizado (mínimo plausível) e registrar erro explícito quando inválido em vez de enviar evento “cego”.
+Resultado esperado: aumento da qualidade de match e redução de eventos “ok” sem atribuição real.
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+E. Persistência de auditoria no histórico de execução
+- Backend VPS já grava `results`; padronizar no cloud também.
+- Arquivos:
+  - `supabase/functions/execute-flow/index.ts` (salvar `results`)
+  - Migração SQL para adicionar coluna `results jsonb` em `flow_executions` no ambiente cloud (idempotente).
+Resultado esperado: diagnóstico por execução sem depender de grep em log.
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+3) Detalhes técnicos (seção técnica)
+- Fluxo final de decisão do Pixel:
+```text
+nó metaPixel
+  -> selectedPixelId existe?
+      -> sim: buscar pixel por (id + user_id)
+      -> não/erro: fallback primeiro pixel do user
+  -> sem credencial? registrar erro em results
+  -> com credencial:
+      -> resolver telefone válido
+      -> montar event_data (event_name, event_id, action_source, user_data, custom_data)
+      -> POST Graph API
+      -> registrar sucesso/erro detalhado em results + log
+```
+- Status de execução a tratar uniformemente: `running`, `waiting_click`, `waiting_reply` (e legado `waiting` quando existir).
+- Sem mudanças em autenticação de usuários; apenas robustez de execução e rastreabilidade.
 
-### Redesign completo do overlay para sidebar fixa
-
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
-
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
-
-## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
-
-### Implementação
-| Arquivo | Mudança |
-|---------|---------|
-| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
-| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
-- Ícones SVG inline (sem emojis)
-
-## Fase 1: Lembretes por Contato — Concluído ✅
-
-### Mudanças realizadas
-
-| Arquivo | Mudança |
-|---------|---------|
-| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
-| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
-| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
-| **src/App.tsx** | Rota `/reminders` adicionada |
-| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
-| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
-
-### Próximas fases
-- Fase 2: Dashboard com dados reais
-- Fase 3: IA Auto-Resposta em tempo real
-- Fase 4: Redesign do Layout
+4) Validação (E2E obrigatório)
+1. Build:
+- Rodar build e confirmar ausência do erro de `rollup`.
+2. Disparo manual/extensão:
+- Disparar fluxo com nó Pixel para 2 contatos:
+  - um com `@s.whatsapp.net`;
+  - um com `@lid`.
+3. Verificação de execução:
+- Confirmar criação/atualização de `flow_executions` com `results` contendo `metaPixel: ok (...)` ou erro explícito.
+4. Verificação funcional:
+- Conferir logs do backend com prefixo Pixel.
+- Confirmar no destino de eventos que os disparos chegaram com o nome de evento esperado.
+5. Cenário de bloqueio:
+- Forçar contato com execução em `waiting_reply` e validar que a UI recebe erro claro de bloqueio, não sucesso silencioso.
