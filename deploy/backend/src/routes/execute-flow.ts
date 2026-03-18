@@ -742,6 +742,11 @@ router.post("/", async (req, res) => {
               } else {
                 const eventName = step.data.pixelCustomEventName || step.data.pixelEventName || "Lead";
                 const phone = (sendNumber || jid).replace(/@.*$/, "").replace(/\D/g, "");
+
+                if (phone.length < 8) {
+                  console.error(`[execute-flow] group.metaPixel: phone too short (${phone}), skipping`);
+                  results.push(`group.${step.id}: metaPixel: error - telefone inválido (${phone})`);
+                } else {
                 const hashedPhone = crypto.createHash("sha256").update(phone).digest("hex");
                 const eventData: any = { event_name: eventName, event_time: Math.floor(Date.now() / 1000), event_id: crypto.randomUUID(), action_source: "chat", user_data: { ph: [hashedPhone], external_id: [hashedPhone] } };
                 if (profile?.app_public_url) eventData.event_source_url = profile.app_public_url;
