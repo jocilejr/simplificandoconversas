@@ -1,58 +1,76 @@
 
 
-## Diagnóstico Confirmado: Cliques Reais Classificados como Bot
+## Diagnóstico Confirmado: Bug no Ciclo de Vida da Execução
 
-### Causa Raiz
+### Causa Raiz (comprovada pelos dados)
 
-A lista de `botPatterns` no `link-redirect.ts` (linha 8-18) inclui o padrão **`"whatsapp"`**. Quando o usuário clica no link dentro do WhatsApp, o navegador in-app do WhatsApp envia um User-Agent que contém a string "WhatsApp" — por exemplo: `Mozilla/5.0 ... WhatsApp/2.24.x`. Isso faz com que `isBotUA = true`, e o código retorna HTML com meta tags OG em vez de processar o clique real.
+**Linha 801 de `execute-flow.ts`**: após o loop `while` terminar (inclusive por `break` do waitForClick/waitForReply), o código **sempre** executa:
 
-Resultado: **100% dos cliques vindos do WhatsApp são tratados como bot**. O `processClick()` nunca executa, o fluxo nunca é retomado.
+```typescript
+await serviceClient.from("flow_executions")
+  .update({ status: "completed", results: JSON.stringify(results) })
+  .eq("id", executionId);
+```
 
-Os logs confirmam: apenas mensagens "Bot detected" aparecem, zero "Resumed flow".
+Isso **sobrescreve** o status `waiting_click` que foi definido na linha 600/666 durante o processamento do nó.
 
-### Evidências dos Dados
+**Cronologia comprovada** (execução `71bb9dd4`):
+1. `21:33:38` — execução criada, status `running`
+2. `21:34:05` — tracked_link criado (waitForClick processado)
+3. `21:34:12.986` — flow_timeout criado (2h)
+4. `21:34:12.994` — **status sobrescrito para `completed`** (linha 801)
+5. `21:34:22` — clique humano detectado, mas `execution.status === "completed"` → condição `if (execution?.status === "waiting_click")` falha → fluxo **não retoma**
+6. Timeout expira → `check-timeouts` encontra status `completed` → "Skipping" → fluxo **não retoma pelo timeout** também
 
-| Campo | Valor | Interpretação |
-|-------|-------|---------------|
-| Backend logs link-redirect | Só "Bot detected" | Nenhum clique humano processado |
-| tracked_links clicked=true | Existe em alguns | Meta-refresh do HTML pode ter acionado via browser normal |
-| flow_executions status | completed, updated_at = mesmo que waiting_click | Nenhuma atualização posterior pelo clique |
-| grep "Resumed flow" | Vazio | Flow nunca foi retomado após clique |
+**Não é problema de rede/Traefik.** A infraestrutura está saudável. Sem colisão de rotas. Backend acessível internamente.
 
 ### Plano de Correção
 
-**Arquivo: `deploy/backend/src/routes/link-redirect.ts`**
+#### 1. Corrigir `deploy/backend/src/routes/execute-flow.ts` (linha 801)
 
-1. **Trocar `"whatsapp"` por padrões específicos de bot do WhatsApp** (linhas 8-18)
-   - Substituir `"whatsapp"` por `"whatsapp/2"` (o crawler do WhatsApp usa UA como `WhatsApp/2.x.x` sem o prefixo Mozilla, enquanto o navegador in-app usa `Mozilla/... WhatsApp/...`)
-   - Alternativa mais segura: usar `"whatsapp/"` seguido de verificação se NÃO contém `"mozilla"` — mas a forma mais simples é usar o padrão correto do crawler
+Antes de definir `status: "completed"`, verificar se a execução já está em estado de espera:
 
-2. **Adicionar logging para cliques humanos** (após linha 38)
-   - Logar quando um clique humano é detectado: UA, código, execution_id
-   - Logar resultado do processClick: status da execução encontrado, se resume foi chamado
+```typescript
+// Verificar status atual antes de marcar como completed
+const { data: finalCheck } = await serviceClient
+  .from("flow_executions")
+  .select("status")
+  .eq("id", executionId)
+  .single();
 
-3. **Mesma correção no edge function** (`supabase/functions/link-redirect/index.ts`)
-   - Aplicar a mesma mudança no padrão de bot para manter paridade
-
-**Arquivo: `supabase/functions/link-redirect/index.ts`**
-
-4. **Mesma troca de padrão `"whatsapp"` → padrão mais específico** (linhas 8-18)
-
-### Detalhes Técnicos
-
-O User-Agent do **crawler/preview do WhatsApp** é algo como:
-```
-WhatsApp/2.23.20.0 A
-```
-
-O User-Agent do **navegador in-app do WhatsApp** é algo como:
-```
-Mozilla/5.0 (Linux; Android 13) ... WhatsApp/2.24.1.6
+const waitingStatuses = ["waiting_click", "waiting_reply"];
+if (finalCheck && !waitingStatuses.includes(finalCheck.status)) {
+  await serviceClient.from("flow_executions")
+    .update({ status: "completed", results: JSON.stringify(results) })
+    .eq("id", executionId);
+} else {
+  // Preservar status de espera, apenas salvar results
+  await serviceClient.from("flow_executions")
+    .update({ results: JSON.stringify(results) })
+    .eq("id", executionId);
+}
 ```
 
-A correção precisa distinguir entre eles. A abordagem mais robusta:
-- Tratar como bot se UA contém `"whatsapp"` MAS **não** contém `"mozilla"`
-- Isso captura o crawler (que não tem "Mozilla") mas permite o in-app browser (que tem "Mozilla")
+Aplicar a mesma lógica na linha 807 (bloco catch de erro).
 
-Alternativamente, remover `"whatsapp"` da lista de bots e confiar apenas no `tooFast` para o preview do WhatsApp (que é buscado nos primeiros segundos).
+#### 2. Aplicar mesma correção em `supabase/functions/execute-flow/index.ts` (linhas 1223-1226 e 1234-1237)
+
+Mesma verificação de status antes de sobrescrever para `completed`.
+
+#### 3. Adicionar logs de diagnóstico em `link-redirect.ts`
+
+Na seção `processClick`, logar o status encontrado da execução e o resultado da chamada de retomada para facilitar depuração futura.
+
+### Resultado Esperado
+
+- **Clique**: execução permanece `waiting_click` → link-redirect encontra status correto → retoma fluxo via `/api/execute-flow` com `resumeFromNodeId`
+- **Timeout (não clicou)**: execução permanece `waiting_click` → check-timeouts encontra status correto → retoma via `timeout_node_id` (caminho "Se não clicou")
+- **Sem wait**: execução termina normalmente como `completed`
+
+### Ações Pós-Deploy
+
+Rebuild do backend na VPS:
+```bash
+cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
+```
 
