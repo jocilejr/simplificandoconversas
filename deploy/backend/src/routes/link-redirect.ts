@@ -63,6 +63,7 @@ router.get("/", async (req, res) => {
   }
 
   // Real human click
+  console.log(`[link-redirect] Human click detected! code=${code} clicked=${link.clicked} execution_id=${link.execution_id} UA: ${userAgent}`);
   if (!link.clicked) {
     const processClick = async () => {
       try {
