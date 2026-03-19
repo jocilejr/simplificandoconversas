@@ -1220,10 +1220,16 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[execute-flow] Flow ${flowId} completed. Results:`, results);
-    await serviceClient
-      .from("flow_executions")
-      .update({ status: "completed", results: JSON.stringify(results) } as any)
-      .eq("id", executionId);
+
+    // Bug fix: check current status before overwriting — preserve waiting_click/waiting_reply
+    const { data: finalCheck } = await serviceClient.from("flow_executions").select("status").eq("id", executionId).single();
+    const waitingStatuses = ["waiting_click", "waiting_reply"];
+    if (finalCheck && waitingStatuses.includes(finalCheck.status)) {
+      console.log(`[execute-flow] Execution ${executionId} is '${finalCheck.status}' — preserving status, saving results only`);
+      await serviceClient.from("flow_executions").update({ results: JSON.stringify(results) } as any).eq("id", executionId);
+    } else {
+      await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId);
+    }
 
     return new Response(JSON.stringify({ ok: true, executed: results, executionId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
