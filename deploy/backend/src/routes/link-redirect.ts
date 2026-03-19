@@ -6,7 +6,7 @@ const router = Router();
 router.get("/", async (req, res) => {
   const userAgent = (req.headers["user-agent"] || "").toLowerCase();
   const botPatterns = [
-    "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
+    "facebookexternalhit", "facebot", "telegrambot",
     "twitterbot", "linkedinbot", "slackbot", "discordbot",
     "googlebot", "bingbot", "yandexbot", "baiduspider",
     "preview", "crawler", "spider", "bot", "curl", "wget",
@@ -16,7 +16,10 @@ router.get("/", async (req, res) => {
     "vkshare", "w3c_validator", "skypeuripreview", "nuzzel",
     "flipboard", "tumblr", "bitlybot", "mediapartners-google",
   ];
-  const isBotUA = botPatterns.some((p) => userAgent.includes(p));
+  const isBotPattern = botPatterns.some((p) => userAgent.includes(p));
+  // WhatsApp crawler UA: "WhatsApp/2.x.x" (no Mozilla). In-app browser: "Mozilla/... WhatsApp/..."
+  const isWhatsAppCrawler = userAgent.includes("whatsapp") && !userAgent.includes("mozilla");
+  const isBotUA = isBotPattern || isWhatsAppCrawler;
 
   const code = req.query.code as string;
   if (!code) return res.status(400).send("Missing code");
