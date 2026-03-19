@@ -1,76 +1,58 @@
-## Fix: @lid → phone_number resolution for Evolution API — Concluído ✅
 
-### Root Cause
-O `execute-flow` usava o `remoteJid` (@lid) diretamente como `number` nas chamadas à Evolution API. A Evolution API não aceita @lid — precisa de número real (@s.whatsapp.net).
 
-### Mudanças realizadas
+## Diagnóstico Confirmado: Cliques Reais Classificados como Bot
 
-| Arquivo | Mudança |
-|---------|---------|
-| **execute-flow.ts (backend)** | Nova variável `sendNumber`: resolve phone_number da conversa quando jid é @lid. Usado em todas as chamadas Evolution API. `jid` mantido para operações no banco. |
-| **execute-flow/index.ts (edge)** | Mesma lógica de resolução `sendNumber` para paridade |
-| **webhook.ts** | `resolvedPhone` enviado no body ao disparar fluxos para que execute-flow tenha o telefone disponível |
-| **executeStep()** | Novo parâmetro `sendNumber` para usar número real nas chamadas Evolution |
+### Causa Raiz
 
-### Estratégia de resolução (3 camadas)
-1. `bodyResolvedPhone` do webhook (mais rápido)
-2. `phone_number` da conversa por `remote_jid` lookup
-3. `phone_number` da conversa por `lid` lookup
+A lista de `botPatterns` no `link-redirect.ts` (linha 8-18) inclui o padrão **`"whatsapp"`**. Quando o usuário clica no link dentro do WhatsApp, o navegador in-app do WhatsApp envia um User-Agent que contém a string "WhatsApp" — por exemplo: `Mozilla/5.0 ... WhatsApp/2.24.x`. Isso faz com que `isBotUA = true`, e o código retorna HTML com meta tags OG em vez de processar o clique real.
 
-## Fix: sync-chats fallbacks + LID phone resolution — Concluído ✅
+Resultado: **100% dos cliques vindos do WhatsApp são tratados como bot**. O `processClick()` nunca executa, o fluxo nunca é retomado.
 
-### Mudanças realizadas
+Os logs confirmam: apenas mensagens "Bot detected" aparecem, zero "Resumed flow".
 
-| Arquivo | Mudança |
-|---------|---------|
-| **whatsapp-proxy.ts** | Fix `lastMsgContent`: quando `lastMessage.message` é null (não descriptografada), usa placeholder em vez de `[media]`. Verifica `messageContextInfo` como única key para detectar mensagem vazia |
-| **whatsapp-proxy.ts** | Fix mensagens inbound sem conteúdo: usa placeholder em vez de null para `msgType === "text"` |
-| **whatsapp-proxy.ts** | Nova etapa `findContacts` no sync-chats: resolve `phone_number` e `contact_name` para conversas @lid sem telefone |
-| **ConversationList.tsx** | Display amigável para @lid sem nome: mostra "Contato XXXX" (últimos 4 dígitos do LID) |
+### Evidências dos Dados
 
-## Extensão Chrome — Sidebar Profissional — Concluído ✅
+| Campo | Valor | Interpretação |
+|-------|-------|---------------|
+| Backend logs link-redirect | Só "Bot detected" | Nenhum clique humano processado |
+| tracked_links clicked=true | Existe em alguns | Meta-refresh do HTML pode ter acionado via browser normal |
+| flow_executions status | completed, updated_at = mesmo que waiting_click | Nenhuma atualização posterior pelo clique |
+| grep "Resumed flow" | Vazio | Flow nunca foi retomado após clique |
 
-### Redesign completo do overlay para sidebar fixa
+### Plano de Correção
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `chrome-extension/content.js` | Sidebar fixa 360px na direita. Duas abas: Dashboard (stats, execuções recentes) e Contato (tags, fluxos ativos, cross-instance, histórico). Detecção automática de instância. |
-| `chrome-extension/styles.css` | Design escuro profissional (#111b21), cards com bordas arredondadas, tab bar com indicador verde, badges semânticos, scrollbar customizada |
-| `chrome-extension/background.js` | Novas actions: `dashboard-stats`, `contact-cross`, `detect-instance`. Rotas atualizadas para `/api/ext/` |
-| `deploy/backend/src/routes/extension-api.ts` | Novos endpoints: `GET /dashboard` (stats agregados), `GET /detect-instance` (instância ativa), `GET /contact-cross?phone=X` (conversas cross-instance). Contact-status agora retorna `history` (execuções completadas/canceladas). |
+**Arquivo: `deploy/backend/src/routes/link-redirect.ts`**
 
-### Funcionalidades
-- Sidebar fixa na direita, WhatsApp Web redimensionado automaticamente
-- Dashboard com cards de resumo (fluxos ativos, contatos, execuções, instâncias)
-- Lista de execuções recentes com nomes de fluxo e contato
-- Aba Contato com header do contato, tags, fluxos ativos, cross-instance, disparar fluxo, histórico
-- Detecção automática de instância (sem seletor manual)
-- Toggle para abrir/fechar sidebar
-- Polling a cada 8s para atualização
+1. **Trocar `"whatsapp"` por padrões específicos de bot do WhatsApp** (linhas 8-18)
+   - Substituir `"whatsapp"` por `"whatsapp/2"` (o crawler do WhatsApp usa UA como `WhatsApp/2.x.x` sem o prefixo Mozilla, enquanto o navegador in-app usa `Mozilla/... WhatsApp/...`)
+   - Alternativa mais segura: usar `"whatsapp/"` seguido de verificação se NÃO contém `"mozilla"` — mas a forma mais simples é usar o padrão correto do crawler
 
-## Sistema Anti-Ban: Fila Global de Mensagens — Concluído ✅
+2. **Adicionar logging para cliques humanos** (após linha 38)
+   - Logar quando um clique humano é detectado: UA, código, execution_id
+   - Logar resultado do processClick: status da execução encontrado, se resume foi chamado
 
-### Implementação
-| Arquivo | Mudança |
-|---------|---------|
-| **message-queue.ts** (novo) | Classe `MessageQueue` singleton por instância. Worker serial com 2s delay entre envios. Map global `instanceName → queue`. |
-| **execute-flow.ts** | Todos os envios de mensagem (sendText, sendImage, sendAudio, sendVideo, sendFile, aiAgent, waitForClick) passam pela fila via `queue.enqueue()`. Nós de lógica (condition, action, waitDelay, trigger) continuam diretos. |
-- Ícones SVG inline (sem emojis)
+3. **Mesma correção no edge function** (`supabase/functions/link-redirect/index.ts`)
+   - Aplicar a mesma mudança no padrão de bot para manter paridade
 
-## Fase 1: Lembretes por Contato — Concluído ✅
+**Arquivo: `supabase/functions/link-redirect/index.ts`**
 
-### Mudanças realizadas
+4. **Mesma troca de padrão `"whatsapp"` → padrão mais específico** (linhas 8-18)
 
-| Arquivo | Mudança |
-|---------|---------|
-| **Migration** | Tabela `reminders` com RLS (user_id = auth.uid()) |
-| **src/hooks/useReminders.ts** | Hook completo: `useReminders(filter)`, `useCreateReminder`, `useToggleReminder`, `useDeleteReminder` |
-| **src/pages/Reminders.tsx** | Página completa com cards de resumo, filtros, formulário de criação, lista com badges visuais |
-| **src/App.tsx** | Rota `/reminders` adicionada |
-| **src/components/AppSidebar.tsx** | Item "Lembretes" com ícone Bell adicionado ao menu |
-| **extension-api.ts** | `GET /api/ext/reminders`, `POST /api/ext/reminders`, `PATCH /api/ext/reminders/:id` |
+### Detalhes Técnicos
 
-### Próximas fases
-- Fase 2: Dashboard com dados reais
-- Fase 3: IA Auto-Resposta em tempo real
-- Fase 4: Redesign do Layout
+O User-Agent do **crawler/preview do WhatsApp** é algo como:
+```
+WhatsApp/2.23.20.0 A
+```
+
+O User-Agent do **navegador in-app do WhatsApp** é algo como:
+```
+Mozilla/5.0 (Linux; Android 13) ... WhatsApp/2.24.1.6
+```
+
+A correção precisa distinguir entre eles. A abordagem mais robusta:
+- Tratar como bot se UA contém `"whatsapp"` MAS **não** contém `"mozilla"`
+- Isso captura o crawler (que não tem "Mozilla") mas permite o in-app browser (que tem "Mozilla")
+
+Alternativamente, remover `"whatsapp"` da lista de bots e confiar apenas no `tooFast` para o preview do WhatsApp (que é buscado nos primeiros segundos).
+
