@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
   // Serve OG HTML for bots/previews
   if (isBot) {
-    console.log(`[link-redirect] Bot detected (UA: ${isBotUA}, tooFast: ${tooFast}). UA: ${userAgent}`);
+    console.log(`[link-redirect] Bot detected (UA-pattern: ${isBotPattern}, WA-crawler: ${isWhatsAppCrawler}, tooFast: ${tooFast}) UA: ${userAgent}`);
 
     const title = link.preview_title || link.original_url;
     const description = link.preview_description || "";
