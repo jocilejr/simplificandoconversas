@@ -6,7 +6,7 @@ const router = Router();
 router.get("/", async (req, res) => {
   const userAgent = (req.headers["user-agent"] || "").toLowerCase();
   const botPatterns = [
-    "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
+    "facebookexternalhit", "facebot", "telegrambot",
     "twitterbot", "linkedinbot", "slackbot", "discordbot",
     "googlebot", "bingbot", "yandexbot", "baiduspider",
     "preview", "crawler", "spider", "bot", "curl", "wget",
@@ -16,7 +16,10 @@ router.get("/", async (req, res) => {
     "vkshare", "w3c_validator", "skypeuripreview", "nuzzel",
     "flipboard", "tumblr", "bitlybot", "mediapartners-google",
   ];
-  const isBotUA = botPatterns.some((p) => userAgent.includes(p));
+  const isBotPattern = botPatterns.some((p) => userAgent.includes(p));
+  // WhatsApp crawler UA: "WhatsApp/2.x.x" (no Mozilla). In-app browser: "Mozilla/... WhatsApp/..."
+  const isWhatsAppCrawler = userAgent.includes("whatsapp") && !userAgent.includes("mozilla");
+  const isBotUA = isBotPattern || isWhatsAppCrawler;
 
   const code = req.query.code as string;
   if (!code) return res.status(400).send("Missing code");
@@ -37,7 +40,7 @@ router.get("/", async (req, res) => {
   const isBot = isBotUA || tooFast;
 
   if (isBot) {
-    console.log(`[link-redirect] Bot detected (UA: ${isBotUA}, tooFast: ${tooFast})`);
+    console.log(`[link-redirect] Bot detected (UA-pattern: ${isBotPattern}, WA-crawler: ${isWhatsAppCrawler}, tooFast: ${tooFast}) code=${code} UA: ${userAgent}`);
 
     const title = link.preview_title || link.original_url;
     const description = link.preview_description || "";
@@ -60,6 +63,7 @@ router.get("/", async (req, res) => {
   }
 
   // Real human click
+  console.log(`[link-redirect] Human click detected! code=${code} clicked=${link.clicked} execution_id=${link.execution_id} UA: ${userAgent}`);
   if (!link.clicked) {
     const processClick = async () => {
       try {

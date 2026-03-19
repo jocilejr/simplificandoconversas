@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
 
   const userAgent = (req.headers.get("user-agent") || "").toLowerCase();
   const botPatterns = [
-    "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
+    "facebookexternalhit", "facebot", "telegrambot",
     "twitterbot", "linkedinbot", "slackbot", "discordbot",
     "googlebot", "bingbot", "yandexbot", "baiduspider",
     "preview", "crawler", "spider", "bot", "curl", "wget",
@@ -23,7 +23,9 @@ Deno.serve(async (req) => {
     "vkshare", "w3c_validator", "skypeuripreview", "nuzzel",
     "flipboard", "tumblr", "bitlybot", "mediapartners-google",
   ];
-  const isBotUA = botPatterns.some((p) => userAgent.includes(p));
+  const isBotPattern = botPatterns.some((p) => userAgent.includes(p));
+  const isWhatsAppCrawler = userAgent.includes("whatsapp") && !userAgent.includes("mozilla");
+  const isBotUA = isBotPattern || isWhatsAppCrawler;
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
@@ -56,7 +58,7 @@ Deno.serve(async (req) => {
 
   // Serve OG HTML for bots/previews
   if (isBot) {
-    console.log(`[link-redirect] Bot detected (UA: ${isBotUA}, tooFast: ${tooFast}). UA: ${userAgent}`);
+    console.log(`[link-redirect] Bot detected (UA-pattern: ${isBotPattern}, WA-crawler: ${isWhatsAppCrawler}, tooFast: ${tooFast}) UA: ${userAgent}`);
 
     const title = link.preview_title || link.original_url;
     const description = link.preview_description || "";
@@ -82,6 +84,7 @@ Deno.serve(async (req) => {
   }
 
   // Real human click — redirect IMMEDIATELY, process in background
+  console.log(`[link-redirect] Human click! code=${code} clicked=${link.clicked} execution_id=${link.execution_id} UA: ${userAgent}`);
   if (!link.clicked) {
     // Fire-and-forget: mark as clicked and resume flow in background
     const processClick = async () => {
