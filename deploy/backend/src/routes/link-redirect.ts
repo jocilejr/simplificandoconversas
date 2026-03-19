@@ -76,14 +76,18 @@ router.get("/", async (req, res) => {
         let executionActive = false;
         if (link.execution_id) {
           const { data: execution } = await serviceClient.from("flow_executions").select("status").eq("id", link.execution_id).single();
+          console.log(`[link-redirect] Execution ${link.execution_id} status='${execution?.status}'`);
           if (execution?.status === "waiting_click") {
             executionActive = true;
             await serviceClient.from("flow_executions").update({ status: "completed" }).eq("id", link.execution_id);
+          } else {
+            console.log(`[link-redirect] Execution status is '${execution?.status}' — not resuming flow`);
           }
         }
 
         if (executionActive && link.next_node_id && link.flow_id && link.execution_id) {
           const backendUrl = `http://localhost:${process.env.PORT || 3001}`;
+          console.log(`[link-redirect] Resuming flow ${link.flow_id} from node ${link.next_node_id} via ${backendUrl}`);
           fetch(`${backendUrl}/api/execute-flow`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
@@ -91,7 +95,10 @@ router.get("/", async (req, res) => {
               flowId: link.flow_id, remoteJid: link.remote_jid, conversationId: link.conversation_id,
               userId: link.user_id, resumeFromNodeId: link.next_node_id, instanceName: link.instance_name || undefined,
             }),
-          }).then(() => console.log(`[link-redirect] Resumed flow`)).catch((err) => console.error("[link-redirect] Failed:", err));
+          }).then(async (r) => {
+            const body = await r.text();
+            console.log(`[link-redirect] Resume response: status=${r.status} body=${body.substring(0, 500)}`);
+          }).catch((err) => console.error("[link-redirect] Resume failed:", err));
         }
       } catch (err) {
         console.error("[link-redirect] Error processing click:", err);
