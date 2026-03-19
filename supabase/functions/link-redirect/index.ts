@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
 
   const userAgent = (req.headers.get("user-agent") || "").toLowerCase();
   const botPatterns = [
-    "whatsapp", "facebookexternalhit", "facebot", "telegrambot",
+    "facebookexternalhit", "facebot", "telegrambot",
     "twitterbot", "linkedinbot", "slackbot", "discordbot",
     "googlebot", "bingbot", "yandexbot", "baiduspider",
     "preview", "crawler", "spider", "bot", "curl", "wget",
@@ -23,7 +23,9 @@ Deno.serve(async (req) => {
     "vkshare", "w3c_validator", "skypeuripreview", "nuzzel",
     "flipboard", "tumblr", "bitlybot", "mediapartners-google",
   ];
-  const isBotUA = botPatterns.some((p) => userAgent.includes(p));
+  const isBotPattern = botPatterns.some((p) => userAgent.includes(p));
+  const isWhatsAppCrawler = userAgent.includes("whatsapp") && !userAgent.includes("mozilla");
+  const isBotUA = isBotPattern || isWhatsAppCrawler;
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
