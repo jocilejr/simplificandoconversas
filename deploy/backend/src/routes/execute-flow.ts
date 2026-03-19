@@ -813,7 +813,13 @@ router.post("/", async (req, res) => {
   } catch (err: any) {
     console.error("execute-flow error:", err);
     if (executionId) {
-      await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify([`error: ${err.message}`]) } as any).eq("id", executionId);
+      const { data: errCheck } = await serviceClient.from("flow_executions").select("status").eq("id", executionId).single();
+      const errWaiting = ["waiting_click", "waiting_reply"];
+      if (errCheck && errWaiting.includes(errCheck.status)) {
+        await serviceClient.from("flow_executions").update({ results: JSON.stringify([`error: ${err.message}`]) } as any).eq("id", executionId);
+      } else {
+        await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify([`error: ${err.message}`]) } as any).eq("id", executionId);
+      }
     }
     return res.status(500).json({ error: err.message });
   }
