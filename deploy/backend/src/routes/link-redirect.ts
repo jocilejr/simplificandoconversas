@@ -40,7 +40,7 @@ router.get("/", async (req, res) => {
   const isBot = isBotUA || tooFast;
 
   if (isBot) {
-    console.log(`[link-redirect] Bot detected (UA: ${isBotUA}, tooFast: ${tooFast})`);
+    console.log(`[link-redirect] Bot detected (UA-pattern: ${isBotPattern}, WA-crawler: ${isWhatsAppCrawler}, tooFast: ${tooFast}) code=${code} UA: ${userAgent}`);
 
     const title = link.preview_title || link.original_url;
     const description = link.preview_description || "";
