@@ -84,6 +84,7 @@ Deno.serve(async (req) => {
   }
 
   // Real human click — redirect IMMEDIATELY, process in background
+  console.log(`[link-redirect] Human click! code=${code} clicked=${link.clicked} execution_id=${link.execution_id} UA: ${userAgent}`);
   if (!link.clicked) {
     // Fire-and-forget: mark as clicked and resume flow in background
     const processClick = async () => {
