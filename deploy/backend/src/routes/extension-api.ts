@@ -265,12 +265,16 @@ router.get("/contact-status", async (req, res) => {
     return res.json({ contact: null, executions: [], history: [], tags: [], instances: [] });
   }
 
+  const activeQuery = sb.from("flow_executions")
+    .select("id, flow_id, status, current_node_index, waiting_node_id, instance_name, created_at")
+    .eq("user_id", userId)
+    .eq("remote_jid", jid)
+    .in("status", ["running", "waiting", "waiting_click", "waiting_reply"]);
+  // Filter by instance if provided — avoids showing flows from OTHER instances as active
+  if (instanceName) activeQuery.eq("instance_name", instanceName);
+
   const [activeRes, historyRes] = await Promise.all([
-    sb.from("flow_executions")
-      .select("id, flow_id, status, current_node_index, waiting_node_id, instance_name, created_at")
-      .eq("user_id", userId)
-      .eq("remote_jid", jid)
-      .in("status", ["running", "waiting", "waiting_click", "waiting_reply"]),
+    activeQuery,
     sb.from("flow_executions")
       .select("id, flow_id, status, created_at")
       .eq("user_id", userId)
@@ -557,17 +561,18 @@ router.post("/ai-reply-toggle", async (req, res) => {
   const sb = getServiceClient();
 
   if (enabled) {
-    // Check if any flow is active for this contact
+    // Check if any flow is active for this contact ON THIS SPECIFIC INSTANCE
     const { data: activeFlows } = await sb
       .from("flow_executions")
       .select("id")
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
+      .eq("instance_name", instanceName)
       .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
       .limit(1);
 
     if (activeFlows && activeFlows.length > 0) {
-      return res.status(409).json({ error: "Não é possível ativar IA enquanto um fluxo está ativo para este contato" });
+      return res.status(409).json({ error: "Não é possível ativar IA enquanto um fluxo está ativo para este contato nesta instância" });
     }
 
     const { error } = await sb

@@ -572,17 +572,18 @@ async function checkAndAutoReply(
 
   if (!aiReply) return;
 
-  // Double-check no active flow
+  // Double-check no active flow ON THIS INSTANCE
   const { data: activeFlows } = await supabase
     .from("flow_executions")
     .select("id")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
+    .eq("instance_name", instanceName)
     .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
     .limit(1);
 
   if (activeFlows && activeFlows.length > 0) {
-    console.log(`[ai-reply] Skipping: active flow for ${remoteJid}`);
+    console.log(`[ai-reply] Skipping: active flow for ${remoteJid} on instance ${instanceName}`);
     return;
   }
 
@@ -702,16 +703,20 @@ async function checkAndAutoListen(
 
   if (aiListenOff) return; // User explicitly disabled
 
-  // Skip if contact has active flow
+  // Skip if contact has active flow ON THIS INSTANCE
   const { data: activeFlows } = await supabase
     .from("flow_executions")
     .select("id")
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid)
+    .eq("instance_name", instanceName)
     .in("status", ["running", "waiting", "waiting_click", "waiting_reply"])
     .limit(1);
 
-  if (activeFlows && activeFlows.length > 0) return;
+  if (activeFlows && activeFlows.length > 0) {
+    console.log(`[ai-listen] Skipping: active flow for ${remoteJid} on instance ${instanceName}`);
+    return;
+  }
 
   // Get user's OpenAI key and AI config
   const [profileRes, configRes] = await Promise.all([
