@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Bell, Plus, Trash2, Calendar, Clock, CheckCircle2 } from "lucide-react";
+import { Bell, Plus, Trash2, Calendar, Clock, CheckCircle2, Smartphone } from "lucide-react";
 import {
   useReminders,
   useCreateReminder,
@@ -28,6 +28,8 @@ import {
   type ReminderFilter,
   type Reminder,
 } from "@/hooks/useReminders";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -59,11 +61,26 @@ const filterOptions: { value: ReminderFilter; label: string }[] = [
   { value: "completed", label: "Concluídos" },
 ];
 
+function useInstanceList() {
+  return useQuery({
+    queryKey: ["whatsapp-instances-simple"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_name")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []).map((d: any) => d.instance_name as string);
+    },
+  });
+}
+
 export default function Reminders() {
   const [filter, setFilter] = useState<ReminderFilter>("pending");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: reminders = [], isLoading } = useReminders(filter);
+  const { data: instanceList = [] } = useInstanceList();
   const createReminder = useCreateReminder();
   const toggleReminder = useToggleReminder();
   const deleteReminder = useDeleteReminder();
@@ -75,6 +92,7 @@ export default function Reminders() {
     contact_name: "",
     due_date: "",
     due_time: "09:00",
+    instance_name: "",
   });
 
   const handleCreate = () => {
@@ -90,10 +108,11 @@ export default function Reminders() {
         contact_name: form.contact_name || undefined,
         remote_jid: `${cleaned}@s.whatsapp.net`,
         due_date: dueDateTime.toISOString(),
+        instance_name: form.instance_name || undefined,
       },
       {
         onSuccess: () => {
-          setForm({ title: "", description: "", phone_number: "", contact_name: "", due_date: "", due_time: "09:00" });
+          setForm({ title: "", description: "", phone_number: "", contact_name: "", due_date: "", due_time: "09:00", instance_name: "" });
           setDialogOpen(false);
         },
       }
@@ -145,6 +164,24 @@ export default function Reminders() {
                   onChange={(e) => setForm((p) => ({ ...p, contact_name: e.target.value }))}
                 />
               </div>
+              <Select
+                value={form.instance_name}
+                onValueChange={(v) => setForm((p) => ({ ...p, instance_name: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar instância WhatsApp" />
+                </SelectTrigger>
+                <SelectContent>
+                  {instanceList.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      <span className="flex items-center gap-2">
+                        <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
+                        {name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   type="date"
@@ -271,6 +308,15 @@ export default function Reminders() {
                           {r.title}
                         </span>
                         <StatusBadge status={status} />
+                        {r.instance_name && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 text-xs border-muted-foreground/30 text-muted-foreground font-normal"
+                          >
+                            <Smartphone className="h-3 w-3" />
+                            {r.instance_name}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         {r.contact_name && <span>{r.contact_name}</span>}
