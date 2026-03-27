@@ -128,6 +128,7 @@ async function handleMessage(msg) {
       let url = `/api/ext/contact-status?`;
       if (msg.phone) url += `phone=${encodeURIComponent(msg.phone)}`;
       else if (msg.name) url += `name=${encodeURIComponent(msg.name)}`;
+      if (msg.instance) url += `&instance=${encodeURIComponent(msg.instance)}`;
       return apiFetch(url);
     }
 

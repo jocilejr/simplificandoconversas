@@ -265,13 +265,13 @@ router.get("/contact-status", async (req, res) => {
     return res.json({ contact: null, executions: [], history: [], tags: [], instances: [] });
   }
 
-  const activeQuery = sb.from("flow_executions")
+  let activeQuery = sb.from("flow_executions")
     .select("id, flow_id, status, current_node_index, waiting_node_id, instance_name, created_at")
     .eq("user_id", userId)
     .eq("remote_jid", jid)
     .in("status", ["running", "waiting", "waiting_click", "waiting_reply"]);
   // Filter by instance if provided — avoids showing flows from OTHER instances as active
-  if (instanceName) activeQuery.eq("instance_name", instanceName);
+  if (instanceName) activeQuery = activeQuery.eq("instance_name", instanceName);
 
   const [activeRes, historyRes] = await Promise.all([
     activeQuery,
