@@ -751,7 +751,12 @@ Deno.serve(async (req) => {
 
             const openaiMessages: any[] = [];
             if (data.aiSystemPrompt) {
-              openaiMessages.push({ role: "system", content: data.aiSystemPrompt });
+              // Inject current date/time in Brasília timezone so the AI correctly
+              // interprets relative date expressions like "fim do mês", "amanhã", "próxima semana"
+              const nowBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000); // UTC-3
+              const dateStr = nowBrasilia.toISOString().replace("T", " ").substring(0, 16);
+              const dateContext = `[DATA E HORA ATUAL EM BRASÍLIA: ${dateStr} (UTC-3). Use esta data como referência para interpretar expressões de tempo como "fim do mês", "amanhã", "próxima semana", etc. "Fim do mês" refere-se ao último dia do MÊS ATUAL, não do próximo mês.]`;
+              openaiMessages.push({ role: "system", content: `${dateContext}\n\n${data.aiSystemPrompt}` });
             }
 
             const acceptedMedia = data.aiAcceptedMedia || ["text"];
