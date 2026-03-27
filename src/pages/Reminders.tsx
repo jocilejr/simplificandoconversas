@@ -175,19 +175,6 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
         </div>
       </div>
 
-      {/* Nota */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-          <FileText className="h-3 w-3" /> Nota do Lembrete
-        </p>
-        <p className="text-sm font-semibold">{reminder.title}</p>
-        {reminder.description ? (
-          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{reminder.description}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground italic">Sem descrição</p>
-        )}
-      </div>
-
       {/* Histórico: último → primeiro */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
@@ -234,6 +221,19 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
               );
             })}
           </div>
+        )}
+      </div>
+
+      {/* Nota */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+          <FileText className="h-3 w-3" /> Nota do Lembrete
+        </p>
+        <p className="text-sm font-semibold">{reminder.title}</p>
+        {reminder.description ? (
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{reminder.description}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">Sem descrição</p>
         )}
       </div>
     </div>
