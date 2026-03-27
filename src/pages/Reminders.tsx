@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import {
   Bell,
   Plus,
   Trash2,
-  Calendar,
+  Calendar as CalendarIcon,
   Clock,
   CheckCircle2,
   Smartphone,
@@ -47,16 +48,22 @@ import {
   useCreateReminder,
   useToggleReminder,
   useDeleteReminder,
-  type ReminderFilter,
   type Reminder,
 } from "@/hooks/useReminders";
 import { useReminderConversation } from "@/hooks/useReminderConversation";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, isToday, isBefore, startOfDay } from "date-fns";
+import {
+  format,
+  isToday,
+  isBefore,
+  startOfDay,
+  isSameDay,
+  parseISO,
+} from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getReminderStatus(r: Reminder): "overdue" | "today" | "upcoming" | "completed" {
   if (r.completed) return "completed";
@@ -79,14 +86,6 @@ function StatusBadge({ status }: { status: keyof typeof STATUS_MAP }) {
   return <Badge variant="outline" className={s.className}>{s.label}</Badge>;
 }
 
-const filterOptions: { value: ReminderFilter; label: string }[] = [
-  { value: "all", label: "Todos" },
-  { value: "pending", label: "Pendentes" },
-  { value: "overdue", label: "Atrasados" },
-  { value: "today", label: "Hoje" },
-  { value: "completed", label: "Concluídos" },
-];
-
 function useInstanceList() {
   return useQuery({
     queryKey: ["whatsapp-instances-simple"],
@@ -101,7 +100,7 @@ function useInstanceList() {
   });
 }
 
-// ─── ReminderDetail (Sheet content) ──────────────────────────────────────────
+// ─── Detalhe do lembrete (Sheet) ─────────────────────────────────────────────
 
 function ReminderDetail({ reminder }: { reminder: Reminder }) {
   const status = getReminderStatus(reminder);
@@ -111,7 +110,10 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
     reminder.instance_name
   );
 
-  const handleCopyPhone = () => {
+  // Mensagens ordenadas da mais recente para a mais antiga
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
+
+  const handleCopy = () => {
     if (reminder.phone_number) {
       navigator.clipboard.writeText(reminder.phone_number);
       setCopied(true);
@@ -120,12 +122,10 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
   };
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
-      {/* ── Seção 1: Identidade do contato ── */}
+    <div className="flex flex-col gap-4 pb-8">
+      {/* Contato */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Contato
-        </p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contato</p>
 
         {reminder.instance_name && (
           <div className="flex items-center gap-2">
@@ -133,7 +133,7 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
               <Smartphone className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Instância</p>
+              <p className="text-[10px] text-muted-foreground">Instância</p>
               <p className="text-sm font-medium">{reminder.instance_name}</p>
             </div>
           </div>
@@ -145,7 +145,7 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
               <User className="h-4 w-4 text-blue-500" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Nome</p>
+              <p className="text-[10px] text-muted-foreground">Nome</p>
               <p className="text-sm font-semibold">{reminder.contact_name}</p>
             </div>
           </div>
@@ -157,15 +157,10 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
               <Phone className="h-4 w-4 text-green-500" />
             </div>
             <div className="flex-1">
-              <p className="text-xs text-muted-foreground">Telefone</p>
+              <p className="text-[10px] text-muted-foreground">Telefone</p>
               <p className="text-sm font-medium font-mono">{reminder.phone_number}</p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={handleCopyPhone}
-            >
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={handleCopy}>
               {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
           </div>
@@ -174,67 +169,60 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
         <div className="flex items-center gap-2 pt-1 border-t border-border">
           <StatusBadge status={status} />
           <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
+            <CalendarIcon className="h-3 w-3" />
             {format(new Date(reminder.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
           </span>
         </div>
       </div>
 
-      {/* ── Seção 2: Título + Nota ── */}
+      {/* Nota */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-          <FileText className="h-3 w-3" /> Lembrete
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+          <FileText className="h-3 w-3" /> Nota do Lembrete
         </p>
         <p className="text-sm font-semibold">{reminder.title}</p>
         {reminder.description ? (
-          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-            {reminder.description}
-          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{reminder.description}</p>
         ) : (
           <p className="text-xs text-muted-foreground italic">Sem descrição</p>
         )}
       </div>
 
-      {/* ── Seção 3: Histórico da conversa ── */}
+      {/* Histórico: último → primeiro */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-          <MessageSquare className="h-3 w-3" /> Histórico da Conversa
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+          <MessageSquare className="h-3 w-3" /> Conversa (mais recente primeiro)
         </p>
 
         {isLoadingMsgs ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : reversedMessages.length === 0 ? (
           <div className="py-6 text-center">
             <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-20" />
             <p className="text-xs text-muted-foreground">Nenhuma mensagem encontrada</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1">
-            {messages.map((msg) => {
+          <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-1">
+            {reversedMessages.map((msg) => {
               const isOut = msg.direction === "outbound";
               return (
-                <div
-                  key={msg.id}
-                  className={`flex ${isOut ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-                      isOut
-                        ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : "bg-secondary text-secondary-foreground rounded-bl-sm"
-                    }`}
-                  >
+                <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm ${
+                    isOut
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : "bg-secondary text-secondary-foreground rounded-bl-sm"
+                  }`}>
                     {msg.message_type === "text" || msg.message_type === "conversation" ? (
                       <p className="leading-snug whitespace-pre-wrap break-words">{msg.content}</p>
                     ) : (
                       <p className="italic opacity-70 text-xs">
-                        [{msg.message_type === "image" ? "🖼 Imagem" :
+                        {msg.message_type === "image" ? "🖼 Imagem" :
                           msg.message_type === "audio" ? "🎵 Áudio" :
                           msg.message_type === "video" ? "🎬 Vídeo" :
                           msg.message_type === "document" ? "📄 Documento" :
-                          `📎 ${msg.message_type}`}]
+                          `📎 ${msg.message_type}`}
                         {msg.content && ` — ${msg.content}`}
                       </p>
                     )}
@@ -252,7 +240,7 @@ function ReminderDetail({ reminder }: { reminder: Reminder }) {
   );
 }
 
-// ─── ReminderCard ─────────────────────────────────────────────────────────────
+// ─── Card de lembrete (lista lateral) ────────────────────────────────────────
 
 function ReminderCard({
   reminder,
@@ -274,24 +262,21 @@ function ReminderCard({
       }`}
       onClick={() => onSelect(reminder)}
     >
-      <CardContent className="p-4 space-y-3">
-        {/* Top row: status + instance */}
+      <CardContent className="p-4 space-y-2">
+        {/* Status + instância */}
         <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge status={status} />
           {reminder.instance_name && (
-            <Badge
-              variant="outline"
-              className="gap-1 text-xs border-muted-foreground/25 text-muted-foreground font-normal"
-            >
+            <Badge variant="outline" className="gap-1 text-xs border-muted-foreground/25 text-muted-foreground font-normal">
               <Smartphone className="h-3 w-3" />
               {reminder.instance_name}
             </Badge>
           )}
-          <ChevronRight className="h-4 w-4 text-muted-foreground/40 ml-auto transition-transform group-hover:translate-x-0.5" />
+          <ChevronRight className="h-4 w-4 text-muted-foreground/40 ml-auto group-hover:translate-x-0.5 transition-transform" />
         </div>
 
-        {/* Contact info */}
-        <div className="space-y-1">
+        {/* Nome e telefone */}
+        <div>
           {reminder.contact_name && (
             <p className="font-semibold text-sm leading-tight">{reminder.contact_name}</p>
           )}
@@ -300,25 +285,24 @@ function ReminderCard({
           )}
         </div>
 
-        {/* Title */}
-        <p className={`text-xs text-muted-foreground line-clamp-1 ${reminder.completed ? "line-through" : ""}`}>
+        {/* Título */}
+        <p className={`text-xs text-muted-foreground line-clamp-2 ${reminder.completed ? "line-through" : ""}`}>
           {reminder.title}
         </p>
 
-        {/* Footer: date + actions */}
+        {/* Rodapé: hora + ações */}
         <div
-          className="flex items-center justify-between pt-1 border-t border-border"
+          className="flex items-center justify-between pt-2 border-t border-border"
           onClick={(e) => e.stopPropagation()}
         >
           <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {format(new Date(reminder.due_date), "dd/MM/yyyy HH:mm")}
+            <Clock className="h-3 w-3" />
+            {format(new Date(reminder.due_date), "HH:mm")}
           </span>
           <div className="flex items-center gap-2">
             <Checkbox
               checked={reminder.completed}
-              onCheckedChange={(checked) => onToggle(reminder.id, !!checked)}
-              className="shrink-0"
+              onCheckedChange={(v) => onToggle(reminder.id, !!v)}
             />
             <Button
               variant="ghost"
@@ -335,14 +319,15 @@ function ReminderCard({
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function Reminders() {
-  const [filter, setFilter] = useState<ReminderFilter>("pending");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selected, setSelected] = useState<Reminder | null>(null);
 
-  const { data: reminders = [], isLoading } = useReminders(filter);
+  // Busca todos os lembretes sem filtro de aba (para marcar o calendário)
+  const { data: allReminders = [], isLoading } = useReminders("all");
   const { data: instanceList = [] } = useInstanceList();
   const createReminder = useCreateReminder();
   const toggleReminder = useToggleReminder();
@@ -357,6 +342,30 @@ export default function Reminders() {
     due_time: "09:00",
     instance_name: "",
   });
+
+  // Datas que têm lembretes (para marcar no calendário)
+  const markedDates = useMemo(
+    () => allReminders.map((r) => parseISO(r.due_date)),
+    [allReminders]
+  );
+
+  // Lembretes do dia selecionado, ordenados por horário
+  const dayReminders = useMemo(
+    () =>
+      allReminders
+        .filter((r) => isSameDay(parseISO(r.due_date), selectedDate))
+        .sort((a, b) => parseISO(a.due_date).getTime() - parseISO(b.due_date).getTime()),
+    [allReminders, selectedDate]
+  );
+
+  const overdueCount = useMemo(
+    () => allReminders.filter((r) => getReminderStatus(r) === "overdue").length,
+    [allReminders]
+  );
+  const todayCount = useMemo(
+    () => allReminders.filter((r) => getReminderStatus(r) === "today").length,
+    [allReminders]
+  );
 
   const handleCreate = () => {
     if (!form.title || !form.phone_number || !form.due_date) return;
@@ -382,11 +391,8 @@ export default function Reminders() {
     );
   };
 
-  const overdueCount = reminders.filter((r) => getReminderStatus(r) === "overdue").length;
-  const todayCount = reminders.filter((r) => getReminderStatus(r) === "today").length;
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -394,7 +400,7 @@ export default function Reminders() {
             <Bell className="h-6 w-6 text-primary" />
             Lembretes
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             Gerencie lembretes de pagamento e acompanhamento de contatos
           </p>
         </div>
@@ -412,7 +418,7 @@ export default function Reminders() {
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <Input
-                placeholder="Título (ex: Vai pagar dia 20)"
+                placeholder="Título do lembrete"
                 value={form.title}
                 onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
               />
@@ -428,12 +434,9 @@ export default function Reminders() {
                   onChange={(e) => setForm((p) => ({ ...p, contact_name: e.target.value }))}
                 />
               </div>
-              <Select
-                value={form.instance_name}
-                onValueChange={(v) => setForm((p) => ({ ...p, instance_name: v }))}
-              >
+              <Select value={form.instance_name} onValueChange={(v) => setForm((p) => ({ ...p, instance_name: v }))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecionar instância WhatsApp" />
+                  <SelectValue placeholder="Instância WhatsApp" />
                 </SelectTrigger>
                 <SelectContent>
                   {instanceList.map((name) => (
@@ -476,91 +479,92 @@ export default function Reminders() {
         </Dialog>
       </div>
 
-      {/* Sumário */}
+      {/* Sumário rápido */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-destructive/15 flex items-center justify-center">
-              <Clock className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{overdueCount}</p>
-              <p className="text-xs text-muted-foreground">Atrasados</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-yellow-500/15 flex items-center justify-center">
-              <Calendar className="h-5 w-5 text-yellow-500" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{todayCount}</p>
-              <p className="text-xs text-muted-foreground">Para hoje</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/15 flex items-center justify-center">
-              <Bell className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{reminders.filter((r) => !r.completed).length}</p>
-              <p className="text-xs text-muted-foreground">Pendentes</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-              <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{reminders.filter((r) => r.completed).length}</p>
-              <p className="text-xs text-muted-foreground">Concluídos</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtros */}
-      <div className="flex gap-2 flex-wrap">
-        {filterOptions.map((f) => (
-          <Button
-            key={f.value}
-            variant={filter === f.value ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter(f.value)}
-          >
-            {f.label}
-          </Button>
+        {[
+          { icon: Clock, color: "destructive", count: overdueCount, label: "Atrasados" },
+          { icon: CalendarIcon, color: "yellow-500", count: todayCount, label: "Para hoje" },
+          { icon: Bell, color: "primary", count: allReminders.filter((r) => !r.completed).length, label: "Pendentes" },
+          { icon: CheckCircle2, color: "muted-foreground", count: allReminders.filter((r) => r.completed).length, label: "Concluídos" },
+        ].map(({ icon: Icon, color, count, label }) => (
+          <Card key={label} className="bg-card border-border">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-lg bg-${color}/15 flex items-center justify-center`}>
+                <Icon className={`h-5 w-5 text-${color}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{count}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      {/* Grid de cards */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      {/* Layout split: calendário + lista */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        {/* ── Calendário ── */}
+        <div className="w-full lg:w-auto shrink-0">
+          <Card className="bg-card border-border">
+            <CardContent className="p-3">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => d && setSelectedDate(d)}
+                locale={ptBR}
+                className="rounded-md"
+                modifiers={{ hasReminder: markedDates }}
+                modifiersClassNames={{
+                  hasReminder: "after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1 after:w-1 after:rounded-full after:bg-primary relative",
+                }}
+              />
+              <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-xs text-muted-foreground justify-center">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                Dia com lembrete
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      ) : reminders.length === 0 ? (
-        <div className="py-16 text-center text-muted-foreground">
-          <Bell className="h-10 w-10 mx-auto mb-2 opacity-30" />
-          <p>Nenhum lembrete encontrado</p>
+
+        {/* ── Lista do dia selecionado ── */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">
+              {format(selectedDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+            </h2>
+            {dayReminders.length > 0 && (
+              <Badge variant="secondary" className="ml-auto">
+                {dayReminders.length} lembrete{dayReminders.length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : dayReminders.length === 0 ? (
+            <div className="py-16 text-center text-muted-foreground border border-dashed border-border rounded-xl">
+              <Bell className="h-10 w-10 mx-auto mb-2 opacity-20" />
+              <p className="text-sm">Nenhum lembrete neste dia</p>
+              <p className="text-xs mt-1 opacity-60">Selecione outro dia ou crie um novo lembrete</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {dayReminders.map((r) => (
+                <ReminderCard
+                  key={r.id}
+                  reminder={r}
+                  onSelect={setSelected}
+                  onToggle={(id, completed) => toggleReminder.mutate({ id, completed })}
+                  onDelete={(id) => deleteReminder.mutate(id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {reminders.map((r) => (
-            <ReminderCard
-              key={r.id}
-              reminder={r}
-              onSelect={setSelected}
-              onToggle={(id, completed) => toggleReminder.mutate({ id, completed })}
-              onDelete={(id) => deleteReminder.mutate(id)}
-            />
-          ))}
-        </div>
-      )}
+      </div>
 
       {/* Sheet de detalhes */}
       <Sheet open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
