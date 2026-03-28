@@ -73,6 +73,9 @@ async function executeStep(
   if (nodeType === "sendImage" && stepData.mediaUrl) {
     const queue = getMessageQueue(instanceName);
     const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendImage→${num}`);
+    console.log(`[execute-flow] sendImage response:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Imagem:`, JSON.stringify(r));
+    
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -89,6 +92,9 @@ async function executeStep(
   if (nodeType === "sendAudio" && stepData.audioUrl) {
     const queue = getMessageQueue(instanceName);
     const r = await queue.enqueue(() => evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl }), `sendAudio→${num}`);
+    console.log(`[execute-flow] sendAudio response:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Áudio:`, JSON.stringify(r));
+    
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -105,6 +111,9 @@ async function executeStep(
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
     const queue = getMessageQueue(instanceName);
     const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendVideo→${num}`);
+    console.log(`[execute-flow] sendVideo response:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Vídeo:`, JSON.stringify(r));
+    
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
@@ -123,6 +132,9 @@ async function executeStep(
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
     const queue = getMessageQueue(instanceName);
     const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" }), `sendFile→${num}`);
+    console.log(`[execute-flow] sendFile response:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Arquivo:`, JSON.stringify(r));
+    
     const { data: conv } = await serviceClient
       .from("conversations")
       .upsert({ user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })

@@ -355,7 +355,7 @@ router.post("/*", async (req, res) => {
     }
 
     let flowResumed = false;
-    if (!fromMe && messageContent) {
+    if (!fromMe && !isStubOnly) {
       try {
         flowResumed = await checkAndResumeWaitingReply(supabase, userId, remoteJid, conv.id, instance);
       } catch (resumeErr: any) {
