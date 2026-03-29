@@ -1,76 +1,42 @@
 
 
-## Diagnóstico Confirmado: Bug no Ciclo de Vida da Execução
+## Dashboard Dinâmico com Filtro de Datas
 
-### Causa Raiz (comprovada pelos dados)
+### Visão Geral
+Substituir o dashboard estático por um com dados reais do banco, com seletor de período: **Hoje**, **Ontem**, **Personalizado** (date range picker).
 
-**Linha 801 de `execute-flow.ts`**: após o loop `while` terminar (inclusive por `break` do waitForClick/waitForReply), o código **sempre** executa:
+### Seletor de Período (topo do dashboard)
+Botões segmentados: `Hoje | Ontem | Personalizado`
+- Ao selecionar "Personalizado", abre um date range picker (Popover + Calendar)
+- O período selecionado filtra todos os cards e listas
 
-```typescript
-await serviceClient.from("flow_executions")
-  .update({ status: "completed", results: JSON.stringify(results) })
-  .eq("id", executionId);
-```
+### Cards de Estatísticas
+| Card | Query | Comparação |
+|------|-------|------------|
+| Lembretes no Período | `reminders` com `due_date` no range | Pendentes vs concluídos |
+| Lembretes Atrasados | `reminders` pendentes com `due_date` < início do range | Total |
+| Conversas no Período | `conversations` com `last_message_at` no range | Total |
+| Fluxos Ativos | `chatbot_flows` com `active = true` | Sempre atual |
+| Execuções no Período | `flow_executions` criadas no range | Total |
+| Mensagens no Período | `messages` criadas no range | Enviadas vs recebidas |
 
-Isso **sobrescreve** o status `waiting_click` que foi definido na linha 600/666 durante o processamento do nó.
+### Seções Inferiores
+1. **Lembretes Pendentes** -- Até 5 lembretes com `due_date` no range ou atrasados, com badge (hoje/atrasado/futuro), nome do contato e título
+2. **Conversas Recentes** -- Últimas 5 conversas com `last_message_at` no range, mostrando nome, telefone e horário
 
-**Cronologia comprovada** (execução `71bb9dd4`):
-1. `21:33:38` — execução criada, status `running`
-2. `21:34:05` — tracked_link criado (waitForClick processado)
-3. `21:34:12.986` — flow_timeout criado (2h)
-4. `21:34:12.994` — **status sobrescrito para `completed`** (linha 801)
-5. `21:34:22` — clique humano detectado, mas `execution.status === "completed"` → condição `if (execution?.status === "waiting_click")` falha → fluxo **não retoma**
-6. Timeout expira → `check-timeouts` encontra status `completed` → "Skipping" → fluxo **não retoma pelo timeout** também
+### Implementação
 
-**Não é problema de rede/Traefik.** A infraestrutura está saudável. Sem colisão de rotas. Backend acessível internamente.
+1. **Criar `src/hooks/useDashboardStats.ts`**
+   - Recebe `startDate` e `endDate` como parâmetros
+   - 6 queries paralelas usando `useQuery` com as tabelas existentes (`reminders`, `conversations`, `chatbot_flows`, `flow_executions`, `messages`)
+   - Retorna contagens + listas dos 5 mais recentes
 
-### Plano de Correção
+2. **Reescrever `src/pages/Dashboard.tsx`**
+   - State para período: `"today" | "yesterday" | "custom"` + `dateRange`
+   - Barra de filtro no topo com botões segmentados + date picker (Popover + Calendar com `mode="range"`)
+   - Cards dinâmicos consumindo o hook
+   - Seções inferiores com dados reais
+   - Loading skeletons enquanto carrega
 
-#### 1. Corrigir `deploy/backend/src/routes/execute-flow.ts` (linha 801)
-
-Antes de definir `status: "completed"`, verificar se a execução já está em estado de espera:
-
-```typescript
-// Verificar status atual antes de marcar como completed
-const { data: finalCheck } = await serviceClient
-  .from("flow_executions")
-  .select("status")
-  .eq("id", executionId)
-  .single();
-
-const waitingStatuses = ["waiting_click", "waiting_reply"];
-if (finalCheck && !waitingStatuses.includes(finalCheck.status)) {
-  await serviceClient.from("flow_executions")
-    .update({ status: "completed", results: JSON.stringify(results) })
-    .eq("id", executionId);
-} else {
-  // Preservar status de espera, apenas salvar results
-  await serviceClient.from("flow_executions")
-    .update({ results: JSON.stringify(results) })
-    .eq("id", executionId);
-}
-```
-
-Aplicar a mesma lógica na linha 807 (bloco catch de erro).
-
-#### 2. Aplicar mesma correção em `supabase/functions/execute-flow/index.ts` (linhas 1223-1226 e 1234-1237)
-
-Mesma verificação de status antes de sobrescrever para `completed`.
-
-#### 3. Adicionar logs de diagnóstico em `link-redirect.ts`
-
-Na seção `processClick`, logar o status encontrado da execução e o resultado da chamada de retomada para facilitar depuração futura.
-
-### Resultado Esperado
-
-- **Clique**: execução permanece `waiting_click` → link-redirect encontra status correto → retoma fluxo via `/api/execute-flow` com `resumeFromNodeId`
-- **Timeout (não clicou)**: execução permanece `waiting_click` → check-timeouts encontra status correto → retoma via `timeout_node_id` (caminho "Se não clicou")
-- **Sem wait**: execução termina normalmente como `completed`
-
-### Ações Pós-Deploy
-
-Rebuild do backend na VPS:
-```bash
-cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
-```
+Nenhuma alteração de schema necessária -- usa tabelas existentes.
 
