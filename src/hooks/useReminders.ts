@@ -99,46 +99,8 @@ export function useToggleReminder() {
       if (error) throw error;
       return { id, completed };
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
-
-      // Fire-and-forget: sync with external API
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const [connResult, profileResult] = await Promise.all([
-          (supabase as any)
-            .from("platform_connections")
-            .select("credentials")
-            .eq("platform", "custom_api")
-            .eq("enabled", true)
-            .maybeSingle(),
-          supabase
-            .from("profiles")
-            .select("app_public_url")
-            .eq("user_id", user.id)
-            .maybeSingle(),
-        ]);
-
-        const apiKey = connResult.data?.credentials?.api_key;
-        const baseUrl = profileResult.data?.app_public_url;
-
-        if (!apiKey || !baseUrl) return;
-
-        const apiUrl = baseUrl.replace(/\/$/, "").replace("://app.", "://api.");
-        const url = `${apiUrl}/api/platform/reminders/${variables.id}`;
-        await fetch(url, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": apiKey,
-          },
-          body: JSON.stringify({ completed: variables.completed }),
-        });
-      } catch (err) {
-        console.error("[useToggleReminder] Failed to sync with external API:", err);
-      }
     },
   });
 }

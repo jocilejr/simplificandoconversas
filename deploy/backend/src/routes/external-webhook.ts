@@ -11,7 +11,7 @@ const router = Router();
  * 
  * Expected payload:
  * {
- *   event: "payment_confirmed" | "payment_failed" | "payment_refunded" | "customer_updated" | "invoice_created",
+ *   event: "payment_confirmed" | "payment_failed" | "payment_refunded" | "customer_updated" | "invoice_created" | "sync_reminder" | "reminder_updated" | "reminder_deleted",
  *   reference_id?: string,       // maps to transactions.external_id
  *   external_id?: string,        // alternative to reference_id
  *   phone?: string,              // customer phone
