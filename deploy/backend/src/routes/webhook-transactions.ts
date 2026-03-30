@@ -118,6 +118,12 @@ const normalizers: Record<string, (body: any) => NormalizedTransaction | null> =
   yampi: normalizeYampi,
 };
 
+// GET /api/webhook-transactions/:source — health check for webhook validation (e.g. OpenPix)
+router.get("/:source", (req: Request, res: Response) => {
+  console.log(`[webhook-transactions] GET validation from ${req.params.source}`);
+  res.status(200).json({ ok: true, source: req.params.source });
+});
+
 // POST /api/webhook-transactions/:source
 router.post("/:source", async (req: Request, res: Response) => {
   const { source } = req.params;
