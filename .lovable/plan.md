@@ -1,49 +1,105 @@
 
 
-# Plano: Sincronização bidirecional de lembretes (sua app → app externa)
+# Plano: Integração Completa Bidirecional via API + Webhooks
 
-## Contexto
-Quando você marca um lembrete na sua app, a app externa não é notificada. Precisamos configurar um webhook de callback para a app externa.
+## Situação Atual
+
+**O que já existe:**
+- API REST em `/api/platform/` com endpoints de consulta e escrita (contatos, transações, tags, lembretes, mensagens)
+- Webhook de entrada em `/api/external-messaging-webhook` que aceita eventos da app externa (pagamentos, contatos, tags, lembretes)
+- Campo `webhook_url` nas configurações para callback
+- Forward de `reminder_updated` no PATCH de lembretes → webhook externo
+- Frontend faz `forwardToVps` no toggle de lembrete
+
+**O que falta:**
+- Backend NÃO envia webhook para a app externa ao **criar** ou **deletar** lembretes
+- Backend NÃO envia webhook ao alterar **transações** (criar, atualizar status)
+- Backend NÃO envia webhook ao alterar **contatos** ou **tags**
+- Não existe endpoint `DELETE /api/platform/reminders/:id`
+- Frontend NÃO notifica a VPS ao criar ou deletar lembretes
+
+---
 
 ## O que será feito
 
-### 1. Adicionar campo `webhook_url` nas configurações da API
+### 1. Criar função utilitária `sendWebhook`
 
-**Arquivo**: `src/components/settings/IntegrationApiSection.tsx`
+**Arquivo:** `deploy/backend/src/routes/platform-api.ts`
 
-Adicionar um campo de input para o usuário configurar a URL de webhook da aplicação externa (ex: `https://minha-app-externa.com/api/webhook`). Esse valor será salvo em `platform_connections.credentials.webhook_url`.
+Extrair uma função reutilizável que busca o `webhook_url` e faz POST fire-and-forget:
 
-### 2. Backend: enviar webhook ao atualizar lembrete via PATCH
-
-**Arquivo**: `deploy/backend/src/routes/platform-api.ts`
-
-No endpoint `PATCH /api/platform/reminders/:id`, após atualizar o banco, verificar se existe `webhook_url` configurado. Se sim, enviar um POST fire-and-forget para a URL com o payload:
-```json
-{
-  "event": "reminder_updated",
-  "id": "uuid",
-  "completed": true,
-  "title": "...",
-  "due_date": "..."
+```typescript
+async function sendWebhook(userId: string, payload: object) {
+  const sb = getServiceClient();
+  const { data: conn } = await sb
+    .from("platform_connections")
+    .select("credentials")
+    .eq("user_id", userId)
+    .eq("platform", "custom_api")
+    .maybeSingle();
+  const url = conn?.credentials?.webhook_url;
+  if (!url) return;
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(err => console.error("Webhook error:", err.message));
 }
 ```
 
-### 3. Frontend: chamar PATCH da VPS ao marcar lembrete
+### 2. Adicionar webhooks de saída em TODOS os endpoints de escrita
 
-**Arquivo**: `src/hooks/useReminders.ts`
+**Arquivo:** `deploy/backend/src/routes/platform-api.ts`
 
-No `onSuccess` do `useToggleReminder`, fazer uma chamada fire-and-forget para `PATCH {apiUrl}/api/platform/reminders/:id` com o campo `completed`, usando a API key e o `app_public_url` do perfil (com a substituição `app.` → `api.`). Similar ao que tínhamos antes, mas agora faz sentido porque o backend vai repassar para a app externa.
+Após cada operação de escrita bem-sucedida, chamar `sendWebhook` com o evento correspondente:
 
-### 4. Criar endpoint na app externa
+| Endpoint | Evento enviado |
+|---|---|
+| `POST /reminders` | `reminder_created` |
+| `PATCH /reminders/:id` | `reminder_updated` (já existe, refatorar para usar `sendWebhook`) |
+| `DELETE /reminders/:id` (**novo**) | `reminder_deleted` |
+| `POST /transactions` | `transaction_created` |
+| `PATCH /transactions/:id` | `transaction_updated` |
+| `POST /contacts` | `contact_created` ou `contact_updated` |
+| `POST /tags` | `tag_added` |
+| `DELETE /tags` | `tag_removed` |
+| `POST /send-message` | `message_sent` |
 
-Você precisará criar na app externa um endpoint tipo:
+### 3. Criar endpoint `DELETE /api/platform/reminders/:id`
+
+**Arquivo:** `deploy/backend/src/routes/platform-api.ts`
+
+Novo endpoint que deleta o lembrete do banco e envia `reminder_deleted` via webhook.
+
+### 4. Frontend: notificar VPS em create e delete de lembretes
+
+**Arquivo:** `src/hooks/useReminders.ts`
+
+- Generalizar `forwardToVps` para aceitar método (POST/PATCH/DELETE) e dados
+- No `onSuccess` de `useCreateReminder`: chamar `POST /api/platform/reminders` na VPS
+- No `onSuccess` de `useDeleteReminder`: chamar `DELETE /api/platform/reminders/:id` na VPS
+- Manter o toggle (PATCH) como está
+
+### 5. Gerar relatório de integração para a app externa
+
+Após implementar, será gerado um **documento completo** (markdown ou PDF) com tudo que a app externa precisa implementar: endpoints para consumir, payloads dos webhooks que vai receber, e formato dos webhooks que deve enviar.
+
+---
+
+## Payload padrão dos webhooks de saída
+
+Todos os webhooks enviados para o `webhook_url` seguem este formato:
+
+```json
+{
+  "event": "reminder_created | reminder_updated | reminder_deleted | transaction_created | ...",
+  "timestamp": "2026-03-30T12:00:00Z",
+  "data": { /* objeto completo do registro */ }
+}
 ```
-POST /api/webhook
-```
-Que aceite o payload acima e atualize o lembrete internamente.
 
-## Resultado
-- Usuário configura a URL de webhook da app externa em Configurações → API
-- Ao marcar lembrete na sua app → frontend chama PATCH na VPS → backend atualiza DB + envia webhook para app externa
-- Ao marcar na app externa → app externa envia webhook para sua VPS → banco atualizado → realtime propaga para UI
+## Arquivos alterados
+1. `deploy/backend/src/routes/platform-api.ts` — função `sendWebhook`, webhook em todos os endpoints de escrita, novo `DELETE /reminders/:id`
+2. `src/hooks/useReminders.ts` — forward em create/delete
+3. Relatório gerado em `/mnt/documents/` com instruções para a app externa
 
