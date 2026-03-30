@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { usePlatformConnections, PlatformConnection } from "@/hooks/usePlatformConnections";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfile } from "@/hooks/useProfile";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,7 +146,7 @@ function ConnectionCard({
 
 export function IntegrationsSection() {
   const { user } = useAuth();
-  const { profile } = useProfile();
+  
   const { connections, upsertConnection, deleteConnection } = usePlatformConnections();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -154,10 +154,10 @@ export function IntegrationsSection() {
   const [selectedPlatform, setSelectedPlatform] = useState("");
   const [credentials, setCredentials] = useState<Record<string, string>>({});
 
-  const baseUrl = profile?.app_public_url?.replace(/\/$/, "") || "";
+  const apiBaseUrl = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
 
   const buildWebhookUrl = (platform: string) =>
-    baseUrl ? `${baseUrl}/api/webhook-transactions/${platform}${user?.id ? `?user_id=${user.id}` : ""}` : "";
+    apiBaseUrl ? `${apiBaseUrl}/functions/v1/webhook-transactions/${platform}${user?.id ? `?user_id=${user.id}` : ""}` : "";
 
   const availablePlatforms = PLATFORMS.filter(
     (p) => !connections.some((c) => c.platform === p.key) || editingPlatform === p.key
@@ -218,11 +218,11 @@ export function IntegrationsSection() {
         </Button>
       </div>
 
-      {!baseUrl && (
+      {!apiBaseUrl && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>
-            Configure a <strong>URL pública da aplicação</strong> na aba "Aplicação" para que os webhooks sejam gerados automaticamente.
+            URL da API não configurada. Verifique a variável <strong>VITE_SUPABASE_URL</strong>.
           </span>
         </div>
       )}
