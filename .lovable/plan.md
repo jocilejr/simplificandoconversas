@@ -1,36 +1,49 @@
 
+Objetivo: corrigir definitivamente o webhook da OpenPix para sempre gerar URL funcional sem preenchimento manual.
 
-## Corrigir validação de webhook da OpenPix (retornar 200)
+Diagnóstico (com base no código atual)
+- O backend já responde GET 200 em `deploy/backend/src/routes/webhook-transactions.ts`.
+- O 404 no seu teste (`/api/webhook-transactions/...`) indica problema de roteamento externo (Nginx/API), não da rota Express.
+- Hoje a UI gera URL com `app_public_url + /api/webhook-transactions/...`; isso é frágil para VPS com domínios separados app/api.
 
-### Problema
-A OpenPix envia uma requisição GET para validar o endpoint antes de registrar o webhook. O backend só tem `router.post("/:source")`, então retorna 404 no GET e a OpenPix recusa o cadastro.
+Plano de correção
 
-### Solução
-Adicionar uma rota GET no `deploy/backend/src/routes/webhook-transactions.ts` que responda 200 para qualquer source.
+1) Validar rota que já funciona na VPS (sem mudar código)
+- Rodar:
+  - `curl -i "https://api.chatbotsimplificado.com/functions/v1/webhook-transactions/openpix?user_id=test"`
+  - `curl -i "https://api.chatbotsimplificado.com/api/webhook-transactions/openpix?user_id=test"`
+- Esperado:
+  - `/functions/v1/...` deve responder 200
+  - `/api/...` hoje está 404 (confirmando o gargalo no Nginx)
 
-### Mudança
+2) Ajustar geração automática da URL no frontend (sem input manual)
+- Arquivo: `src/components/settings/IntegrationsSection.tsx`
+- Alterar `buildWebhookUrl` para usar base da API via `import.meta.env.VITE_SUPABASE_URL` (na sua VPS isso aponta para `API_URL`), no formato:
+  - `{VITE_SUPABASE_URL}/functions/v1/webhook-transactions/{platform}?user_id={user.id}`
+- Remover dependência de `profile.app_public_url` para webhook (manter só para outros recursos, se necessário).
+- Resultado: integração OpenPix cria URL correta automaticamente em qualquer usuário.
 
-**`deploy/backend/src/routes/webhook-transactions.ts`** — Adicionar antes do `router.post`:
+3) Compatibilidade retroativa para links antigos `/api/...` (opcional, recomendado)
+- Arquivo: `deploy/nginx/default.conf.template`
+- Adicionar `location /api/webhook-transactions/` com `proxy_pass http://backend:3001/api/webhook-transactions/;`
+- Isso evita quebrar webhooks já cadastrados com URL antiga.
 
-```typescript
-// GET /api/webhook-transactions/:source — health check for webhook validation
-router.get("/:source", (req: Request, res: Response) => {
-  console.log(`[webhook-transactions] GET validation from ${req.params.source}`);
-  res.status(200).json({ ok: true, source: req.params.source });
-});
-```
+4) Deploy na VPS
+- Rebuild backend/frontend conforme seu fluxo:
+  - `cd /root/simplificandoconversas/deploy`
+  - `./update.sh` (ou `docker compose up -d --build`)
+- Se alterar template do Nginx, aplicar recriação:
+  - `docker compose up -d --force-recreate nginx`
 
-### Após o deploy
-1. Rebuildar o backend na VPS:
-```bash
-cd /root/simplificandoconversas/deploy
-docker compose up -d --build backend
-```
-2. Testar manualmente:
-```bash
-curl -s https://app.chatbotsimplificado.com/api/webhook-transactions/openpix?user_id=test
-```
-Deve retornar `{"ok":true,"source":"openpix"}` com status 200.
+5) Validação fim a fim (obrigatória)
+- Testar:
+  - URL gerada na tela de Integrações (OpenPix) retorna 200
+  - Cadastro do webhook no painel OpenPix aceita a URL
+  - Envio de evento de teste da OpenPix chega no backend:
+    - `docker compose logs --tail=200 backend | grep webhook-transactions`
 
-3. Cadastrar o webhook na OpenPix novamente.
-
+Critério de pronto
+- Nova integração OpenPix não pede credenciais
+- URL é gerada automaticamente e responde 200
+- OpenPix valida webhook com sucesso
+- Eventos entram sem erro 404
