@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers, Radio } from "lucide-react";
+import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers, Radio, Download, Upload } from "lucide-react";
 import { FlowEditor } from "@/components/chatbot/FlowEditor";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { exportFlow, importFlowFromFile } from "@/lib/flowExportImport";
+import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
