@@ -166,8 +166,8 @@ router.post("/:source", async (req: Request, res: Response) => {
   if (source === "mercadopago") {
     const paymentId = req.body?.data?.id;
     if (!paymentId) {
-      console.warn(`[webhook-transactions] MP webhook without data.id`);
-      return res.json({ ok: true, skipped: true });
+      console.warn(`[webhook-transactions] MP webhook without data.id — acknowledging`);
+      return res.json({ ok: true, skipped: true, reason: "no_data_id" });
     }
 
     const userId = (req.query.user_id as string) || (req.headers["x-user-id"] as string);
@@ -175,6 +175,8 @@ router.post("/:source", async (req: Request, res: Response) => {
       console.warn(`[webhook-transactions] MP webhook without user_id`);
       return res.status(400).json({ error: "user_id required" });
     }
+
+    console.log(`[webhook-transactions] MP processing payment_id=${paymentId} user_id=${userId} action=${req.body?.action}`);
 
     const supabase = getServiceClient();
 
@@ -189,19 +191,33 @@ router.post("/:source", async (req: Request, res: Response) => {
 
     const accessToken = (conn?.credentials as any)?.access_token;
     if (!accessToken) {
-      console.error(`[webhook-transactions] No MP access_token for user ${userId}`);
-      return res.status(400).json({ error: "No Mercado Pago access_token configured" });
+      console.error(`[webhook-transactions] No MP access_token for user ${userId} — cannot fetch payment`);
+      return res.json({ ok: true, skipped: true, reason: "no_access_token" });
     }
 
-    const payment = await fetchMercadoPagoPayment(String(paymentId), accessToken);
-    if (!payment) {
-      return res.status(502).json({ error: "Failed to fetch payment from MP API" });
+    const mpResult = await fetchMercadoPagoPayment(String(paymentId), accessToken);
+
+    // Handle non-OK responses gracefully (don't return 502)
+    if (!mpResult.ok) {
+      if (mpResult.status === 404) {
+        console.warn(`[webhook-transactions] MP payment ${paymentId} not found (404) — possibly test ID, skipping`);
+        return res.json({ ok: true, skipped: true, reason: "payment_not_found" });
+      }
+      if (mpResult.status === 401 || mpResult.status === 403) {
+        console.error(`[webhook-transactions] MP returned ${mpResult.status} for user ${userId} — access_token may be invalid`);
+        return res.json({ ok: true, skipped: true, reason: "invalid_credentials" });
+      }
+      console.error(`[webhook-transactions] MP API error ${mpResult.status} for payment ${paymentId}`);
+      return res.json({ ok: true, skipped: true, reason: `mp_api_error_${mpResult.status}` });
     }
 
-    const normalized = normalizeMercadoPagoPayment(payment, req.body);
+    const normalized = normalizeMercadoPagoPayment(mpResult.body, req.body);
     if (!normalized) {
-      return res.json({ ok: true, skipped: true });
+      console.warn(`[webhook-transactions] Could not normalize MP payment ${paymentId}`);
+      return res.json({ ok: true, skipped: true, reason: "normalization_failed" });
     }
+
+    console.log(`[webhook-transactions] MP normalized: external_id=${normalized.external_id} status=${normalized.status} amount=${normalized.amount}`);
 
     // Upsert
     const { data: existing } = await supabase
@@ -227,6 +243,7 @@ router.post("/:source", async (req: Request, res: Response) => {
         description: normalized.description,
       }).eq("id", existing.id);
       if (error) console.error(`[webhook-transactions] MP update error:`, error.message);
+      else console.log(`[webhook-transactions] MP updated transaction ${existing.id}`);
       return res.json({ ok: true, action: "updated", id: existing.id });
     }
 
@@ -239,6 +256,7 @@ router.post("/:source", async (req: Request, res: Response) => {
       console.error(`[webhook-transactions] MP insert error:`, error.message);
       return res.status(500).json({ error: error.message });
     }
+    console.log(`[webhook-transactions] MP created transaction ${data?.id}`);
     return res.json({ ok: true, action: "created", id: data?.id });
   }
 
