@@ -1,66 +1,83 @@
 
 
-## Exportar e Importar Fluxos com Mídias
+## Sistema de Transações Financeiras
 
-### Visão Geral
-Adicionar botões de **Exportar** e **Importar** fluxo no editor e na listagem de fluxos. O arquivo exportado será um `.json` completo contendo nodes, edges, configurações e todas as mídias embutidas em base64.
+Importar a funcionalidade de visualização de transações da aplicação financeira para este projeto, adaptada para receber dados de Mercado Pago, OpenPix, Yampi e outros via webhook.
 
-### Formato do Arquivo de Exportação
+### Arquitetura
 
 ```text
-{
-  "version": 1,
-  "exportedAt": "2026-03-30T...",
-  "name": "Meu Fluxo",
-  "instanceNames": ["..."],
-  "nodes": [...],
-  "edges": [...],
-  "media": {
-    "https://api.../media/.../file.png": "data:image/png;base64,iVBOR...",
-    "https://api.../media/.../audio.mp3": "data:audio/mpeg;base64,SUQz..."
-  }
-}
+Mercado Pago / OpenPix / Yampi
+         │ (webhook POST)
+         ▼
+  Backend VPS (/api/webhook-transactions)
+         │
+         ▼
+   Tabela "transactions" (banco)
+         │
+         ▼
+   Frontend (página /transacoes)
 ```
 
-### Lógica de Exportação
-1. Percorrer todos os nodes (incluindo steps dentro de groupBlocks)
-2. Coletar todas as URLs de mídia dos campos: `audioUrl`, `mediaUrl`, `fileUrl`, `clickPreviewImage`
-3. Para cada URL, fazer `fetch()` e converter para base64 (`data:mimetype;base64,...`)
-4. Salvar o JSON com nodes, edges, instance_names e o mapa de mídias
-5. Disparar download do arquivo `.json`
+### Fase 1: Banco de Dados
 
-### Lógica de Importação
-1. Usuário seleciona arquivo `.json`
-2. Validar estrutura (version, nodes, edges)
-3. Para cada entrada no mapa `media`:
-   - Fazer upload via `supabase.functions.invoke("whatsapp-proxy", { action: "media-upload" })` (endpoint existente)
-   - Obter nova URL
-4. Substituir todas as URLs antigas pelas novas nos nodes
-5. Criar novo fluxo via `createFlow` + `updateFlow` com os dados importados
-6. Abrir o fluxo importado no editor
+Criar tabela `transactions`:
+- `id`, `user_id`, `external_id`, `source` (mercadopago/openpix/yampi/manual)
+- `type` (pix/boleto/cartao), `status` (pendente/pago/cancelado/expirado)
+- `amount`, `description`, `customer_name`, `customer_email`, `customer_phone`, `customer_document`
+- `created_at`, `paid_at`, `metadata` (jsonb)
+- RLS: usuário autenticado gerencia seus próprios registros
 
-### Onde ficam os botões
+### Fase 2: Rota de Webhook no Backend VPS
 
-1. **Na listagem (`ChatbotBuilder.tsx`)**: 
-   - Dropdown menu de cada card do fluxo: adicionar "Exportar"
-   - Botão "Importar Fluxo" ao lado de "Novo Fluxo" no header
+Criar `deploy/backend/src/routes/webhook-transactions.ts`:
+- Endpoint `POST /api/webhook-transactions/:source` (source = mercadopago, openpix, yampi)
+- Normaliza o payload de cada plataforma para o formato unificado da tabela
+- Mapeia campos específicos de cada plataforma:
+  - **Mercado Pago**: `action`, `data.id` -> busca detalhes via API se necessário
+  - **OpenPix**: `event`, `charge` -> mapeia status e valores
+  - **Yampi**: `event`, `resource` -> mapeia pedidos e status
+- Insere/atualiza na tabela `transactions` via service_role
 
-2. **No editor (`FlowEditor.tsx`)**: 
-   - Botão "Exportar" no painel top-right, ao lado de "Salvar"
+### Fase 3: Frontend
 
-### Implementação
+1. **Hook `useTransactions.ts`**
+   - Query com filtro de datas (mesmo padrão do dashboard)
+   - Estatísticas calculadas: total por tipo, por status, volume
 
-1. **Criar `src/lib/flowExportImport.ts`** -- Funções utilitárias:
-   - `extractMediaUrls(nodes)` -- percorre nodes e steps, coleta URLs
-   - `exportFlow(flow)` -- busca mídias, monta JSON, dispara download
-   - `importFlow(file, createFn, updateFn)` -- lê JSON, re-uploada mídias, cria fluxo
+2. **Página `Transacoes.tsx`**
+   - Filtro de período (Hoje/Ontem/Personalizado)
+   - Cards de resumo: Total recebido, Pendentes, Por tipo de pagamento
+   - Tabela de transações com busca, filtro por tipo/status/source
+   - Badge colorido por status e ícone por source
 
-2. **Editar `src/pages/ChatbotBuilder.tsx`** -- Adicionar botão "Importar" no header e "Exportar" no dropdown de cada card
+3. **Sidebar**: Adicionar item "Transações" com ícone `DollarSign`
 
-3. **Editar `src/components/chatbot/FlowEditor.tsx`** -- Adicionar botão "Exportar" no top-right panel
+4. **Rota**: `/transacoes` no App.tsx
 
-### Tratamento de Erros
-- Progresso visual durante export/import (toast com loading)
-- Se uma mídia falhar no fetch, incluir URL original sem base64 e avisar
-- Validação do formato do arquivo na importação
+### Fase 4: Importação via Planilha
+
+- Botão "Importar" na página de transações
+- Upload de CSV/XLSX com colunas: tipo, valor, status, nome_cliente, email, telefone, documento, data
+- Parse no frontend, envio em batch para o banco
+
+### Implementação (arquivos)
+
+| Arquivo | Ação |
+|---------|------|
+| Migration SQL | Criar tabela `transactions` |
+| `deploy/backend/src/routes/webhook-transactions.ts` | Nova rota webhook |
+| `deploy/backend/src/index.ts` | Registrar nova rota |
+| `src/hooks/useTransactions.ts` | Hook de dados |
+| `src/pages/Transacoes.tsx` | Página principal |
+| `src/components/transactions/TransactionsTable.tsx` | Tabela com filtros |
+| `src/components/transactions/ImportTransactions.tsx` | Modal de importação |
+| `src/components/AppSidebar.tsx` | Novo item no menu |
+| `src/App.tsx` | Nova rota |
+
+### Observações
+
+- O webhook na VPS precisa ser acessível externamente (já é via nginx)
+- Cada plataforma terá sua URL de webhook: `https://api.chatbotsimplificado.com/api/webhook-transactions/mercadopago`
+- A configuração das credenciais de cada plataforma (tokens de validação) será feita na página de Configurações
 
