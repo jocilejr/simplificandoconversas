@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { Copy, RefreshCw, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { Copy, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export function IntegrationApiSection() {
@@ -90,14 +90,12 @@ export function IntegrationApiSection() {
 
   const maskedKey = apiKey ? apiKey.substring(0, 8) + "••••••••••••••••" + apiKey.substring(apiKey.length - 8) : "";
 
-  const baseUrl = window.location.origin;
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>API de Integração</CardTitle>
+        <CardTitle>API de Integração (Sua API Pública)</CardTitle>
         <CardDescription>
-          Conecte sua plataforma de gestão financeira via API REST
+          Endpoints que a aplicação externa deve consumir para se integrar ao seu sistema via VPS
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -129,19 +127,19 @@ export function IntegrationApiSection() {
             </Button>
           )}
           <p className="text-xs text-muted-foreground">
-            Envie esta key no header <code className="bg-muted px-1 rounded">X-API-Key</code> de cada requisição.
+            A app externa deve enviar esta key no header <code className="bg-muted px-1 rounded">X-API-Key</code> em cada requisição.
           </p>
         </div>
 
         {/* Webhook URL */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Webhook URL (app externa)</label>
+          <label className="text-sm font-medium">Webhook URL (receber eventos da app externa)</label>
           <p className="text-xs text-muted-foreground">
             Quando um lembrete for atualizado aqui, enviaremos um POST para esta URL.
           </p>
           <div className="flex gap-2">
             <Input
-              placeholder="https://minha-app.com/api/webhook"
+              placeholder="https://gestao.empresa.com/api/webhook"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
             />
@@ -188,14 +186,30 @@ export function IntegrationApiSection() {
         </div>
 
         {/* Endpoints documentation */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Endpoints Disponíveis (VPS)</label>
+          <p className="text-xs text-muted-foreground">
+            Substitua <code className="bg-muted px-1 rounded">SEU-API-DOMAIN</code> pelo domínio da sua VPS.
+          </p>
+        </div>
         <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="health">
+            <AccordionTrigger className="text-sm">Health / Ping</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/ping</div>
+                <div className="text-muted-foreground">Retorna {"{ ok: true, service: 'platform-api' }"} — use para testar conectividade</div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
           <AccordionItem value="contacts">
             <AccordionTrigger className="text-sm">Contatos / Clientes</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2 text-xs font-mono">
-                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/contacts<span className="text-muted-foreground ml-2">?phone=&name=&instance=&limit=&offset=</span></div>
-                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/contacts/:phone</div>
-                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/contacts <span className="text-muted-foreground">{"{ phone, name, instance_name }"}</span></div>
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/contacts<span className="text-muted-foreground ml-2">?phone=&name=&instance=&limit=&offset=</span></div>
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/contacts/:phone</div>
+                <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/contacts <span className="text-muted-foreground">{"{ phone, name, instance_name }"}</span></div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -204,10 +218,10 @@ export function IntegrationApiSection() {
             <AccordionTrigger className="text-sm">Transações / Pagamentos</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2 text-xs font-mono">
-                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/transactions<span className="text-muted-foreground ml-2">?status=&from=&to=&phone=</span></div>
-                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/transactions <span className="text-muted-foreground">{"{ amount, type, status, customer_name, customer_phone, ... }"}</span></div>
-                <div><span className="text-yellow-500">PATCH</span> {baseUrl}/api/platform/transactions/:id <span className="text-muted-foreground">{"{ status, paid_at, metadata }"}</span></div>
-                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/transactions/webhook <span className="text-muted-foreground">{"{ external_id, status, paid_at }"}</span></div>
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/transactions<span className="text-muted-foreground ml-2">?status=&from=&to=&phone=</span></div>
+                <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/transactions <span className="text-muted-foreground">{"{ amount, type, status, customer_name, customer_phone, ... }"}</span></div>
+                <div><span className="text-yellow-500">PATCH</span> https://SEU-API-DOMAIN/api/platform/transactions/:id <span className="text-muted-foreground">{"{ status, paid_at, metadata }"}</span></div>
+                <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/transactions/webhook <span className="text-muted-foreground">{"{ external_id, status, paid_at }"}</span></div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -216,9 +230,9 @@ export function IntegrationApiSection() {
             <AccordionTrigger className="text-sm">Tags / Segmentação</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2 text-xs font-mono">
-                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/tags?phone=X</div>
-                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
-                <div><span className="text-red-500">DELETE</span> {baseUrl}/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/tags?phone=X</div>
+                <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
+                <div><span className="text-red-500">DELETE</span> https://SEU-API-DOMAIN/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -227,9 +241,25 @@ export function IntegrationApiSection() {
             <AccordionTrigger className="text-sm">Lembretes</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2 text-xs font-mono">
-                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/reminders<span className="text-muted-foreground ml-2">?filter=pending|overdue|today|completed&phone=</span></div>
-                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/reminders <span className="text-muted-foreground">{"{ phone, title, description, due_date }"}</span></div>
-                <div><span className="text-yellow-500">PATCH</span> {baseUrl}/api/platform/reminders/:id <span className="text-muted-foreground">{"{ completed, title, due_date }"}</span></div>
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/reminders<span className="text-muted-foreground ml-2">?filter=pending|overdue|today|completed&phone=</span></div>
+                <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/reminders <span className="text-muted-foreground">{"{ phone, title, description, due_date }"}</span></div>
+                <div><span className="text-yellow-500">PATCH</span> https://SEU-API-DOMAIN/api/platform/reminders/:id <span className="text-muted-foreground">{"{ completed, title, due_date }"}</span></div>
+                <div><span className="text-red-500">DELETE</span> https://SEU-API-DOMAIN/api/platform/reminders/:id</div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="webhook-entrada">
+            <AccordionTrigger className="text-sm">Webhook de Entrada</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/external-messaging-webhook</div>
+                <div className="text-muted-foreground">
+                  Payload: {"{ event: 'reminder_updated|payment_received|...', data: { ... } }"}
+                </div>
+                <div className="text-muted-foreground">
+                  Header: X-API-Key: SUA_CHAVE
+                </div>
               </div>
             </AccordionContent>
           </AccordionItem>

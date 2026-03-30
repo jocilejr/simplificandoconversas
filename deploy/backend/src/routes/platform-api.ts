@@ -90,6 +90,11 @@ async function resolveUserByApiKey(req: Request, res: Response): Promise<string 
 // Apply rate limiting to all routes
 router.use(rateLimit);
 
+// ── Ping / Health check (no auth required) ──
+router.get("/ping", (_req, res) => {
+  res.json({ ok: true, service: "platform-api", timestamp: new Date().toISOString() });
+});
+
 // ═══════════════════════════════════════════════════
 // CONTACTS / CLIENTES
 // ═══════════════════════════════════════════════════
