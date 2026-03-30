@@ -3,47 +3,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 
-async function getVpsConfig() {
+async function sendWebhookToExternal(event: string, data: object) {
   try {
     const { data: conn } = await (supabase as any)
       .from("platform_connections")
       .select("credentials")
-      .eq("platform", "custom_api")
+      .eq("platform", "external_app")
       .maybeSingle();
 
-    const apiKey = conn?.credentials?.api_key;
-    if (!apiKey) return null;
+    const creds = conn?.credentials as any;
+    const url = creds?.webhook_url;
+    if (!url) return;
 
-    // Try app_public_url first, then derive from current location (VPS serves frontend)
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("app_public_url")
-      .maybeSingle();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (creds?.api_key) headers["X-API-Key"] = creds.api_key;
 
-    let apiUrl: string;
-    if (profile?.app_public_url) {
-      apiUrl = profile.app_public_url.replace("app.", "api.");
-    } else {
-      // On VPS, frontend is served from the same domain — derive API URL
-      const origin = window.location.origin;
-      apiUrl = origin.replace("app.", "api.");
-    }
-
-    return { apiUrl, apiKey };
-  } catch {
-    return null;
-  }
-}
-
-async function forwardToVps(method: "POST" | "PATCH" | "DELETE", path: string, body?: object) {
-  const config = await getVpsConfig();
-  if (!config) return;
-
-  fetch(`${config.apiUrl}/api/platform${path}`, {
-    method,
-    headers: { "Content-Type": "application/json", "X-API-Key": config.apiKey },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  }).catch(() => {});
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+    }).catch(() => {});
+  } catch {}
 }
 
 export interface Reminder {
