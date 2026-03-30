@@ -154,10 +154,10 @@ export function IntegrationsSection() {
   const [selectedPlatform, setSelectedPlatform] = useState("");
   const [credentials, setCredentials] = useState<Record<string, string>>({});
 
-  const baseUrl = profile?.app_public_url?.replace(/\/$/, "") || "";
+  const apiBaseUrl = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
 
   const buildWebhookUrl = (platform: string) =>
-    baseUrl ? `${baseUrl}/api/webhook-transactions/${platform}${user?.id ? `?user_id=${user.id}` : ""}` : "";
+    apiBaseUrl ? `${apiBaseUrl}/functions/v1/webhook-transactions/${platform}${user?.id ? `?user_id=${user.id}` : ""}` : "";
 
   const availablePlatforms = PLATFORMS.filter(
     (p) => !connections.some((c) => c.platform === p.key) || editingPlatform === p.key
