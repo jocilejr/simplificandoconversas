@@ -133,6 +133,60 @@ export function IntegrationApiSection() {
           </p>
         </div>
 
+        {/* Webhook URL */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Webhook URL (app externa)</label>
+          <p className="text-xs text-muted-foreground">
+            Quando um lembrete for atualizado aqui, enviaremos um POST para esta URL.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="https://minha-app.com/api/webhook"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              disabled={savingWebhook}
+              onClick={async () => {
+                setSavingWebhook(true);
+                try {
+                  const { data: existing } = await (supabase as any)
+                    .from("platform_connections")
+                    .select("id, credentials")
+                    .eq("platform", "custom_api")
+                    .maybeSingle();
+
+                  if (existing) {
+                    await (supabase as any)
+                      .from("platform_connections")
+                      .update({ credentials: { ...existing.credentials, webhook_url: webhookUrl } })
+                      .eq("id", existing.id);
+                  } else {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) throw new Error("Not authenticated");
+                    await (supabase as any)
+                      .from("platform_connections")
+                      .insert({
+                        user_id: user.id,
+                        platform: "custom_api",
+                        credentials: { webhook_url: webhookUrl },
+                        enabled: true,
+                      });
+                  }
+                  toast({ title: "Webhook URL salva!" });
+                } catch (err: any) {
+                  toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+                } finally {
+                  setSavingWebhook(false);
+                }
+              }}
+            >
+              {savingWebhook ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+        </div>
+
         {/* Endpoints documentation */}
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="contacts">

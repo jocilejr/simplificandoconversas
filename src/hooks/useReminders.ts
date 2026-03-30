@@ -125,8 +125,9 @@ export function useToggleReminder() {
       if (error) throw error;
       return { id, completed };
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      forwardToVps(variables.id, variables.completed);
     },
   });
 }
