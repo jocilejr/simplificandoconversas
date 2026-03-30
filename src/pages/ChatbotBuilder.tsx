@@ -20,6 +20,8 @@ const ChatbotBuilder = () => {
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const { data: flows, isLoading, createFlow, updateFlow, deleteFlow } = useChatbotFlows();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreateFlow = async () => {
     try {
@@ -27,6 +29,68 @@ const ChatbotBuilder = () => {
       setEditingFlowId(result.id);
     } catch {
       toast.error("Erro ao criar fluxo");
+    }
+  };
+
+  const handleExportFlow = async (flow: any) => {
+    await exportFlow({
+      name: flow.name,
+      nodes: flow.nodes as any[],
+      edges: flow.edges as any[],
+      instance_names: flow.instance_names as string[],
+    });
+  };
+
+  const uploadMediaFn = async (file: File, filename: string): Promise<string | null> => {
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const { data } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: {
+          action: "media-upload",
+          userId: user?.id,
+          fileName: filename,
+          fileBase64: base64,
+          mimeType: file.type,
+        },
+      });
+
+      return data?.url || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleImportFlow = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+
+    const result = await importFlowFromFile(file, uploadMediaFn);
+    if (!result) return;
+
+    try {
+      const created = await createFlow.mutateAsync(result.name);
+      await updateFlow.mutateAsync({
+        id: created.id,
+        name: result.name,
+        nodes: result.nodes,
+        edges: result.edges,
+        instance_names: result.instanceNames,
+      });
+      queryClient.invalidateQueries({ queryKey: ["chatbot-flows"] });
+      setEditingFlowId(created.id);
+    } catch {
+      toast.error("Erro ao salvar fluxo importado");
     }
   };
 
