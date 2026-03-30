@@ -1,49 +1,69 @@
 
 
-# Plano: Enviar webhook direto para app externa quando lembrete mudar
+# Plano: Mover envio de webhook para o backend (resolver CORS)
 
 ## Problema
-O `forwardToVps` no frontend busca credenciais de `custom_api` (que pode não existir) e depende de `app_public_url` (que está `null`). O webhook nunca chega na app externa quando a UI altera lembretes.
+O `sendWebhookToExternal` no frontend faz `fetch()` direto do navegador para a URL da app externa. Se a app externa não retorna headers CORS (`Access-Control-Allow-Origin`), o navegador bloqueia a requisição silenciosamente. O `catch(() => {})` esconde o erro.
 
 ## Solução
-Substituir o `forwardToVps` por uma função `sendWebhookToExternal` que lê as credenciais de `external_app` (onde a aba "App Externa" salva) e envia o webhook **direto** para o `webhook_url` configurado, sem precisar passar pela VPS como relay.
+Criar um endpoint no backend da VPS (`POST /api/platform/webhook-notify`) que recebe o evento do frontend e faz o relay para a app externa server-side (sem restrição CORS).
 
-## Arquivo: `src/hooks/useReminders.ts`
+### 1. Backend: novo endpoint em `deploy/backend/src/routes/platform-api.ts`
 
-Remover `getVpsConfig` e `forwardToVps`. Criar:
+Adicionar rota `POST /api/platform/webhook-notify`:
+- Recebe `{ event, data }` do frontend
+- Busca `platform_connections` com `platform = "external_app"` usando o `user_id` do token
+- Envia POST para `webhook_url` com `X-API-Key`
+- Retorna 200/500 com log
+
+### 2. Frontend: `src/hooks/useReminders.ts`
+
+Alterar `sendWebhookToExternal` para chamar o backend da VPS em vez de fazer fetch direto:
 
 ```typescript
 async function sendWebhookToExternal(event: string, data: object) {
   try {
-    const { data: conn } = await (supabase as any)
-      .from("platform_connections")
-      .select("credentials")
-      .eq("platform", "external_app")
-      .maybeSingle();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
 
-    const creds = conn?.credentials;
-    const url = creds?.webhook_url;
-    if (!url) return;
+    const origin = window.location.origin;
+    const apiBase = origin.includes("localhost") 
+      ? "http://localhost:3001" 
+      : origin;
 
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (creds?.api_key) headers["X-API-Key"] = creds.api_key;
-
-    fetch(url, {
+    fetch(`${apiBase}/api/platform/webhook-notify`, {
       method: "POST",
-      headers,
-      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ event, data }),
     }).catch(() => {});
   } catch {}
 }
 ```
 
-Atualizar as mutations:
-- `useCreateReminder` `onSuccess` → `sendWebhookToExternal("reminder_created", data)`
-- `useToggleReminder` `onSuccess` → `sendWebhookToExternal("reminder_updated", { id, completed })`
-- `useDeleteReminder` `onSuccess` → `sendWebhookToExternal("reminder_deleted", { id })`
+### 3. Backend handler
+
+```typescript
+// Em platform-api.ts, dentro do router
+router.post("/webhook-notify", async (req, res) => {
+  const userId = req.userId; // já extraído pelo middleware de auth
+  const { event, data } = req.body;
+  await sendWebhook(userId, event, data);
+  res.json({ ok: true });
+});
+```
 
 ## Resultado
-- Quando o status de um lembrete muda pela UI, o webhook é enviado direto para a app externa
-- Usa as mesmas credenciais da aba "App Externa"
-- Sem cron, sem relay pela VPS, sem dependência de `app_public_url`
+- O webhook é enviado pelo servidor (sem CORS)
+- O frontend faz uma chamada fire-and-forget para o próprio backend
+- Funciona em qualquer configuração de app externa
+
+## Arquivos alterados
+
+| Arquivo | Mudança |
+|---|---|
+| `deploy/backend/src/routes/platform-api.ts` | Adicionar rota `POST /webhook-notify` |
+| `src/hooks/useReminders.ts` | `sendWebhookToExternal` chama backend em vez de app externa direta |
 
