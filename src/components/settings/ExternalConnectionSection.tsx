@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Eye, EyeOff, Save, Loader2, CheckCircle2, XCircle, RefreshCw, Unplug } from "lucide-react";
+import { Eye, EyeOff, Save, Loader2, CheckCircle2, XCircle, RefreshCw, Unplug, ArrowRightLeft } from "lucide-react";
 
 export function ExternalConnectionSection() {
   const [baseUrl, setBaseUrl] = useState("");
@@ -87,27 +87,36 @@ export function ExternalConnectionSection() {
 
   async function testConnection() {
     if (!baseUrl) {
-      toast({ title: "Informe a URL base da aplicação externa", variant: "destructive" });
+      toast({ title: "Informe a URL base da API externa", variant: "destructive" });
       return;
     }
     setTesting(true);
     setConnectionStatus("idle");
     try {
       const cleanUrl = baseUrl.replace(/\/+$/, "");
+      const pingUrl = `${cleanUrl}/ping`;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers["X-API-Key"] = apiKey;
 
-      const res = await fetch(cleanUrl, { method: "GET", headers, signal: AbortSignal.timeout(10000) });
+      const res = await fetch(pingUrl, { method: "GET", headers, signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         setConnectionStatus("success");
-        toast({ title: "Conexão bem-sucedida!", description: `Resposta ${res.status} de ${cleanUrl}` });
+        toast({ title: "Conexão bem-sucedida!", description: `Resposta ${res.status} de ${pingUrl}` });
       } else {
         setConnectionStatus("error");
-        toast({ title: "Falha na conexão", description: `Resposta ${res.status}`, variant: "destructive" });
+        toast({
+          title: "Falha na conexão",
+          description: `Status ${res.status} em ${pingUrl}. Verifique se a URL base está correta e se o endpoint /ping existe na app externa.`,
+          variant: "destructive",
+        });
       }
     } catch (err: any) {
       setConnectionStatus("error");
-      toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
+      toast({
+        title: "Erro ao conectar",
+        description: `${err.message}. Verifique se o servidor está acessível e se não há bloqueio de CORS.`,
+        variant: "destructive",
+      });
     } finally {
       setTesting(false);
     }
@@ -125,16 +134,17 @@ export function ExternalConnectionSection() {
 
   return (
     <div className="space-y-4">
+      {/* Conexão de SAÍDA: sua app → app externa */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Unplug className="h-5 w-5" />
-                Conexão com App Externa
+                <ArrowRightLeft className="h-5 w-5" />
+                Conexão com App Externa (Saída)
               </CardTitle>
               <CardDescription>
-                Configure a conexão com sua plataforma de gestão para sincronização bidirecional
+                Configure a URL e credenciais da API da outra aplicação para que seu sistema se conecte a ela
               </CardDescription>
             </div>
             {connectionStatus === "success" && (
@@ -152,14 +162,21 @@ export function ExternalConnectionSection() {
         <CardContent className="space-y-5">
           {/* Base URL */}
           <div className="space-y-2">
-            <Label>URL Base da Aplicação Externa</Label>
+            <Label>URL Base da API Externa</Label>
             <Input
-              placeholder="https://minha-gestao.com"
+              placeholder="https://minha-gestao.com/api/platform"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Endereço base da API da outra aplicação (ex: <code className="bg-muted px-1 rounded">https://gestao.empresa.com</code>)
+              Endereço base da API da outra aplicação. Exemplos para VPS:
+            </p>
+            <ul className="text-xs text-muted-foreground ml-4 space-y-0.5 list-disc">
+              <li><code className="bg-muted px-1 rounded">https://gestao.empresa.com/api/platform</code></li>
+              <li><code className="bg-muted px-1 rounded">https://app.meudominio.com/api</code></li>
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              O teste de conexão vai chamar <code className="bg-muted px-1 rounded">{"{URL_BASE}/ping"}</code>
             </p>
           </div>
 
@@ -187,14 +204,14 @@ export function ExternalConnectionSection() {
 
           {/* Webhook URL (callback da app externa para cá) */}
           <div className="space-y-2">
-            <Label>Webhook URL (callback para sua app)</Label>
+            <Label>Webhook URL de Saída</Label>
             <Input
-              placeholder="https://minha-vps.com/api/external-messaging-webhook"
+              placeholder="https://gestao.empresa.com/api/webhook"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              URL que a app externa deve chamar para enviar eventos de volta (lembretes atualizados, pagamentos, etc.)
+              URL da app externa que receberá notificações quando dados forem alterados aqui (lembretes, transações, contatos, etc.)
             </p>
           </div>
 
@@ -212,22 +229,48 @@ export function ExternalConnectionSection() {
         </CardContent>
       </Card>
 
-      {/* Info card about what this connection enables */}
+      {/* Conexão de ENTRADA: app externa → sua app */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Unplug className="h-4 w-4" />
+            Sua API Pública (Entrada)
+          </CardTitle>
+          <CardDescription>
+            Endpoints que a app externa deve utilizar para se conectar ao seu sistema
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Configure na app externa os seguintes endpoints da sua VPS:</p>
+            <div className="bg-muted rounded-md p-3 space-y-1.5 text-xs font-mono">
+              <div><span className="text-green-500">API Base:</span> https://SEU-API-DOMAIN/api/platform</div>
+              <div><span className="text-blue-500">Webhook:</span> https://SEU-API-DOMAIN/api/external-messaging-webhook</div>
+              <div><span className="text-yellow-500">Health:</span> https://SEU-API-DOMAIN/api/platform/ping</div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A API Key para autenticação é gerada na aba <strong>"Integração API"</strong>.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Info card */}
       <Card className="border-dashed">
         <CardContent className="py-4">
-          <h4 className="text-sm font-medium mb-2">O que esta conexão habilita:</h4>
+          <h4 className="text-sm font-medium mb-2">Como funciona a integração bidirecional:</h4>
           <ul className="text-xs text-muted-foreground space-y-1.5">
             <li className="flex items-start gap-2">
               <span className="text-green-500 mt-0.5">→</span>
-              <span><strong>Saída:</strong> Toda alteração aqui (criar/editar/deletar lembretes, transações, contatos, tags) envia um webhook para a app externa</span>
+              <span><strong>Saída (você → externa):</strong> Alterações aqui (lembretes, transações, contatos, tags) disparam um webhook para a URL configurada acima</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-500 mt-0.5">←</span>
-              <span><strong>Entrada:</strong> A app externa pode chamar sua API REST para consultar e alterar dados, ou enviar webhooks com atualizações</span>
+              <span><strong>Entrada (externa → você):</strong> A app externa chama seus endpoints REST ou envia webhooks para <code className="bg-muted px-1 rounded">/api/external-messaging-webhook</code></span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-yellow-500 mt-0.5">⟷</span>
-              <span><strong>Bidirecional:</strong> Ambas as aplicações ficam sincronizadas em tempo real</span>
+              <span><strong>Bidirecional:</strong> Ambas ficam sincronizadas — qualquer mudança em um lado é refletida no outro</span>
             </li>
           </ul>
         </CardContent>
