@@ -410,6 +410,7 @@ router.post("/tags", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "tag_added", { ...data, phone: cleaned });
   res.status(201).json({ data, created: true });
 });
 
