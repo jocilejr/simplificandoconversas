@@ -4,6 +4,30 @@ import crypto from "crypto";
 
 const router = Router();
 
+// ── Webhook utility: fire-and-forget POST to user's configured webhook_url ──
+async function sendWebhook(userId: string, event: string, data: object) {
+  try {
+    const sb = getServiceClient();
+    const { data: conn } = await sb
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "custom_api")
+      .maybeSingle();
+
+    const url = (conn?.credentials as any)?.webhook_url;
+    if (!url) return;
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+    }).catch((err: any) => console.error(`[sendWebhook] ${event} error:`, err.message));
+  } catch (e: any) {
+    console.error("[sendWebhook] error:", e.message);
+  }
+}
+
 // ── Simple in-memory rate limiting ──
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 100; // requests per window
