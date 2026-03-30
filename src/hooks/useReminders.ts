@@ -144,7 +144,7 @@ export function useToggleReminder() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
-      forwardToVps(variables.id, variables.completed);
+      forwardToVps("PATCH", `/reminders/${variables.id}`, { completed: variables.completed });
     },
   });
 }
