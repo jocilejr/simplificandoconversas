@@ -126,7 +126,8 @@ export function useToggleReminder() {
 
         if (!apiKey || !baseUrl) return;
 
-        const url = `${baseUrl.replace(/\/$/, "")}/api/platform/reminders/${variables.id}`;
+        const apiUrl = baseUrl.replace(/\/$/, "").replace("://app.", "://api.");
+        const url = `${apiUrl}/api/platform/reminders/${variables.id}`;
         await fetch(url, {
           method: "PATCH",
           headers: {
