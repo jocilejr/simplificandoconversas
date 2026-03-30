@@ -1,36 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
-import crypto from "crypto";
+
 
 const router = Router();
-
-// ── Webhook utility: fire-and-forget POST to user's configured webhook_url ──
-async function sendWebhook(userId: string, event: string, data: object) {
-  try {
-    const sb = getServiceClient();
-    const { data: conn } = await sb
-      .from("platform_connections")
-      .select("credentials")
-      .eq("user_id", userId)
-      .eq("platform", "external_app")
-      .maybeSingle();
-
-    const creds = conn?.credentials as any;
-    const url = creds?.webhook_url;
-    if (!url) return;
-
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (creds?.api_key) headers["X-API-Key"] = creds.api_key;
-
-    fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
-    }).catch((err: any) => console.error(`[sendWebhook] ${event} error:`, err.message));
-  } catch (e: any) {
-    console.error("[sendWebhook] error:", e.message);
-  }
-}
 
 // ── Simple in-memory rate limiting ──
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -97,36 +69,6 @@ router.use(rateLimit);
 // ── Ping / Health check (no auth required) ──
 router.get("/ping", (_req, res) => {
   res.json({ ok: true, service: "platform-api", timestamp: new Date().toISOString() });
-});
-
-// ── Webhook notify (JWT auth from frontend) ──
-// Called by the UI when reminders change, relays to external app server-side
-router.post("/webhook-notify", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing Authorization header" });
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const jwt = await import("jsonwebtoken");
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return res.status(500).json({ error: "JWT_SECRET not configured" });
-
-    const decoded = jwt.default.verify(token, secret) as any;
-    const userId = decoded.sub;
-    if (!userId) return res.status(401).json({ error: "Invalid token" });
-
-    const { event, data } = req.body;
-    if (!event) return res.status(400).json({ error: "event is required" });
-
-    await sendWebhook(userId, event, data || {});
-    console.log(`[webhook-notify] Sent ${event} for user ${userId}`);
-    res.json({ ok: true });
-  } catch (err: any) {
-    console.error("[webhook-notify] error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // ═══════════════════════════════════════════════════
@@ -244,7 +186,6 @@ router.post("/contacts", async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
-    sendWebhook(userId, "contact_updated", data);
     return res.json({ data, created: false });
   }
 
@@ -261,7 +202,6 @@ router.post("/contacts", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "contact_created", data);
   res.status(201).json({ data, created: true });
 });
 
@@ -327,7 +267,6 @@ router.post("/transactions", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "transaction_created", data);
   res.status(201).json({ data });
 });
 
@@ -361,7 +300,6 @@ router.patch("/transactions/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Transaction not found" });
 
-  sendWebhook(userId, "transaction_updated", data);
   res.json({ data });
 });
 
@@ -449,7 +387,6 @@ router.post("/tags", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "tag_added", { ...data, phone: cleaned });
   res.status(201).json({ data, created: true });
 });
 
@@ -473,7 +410,6 @@ router.delete("/tags", async (req, res) => {
     .eq("tag_name", tag_name);
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "tag_removed", { phone: cleaned, tag_name, remote_jid: remoteJid });
   res.json({ ok: true });
 });
 
@@ -549,7 +485,6 @@ router.post("/reminders", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "reminder_created", data);
   res.status(201).json({ data });
 });
 
@@ -583,7 +518,6 @@ router.patch("/reminders/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Reminder not found" });
 
-  sendWebhook(userId, "reminder_updated", data);
   res.json({ data });
 });
 
@@ -613,7 +547,6 @@ router.delete("/reminders/:id", async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  sendWebhook(userId, "reminder_deleted", existing);
   res.json({ ok: true });
 });
 
@@ -747,13 +680,6 @@ router.post("/send-message", async (req, res) => {
       }
     }
 
-    sendWebhook(userId, "message_sent", {
-      phone: cleaned,
-      remote_jid: remoteJid,
-      message: message.substring(0, 200),
-      instance: instanceName,
-      message_id: result?.key?.id || null,
-    });
 
     console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
     res.json({

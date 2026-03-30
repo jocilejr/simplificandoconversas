@@ -3,27 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 
-async function sendWebhookToExternal(event: string, data: object) {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const origin = window.location.origin;
-    const apiBase = origin.includes("localhost")
-      ? "http://localhost:3001"
-      : origin;
-
-    fetch(`${apiBase}/api/platform/webhook-notify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ event, data }),
-    }).catch(() => {});
-  } catch {}
-}
-
 export interface Reminder {
   id: string;
   user_id: string;
@@ -101,7 +80,6 @@ export function useCreateReminder() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
-      sendWebhookToExternal("reminder_created", data);
     },
     onError: (err: any) => {
       toast({ title: "Erro ao criar lembrete", description: err.message, variant: "destructive" });
@@ -123,7 +101,6 @@ export function useToggleReminder() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
-      sendWebhookToExternal("reminder_updated", { id: variables.id, completed: variables.completed });
     },
   });
 }
@@ -139,7 +116,6 @@ export function useDeleteReminder() {
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete removido" });
-      sendWebhookToExternal("reminder_deleted", { id });
     },
   });
 }
