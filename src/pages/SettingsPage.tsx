@@ -42,6 +42,10 @@ const SettingsPage = () => {
           <ConnectionsSection />
         </TabsContent>
 
+        <TabsContent value="integrations">
+          <IntegrationsSection />
+        </TabsContent>
+
         <TabsContent value="ai">
           <AISection />
         </TabsContent>
