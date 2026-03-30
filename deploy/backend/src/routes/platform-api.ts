@@ -693,6 +693,118 @@ router.post("/send-message", async (req, res) => {
   }
 });
 
+// POST /api/platform/send-media
+router.post("/send-media", async (req, res) => {
+  const userId = await resolveUserByApiKey(req, res);
+  if (!userId) return;
+
+  const { phone, media_url, caption, type, instance } = req.body;
+  if (!phone || !media_url) {
+    return res.status(400).json({ error: "phone and media_url are required" });
+  }
+
+  const validTypes = ["image", "video", "audio", "document"];
+  const mediaType = type || "image";
+  if (!validTypes.includes(mediaType)) {
+    return res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
+  }
+
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+
+  const remoteJid = `${cleaned}@s.whatsapp.net`;
+  const sb = getServiceClient();
+
+  // Find instance
+  let instanceName = instance;
+  if (!instanceName) {
+    const { data: instances } = await sb
+      .from("whatsapp_instances")
+      .select("instance_name")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .limit(1);
+    if (!instances || instances.length === 0) {
+      return res.status(400).json({ error: "No active WhatsApp instance found" });
+    }
+    instanceName = instances[0].instance_name;
+  }
+
+  try {
+    let endpoint: string;
+    let body: any;
+
+    if (mediaType === "image") {
+      endpoint = `/message/sendMedia/${encodeURIComponent(instanceName)}`;
+      body = { number: cleaned, mediatype: "image", media: media_url, caption: caption || "" };
+    } else if (mediaType === "video") {
+      endpoint = `/message/sendMedia/${encodeURIComponent(instanceName)}`;
+      body = { number: cleaned, mediatype: "video", media: media_url, caption: caption || "" };
+    } else if (mediaType === "audio") {
+      endpoint = `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`;
+      body = { number: cleaned, audio: media_url };
+    } else {
+      // document (PDF, etc.)
+      endpoint = `/message/sendMedia/${encodeURIComponent(instanceName)}`;
+      const fileName = media_url.split("/").pop() || "document.pdf";
+      body = { number: cleaned, mediatype: "document", media: media_url, caption: caption || "", fileName };
+    }
+
+    const result = await evolutionRequest(endpoint, "POST", body);
+
+    // Ensure conversation & save message
+    const { data: conv } = await sb
+      .from("conversations")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .maybeSingle();
+
+    let conversationId = conv?.id;
+    const msgPreview = caption ? caption.substring(0, 200) : `📎 ${mediaType}`;
+
+    if (!conversationId) {
+      const { data: newConv } = await sb
+        .from("conversations")
+        .insert({
+          user_id: userId,
+          remote_jid: remoteJid,
+          phone_number: cleaned,
+          last_message: msgPreview,
+          last_message_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      conversationId = newConv?.id;
+    } else {
+      await sb.from("conversations").update({
+        last_message: msgPreview,
+        last_message_at: new Date().toISOString(),
+      }).eq("id", conversationId);
+    }
+
+    if (conversationId) {
+      await sb.from("messages").insert({
+        user_id: userId,
+        conversation_id: conversationId,
+        remote_jid: remoteJid,
+        content: caption || null,
+        direction: "outbound",
+        message_type: mediaType,
+        media_url: media_url,
+        status: "sent",
+        external_id: result?.key?.id || null,
+      });
+    }
+
+    console.log(`[platform-api] send-media (${mediaType}) to ${cleaned} via ${instanceName}`);
+    res.json({ ok: true, message_id: result?.key?.id || null, instance: instanceName });
+  } catch (err: any) {
+    console.error("[platform-api] send-media error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to send media" });
+  }
+});
+
 // POST /api/platform/validate-number
 router.post("/validate-number", async (req, res) => {
   const userId = await resolveUserByApiKey(req, res);
