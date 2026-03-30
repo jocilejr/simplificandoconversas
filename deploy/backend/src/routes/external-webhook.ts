@@ -201,7 +201,7 @@ router.post("/", async (req, res) => {
               body: JSON.stringify({ number: cleanedPhone, text: message }),
             }
           );
-          const sendData = await sendResult.json();
+          const sendData: any = await sendResult.json();
           results.actions.push({ type: "message_sent", message_id: sendData?.key?.id || null });
         } catch (msgErr: any) {
           results.actions.push({ type: "message_failed", error: msgErr.message });
