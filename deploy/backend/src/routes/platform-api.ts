@@ -434,6 +434,7 @@ router.delete("/tags", async (req, res) => {
     .eq("tag_name", tag_name);
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "tag_removed", { phone: cleaned, tag_name, remote_jid: remoteJid });
   res.json({ ok: true });
 });
 
