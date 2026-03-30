@@ -510,6 +510,7 @@ router.post("/reminders", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "reminder_created", data);
   res.status(201).json({ data });
 });
 
