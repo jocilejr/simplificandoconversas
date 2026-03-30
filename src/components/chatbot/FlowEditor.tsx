@@ -901,6 +901,14 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
 
           <Panel position="top-right" className="flex items-center gap-2">
               <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => exportFlow({ name, nodes, edges, instance_names: instanceNames })}
+              >
+                <Download className="h-3 w-3 mr-1" /> Exportar
+              </Button>
+              <Button
                 variant={saveStatus === "saved" ? "outline" : "default"}
                 size="sm"
                 className="h-8 text-xs"
