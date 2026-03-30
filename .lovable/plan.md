@@ -1,105 +1,80 @@
 
-Plano para corrigir o 404 da conexão externa e alinhar tudo ao seu ambiente na VPS
 
-1. Diagnóstico do problema
-- O teste atual faz `GET` exatamente na URL informada na aba “App Externa”.
-- Pela sua screenshot, você está informando algo como `.../functions/v1/platform-api`.
-- No backend atual, a API de integração não responde na raiz desse caminho. Ela só responde em subrotas como:
-  - `/contacts`
-  - `/transactions`
-  - `/reminders`
-- Resultado: `GET /platform-api` ou `GET /api/platform` retorna 404, mesmo com a API funcionando.
+# Plano: Corrigir webhooks de saída (app principal → app externa)
 
-2. O que vou ajustar no código
-- Backend:
-  - criar um endpoint de teste dedicado para a integração, por exemplo:
-    - `GET /api/platform/ping`
-  - esse endpoint vai retornar algo simples como:
-    ```json
-    { "ok": true, "service": "platform-api" }
-    ```
-- Frontend da aba “App Externa”:
-  - parar de testar a URL “crua”
-  - normalizar a URL informada e testar sempre um endpoint válido
-  - exemplo:
-    - se o usuário informar `https://seu-dominio.com/api/platform`
-      - testar `https://seu-dominio.com/api/platform/ping`
-    - se informar `https://seu-dominio.com/functions/v1/platform-api`
-      - testar `https://seu-dominio.com/functions/v1/platform-api/ping`
-  - melhorar a mensagem de erro para mostrar:
-    - URL testada
-    - status HTTP
-    - dica de correção
-- UX da tela:
-  - renomear o campo para deixar claro que ele espera a URL base da API externa
-  - incluir exemplos válidos para VPS/self-hosted
-  - bloquear ou alertar quando a URL parecer ser de ambiente errado
+## Problema identificado
 
-3. Ajuste importante para seu caso de VPS
-Como você usa só a VPS, eu também vou alinhar a interface para não induzir uso de URLs do ambiente hospedado.
-- Revisar a aba de documentação/API para mostrar URLs do tipo:
-  - `https://SEU-DOMINIO/api/platform`
-  - `https://SEU-DOMINIO/api/external-messaging-webhook`
-- Evitar exibir caminhos do tipo `supabase.co/functions/v1/...` como referência principal no fluxo self-hosted.
+Existem **duas desconexões** que impedem a comunicação de saída:
 
-4. Arquivos que entram no ajuste
-- `src/components/settings/ExternalConnectionSection.tsx`
-  - corrigir a lógica do botão “Testar Conexão”
-  - melhorar placeholders, validação e mensagens
-- `deploy/backend/src/routes/platform-api.ts`
-  - adicionar endpoint `GET /ping` na API de integração
-- `src/components/settings/IntegrationApiSection.tsx`
-  - revisar exemplos/documentação para VPS
-- se necessário:
-  - `deploy/nginx/default.conf.template`
-  - apenas se eu identificar necessidade de ajustar roteamento, mas hoje o principal problema parece ser ausência de rota raiz/ping
+1. **Backend (`sendWebhook`)**: busca `webhook_url` em `platform_connections` com `platform = "custom_api"`, mas a aba "App Externa" salva as credenciais com `platform = "external_app"`. Resultado: `webhook_url` nunca é encontrada, webhook nunca é enviado.
 
-5. Como você pode verificar na VPS agora
-Rode estes testes dentro da VPS para confirmar onde está o 404:
+2. **Frontend (`forwardToVps`)**: depende de `app_public_url` do profile (que está `null`) e da `api_key` de `custom_api`. Mesmo que funcionasse, faz a chamada do **navegador do usuário** direto para a VPS, o que é frágil (CORS, rede).
 
-```bash
-curl -i https://SEU-DOMINIO/api/health
+## Solução
+
+### 1. Backend: `sendWebhook` buscar em `external_app`
+
+**Arquivo:** `deploy/backend/src/routes/platform-api.ts`
+
+Alterar a função `sendWebhook` para buscar o `webhook_url` em `platform = "external_app"` (onde a aba App Externa salva). Também enviar a `api_key` configurada no header para autenticar na app externa.
+
+```typescript
+async function sendWebhook(userId: string, event: string, data: object) {
+  try {
+    const sb = getServiceClient();
+    // Buscar credenciais da app externa (não custom_api)
+    const { data: conn } = await sb
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "external_app")
+      .maybeSingle();
+
+    const creds = conn?.credentials as any;
+    const url = creds?.webhook_url;
+    if (!url) return;
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (creds?.api_key) headers["X-API-Key"] = creds.api_key;
+
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+    }).catch(...);
+  } catch ...
+}
 ```
 
-```bash
-curl -i https://SEU-DOMINIO/api/platform/reminders -H "X-API-Key: SUA_CHAVE"
-```
+### 2. Frontend: remover `forwardToVps`, usar backend como relay
 
-```bash
-curl -i https://SEU-DOMINIO/functions/v1/platform-api/reminders -H "X-API-Key: SUA_CHAVE"
-```
+**Arquivo:** `src/hooks/useReminders.ts`
 
-E para provar o problema atual da raiz:
+Remover `getVpsConfig` e `forwardToVps` completamente. O backend já envia os webhooks via `sendWebhook` quando os endpoints da Platform API são chamados. As ações da UI (criar, toggle, deletar) já escrevem direto no banco, e o backend já dispara os webhooks nos endpoints REST. O frontend não precisa fazer forward manual.
 
-```bash
-curl -i https://SEU-DOMINIO/api/platform -H "X-API-Key: SUA_CHAVE"
-```
+Se a UI escreve direto no Supabase (sem passar pela Platform API), os webhooks não disparam. Para resolver isso de forma limpa, vou fazer o frontend chamar a VPS Platform API em vez de escrever direto no Supabase, ou alternativamente, manter o write direto e adicionar uma chamada fire-and-forget para o backend notificar a app externa.
 
-```bash
-curl -i https://SEU-DOMINIO/functions/v1/platform-api -H "X-API-Key: SUA_CHAVE"
-```
+**Abordagem escolhida:** Manter o write direto no Supabase (mais rápido para a UI) e adicionar uma chamada `POST /api/platform/notify` no backend que apenas dispara o webhook sem duplicar o write. Isso é mais simples que mudar toda a lógica de mutations.
 
-Se os endpoints com `/reminders` responderem e a raiz responder 404, o diagnóstico está confirmado.
+Na verdade, a abordagem mais simples: o `forwardToVps` já tenta chamar os endpoints da Platform API na VPS, que por sua vez chamam `sendWebhook`. O problema é que `getVpsConfig` busca `app_public_url` (null) e `custom_api` api_key. Basta mudar para buscar de `external_app` as credenciais corretas, e usar a `base_url` configurada na aba App Externa como destino... mas espera, o `forwardToVps` chama a **própria VPS** (não a app externa), para que a VPS dispare o webhook. O problema é que o `app_public_url` está null.
 
-6. Resultado esperado depois da correção
-- O botão “Testar Conexão” vai funcionar de forma confiável
-- A tela vai orientar corretamente quem usa VPS
-- Você vai conseguir conectar sua aplicação à API externa sem falso negativo de 404
-- A documentação visual deixará claro o que é:
-  - conexão de entrada (externa → você)
-  - conexão de saída (você → externa)
+**Solução real para o frontend:** mudar `getVpsConfig` para buscar `app_public_url` do profile OU, melhor ainda, fazer o backend disparar webhooks automaticamente via um trigger/cron, ou simplesmente fazer o frontend chamar um endpoint dedicado na própria VPS para notificar.
 
-7. Observação de design da integração
-Hoje a UI mistura um pouco “URL base”, “endpoint” e “webhook”.
-Vou organizar isso melhor para ficar assim:
-- API da app externa:
-  - URL base
-  - API Key
-- Webhook da app externa:
-  - URL de callback que sua app chama
-- Sua API pública:
-  - endpoints que a outra app deve consumir
-- Seu webhook público:
-  - endpoint que a outra app deve chamar
+A forma mais prática: o frontend já escreve no Supabase. O backend pode usar um **Postgres trigger + pg_notify** ou simplesmente: ao salvar no Supabase, o frontend faz um POST fire-and-forget para `{VPS_URL}/api/platform/webhook-relay` com o evento. Mas isso requer que o frontend conheça a URL da VPS.
 
-Assim a conexão deixa de parecer “só webhook” e passa a ficar realmente bidirecional e clara.
+**Decisão final simplificada:**
+
+O `forwardToVps` deveria usar a URL da própria VPS. O campo `app_public_url` no profile serve para isso mas está null. Vou mudar para que o frontend use a URL da aba "Aplicação" (campo `app_public_url` das configurações), e se não existir, tente derivar do `window.location` (já que na VPS o frontend é servido pela mesma VPS).
+
+### Resumo das alterações
+
+| Arquivo | O que muda |
+|---|---|
+| `deploy/backend/src/routes/platform-api.ts` | `sendWebhook` busca `external_app` em vez de `custom_api`, envia `X-API-Key` |
+| `src/hooks/useReminders.ts` | `getVpsConfig` usa `window.location.origin` como fallback para URL da VPS, remove dependência de `app_public_url` null |
+
+### Resultado
+
+- Quando o backend processa qualquer escrita via Platform API, o webhook é enviado para a app externa com autenticação
+- Quando a UI faz ações (criar/toggle/deletar lembrete), o frontend notifica a VPS, que por sua vez envia o webhook para a app externa
+
