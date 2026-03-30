@@ -513,6 +513,36 @@ router.patch("/reminders/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Reminder not found" });
 
+  // Fire-and-forget: forward to external webhook if configured
+  try {
+    const { data: conn } = await sb
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "custom_api")
+      .maybeSingle();
+
+    const webhookUrl = conn?.credentials?.webhook_url;
+    if (webhookUrl) {
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: "reminder_updated",
+          id: data.id,
+          completed: data.completed,
+          title: data.title,
+          due_date: data.due_date,
+          description: data.description,
+          remote_jid: data.remote_jid,
+          phone_number: data.phone_number,
+        }),
+      }).catch((err: any) => console.error("Webhook forward error:", err.message));
+    }
+  } catch (e: any) {
+    console.error("Error checking webhook config:", e.message);
+  }
+
   res.json({ data });
 });
 

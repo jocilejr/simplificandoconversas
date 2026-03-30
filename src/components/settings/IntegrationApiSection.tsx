@@ -9,9 +9,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [savingWebhook, setSavingWebhook] = useState(false);
 
   useEffect(() => {
     loadKey();
@@ -28,6 +30,9 @@ export function IntegrationApiSection() {
 
       if (data?.credentials?.api_key) {
         setApiKey(data.credentials.api_key);
+      }
+      if (data?.credentials?.webhook_url) {
+        setWebhookUrl(data.credentials.webhook_url);
       }
     } catch (err) {
       console.error("Error loading API key:", err);
@@ -126,6 +131,60 @@ export function IntegrationApiSection() {
           <p className="text-xs text-muted-foreground">
             Envie esta key no header <code className="bg-muted px-1 rounded">X-API-Key</code> de cada requisição.
           </p>
+        </div>
+
+        {/* Webhook URL */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Webhook URL (app externa)</label>
+          <p className="text-xs text-muted-foreground">
+            Quando um lembrete for atualizado aqui, enviaremos um POST para esta URL.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="https://minha-app.com/api/webhook"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              disabled={savingWebhook}
+              onClick={async () => {
+                setSavingWebhook(true);
+                try {
+                  const { data: existing } = await (supabase as any)
+                    .from("platform_connections")
+                    .select("id, credentials")
+                    .eq("platform", "custom_api")
+                    .maybeSingle();
+
+                  if (existing) {
+                    await (supabase as any)
+                      .from("platform_connections")
+                      .update({ credentials: { ...existing.credentials, webhook_url: webhookUrl } })
+                      .eq("id", existing.id);
+                  } else {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) throw new Error("Not authenticated");
+                    await (supabase as any)
+                      .from("platform_connections")
+                      .insert({
+                        user_id: user.id,
+                        platform: "custom_api",
+                        credentials: { webhook_url: webhookUrl },
+                        enabled: true,
+                      });
+                  }
+                  toast({ title: "Webhook URL salva!" });
+                } catch (err: any) {
+                  toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+                } finally {
+                  setSavingWebhook(false);
+                }
+              }}
+            >
+              {savingWebhook ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
         </div>
 
         {/* Endpoints documentation */}
