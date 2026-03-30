@@ -51,7 +51,10 @@ const PLATFORMS: PlatformConfig[] = [
     icon: <ShoppingCart className="h-5 w-5 text-blue-500" />,
     colorClass: "bg-blue-500/10",
     fields: [
+      { key: "public_key", label: "Public Key", placeholder: "Sua Public Key do Mercado Pago" },
       { key: "access_token", label: "Access Token", placeholder: "Seu Access Token do Mercado Pago", type: "password", required: true },
+      { key: "client_id", label: "Client ID", placeholder: "Seu Client ID do Mercado Pago" },
+      { key: "client_secret", label: "Client Secret", placeholder: "Seu Client Secret do Mercado Pago", type: "password" },
     ],
   },
   {
