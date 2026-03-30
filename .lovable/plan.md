@@ -1,49 +1,61 @@
 
-Objetivo: corrigir definitivamente o webhook da OpenPix para sempre gerar URL funcional sem preenchimento manual.
 
-Diagnóstico (com base no código atual)
-- O backend já responde GET 200 em `deploy/backend/src/routes/webhook-transactions.ts`.
-- O 404 no seu teste (`/api/webhook-transactions/...`) indica problema de roteamento externo (Nginx/API), não da rota Express.
-- Hoje a UI gera URL com `app_public_url + /api/webhook-transactions/...`; isso é frágil para VPS com domínios separados app/api.
+# Integração Mercado Pago — Plano
 
-Plano de correção
+## Problema atual
 
-1) Validar rota que já funciona na VPS (sem mudar código)
-- Rodar:
-  - `curl -i "https://api.chatbotsimplificado.com/functions/v1/webhook-transactions/openpix?user_id=test"`
-  - `curl -i "https://api.chatbotsimplificado.com/api/webhook-transactions/openpix?user_id=test"`
-- Esperado:
-  - `/functions/v1/...` deve responder 200
-  - `/api/...` hoje está 404 (confirmando o gargalo no Nginx)
+O normalizador do Mercado Pago no backend (`webhook-transactions.ts`) assume que o webhook já traz os dados completos do pagamento. Na realidade, o **Mercado Pago envia apenas uma notificação** com `action` e `data.id` (o ID do pagamento). É necessário **buscar os detalhes na API do MP** usando o `access_token` do usuário.
 
-2) Ajustar geração automática da URL no frontend (sem input manual)
-- Arquivo: `src/components/settings/IntegrationsSection.tsx`
-- Alterar `buildWebhookUrl` para usar base da API via `import.meta.env.VITE_SUPABASE_URL` (na sua VPS isso aponta para `API_URL`), no formato:
-  - `{VITE_SUPABASE_URL}/functions/v1/webhook-transactions/{platform}?user_id={user.id}`
-- Remover dependência de `profile.app_public_url` para webhook (manter só para outros recursos, se necessário).
-- Resultado: integração OpenPix cria URL correta automaticamente em qualquer usuário.
+## O que será feito
 
-3) Compatibilidade retroativa para links antigos `/api/...` (opcional, recomendado)
-- Arquivo: `deploy/nginx/default.conf.template`
-- Adicionar `location /api/webhook-transactions/` com `proxy_pass http://backend:3001/api/webhook-transactions/;`
-- Isso evita quebrar webhooks já cadastrados com URL antiga.
+### 1. Alterar `webhook-transactions.ts` — buscar pagamento na API do MP
 
-4) Deploy na VPS
-- Rebuild backend/frontend conforme seu fluxo:
-  - `cd /root/simplificandoconversas/deploy`
-  - `./update.sh` (ou `docker compose up -d --build`)
-- Se alterar template do Nginx, aplicar recriação:
-  - `docker compose up -d --force-recreate nginx`
+Quando o webhook do Mercado Pago chegar:
+1. Extrair `data.id` (payment ID) do payload
+2. Buscar o `access_token` do usuário na tabela `platform_connections` (usando `user_id` da query string)
+3. Fazer `GET https://api.mercadopago.com/v1/payments/{id}` com o token
+4. Normalizar a resposta completa da API (que contém `status`, `transaction_amount`, `payer`, etc.)
+5. Inserir/atualizar na tabela `transactions`
 
-5) Validação fim a fim (obrigatória)
-- Testar:
-  - URL gerada na tela de Integrações (OpenPix) retorna 200
-  - Cadastro do webhook no painel OpenPix aceita a URL
-  - Envio de evento de teste da OpenPix chega no backend:
-    - `docker compose logs --tail=200 backend | grep webhook-transactions`
+### 2. Tratar os status corretamente
 
-Critério de pronto
-- Nova integração OpenPix não pede credenciais
-- URL é gerada automaticamente e responde 200
-- OpenPix valida webhook com sucesso
-- Eventos entram sem erro 404
+Mapear os status reais da API do MP:
+- `approved` → `pago`
+- `pending` / `in_process` → `pendente`
+- `rejected` / `cancelled` → `cancelado`
+- `refunded` / `charged_back` → `reembolsado`
+
+### 3. Mapear tipo de pagamento
+
+- `credit_card` / `debit_card` → `cartao`
+- `bank_transfer` / `pix` → `pix`
+- `ticket` (boleto) → `boleto`
+
+## Arquivos modificados
+
+| Arquivo | Alteração |
+|---|---|
+| `deploy/backend/src/routes/webhook-transactions.ts` | Reescrever `normalizeMercadoPago` para buscar dados na API do MP usando `access_token` da `platform_connections` |
+
+## Detalhes técnicos
+
+```text
+Webhook MP payload (o que chega):
+{
+  "action": "payment.updated",
+  "data": { "id": "123456789" }
+}
+
+→ Backend busca: GET https://api.mercadopago.com/v1/payments/123456789
+   Header: Authorization: Bearer {access_token}
+
+→ Resposta completa com: status, transaction_amount, payer, payment_type_id, etc.
+```
+
+O `access_token` será lido do banco:
+```sql
+SELECT credentials->>'access_token'
+FROM platform_connections
+WHERE user_id = :user_id AND platform = 'mercadopago'
+```
+
