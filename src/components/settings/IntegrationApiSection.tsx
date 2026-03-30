@@ -12,7 +12,6 @@ export function IntegrationApiSection() {
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [savingWebhook, setSavingWebhook] = useState(false);
 
   useEffect(() => {
     loadKey();
