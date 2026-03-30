@@ -5,23 +5,21 @@ import { toast } from "@/hooks/use-toast";
 
 async function sendWebhookToExternal(event: string, data: object) {
   try {
-    const { data: conn } = await (supabase as any)
-      .from("platform_connections")
-      .select("credentials")
-      .eq("platform", "external_app")
-      .maybeSingle();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
 
-    const creds = conn?.credentials as any;
-    const url = creds?.webhook_url;
-    if (!url) return;
+    const origin = window.location.origin;
+    const apiBase = origin.includes("localhost")
+      ? "http://localhost:3001"
+      : origin;
 
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (creds?.api_key) headers["X-API-Key"] = creds.api_key;
-
-    fetch(url, {
+    fetch(`${apiBase}/api/platform/webhook-notify`, {
       method: "POST",
-      headers,
-      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ event, data }),
     }).catch(() => {});
   } catch {}
 }

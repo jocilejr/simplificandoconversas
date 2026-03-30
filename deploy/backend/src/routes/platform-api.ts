@@ -99,6 +99,36 @@ router.get("/ping", (_req, res) => {
   res.json({ ok: true, service: "platform-api", timestamp: new Date().toISOString() });
 });
 
+// ── Webhook notify (JWT auth from frontend) ──
+// Called by the UI when reminders change, relays to external app server-side
+router.post("/webhook-notify", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing Authorization header" });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const jwt = await import("jsonwebtoken");
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return res.status(500).json({ error: "JWT_SECRET not configured" });
+
+    const decoded = jwt.default.verify(token, secret) as any;
+    const userId = decoded.sub;
+    if (!userId) return res.status(401).json({ error: "Invalid token" });
+
+    const { event, data } = req.body;
+    if (!event) return res.status(400).json({ error: "event is required" });
+
+    await sendWebhook(userId, event, data || {});
+    console.log(`[webhook-notify] Sent ${event} for user ${userId}`);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[webhook-notify] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════
 // CONTACTS / CLIENTES
 // ═══════════════════════════════════════════════════
