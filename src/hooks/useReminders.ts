@@ -80,7 +80,6 @@ export function useCreateReminder() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
-      sendWebhookToExternal("reminder_created", data);
     },
     onError: (err: any) => {
       toast({ title: "Erro ao criar lembrete", description: err.message, variant: "destructive" });
