@@ -1,42 +1,66 @@
 
 
-## Dashboard Dinâmico com Filtro de Datas
+## Exportar e Importar Fluxos com Mídias
 
 ### Visão Geral
-Substituir o dashboard estático por um com dados reais do banco, com seletor de período: **Hoje**, **Ontem**, **Personalizado** (date range picker).
+Adicionar botões de **Exportar** e **Importar** fluxo no editor e na listagem de fluxos. O arquivo exportado será um `.json` completo contendo nodes, edges, configurações e todas as mídias embutidas em base64.
 
-### Seletor de Período (topo do dashboard)
-Botões segmentados: `Hoje | Ontem | Personalizado`
-- Ao selecionar "Personalizado", abre um date range picker (Popover + Calendar)
-- O período selecionado filtra todos os cards e listas
+### Formato do Arquivo de Exportação
 
-### Cards de Estatísticas
-| Card | Query | Comparação |
-|------|-------|------------|
-| Lembretes no Período | `reminders` com `due_date` no range | Pendentes vs concluídos |
-| Lembretes Atrasados | `reminders` pendentes com `due_date` < início do range | Total |
-| Conversas no Período | `conversations` com `last_message_at` no range | Total |
-| Fluxos Ativos | `chatbot_flows` com `active = true` | Sempre atual |
-| Execuções no Período | `flow_executions` criadas no range | Total |
-| Mensagens no Período | `messages` criadas no range | Enviadas vs recebidas |
+```text
+{
+  "version": 1,
+  "exportedAt": "2026-03-30T...",
+  "name": "Meu Fluxo",
+  "instanceNames": ["..."],
+  "nodes": [...],
+  "edges": [...],
+  "media": {
+    "https://api.../media/.../file.png": "data:image/png;base64,iVBOR...",
+    "https://api.../media/.../audio.mp3": "data:audio/mpeg;base64,SUQz..."
+  }
+}
+```
 
-### Seções Inferiores
-1. **Lembretes Pendentes** -- Até 5 lembretes com `due_date` no range ou atrasados, com badge (hoje/atrasado/futuro), nome do contato e título
-2. **Conversas Recentes** -- Últimas 5 conversas com `last_message_at` no range, mostrando nome, telefone e horário
+### Lógica de Exportação
+1. Percorrer todos os nodes (incluindo steps dentro de groupBlocks)
+2. Coletar todas as URLs de mídia dos campos: `audioUrl`, `mediaUrl`, `fileUrl`, `clickPreviewImage`
+3. Para cada URL, fazer `fetch()` e converter para base64 (`data:mimetype;base64,...`)
+4. Salvar o JSON com nodes, edges, instance_names e o mapa de mídias
+5. Disparar download do arquivo `.json`
+
+### Lógica de Importação
+1. Usuário seleciona arquivo `.json`
+2. Validar estrutura (version, nodes, edges)
+3. Para cada entrada no mapa `media`:
+   - Fazer upload via `supabase.functions.invoke("whatsapp-proxy", { action: "media-upload" })` (endpoint existente)
+   - Obter nova URL
+4. Substituir todas as URLs antigas pelas novas nos nodes
+5. Criar novo fluxo via `createFlow` + `updateFlow` com os dados importados
+6. Abrir o fluxo importado no editor
+
+### Onde ficam os botões
+
+1. **Na listagem (`ChatbotBuilder.tsx`)**: 
+   - Dropdown menu de cada card do fluxo: adicionar "Exportar"
+   - Botão "Importar Fluxo" ao lado de "Novo Fluxo" no header
+
+2. **No editor (`FlowEditor.tsx`)**: 
+   - Botão "Exportar" no painel top-right, ao lado de "Salvar"
 
 ### Implementação
 
-1. **Criar `src/hooks/useDashboardStats.ts`**
-   - Recebe `startDate` e `endDate` como parâmetros
-   - 6 queries paralelas usando `useQuery` com as tabelas existentes (`reminders`, `conversations`, `chatbot_flows`, `flow_executions`, `messages`)
-   - Retorna contagens + listas dos 5 mais recentes
+1. **Criar `src/lib/flowExportImport.ts`** -- Funções utilitárias:
+   - `extractMediaUrls(nodes)` -- percorre nodes e steps, coleta URLs
+   - `exportFlow(flow)` -- busca mídias, monta JSON, dispara download
+   - `importFlow(file, createFn, updateFn)` -- lê JSON, re-uploada mídias, cria fluxo
 
-2. **Reescrever `src/pages/Dashboard.tsx`**
-   - State para período: `"today" | "yesterday" | "custom"` + `dateRange`
-   - Barra de filtro no topo com botões segmentados + date picker (Popover + Calendar com `mode="range"`)
-   - Cards dinâmicos consumindo o hook
-   - Seções inferiores com dados reais
-   - Loading skeletons enquanto carrega
+2. **Editar `src/pages/ChatbotBuilder.tsx`** -- Adicionar botão "Importar" no header e "Exportar" no dropdown de cada card
 
-Nenhuma alteração de schema necessária -- usa tabelas existentes.
+3. **Editar `src/components/chatbot/FlowEditor.tsx`** -- Adicionar botão "Exportar" no top-right panel
+
+### Tratamento de Erros
+- Progresso visual durante export/import (toast com loading)
+- Se uma mídia falhar no fetch, incluir URL original sem base64 e avisar
+- Validação do formato do arquivo na importação
 
