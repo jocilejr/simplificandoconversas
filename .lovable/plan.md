@@ -1,61 +1,77 @@
 
 
-## Aba de Conexão com OpenPix nas Configurações
+## Integrações Dinâmicas — Criar integração com URL automática
 
-### Visão Geral
-Adicionar uma nova aba "Integrações" (ou sub-aba dentro de Conexões) na página de Configurações para gerenciar credenciais de plataformas financeiras, começando pela OpenPix. O usuário poderá cadastrar seu App ID e Webhook Secret da OpenPix, que serão salvos no banco e usados pelo backend para validar webhooks recebidos.
+### Problema Atual
+O usuário precisa inserir manualmente a URL base da VPS. O sistema já tem `app_public_url` salvo no perfil (aba Aplicação), mas não está sendo usado corretamente.
 
-### Banco de Dados
+### Solução
+Refatorar a aba de Integrações para um modelo **dinâmico**: o usuário clica em "Nova Integração", seleciona a plataforma, preenche apenas as credenciais, e o webhook é gerado automaticamente usando o `app_public_url` do perfil.
 
-Criar tabela `platform_connections`:
-- `id` uuid PK
-- `user_id` uuid NOT NULL
-- `platform` text NOT NULL (ex: "openpix", "mercadopago", "yampi")
-- `credentials` jsonb NOT NULL DEFAULT '{}'  (armazena app_id, webhook_secret, access_token etc.)
-- `enabled` boolean DEFAULT true
-- `created_at` timestamptz DEFAULT now()
-- `updated_at` timestamptz DEFAULT now()
-- UNIQUE(user_id, platform)
-- RLS: usuário autenticado gerencia seus próprios registros
-
-### Frontend
-
-1. **Criar `src/components/settings/IntegrationsSection.tsx`**
-   - Lista de plataformas disponíveis (OpenPix primeiro, depois Mercado Pago, Yampi como "em breve")
-   - Card da OpenPix com:
-     - Status (conectada/desconectada) baseado na existência de credenciais
-     - Campos: App ID, Webhook Secret
-     - Botão Salvar / Desconectar
-     - URL do webhook para copiar: `https://api.seudominio.com/api/webhook-transactions/openpix`
-   - Hook `usePlatformConnections.ts` para CRUD na tabela
-
-2. **Editar `src/pages/SettingsPage.tsx`**
-   - Adicionar aba "Integrações" (grid-cols-5)
-   - Importar e renderizar `IntegrationsSection`
-
-### Arquivos
-
-| Arquivo | Ação |
-|---------|------|
-| Migration SQL | Criar tabela `platform_connections` |
-| `src/hooks/usePlatformConnections.ts` | Hook para gerenciar conexões |
-| `src/components/settings/IntegrationsSection.tsx` | UI da aba |
-| `src/pages/SettingsPage.tsx` | Adicionar nova aba |
-
-### Design do Card OpenPix
+### Como funciona
 
 ```text
-┌─────────────────────────────────────────┐
-│ 🟢 OpenPix                    [Ativa]  │
-│                                         │
-│ App ID:        [__________________]     │
-│ Webhook Secret:[__________________]     │
-│                                         │
-│ URL do Webhook (copiar):                │
-│ https://api..../webhook-transactions/   │
-│ openpix?user_id=...                     │
-│                                         │
-│           [Salvar]  [Desconectar]       │
-└─────────────────────────────────────────┘
+1. Usuário vai em Configurações → Integrações
+2. Clica em "+ Nova Integração"
+3. Seleciona a plataforma (OpenPix, Mercado Pago, Yampi)
+4. Preenche as credenciais específicas da plataforma
+5. Salva → webhook URL gerado automaticamente
+6. Pode copiar a URL e colar na plataforma externa
+```
+
+A URL do webhook será construída assim:
+```
+{profile.app_public_url}/api/webhook-transactions/{platform}?user_id={user.id}
+```
+
+Se `app_public_url` não estiver configurado, exibe um aviso com link para a aba "Aplicação".
+
+### Mudanças
+
+**`src/components/settings/IntegrationsSection.tsx`** — Reescrever completamente:
+- Remover o card fixo `OpenPixCard` e o campo manual de URL base
+- Criar lista de integrações existentes do usuário (vindas de `platform_connections`)
+- Botão "+ Nova Integração" abre um dialog/formulário:
+  - Select de plataforma com opções: OpenPix, Mercado Pago, Yampi
+  - Campos dinâmicos por plataforma:
+    - **OpenPix**: App ID, Webhook Secret (opcional)
+    - **Mercado Pago**: Access Token
+    - **Yampi**: API Token, Alias da Loja
+  - Ao salvar, grava em `platform_connections`
+- Cada integração salva mostra um card com:
+  - Nome da plataforma + status (ativa/inativa)
+  - URL do webhook (gerada automaticamente, copiável)
+  - Botão editar / desconectar
+  - Toggle ativar/desativar
+
+**Nenhuma mudança em banco ou backend** — já suporta múltiplas plataformas e o formato `platform_connections` é genérico.
+
+### Definição de campos por plataforma
+
+| Plataforma | Campos | Ícone/Cor |
+|---|---|---|
+| OpenPix | App ID, Webhook Secret | Emerald |
+| Mercado Pago | Access Token | Blue |
+| Yampi | API Token, Alias da Loja | Purple |
+
+### UX esperada
+
+```text
+┌─ Integrações ─────────────────────────────────┐
+│                                                │
+│  [+ Nova Integração]                           │
+│                                                │
+│  ┌──────────────────────────────────────────┐  │
+│  │ 🟢 OpenPix                     [Ativa]  │  │
+│  │ Webhook: https://api.meu.../openpix?...  │  │
+│  │              [Copiar] [Editar] [Remover] │  │
+│  └──────────────────────────────────────────┘  │
+│                                                │
+│  ┌──────────────────────────────────────────┐  │
+│  │ 🔵 Mercado Pago                [Ativa]  │  │
+│  │ Webhook: https://api.meu.../mercado...   │  │
+│  │              [Copiar] [Editar] [Remover] │  │
+│  └──────────────────────────────────────────┘  │
+└────────────────────────────────────────────────┘
 ```
 
