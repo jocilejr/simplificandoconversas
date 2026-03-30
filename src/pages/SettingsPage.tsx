@@ -26,10 +26,9 @@ const SettingsPage = () => {
       </div>
 
       <Tabs defaultValue="connections" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="profile">Perfil</TabsTrigger>
           <TabsTrigger value="connections">Conexões</TabsTrigger>
-          <TabsTrigger value="external">App Externa</TabsTrigger>
           <TabsTrigger value="ai">IA</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="app">Aplicação</TabsTrigger>
