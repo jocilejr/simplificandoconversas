@@ -205,6 +205,7 @@ router.post("/contacts", async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+    sendWebhook(userId, "contact_updated", data);
     return res.json({ data, created: false });
   }
 
@@ -221,6 +222,7 @@ router.post("/contacts", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "contact_created", data);
   res.status(201).json({ data, created: true });
 });
 
