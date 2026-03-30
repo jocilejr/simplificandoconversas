@@ -516,4 +516,204 @@ router.patch("/reminders/:id", async (req, res) => {
   res.json({ data });
 });
 
+// ═══════════════════════════════════════════════════
+// MESSAGING / ENVIO DE MENSAGENS
+// ═══════════════════════════════════════════════════
+
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
+
+async function evolutionRequest(path: string, method: string = "POST", body?: any) {
+  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
+    method,
+    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  return resp.json() as Promise<any>;
+}
+
+// POST /api/platform/send-message
+router.post("/send-message", async (req, res) => {
+  const userId = await resolveUserByApiKey(req, res);
+  if (!userId) return;
+
+  const { phone, message, type, reference_id, customer_name, amount } = req.body;
+  if (!phone || !message) {
+    return res.status(400).json({ error: "phone and message are required" });
+  }
+
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+
+  const remoteJid = `${cleaned}@s.whatsapp.net`;
+  const sb = getServiceClient();
+
+  // Find an active instance for this user
+  const { data: instances } = await sb
+    .from("whatsapp_instances")
+    .select("instance_name, status")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1);
+
+  if (!instances || instances.length === 0) {
+    return res.status(400).json({ error: "No active WhatsApp instance found" });
+  }
+
+  const instanceName = instances[0].instance_name;
+
+  try {
+    // Send via Evolution API
+    const result = await evolutionRequest(
+      `/message/sendText/${encodeURIComponent(instanceName)}`,
+      "POST",
+      {
+        number: cleaned,
+        text: message,
+      }
+    );
+
+    // Ensure conversation exists
+    const { data: conv } = await sb
+      .from("conversations")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .maybeSingle();
+
+    let conversationId = conv?.id;
+
+    if (!conversationId) {
+      const { data: newConv } = await sb
+        .from("conversations")
+        .insert({
+          user_id: userId,
+          remote_jid: remoteJid,
+          phone_number: cleaned,
+          contact_name: customer_name || null,
+          last_message: message.substring(0, 200),
+          last_message_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      conversationId = newConv?.id;
+    } else {
+      await sb
+        .from("conversations")
+        .update({
+          last_message: message.substring(0, 200),
+          last_message_at: new Date().toISOString(),
+          ...(customer_name ? { contact_name: customer_name } : {}),
+        })
+        .eq("id", conversationId);
+    }
+
+    // Save message record
+    if (conversationId) {
+      await sb.from("messages").insert({
+        user_id: userId,
+        conversation_id: conversationId,
+        remote_jid: remoteJid,
+        content: message,
+        direction: "outbound",
+        message_type: "text",
+        status: "sent",
+        external_id: result?.key?.id || null,
+      });
+    }
+
+    // If amount provided, create/update transaction
+    if (amount !== undefined && amount !== null && reference_id) {
+      const { data: existingTx } = await sb
+        .from("transactions")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("external_id", reference_id)
+        .maybeSingle();
+
+      if (!existingTx) {
+        await sb.from("transactions").insert({
+          user_id: userId,
+          external_id: reference_id,
+          amount: Number(amount),
+          customer_phone: cleaned,
+          customer_name: customer_name || null,
+          source: "api",
+          type: type || "pix",
+          status: "pendente",
+          description: `Cobrança enviada via API`,
+        });
+      }
+    }
+
+    console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
+    res.json({
+      ok: true,
+      message_id: result?.key?.id || null,
+      instance: instanceName,
+    });
+  } catch (err: any) {
+    console.error("[platform-api] send-message error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to send message" });
+  }
+});
+
+// POST /api/platform/validate-number
+router.post("/validate-number", async (req, res) => {
+  const userId = await resolveUserByApiKey(req, res);
+  if (!userId) return;
+
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ error: "phone is required" });
+
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+
+  const sb = getServiceClient();
+
+  // Find an active instance for validation
+  const { data: instances } = await sb
+    .from("whatsapp_instances")
+    .select("instance_name")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1);
+
+  if (!instances || instances.length === 0) {
+    return res.status(400).json({ error: "No active WhatsApp instance found" });
+  }
+
+  const instanceName = instances[0].instance_name;
+
+  try {
+    const result = await evolutionRequest(
+      `/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`,
+      "POST",
+      { numbers: [cleaned] }
+    );
+
+    const numberInfo = Array.isArray(result) ? result[0] : result;
+    const exists = numberInfo?.exists || false;
+
+    // Also check if we have this contact
+    const remoteJid = `${cleaned}@s.whatsapp.net`;
+    const { data: conv } = await sb
+      .from("conversations")
+      .select("id, contact_name")
+      .eq("user_id", userId)
+      .eq("remote_jid", remoteJid)
+      .maybeSingle();
+
+    res.json({
+      exists,
+      is_mobile: exists, // WhatsApp numbers are mobile
+      jid: numberInfo?.jid || remoteJid,
+      known_contact: conv ? { name: conv.contact_name } : null,
+    });
+  } catch (err: any) {
+    console.error("[platform-api] validate-number error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to validate number" });
+  }
+});
+
 export default router;
