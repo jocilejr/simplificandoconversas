@@ -787,27 +787,14 @@ router.post("/validate-number", async (req, res) => {
   const userId = await resolveUserByApiKey(req, res);
   if (!userId) return;
 
-  const { phone } = req.body;
-  if (!phone) return res.status(400).json({ error: "phone is required" });
+  const { phone, instance } = req.body;
+  if (!phone || !instance) return res.status(400).json({ error: "phone and instance are required" });
 
   const cleaned = phone.replace(/\D/g, "");
   if (cleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
 
   const sb = getServiceClient();
-
-  // Find an active instance for validation
-  const { data: instances } = await sb
-    .from("whatsapp_instances")
-    .select("instance_name")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .limit(1);
-
-  if (!instances || instances.length === 0) {
-    return res.status(400).json({ error: "No active WhatsApp instance found" });
-  }
-
-  const instanceName = instances[0].instance_name;
+  const instanceName = instance;
 
   try {
     const result = await evolutionRequest(
