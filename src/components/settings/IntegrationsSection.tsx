@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { usePlatformConnections, PlatformConnection } from "@/hooks/usePlatformConnections";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfile } from "@/hooks/useProfile";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
