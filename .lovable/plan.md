@@ -1,77 +1,36 @@
 
 
-## Integrações Dinâmicas — Criar integração com URL automática
+## Corrigir validação de webhook da OpenPix (retornar 200)
 
-### Problema Atual
-O usuário precisa inserir manualmente a URL base da VPS. O sistema já tem `app_public_url` salvo no perfil (aba Aplicação), mas não está sendo usado corretamente.
+### Problema
+A OpenPix envia uma requisição GET para validar o endpoint antes de registrar o webhook. O backend só tem `router.post("/:source")`, então retorna 404 no GET e a OpenPix recusa o cadastro.
 
 ### Solução
-Refatorar a aba de Integrações para um modelo **dinâmico**: o usuário clica em "Nova Integração", seleciona a plataforma, preenche apenas as credenciais, e o webhook é gerado automaticamente usando o `app_public_url` do perfil.
+Adicionar uma rota GET no `deploy/backend/src/routes/webhook-transactions.ts` que responda 200 para qualquer source.
 
-### Como funciona
+### Mudança
 
-```text
-1. Usuário vai em Configurações → Integrações
-2. Clica em "+ Nova Integração"
-3. Seleciona a plataforma (OpenPix, Mercado Pago, Yampi)
-4. Preenche as credenciais específicas da plataforma
-5. Salva → webhook URL gerado automaticamente
-6. Pode copiar a URL e colar na plataforma externa
+**`deploy/backend/src/routes/webhook-transactions.ts`** — Adicionar antes do `router.post`:
+
+```typescript
+// GET /api/webhook-transactions/:source — health check for webhook validation
+router.get("/:source", (req: Request, res: Response) => {
+  console.log(`[webhook-transactions] GET validation from ${req.params.source}`);
+  res.status(200).json({ ok: true, source: req.params.source });
+});
 ```
 
-A URL do webhook será construída assim:
+### Após o deploy
+1. Rebuildar o backend na VPS:
+```bash
+cd /root/simplificandoconversas/deploy
+docker compose up -d --build backend
 ```
-{profile.app_public_url}/api/webhook-transactions/{platform}?user_id={user.id}
+2. Testar manualmente:
+```bash
+curl -s https://app.chatbotsimplificado.com/api/webhook-transactions/openpix?user_id=test
 ```
+Deve retornar `{"ok":true,"source":"openpix"}` com status 200.
 
-Se `app_public_url` não estiver configurado, exibe um aviso com link para a aba "Aplicação".
-
-### Mudanças
-
-**`src/components/settings/IntegrationsSection.tsx`** — Reescrever completamente:
-- Remover o card fixo `OpenPixCard` e o campo manual de URL base
-- Criar lista de integrações existentes do usuário (vindas de `platform_connections`)
-- Botão "+ Nova Integração" abre um dialog/formulário:
-  - Select de plataforma com opções: OpenPix, Mercado Pago, Yampi
-  - Campos dinâmicos por plataforma:
-    - **OpenPix**: App ID, Webhook Secret (opcional)
-    - **Mercado Pago**: Access Token
-    - **Yampi**: API Token, Alias da Loja
-  - Ao salvar, grava em `platform_connections`
-- Cada integração salva mostra um card com:
-  - Nome da plataforma + status (ativa/inativa)
-  - URL do webhook (gerada automaticamente, copiável)
-  - Botão editar / desconectar
-  - Toggle ativar/desativar
-
-**Nenhuma mudança em banco ou backend** — já suporta múltiplas plataformas e o formato `platform_connections` é genérico.
-
-### Definição de campos por plataforma
-
-| Plataforma | Campos | Ícone/Cor |
-|---|---|---|
-| OpenPix | App ID, Webhook Secret | Emerald |
-| Mercado Pago | Access Token | Blue |
-| Yampi | API Token, Alias da Loja | Purple |
-
-### UX esperada
-
-```text
-┌─ Integrações ─────────────────────────────────┐
-│                                                │
-│  [+ Nova Integração]                           │
-│                                                │
-│  ┌──────────────────────────────────────────┐  │
-│  │ 🟢 OpenPix                     [Ativa]  │  │
-│  │ Webhook: https://api.meu.../openpix?...  │  │
-│  │              [Copiar] [Editar] [Remover] │  │
-│  └──────────────────────────────────────────┘  │
-│                                                │
-│  ┌──────────────────────────────────────────┐  │
-│  │ 🔵 Mercado Pago                [Ativa]  │  │
-│  │ Webhook: https://api.meu.../mercado...   │  │
-│  │              [Copiar] [Editar] [Remover] │  │
-│  └──────────────────────────────────────────┘  │
-└────────────────────────────────────────────────┘
-```
+3. Cadastrar o webhook na OpenPix novamente.
 
