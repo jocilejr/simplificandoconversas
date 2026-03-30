@@ -44,6 +44,10 @@ const SettingsPage = () => {
           <ConnectionsSection />
         </TabsContent>
 
+        <TabsContent value="external">
+          <ExternalConnectionSection />
+        </TabsContent>
+
         <TabsContent value="ai">
           <AISection />
         </TabsContent>
