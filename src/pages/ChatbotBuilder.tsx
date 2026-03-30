@@ -124,9 +124,21 @@ const ChatbotBuilder = () => {
           <h1 className="text-2xl font-bold tracking-tight">Fluxos Automáticos</h1>
           <p className="text-sm text-muted-foreground mt-1">Gerencie seus fluxos de automação e chatbots</p>
         </div>
-        <Button onClick={handleCreateFlow} disabled={createFlow.isPending} size="sm" variant="outline">
-          <Plus className="h-4 w-4" /> Novo Fluxo
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportFlow}
+          />
+          <Button onClick={() => importInputRef.current?.click()} size="sm" variant="outline">
+            <Upload className="h-4 w-4" /> Importar
+          </Button>
+          <Button onClick={handleCreateFlow} disabled={createFlow.isPending} size="sm" variant="outline">
+            <Plus className="h-4 w-4" /> Novo Fluxo
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
