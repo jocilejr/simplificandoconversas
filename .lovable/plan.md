@@ -1,76 +1,58 @@
 
 
-## Diagnóstico Confirmado: Bug no Ciclo de Vida da Execução
+## API REST Bidirecional para Gestão Financeira
 
-### Causa Raiz (comprovada pelos dados)
+### Visão Geral
 
-**Linha 801 de `execute-flow.ts`**: após o loop `while` terminar (inclusive por `break` do waitForClick/waitForReply), o código **sempre** executa:
+Criar um conjunto de endpoints REST no backend Express (`/api/platform/`) autenticados por token estático (API Key), permitindo que sua aplicação de gestão financeira envie e receba dados de contatos, transações, tags e lembretes.
 
-```typescript
-await serviceClient.from("flow_executions")
-  .update({ status: "completed", results: JSON.stringify(results) })
-  .eq("id", executionId);
-```
+### Autenticação
 
-Isso **sobrescreve** o status `waiting_click` que foi definido na linha 600/666 durante o processamento do nó.
+- Gerar um token único por usuário, armazenado na tabela `platform_connections` (campo `credentials`)
+- Cada request da plataforma externa envia o header `X-API-Key: <token>`
+- O backend valida o token, resolve o `user_id` e executa a operação
 
-**Cronologia comprovada** (execução `71bb9dd4`):
-1. `21:33:38` — execução criada, status `running`
-2. `21:34:05` — tracked_link criado (waitForClick processado)
-3. `21:34:12.986` — flow_timeout criado (2h)
-4. `21:34:12.994` — **status sobrescrito para `completed`** (linha 801)
-5. `21:34:22` — clique humano detectado, mas `execution.status === "completed"` → condição `if (execution?.status === "waiting_click")` falha → fluxo **não retoma**
-6. Timeout expira → `check-timeouts` encontra status `completed` → "Skipping" → fluxo **não retoma pelo timeout** também
+### Endpoints da API
 
-**Não é problema de rede/Traefik.** A infraestrutura está saudável. Sem colisão de rotas. Backend acessível internamente.
+**Contatos/Clientes:**
+- `GET /api/platform/contacts` — listar contatos (com filtros: phone, name, instance)
+- `POST /api/platform/contacts` — criar/atualizar contato (upsert por phone)
+- `GET /api/platform/contacts/:phone` — detalhes de um contato
 
-### Plano de Correção
+**Transações/Pagamentos:**
+- `GET /api/platform/transactions` — listar transações (filtros: status, date range)
+- `POST /api/platform/transactions` — criar transação
+- `PATCH /api/platform/transactions/:id` — atualizar status de transação
+- `POST /api/platform/transactions/webhook` — receber notificação de mudança de status
 
-#### 1. Corrigir `deploy/backend/src/routes/execute-flow.ts` (linha 801)
+**Tags/Segmentação:**
+- `GET /api/platform/tags?phone=X` — listar tags de um contato
+- `POST /api/platform/tags` — adicionar tag a um contato
+- `DELETE /api/platform/tags` — remover tag de um contato
 
-Antes de definir `status: "completed"`, verificar se a execução já está em estado de espera:
+**Lembretes:**
+- `GET /api/platform/reminders` — listar lembretes (filtros: pending, overdue, today)
+- `POST /api/platform/reminders` — criar lembrete
+- `PATCH /api/platform/reminders/:id` — marcar como concluído
 
-```typescript
-// Verificar status atual antes de marcar como completed
-const { data: finalCheck } = await serviceClient
-  .from("flow_executions")
-  .select("status")
-  .eq("id", executionId)
-  .single();
+### Arquivos a Criar/Modificar
 
-const waitingStatuses = ["waiting_click", "waiting_reply"];
-if (finalCheck && !waitingStatuses.includes(finalCheck.status)) {
-  await serviceClient.from("flow_executions")
-    .update({ status: "completed", results: JSON.stringify(results) })
-    .eq("id", executionId);
-} else {
-  // Preservar status de espera, apenas salvar results
-  await serviceClient.from("flow_executions")
-    .update({ results: JSON.stringify(results) })
-    .eq("id", executionId);
-}
-```
+1. **`deploy/backend/src/routes/platform-api.ts`** (novo) — todos os endpoints acima com middleware de autenticação por API Key
+2. **`deploy/backend/src/index.ts`** — registrar `app.use("/api/platform", platformApiRouter)`
+3. **`deploy/nginx/default.conf.template`** — adicionar rota `/api/platform` (se necessário, verificar se `/api/` já é roteado)
 
-Aplicar a mesma lógica na linha 807 (bloco catch de erro).
+### Geração de API Key
 
-#### 2. Aplicar mesma correção em `supabase/functions/execute-flow/index.ts` (linhas 1223-1226 e 1234-1237)
+- Endpoint `POST /api/ext/generate-platform-key` (autenticado pelo GoTrue, para uso na UI/extensão) que gera um token `crypto.randomBytes(32).toString("hex")` e salva em `platform_connections` com `platform = "custom_api"`
+- Endpoint `GET /api/ext/platform-key` para consultar a key existente
 
-Mesma verificação de status antes de sobrescrever para `completed`.
+### Segurança
 
-#### 3. Adicionar logs de diagnóstico em `link-redirect.ts`
+- Rate limiting simples por IP (in-memory, com aviso)
+- Validação de input com checagens manuais (body fields obrigatórios, tipos)
+- Todas as queries filtradas por `user_id` resolvido pelo token
 
-Na seção `processClick`, logar o status encontrado da execução e o resultado da chamada de retomada para facilitar depuração futura.
+### UI (opcional, pode ser feito depois)
 
-### Resultado Esperado
-
-- **Clique**: execução permanece `waiting_click` → link-redirect encontra status correto → retoma fluxo via `/api/execute-flow` com `resumeFromNodeId`
-- **Timeout (não clicou)**: execução permanece `waiting_click` → check-timeouts encontra status correto → retoma via `timeout_node_id` (caminho "Se não clicou")
-- **Sem wait**: execução termina normalmente como `completed`
-
-### Ações Pós-Deploy
-
-Rebuild do backend na VPS:
-```bash
-cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
-```
+- Na página de Configurações, seção "API de Integração" mostrando a API Key gerada e documentação dos endpoints disponíveis
 
