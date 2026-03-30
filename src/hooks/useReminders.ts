@@ -111,9 +111,18 @@ export function useCreateReminder() {
       if (error) throw error;
       return data as Reminder;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
+      // Forward to VPS so it triggers webhook to external app
+      forwardToVps("POST", "/reminders", {
+        phone: data.phone_number || data.remote_jid?.replace("@s.whatsapp.net", ""),
+        title: data.title,
+        description: data.description,
+        due_date: data.due_date,
+        contact_name: data.contact_name,
+        instance_name: data.instance_name,
+      });
     },
     onError: (err: any) => {
       toast({ title: "Erro ao criar lembrete", description: err.message, variant: "destructive" });
