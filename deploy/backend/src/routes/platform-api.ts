@@ -322,6 +322,7 @@ router.patch("/transactions/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Transaction not found" });
 
+  sendWebhook(userId, "transaction_updated", data);
   res.json({ data });
 });
 
