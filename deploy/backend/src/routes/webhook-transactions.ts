@@ -18,35 +18,58 @@ interface NormalizedTransaction {
   metadata?: any;
 }
 
-function normalizeMercadoPago(body: any): NormalizedTransaction | null {
-  const action = body.action || body.type;
-  const data = body.data;
-  if (!data?.id) return null;
-
-  let status = "pendente";
-  if (action === "payment.updated" || action === "payment") {
-    const st = body.data?.status || body.status;
-    if (st === "approved") status = "pago";
-    else if (st === "rejected" || st === "cancelled") status = "cancelado";
-    else if (st === "expired") status = "expirado";
-    else status = "pendente";
+async function fetchMercadoPagoPayment(paymentId: string, accessToken: string): Promise<any> {
+  const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    console.error(`[webhook-transactions] MP API error: ${res.status} ${res.statusText}`);
+    return null;
   }
+  return res.json();
+}
 
+function normalizeMercadoPagoPayment(payment: any, rawBody: any): NormalizedTransaction | null {
+  if (!payment?.id) return null;
+
+  const statusMap: Record<string, string> = {
+    approved: "pago",
+    pending: "pendente",
+    in_process: "pendente",
+    rejected: "cancelado",
+    cancelled: "cancelado",
+    refunded: "reembolsado",
+    charged_back: "reembolsado",
+  };
+  const status = statusMap[payment.status] || "pendente";
+
+  const ptMap: Record<string, string> = {
+    credit_card: "cartao",
+    debit_card: "cartao",
+    prepaid_card: "cartao",
+    bank_transfer: "pix",
+    pix: "pix",
+    ticket: "boleto",
+    bolbradesco: "boleto",
+  };
+  const type = ptMap[payment.payment_type_id] || "pix";
+
+  const payer = payment.payer || {};
   return {
-    external_id: String(data.id),
+    external_id: String(payment.id),
     source: "mercadopago",
-    type: body.data?.payment_type || "pix",
+    type,
     status,
-    amount: Number(body.data?.transaction_amount || body.data?.amount || 0),
-    description: body.data?.description || body.data?.reason,
-    customer_name: body.data?.payer?.first_name
-      ? `${body.data.payer.first_name} ${body.data.payer.last_name || ""}`.trim()
+    amount: Number(payment.transaction_amount || 0),
+    description: payment.description || payment.reason,
+    customer_name: payer.first_name
+      ? `${payer.first_name} ${payer.last_name || ""}`.trim()
       : undefined,
-    customer_email: body.data?.payer?.email,
-    customer_phone: body.data?.payer?.phone?.number,
-    customer_document: body.data?.payer?.identification?.number,
-    paid_at: status === "pago" ? new Date().toISOString() : undefined,
-    metadata: body,
+    customer_email: payer.email,
+    customer_phone: payer.phone?.number,
+    customer_document: payer.identification?.number,
+    paid_at: status === "pago" ? (payment.date_approved || new Date().toISOString()) : undefined,
+    metadata: { webhook: rawBody, payment },
   };
 }
 
@@ -113,7 +136,6 @@ function normalizeYampi(body: any): NormalizedTransaction | null {
 }
 
 const normalizers: Record<string, (body: any) => NormalizedTransaction | null> = {
-  mercadopago: normalizeMercadoPago,
   openpix: normalizeOpenPix,
   yampi: normalizeYampi,
 };
@@ -128,6 +150,86 @@ router.get("/:source", (req: Request, res: Response) => {
 router.post("/:source", async (req: Request, res: Response) => {
   const { source } = req.params;
   console.log(`[webhook-transactions] Received from ${source}`);
+
+  // --- Mercado Pago: needs to fetch payment from API ---
+  if (source === "mercadopago") {
+    const paymentId = req.body?.data?.id;
+    if (!paymentId) {
+      console.warn(`[webhook-transactions] MP webhook without data.id`);
+      return res.json({ ok: true, skipped: true });
+    }
+
+    const userId = (req.query.user_id as string) || (req.headers["x-user-id"] as string);
+    if (!userId) {
+      console.warn(`[webhook-transactions] MP webhook without user_id`);
+      return res.status(400).json({ error: "user_id required" });
+    }
+
+    const supabase = getServiceClient();
+
+    // Get access_token from platform_connections
+    const { data: conn } = await supabase
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "mercadopago")
+      .limit(1)
+      .single();
+
+    const accessToken = (conn?.credentials as any)?.access_token;
+    if (!accessToken) {
+      console.error(`[webhook-transactions] No MP access_token for user ${userId}`);
+      return res.status(400).json({ error: "No Mercado Pago access_token configured" });
+    }
+
+    const payment = await fetchMercadoPagoPayment(String(paymentId), accessToken);
+    if (!payment) {
+      return res.status(502).json({ error: "Failed to fetch payment from MP API" });
+    }
+
+    const normalized = normalizeMercadoPagoPayment(payment, req.body);
+    if (!normalized) {
+      return res.json({ ok: true, skipped: true });
+    }
+
+    // Upsert
+    const { data: existing } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("source", "mercadopago")
+      .eq("external_id", normalized.external_id)
+      .eq("user_id", userId)
+      .limit(1)
+      .single();
+
+    if (existing) {
+      const { error } = await supabase.from("transactions").update({
+        status: normalized.status,
+        amount: normalized.amount,
+        paid_at: normalized.paid_at,
+        metadata: normalized.metadata,
+        customer_name: normalized.customer_name,
+        customer_email: normalized.customer_email,
+        customer_phone: normalized.customer_phone,
+        customer_document: normalized.customer_document,
+        type: normalized.type,
+        description: normalized.description,
+      }).eq("id", existing.id);
+      if (error) console.error(`[webhook-transactions] MP update error:`, error.message);
+      return res.json({ ok: true, action: "updated", id: existing.id });
+    }
+
+    const { data, error } = await supabase.from("transactions").insert({
+      user_id: userId,
+      ...normalized,
+    }).select("id").single();
+
+    if (error) {
+      console.error(`[webhook-transactions] MP insert error:`, error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ ok: true, action: "created", id: data?.id });
+  }
 
   const normalizer = normalizers[source];
   if (!normalizer) {
