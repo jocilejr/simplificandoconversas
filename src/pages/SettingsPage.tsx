@@ -5,6 +5,7 @@ import { ProfileSection } from "@/components/settings/ProfileSection";
 import { ConnectionsSection } from "@/components/settings/ConnectionsSection";
 import { AISection } from "@/components/settings/AISection";
 import { AppSection } from "@/components/settings/AppSection";
+import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
 
 const SettingsPage = () => {
   const { isLoading } = useProfile();
@@ -25,10 +26,11 @@ const SettingsPage = () => {
       </div>
 
       <Tabs defaultValue="connections" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="profile">Perfil</TabsTrigger>
           <TabsTrigger value="connections">Conexões</TabsTrigger>
           <TabsTrigger value="ai">IA</TabsTrigger>
+          <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="app">Aplicação</TabsTrigger>
         </TabsList>
 
@@ -42,6 +44,10 @@ const SettingsPage = () => {
 
         <TabsContent value="ai">
           <AISection />
+        </TabsContent>
+
+        <TabsContent value="api">
+          <IntegrationApiSection />
         </TabsContent>
 
         <TabsContent value="app">

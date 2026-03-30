@@ -1,0 +1,181 @@
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "@/hooks/use-toast";
+import { Copy, RefreshCw, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+
+export function IntegrationApiSection() {
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    loadKey();
+  }, []);
+
+  async function loadKey() {
+    setLoading(true);
+    try {
+      const { data } = await (supabase as any)
+        .from("platform_connections")
+        .select("credentials, enabled")
+        .eq("platform", "custom_api")
+        .maybeSingle();
+
+      if (data?.credentials?.api_key) {
+        setApiKey(data.credentials.api_key);
+      }
+    } catch (err) {
+      console.error("Error loading API key:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function generateKey() {
+    setGenerating(true);
+    try {
+      const newKey = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: existing } = await (supabase as any)
+        .from("platform_connections")
+        .select("id")
+        .eq("platform", "custom_api")
+        .maybeSingle();
+
+      if (existing) {
+        await (supabase as any)
+          .from("platform_connections")
+          .update({ credentials: { api_key: newKey }, enabled: true })
+          .eq("id", existing.id);
+      } else {
+        await (supabase as any)
+          .from("platform_connections")
+          .insert({
+            user_id: user.id,
+            platform: "custom_api",
+            credentials: { api_key: newKey },
+            enabled: true,
+          });
+      }
+
+      setApiKey(newKey);
+      toast({ title: "API Key gerada com sucesso" });
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar API Key", description: err.message, variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function copyKey() {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey);
+    toast({ title: "API Key copiada!" });
+  }
+
+  const maskedKey = apiKey ? apiKey.substring(0, 8) + "••••••••••••••••" + apiKey.substring(apiKey.length - 8) : "";
+
+  const baseUrl = "https://SEU_API_DOMAIN";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>API de Integração</CardTitle>
+        <CardDescription>
+          Conecte sua plataforma de gestão financeira via API REST
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* API Key */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">API Key</label>
+          {loading ? (
+            <div className="text-sm text-muted-foreground">Carregando...</div>
+          ) : apiKey ? (
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={showKey ? apiKey : maskedKey}
+                className="font-mono text-xs"
+              />
+              <Button variant="outline" size="icon" onClick={() => setShowKey(!showKey)}>
+                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+              <Button variant="outline" size="icon" onClick={copyKey}>
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={generateKey} disabled={generating}>
+                <RefreshCw className={`h-4 w-4 ${generating ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={generateKey} disabled={generating}>
+              {generating ? "Gerando..." : "Gerar API Key"}
+            </Button>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Envie esta key no header <code className="bg-muted px-1 rounded">X-API-Key</code> de cada requisição.
+          </p>
+        </div>
+
+        {/* Endpoints documentation */}
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="contacts">
+            <AccordionTrigger className="text-sm">Contatos / Clientes</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/contacts<span className="text-muted-foreground ml-2">?phone=&name=&instance=&limit=&offset=</span></div>
+                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/contacts/:phone</div>
+                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/contacts <span className="text-muted-foreground">{"{ phone, name, instance_name }"}</span></div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="transactions">
+            <AccordionTrigger className="text-sm">Transações / Pagamentos</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/transactions<span className="text-muted-foreground ml-2">?status=&from=&to=&phone=</span></div>
+                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/transactions <span className="text-muted-foreground">{"{ amount, type, status, customer_name, customer_phone, ... }"}</span></div>
+                <div><span className="text-yellow-500">PATCH</span> {baseUrl}/api/platform/transactions/:id <span className="text-muted-foreground">{"{ status, paid_at, metadata }"}</span></div>
+                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/transactions/webhook <span className="text-muted-foreground">{"{ external_id, status, paid_at }"}</span></div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="tags">
+            <AccordionTrigger className="text-sm">Tags / Segmentação</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/tags?phone=X</div>
+                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
+                <div><span className="text-red-500">DELETE</span> {baseUrl}/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="reminders">
+            <AccordionTrigger className="text-sm">Lembretes</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-green-500">GET</span> {baseUrl}/api/platform/reminders<span className="text-muted-foreground ml-2">?filter=pending|overdue|today|completed&phone=</span></div>
+                <div><span className="text-blue-500">POST</span> {baseUrl}/api/platform/reminders <span className="text-muted-foreground">{"{ phone, title, description, due_date }"}</span></div>
+                <div><span className="text-yellow-500">PATCH</span> {baseUrl}/api/platform/reminders/:id <span className="text-muted-foreground">{"{ completed, title, due_date }"}</span></div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </CardContent>
+    </Card>
+  );
+}
