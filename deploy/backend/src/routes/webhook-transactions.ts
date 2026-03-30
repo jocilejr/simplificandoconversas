@@ -18,15 +18,26 @@ interface NormalizedTransaction {
   metadata?: any;
 }
 
-async function fetchMercadoPagoPayment(paymentId: string, accessToken: string): Promise<any> {
-  const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    console.error(`[webhook-transactions] MP API error: ${res.status} ${res.statusText}`);
-    return null;
+interface MpApiResult {
+  ok: boolean;
+  status: number;
+  body: any | null;
+}
+
+async function fetchMercadoPagoPayment(paymentId: string, accessToken: string): Promise<MpApiResult> {
+  try {
+    const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const body = res.ok ? await res.json() : null;
+    if (!res.ok) {
+      console.warn(`[webhook-transactions] MP API returned ${res.status} ${res.statusText} for payment ${paymentId}`);
+    }
+    return { ok: res.ok, status: res.status, body };
+  } catch (err: any) {
+    console.error(`[webhook-transactions] MP API fetch error for payment ${paymentId}:`, err.message);
+    return { ok: false, status: 0, body: null };
   }
-  return res.json();
 }
 
 function normalizeMercadoPagoPayment(payment: any, rawBody: any): NormalizedTransaction | null {
