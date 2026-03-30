@@ -12,15 +12,19 @@ async function sendWebhook(userId: string, event: string, data: object) {
       .from("platform_connections")
       .select("credentials")
       .eq("user_id", userId)
-      .eq("platform", "custom_api")
+      .eq("platform", "external_app")
       .maybeSingle();
 
-    const url = (conn?.credentials as any)?.webhook_url;
+    const creds = conn?.credentials as any;
+    const url = creds?.webhook_url;
     if (!url) return;
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (creds?.api_key) headers["X-API-Key"] = creds.api_key;
 
     fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
     }).catch((err: any) => console.error(`[sendWebhook] ${event} error:`, err.message));
   } catch (e: any) {

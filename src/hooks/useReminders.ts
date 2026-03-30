@@ -5,22 +5,31 @@ import { toast } from "@/hooks/use-toast";
 
 async function getVpsConfig() {
   try {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("app_public_url")
-      .maybeSingle();
-
     const { data: conn } = await (supabase as any)
       .from("platform_connections")
       .select("credentials")
       .eq("platform", "custom_api")
       .maybeSingle();
 
-    const appUrl = profile?.app_public_url;
     const apiKey = conn?.credentials?.api_key;
-    if (!appUrl || !apiKey) return null;
+    if (!apiKey) return null;
 
-    return { apiUrl: appUrl.replace("app.", "api."), apiKey };
+    // Try app_public_url first, then derive from current location (VPS serves frontend)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("app_public_url")
+      .maybeSingle();
+
+    let apiUrl: string;
+    if (profile?.app_public_url) {
+      apiUrl = profile.app_public_url.replace("app.", "api.");
+    } else {
+      // On VPS, frontend is served from the same domain — derive API URL
+      const origin = window.location.origin;
+      apiUrl = origin.replace("app.", "api.");
+    }
+
+    return { apiUrl, apiKey };
   } catch {
     return null;
   }
