@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import crypto from "crypto";
 
 const router = Router();
 const GOTRUE_URL = process.env.GOTRUE_URL || "http://gotrue:9999";
