@@ -29,8 +29,17 @@ function OpenPixCard() {
     }
   }, [connection]);
 
-  const baseUrl = profile?.app_public_url || "https://api.seudominio.com";
-  const webhookUrl = `${baseUrl}/api/webhook-transactions/openpix${user?.id ? `?user_id=${user.id}` : ""}`;
+  const [baseUrl, setBaseUrl] = useState(profile?.app_public_url || "");
+
+  useEffect(() => {
+    if (profile?.app_public_url) {
+      setBaseUrl(profile.app_public_url);
+    }
+  }, [profile?.app_public_url]);
+
+  const webhookUrl = baseUrl
+    ? `${baseUrl.replace(/\/$/, "")}/api/webhook-transactions/openpix${user?.id ? `?user_id=${user.id}` : ""}`
+    : "";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(webhookUrl);
