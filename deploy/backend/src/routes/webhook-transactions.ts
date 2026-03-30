@@ -151,6 +151,86 @@ router.post("/:source", async (req: Request, res: Response) => {
   const { source } = req.params;
   console.log(`[webhook-transactions] Received from ${source}`);
 
+  // --- Mercado Pago: needs to fetch payment from API ---
+  if (source === "mercadopago") {
+    const paymentId = req.body?.data?.id;
+    if (!paymentId) {
+      console.warn(`[webhook-transactions] MP webhook without data.id`);
+      return res.json({ ok: true, skipped: true });
+    }
+
+    const userId = (req.query.user_id as string) || (req.headers["x-user-id"] as string);
+    if (!userId) {
+      console.warn(`[webhook-transactions] MP webhook without user_id`);
+      return res.status(400).json({ error: "user_id required" });
+    }
+
+    const supabase = getServiceClient();
+
+    // Get access_token from platform_connections
+    const { data: conn } = await supabase
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "mercadopago")
+      .limit(1)
+      .single();
+
+    const accessToken = (conn?.credentials as any)?.access_token;
+    if (!accessToken) {
+      console.error(`[webhook-transactions] No MP access_token for user ${userId}`);
+      return res.status(400).json({ error: "No Mercado Pago access_token configured" });
+    }
+
+    const payment = await fetchMercadoPagoPayment(String(paymentId), accessToken);
+    if (!payment) {
+      return res.status(502).json({ error: "Failed to fetch payment from MP API" });
+    }
+
+    const normalized = normalizeMercadoPagoPayment(payment, req.body);
+    if (!normalized) {
+      return res.json({ ok: true, skipped: true });
+    }
+
+    // Upsert
+    const { data: existing } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("source", "mercadopago")
+      .eq("external_id", normalized.external_id)
+      .eq("user_id", userId)
+      .limit(1)
+      .single();
+
+    if (existing) {
+      const { error } = await supabase.from("transactions").update({
+        status: normalized.status,
+        amount: normalized.amount,
+        paid_at: normalized.paid_at,
+        metadata: normalized.metadata,
+        customer_name: normalized.customer_name,
+        customer_email: normalized.customer_email,
+        customer_phone: normalized.customer_phone,
+        customer_document: normalized.customer_document,
+        type: normalized.type,
+        description: normalized.description,
+      }).eq("id", existing.id);
+      if (error) console.error(`[webhook-transactions] MP update error:`, error.message);
+      return res.json({ ok: true, action: "updated", id: existing.id });
+    }
+
+    const { data, error } = await supabase.from("transactions").insert({
+      user_id: userId,
+      ...normalized,
+    }).select("id").single();
+
+    if (error) {
+      console.error(`[webhook-transactions] MP insert error:`, error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ ok: true, action: "created", id: data?.id });
+  }
+
   const normalizer = normalizers[source];
   if (!normalizer) {
     // Generic source — store raw
