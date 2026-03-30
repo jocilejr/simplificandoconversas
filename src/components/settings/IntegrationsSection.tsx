@@ -105,16 +105,33 @@ function OpenPixCard() {
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="openpix-baseurl">URL base da sua API (VPS)</Label>
+          <Input
+            id="openpix-baseurl"
+            placeholder="https://api.seudominio.com"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Insira a URL pública da sua VPS (ex: https://api.meusite.com)
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label>URL do Webhook</Label>
           <p className="text-xs text-muted-foreground">
             Configure esta URL no painel da OpenPix para receber notificações
           </p>
-          <div className="flex items-center gap-2">
-            <Input value={webhookUrl} readOnly className="text-xs font-mono" />
-            <Button variant="outline" size="icon" onClick={handleCopy}>
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
+          {webhookUrl ? (
+            <div className="flex items-center gap-2">
+              <Input value={webhookUrl} readOnly className="text-xs font-mono" />
+              <Button variant="outline" size="icon" onClick={handleCopy}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-destructive">Preencha a URL base acima para gerar o webhook</p>
+          )}
         </div>
 
         <div className="flex gap-2 pt-2">
