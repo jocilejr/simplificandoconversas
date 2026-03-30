@@ -39,13 +39,10 @@ const PLATFORMS: PlatformConfig[] = [
   {
     key: "openpix",
     name: "OpenPix",
-    description: "Receba notificações de cobranças Pix",
+    description: "Receba notificações de cobranças Pix via webhook",
     icon: <CreditCard className="h-5 w-5 text-emerald-500" />,
     colorClass: "bg-emerald-500/10",
-    fields: [
-      { key: "app_id", label: "App ID", placeholder: "Seu App ID da OpenPix", required: true },
-      { key: "webhook_secret", label: "Webhook Secret", placeholder: "Secret para validação (opcional)", type: "password" },
-    ],
+    fields: [],
   },
   {
     key: "mercadopago",
