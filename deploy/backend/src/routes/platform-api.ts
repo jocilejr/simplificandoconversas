@@ -702,20 +702,10 @@ router.post("/send-media", async (req, res) => {
   const remoteJid = `${cleaned}@s.whatsapp.net`;
   const sb = getServiceClient();
 
-  // Find instance
-  let instanceName = instance;
-  if (!instanceName) {
-    const { data: instances } = await sb
-      .from("whatsapp_instances")
-      .select("instance_name")
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .limit(1);
-    if (!instances || instances.length === 0) {
-      return res.status(400).json({ error: "No active WhatsApp instance found" });
-    }
-    instanceName = instances[0].instance_name;
+  if (!instance) {
+    return res.status(400).json({ error: "phone, media_url and instance are required" });
   }
+  const instanceName = instance;
 
   try {
     let endpoint: string;
