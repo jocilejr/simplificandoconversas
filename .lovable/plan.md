@@ -1,61 +1,30 @@
 
 
-# Integração Mercado Pago — Plano
+# Atualizar campos do Mercado Pago na Integração
 
-## Problema atual
-
-O normalizador do Mercado Pago no backend (`webhook-transactions.ts`) assume que o webhook já traz os dados completos do pagamento. Na realidade, o **Mercado Pago envia apenas uma notificação** com `action` e `data.id` (o ID do pagamento). É necessário **buscar os detalhes na API do MP** usando o `access_token` do usuário.
+## Problema
+A tela de integração só pede **Access Token**, mas o Mercado Pago fornece 4 credenciais: **Public Key**, **Access Token**, **Client ID** e **Client Secret**.
 
 ## O que será feito
 
-### 1. Alterar `webhook-transactions.ts` — buscar pagamento na API do MP
+### 1. Atualizar `src/components/settings/IntegrationsSection.tsx`
+Adicionar os 4 campos na config do Mercado Pago:
 
-Quando o webhook do Mercado Pago chegar:
-1. Extrair `data.id` (payment ID) do payload
-2. Buscar o `access_token` do usuário na tabela `platform_connections` (usando `user_id` da query string)
-3. Fazer `GET https://api.mercadopago.com/v1/payments/{id}` com o token
-4. Normalizar a resposta completa da API (que contém `status`, `transaction_amount`, `payer`, etc.)
-5. Inserir/atualizar na tabela `transactions`
+| Campo | Key | Obrigatório |
+|---|---|---|
+| Public Key | `public_key` | Não |
+| Access Token | `access_token` | Sim |
+| Client ID | `client_id` | Não |
+| Client Secret | `client_secret` | Não |
 
-### 2. Tratar os status corretamente
+Apenas o `access_token` é obrigatório (é o único usado pelo webhook para buscar pagamentos na API). Os outros são úteis para funcionalidades futuras (criar cobranças, etc.).
 
-Mapear os status reais da API do MP:
-- `approved` → `pago`
-- `pending` / `in_process` → `pendente`
-- `rejected` / `cancelled` → `cancelado`
-- `refunded` / `charged_back` → `reembolsado`
+### 2. Nenhuma alteração no backend
+O `webhook-transactions.ts` já usa apenas `credentials.access_token`, então não precisa de mudança.
 
-### 3. Mapear tipo de pagamento
-
-- `credit_card` / `debit_card` → `cartao`
-- `bank_transfer` / `pix` → `pix`
-- `ticket` (boleto) → `boleto`
-
-## Arquivos modificados
+## Arquivo modificado
 
 | Arquivo | Alteração |
 |---|---|
-| `deploy/backend/src/routes/webhook-transactions.ts` | Reescrever `normalizeMercadoPago` para buscar dados na API do MP usando `access_token` da `platform_connections` |
-
-## Detalhes técnicos
-
-```text
-Webhook MP payload (o que chega):
-{
-  "action": "payment.updated",
-  "data": { "id": "123456789" }
-}
-
-→ Backend busca: GET https://api.mercadopago.com/v1/payments/123456789
-   Header: Authorization: Bearer {access_token}
-
-→ Resposta completa com: status, transaction_amount, payer, payment_type_id, etc.
-```
-
-O `access_token` será lido do banco:
-```sql
-SELECT credentials->>'access_token'
-FROM platform_connections
-WHERE user_id = :user_id AND platform = 'mercadopago'
-```
+| `src/components/settings/IntegrationsSection.tsx` | Adicionar campos `public_key`, `client_id`, `client_secret` na config do Mercado Pago |
 
