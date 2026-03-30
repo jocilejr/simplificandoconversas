@@ -24,6 +24,7 @@ app.use("/api/link-redirect", linkRedirectRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/ext", extensionApiRouter);
 app.use("/api/platform", platformApiRouter);
+app.use("/api/external-messaging-webhook", externalWebhookRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
