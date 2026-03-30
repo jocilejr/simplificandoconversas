@@ -155,6 +155,15 @@ server {
         proxy_read_timeout 60s;
     }
 
+    # External Messaging Webhook (callback from financial platform)
+    location /api/external-messaging-webhook {
+        proxy_pass http://backend:3001/api/external-messaging-webhook;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Edge Functions compatibility → Backend Express
     location /functions/v1/ {
         if ($request_method = 'OPTIONS') {
