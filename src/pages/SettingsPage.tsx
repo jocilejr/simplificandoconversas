@@ -6,7 +6,6 @@ import { ConnectionsSection } from "@/components/settings/ConnectionsSection";
 import { AISection } from "@/components/settings/AISection";
 import { AppSection } from "@/components/settings/AppSection";
 import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
-import { ExternalConnectionSection } from "@/components/settings/ExternalConnectionSection";
 
 const SettingsPage = () => {
   const { isLoading } = useProfile();
