@@ -93,14 +93,14 @@ export function ExternalConnectionSection() {
     setTesting(true);
     setConnectionStatus("idle");
     try {
-      const url = `${baseUrl.replace(/\/+$/, "")}/api/health`;
+      const cleanUrl = baseUrl.replace(/\/+$/, "");
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers["X-API-Key"] = apiKey;
 
-      const res = await fetch(url, { method: "GET", headers, signal: AbortSignal.timeout(10000) });
+      const res = await fetch(cleanUrl, { method: "GET", headers, signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         setConnectionStatus("success");
-        toast({ title: "Conexão bem-sucedida!", description: `Resposta ${res.status} de ${url}` });
+        toast({ title: "Conexão bem-sucedida!", description: `Resposta ${res.status} de ${cleanUrl}` });
       } else {
         setConnectionStatus("error");
         toast({ title: "Falha na conexão", description: `Resposta ${res.status}`, variant: "destructive" });
