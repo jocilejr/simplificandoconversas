@@ -10,6 +10,7 @@ import healthDbRouter from "./routes/health-db";
 import { processTimeouts } from "./routes/check-timeouts";
 import { lightSync } from "./routes/light-sync";
 import extensionApiRouter from "./routes/extension-api";
+import webhookTransactionsRouter from "./routes/webhook-transactions";
 
 const app = express();
 app.use(cors());
