@@ -100,7 +100,7 @@ export function ExternalConnectionSection() {
       const res = await fetch(cleanUrl, { method: "GET", headers, signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         setConnectionStatus("success");
-        toast({ title: "Conexão bem-sucedida!", description: `Resposta ${res.status} de ${url}` });
+        toast({ title: "Conexão bem-sucedida!", description: `Resposta ${res.status} de ${cleanUrl}` });
       } else {
         setConnectionStatus("error");
         toast({ title: "Falha na conexão", description: `Resposta ${res.status}`, variant: "destructive" });
