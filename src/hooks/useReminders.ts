@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 
-async function forwardToVps(id: string, completed: boolean) {
+async function getVpsConfig() {
   try {
     const { data: profile } = await supabase
       .from("profiles")
@@ -18,15 +18,23 @@ async function forwardToVps(id: string, completed: boolean) {
 
     const appUrl = profile?.app_public_url;
     const apiKey = conn?.credentials?.api_key;
-    if (!appUrl || !apiKey) return;
+    if (!appUrl || !apiKey) return null;
 
-    const apiUrl = appUrl.replace("app.", "api.");
-    fetch(`${apiUrl}/api/platform/reminders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
-      body: JSON.stringify({ completed }),
-    }).catch(() => {});
-  } catch {}
+    return { apiUrl: appUrl.replace("app.", "api."), apiKey };
+  } catch {
+    return null;
+  }
+}
+
+async function forwardToVps(method: "POST" | "PATCH" | "DELETE", path: string, body?: object) {
+  const config = await getVpsConfig();
+  if (!config) return;
+
+  fetch(`${config.apiUrl}/api/platform${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", "X-API-Key": config.apiKey },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }).catch(() => {});
 }
 
 export interface Reminder {
@@ -103,9 +111,18 @@ export function useCreateReminder() {
       if (error) throw error;
       return data as Reminder;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
+      // Forward to VPS so it triggers webhook to external app
+      forwardToVps("POST", "/reminders", {
+        phone: data.phone_number || data.remote_jid?.replace("@s.whatsapp.net", ""),
+        title: data.title,
+        description: data.description,
+        due_date: data.due_date,
+        contact_name: data.contact_name,
+        instance_name: data.instance_name,
+      });
     },
     onError: (err: any) => {
       toast({ title: "Erro ao criar lembrete", description: err.message, variant: "destructive" });
@@ -127,7 +144,7 @@ export function useToggleReminder() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
-      forwardToVps(variables.id, variables.completed);
+      forwardToVps("PATCH", `/reminders/${variables.id}`, { completed: variables.completed });
     },
   });
 }
@@ -140,9 +157,10 @@ export function useDeleteReminder() {
       const { error } = await (supabase as any).from("reminders").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete removido" });
+      forwardToVps("DELETE", `/reminders/${id}`);
     },
   });
 }

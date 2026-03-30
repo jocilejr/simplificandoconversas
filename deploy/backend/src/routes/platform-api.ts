@@ -4,6 +4,30 @@ import crypto from "crypto";
 
 const router = Router();
 
+// ── Webhook utility: fire-and-forget POST to user's configured webhook_url ──
+async function sendWebhook(userId: string, event: string, data: object) {
+  try {
+    const sb = getServiceClient();
+    const { data: conn } = await sb
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "custom_api")
+      .maybeSingle();
+
+    const url = (conn?.credentials as any)?.webhook_url;
+    if (!url) return;
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+    }).catch((err: any) => console.error(`[sendWebhook] ${event} error:`, err.message));
+  } catch (e: any) {
+    console.error("[sendWebhook] error:", e.message);
+  }
+}
+
 // ── Simple in-memory rate limiting ──
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 100; // requests per window
@@ -181,6 +205,7 @@ router.post("/contacts", async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+    sendWebhook(userId, "contact_updated", data);
     return res.json({ data, created: false });
   }
 
@@ -197,6 +222,7 @@ router.post("/contacts", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "contact_created", data);
   res.status(201).json({ data, created: true });
 });
 
@@ -262,6 +288,7 @@ router.post("/transactions", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "transaction_created", data);
   res.status(201).json({ data });
 });
 
@@ -295,6 +322,7 @@ router.patch("/transactions/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Transaction not found" });
 
+  sendWebhook(userId, "transaction_updated", data);
   res.json({ data });
 });
 
@@ -382,6 +410,7 @@ router.post("/tags", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "tag_added", { ...data, phone: cleaned });
   res.status(201).json({ data, created: true });
 });
 
@@ -405,6 +434,7 @@ router.delete("/tags", async (req, res) => {
     .eq("tag_name", tag_name);
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "tag_removed", { phone: cleaned, tag_name, remote_jid: remoteJid });
   res.json({ ok: true });
 });
 
@@ -480,6 +510,7 @@ router.post("/reminders", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  sendWebhook(userId, "reminder_created", data);
   res.status(201).json({ data });
 });
 
@@ -513,37 +544,38 @@ router.patch("/reminders/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Reminder not found" });
 
-  // Fire-and-forget: forward to external webhook if configured
-  try {
-    const { data: conn } = await sb
-      .from("platform_connections")
-      .select("credentials")
-      .eq("user_id", userId)
-      .eq("platform", "custom_api")
-      .maybeSingle();
-
-    const webhookUrl = conn?.credentials?.webhook_url;
-    if (webhookUrl) {
-      fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "reminder_updated",
-          id: data.id,
-          completed: data.completed,
-          title: data.title,
-          due_date: data.due_date,
-          description: data.description,
-          remote_jid: data.remote_jid,
-          phone_number: data.phone_number,
-        }),
-      }).catch((err: any) => console.error("Webhook forward error:", err.message));
-    }
-  } catch (e: any) {
-    console.error("Error checking webhook config:", e.message);
-  }
-
+  sendWebhook(userId, "reminder_updated", data);
   res.json({ data });
+});
+
+// DELETE /api/platform/reminders/:id
+router.delete("/reminders/:id", async (req, res) => {
+  const userId = await resolveUserByApiKey(req, res);
+  if (!userId) return;
+
+  const { id } = req.params;
+  const sb = getServiceClient();
+
+  // Fetch before deleting so we can send full data in webhook
+  const { data: existing } = await sb
+    .from("reminders")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!existing) return res.status(404).json({ error: "Reminder not found" });
+
+  const { error } = await sb
+    .from("reminders")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  sendWebhook(userId, "reminder_deleted", existing);
+  res.json({ ok: true });
 });
 
 // ═══════════════════════════════════════════════════
@@ -675,6 +707,14 @@ router.post("/send-message", async (req, res) => {
         });
       }
     }
+
+    sendWebhook(userId, "message_sent", {
+      phone: cleaned,
+      remote_jid: remoteJid,
+      message: message.substring(0, 200),
+      instance: instanceName,
+      message_id: result?.key?.id || null,
+    });
 
     console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
     res.json({
