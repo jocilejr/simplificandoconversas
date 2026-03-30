@@ -101,7 +101,6 @@ export function useToggleReminder() {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
-      sendWebhookToExternal("reminder_updated", { id: variables.id, completed: variables.completed });
     },
   });
 }
