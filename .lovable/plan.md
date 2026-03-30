@@ -1,83 +1,61 @@
 
 
-## Sistema de Transações Financeiras
+## Aba de Conexão com OpenPix nas Configurações
 
-Importar a funcionalidade de visualização de transações da aplicação financeira para este projeto, adaptada para receber dados de Mercado Pago, OpenPix, Yampi e outros via webhook.
+### Visão Geral
+Adicionar uma nova aba "Integrações" (ou sub-aba dentro de Conexões) na página de Configurações para gerenciar credenciais de plataformas financeiras, começando pela OpenPix. O usuário poderá cadastrar seu App ID e Webhook Secret da OpenPix, que serão salvos no banco e usados pelo backend para validar webhooks recebidos.
 
-### Arquitetura
+### Banco de Dados
 
-```text
-Mercado Pago / OpenPix / Yampi
-         │ (webhook POST)
-         ▼
-  Backend VPS (/api/webhook-transactions)
-         │
-         ▼
-   Tabela "transactions" (banco)
-         │
-         ▼
-   Frontend (página /transacoes)
-```
-
-### Fase 1: Banco de Dados
-
-Criar tabela `transactions`:
-- `id`, `user_id`, `external_id`, `source` (mercadopago/openpix/yampi/manual)
-- `type` (pix/boleto/cartao), `status` (pendente/pago/cancelado/expirado)
-- `amount`, `description`, `customer_name`, `customer_email`, `customer_phone`, `customer_document`
-- `created_at`, `paid_at`, `metadata` (jsonb)
+Criar tabela `platform_connections`:
+- `id` uuid PK
+- `user_id` uuid NOT NULL
+- `platform` text NOT NULL (ex: "openpix", "mercadopago", "yampi")
+- `credentials` jsonb NOT NULL DEFAULT '{}'  (armazena app_id, webhook_secret, access_token etc.)
+- `enabled` boolean DEFAULT true
+- `created_at` timestamptz DEFAULT now()
+- `updated_at` timestamptz DEFAULT now()
+- UNIQUE(user_id, platform)
 - RLS: usuário autenticado gerencia seus próprios registros
 
-### Fase 2: Rota de Webhook no Backend VPS
+### Frontend
 
-Criar `deploy/backend/src/routes/webhook-transactions.ts`:
-- Endpoint `POST /api/webhook-transactions/:source` (source = mercadopago, openpix, yampi)
-- Normaliza o payload de cada plataforma para o formato unificado da tabela
-- Mapeia campos específicos de cada plataforma:
-  - **Mercado Pago**: `action`, `data.id` -> busca detalhes via API se necessário
-  - **OpenPix**: `event`, `charge` -> mapeia status e valores
-  - **Yampi**: `event`, `resource` -> mapeia pedidos e status
-- Insere/atualiza na tabela `transactions` via service_role
+1. **Criar `src/components/settings/IntegrationsSection.tsx`**
+   - Lista de plataformas disponíveis (OpenPix primeiro, depois Mercado Pago, Yampi como "em breve")
+   - Card da OpenPix com:
+     - Status (conectada/desconectada) baseado na existência de credenciais
+     - Campos: App ID, Webhook Secret
+     - Botão Salvar / Desconectar
+     - URL do webhook para copiar: `https://api.seudominio.com/api/webhook-transactions/openpix`
+   - Hook `usePlatformConnections.ts` para CRUD na tabela
 
-### Fase 3: Frontend
+2. **Editar `src/pages/SettingsPage.tsx`**
+   - Adicionar aba "Integrações" (grid-cols-5)
+   - Importar e renderizar `IntegrationsSection`
 
-1. **Hook `useTransactions.ts`**
-   - Query com filtro de datas (mesmo padrão do dashboard)
-   - Estatísticas calculadas: total por tipo, por status, volume
-
-2. **Página `Transacoes.tsx`**
-   - Filtro de período (Hoje/Ontem/Personalizado)
-   - Cards de resumo: Total recebido, Pendentes, Por tipo de pagamento
-   - Tabela de transações com busca, filtro por tipo/status/source
-   - Badge colorido por status e ícone por source
-
-3. **Sidebar**: Adicionar item "Transações" com ícone `DollarSign`
-
-4. **Rota**: `/transacoes` no App.tsx
-
-### Fase 4: Importação via Planilha
-
-- Botão "Importar" na página de transações
-- Upload de CSV/XLSX com colunas: tipo, valor, status, nome_cliente, email, telefone, documento, data
-- Parse no frontend, envio em batch para o banco
-
-### Implementação (arquivos)
+### Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| Migration SQL | Criar tabela `transactions` |
-| `deploy/backend/src/routes/webhook-transactions.ts` | Nova rota webhook |
-| `deploy/backend/src/index.ts` | Registrar nova rota |
-| `src/hooks/useTransactions.ts` | Hook de dados |
-| `src/pages/Transacoes.tsx` | Página principal |
-| `src/components/transactions/TransactionsTable.tsx` | Tabela com filtros |
-| `src/components/transactions/ImportTransactions.tsx` | Modal de importação |
-| `src/components/AppSidebar.tsx` | Novo item no menu |
-| `src/App.tsx` | Nova rota |
+| Migration SQL | Criar tabela `platform_connections` |
+| `src/hooks/usePlatformConnections.ts` | Hook para gerenciar conexões |
+| `src/components/settings/IntegrationsSection.tsx` | UI da aba |
+| `src/pages/SettingsPage.tsx` | Adicionar nova aba |
 
-### Observações
+### Design do Card OpenPix
 
-- O webhook na VPS precisa ser acessível externamente (já é via nginx)
-- Cada plataforma terá sua URL de webhook: `https://api.chatbotsimplificado.com/api/webhook-transactions/mercadopago`
-- A configuração das credenciais de cada plataforma (tokens de validação) será feita na página de Configurações
+```text
+┌─────────────────────────────────────────┐
+│ 🟢 OpenPix                    [Ativa]  │
+│                                         │
+│ App ID:        [__________________]     │
+│ Webhook Secret:[__________________]     │
+│                                         │
+│ URL do Webhook (copiar):                │
+│ https://api..../webhook-transactions/   │
+│ openpix?user_id=...                     │
+│                                         │
+│           [Salvar]  [Desconectar]       │
+└─────────────────────────────────────────┘
+```
 
