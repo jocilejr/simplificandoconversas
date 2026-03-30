@@ -516,6 +516,36 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_connections: {
+        Row: {
+          created_at: string | null
+          credentials: Json
+          enabled: boolean | null
+          id: string
+          platform: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credentials?: Json
+          enabled?: boolean | null
+          id?: string
+          platform: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credentials?: Json
+          enabled?: boolean | null
+          id?: string
+          platform?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           app_public_url: string | null
