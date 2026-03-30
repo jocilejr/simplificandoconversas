@@ -116,7 +116,6 @@ export function useDeleteReminder() {
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete removido" });
-      sendWebhookToExternal("reminder_deleted", { id });
     },
   });
 }
