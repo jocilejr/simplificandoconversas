@@ -1,36 +1,40 @@
 
 
-# Plano: Corrigir URL da sincronização externa de lembretes
+# Plano: Adicionar eventos de lembretes ao webhook externo
 
-## Problema
-O `app_public_url` no banco é `https://app.chatbotsimplificado.com` (domínio do frontend), mas os endpoints da API REST ficam em `https://api.chatbotsimplificado.com`. A chamada PATCH vai para o domínio errado e falha silenciosamente.
+## Contexto
+A aplicação externa já foi atualizada para enviar webhooks com eventos de lembretes. O backend precisa processar esses eventos no `external-webhook.ts`.
 
-## Solução
+## O que será alterado
 
-Duas opções:
+### Arquivo: `deploy/backend/src/routes/external-webhook.ts`
 
-**Opção A — Corrigir o valor no banco**: Atualizar `app_public_url` para `https://api.chatbotsimplificado.com` na VPS. Sem mudança de código.
+Adicionar tratamento para 3 novos eventos após a seção existente (seção 5):
 
-**Opção B (recomendada) — Derivar o domínio da API no código**: Alterar `src/hooks/useReminders.ts` para substituir `app.` por `api.` na URL, ou usar a variável de ambiente `VITE_SUPABASE_URL` como base, garantindo que funcione independentemente do valor configurado.
+**Seção 6 — Eventos de lembretes:**
 
-### Implementação (Opção B)
+- **`reminder_updated` / `sync_reminder`**: Atualizar o lembrete pelo `id` no banco. Campos aceitos: `completed`, `title`, `description`, `due_date`. Update com `user_id = userId` para segurança.
+- **`reminder_deleted`**: Deletar o lembrete pelo `id` com `user_id = userId`.
 
-**Arquivo**: `src/hooks/useReminders.ts`, linha 129
-
-Trocar:
-```ts
-const url = `${baseUrl.replace(/\/$/, "")}/api/platform/reminders/${variables.id}`;
+Payload esperado:
+```json
+{
+  "event": "reminder_updated",
+  "id": "uuid-do-lembrete",
+  "completed": true,
+  "title": "...",
+  "description": "..."
+}
 ```
 
-Por:
-```ts
-const apiUrl = baseUrl.replace(/\/$/, "").replace("://app.", "://api.");
-const url = `${apiUrl}/api/platform/reminders/${variables.id}`;
-```
+Atualizar também o JSDoc do endpoint com os novos eventos.
 
-Isso garante que mesmo com `app_public_url = https://app.chatbotsimplificado.com`, a requisição vá para `https://api.chatbotsimplificado.com/api/platform/reminders/{id}`.
+### Arquivo: `src/hooks/useReminders.ts`
 
-## Escopo
-- 1 arquivo alterado, 1 linha modificada
-- Sem mudança de banco ou backend
+Remover o código de sincronização PATCH do `onSuccess` do `useToggleReminder`, já que agora a comunicação é unidirecional (externa → API) e o DB já é atualizado diretamente pelo frontend. O PATCH externo não funciona porque o frontend não tem acesso à API externa.
+
+## Resultado
+- Webhook aceita `sync_reminder`, `reminder_updated`, `reminder_deleted`
+- Atualização do banco local via webhook com segurança (filtrando por `user_id`)
+- Realtime propaga mudanças automaticamente para a UI
 
