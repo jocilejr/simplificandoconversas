@@ -680,4 +680,64 @@ router.patch("/ai-config", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── GET /api/ext/platform-key ──
+router.get("/platform-key", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const sb = getServiceClient();
+  const { data } = await sb
+    .from("platform_connections")
+    .select("credentials, enabled, created_at")
+    .eq("user_id", userId)
+    .eq("platform", "custom_api")
+    .maybeSingle();
+
+  if (!data) return res.json({ key: null });
+
+  const creds = data.credentials as any;
+  res.json({
+    key: creds?.api_key || null,
+    enabled: data.enabled,
+    created_at: data.created_at,
+  });
+});
+
+// ── POST /api/ext/generate-platform-key ──
+router.post("/generate-platform-key", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const newKey = crypto.randomBytes(32).toString("hex");
+  const sb = getServiceClient();
+
+  // Check if one already exists
+  const { data: existing } = await sb
+    .from("platform_connections")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("platform", "custom_api")
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await sb
+      .from("platform_connections")
+      .update({ credentials: { api_key: newKey }, enabled: true, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (error) return res.status(500).json({ error: error.message });
+  } else {
+    const { error } = await sb
+      .from("platform_connections")
+      .insert({
+        user_id: userId,
+        platform: "custom_api",
+        credentials: { api_key: newKey },
+        enabled: true,
+      });
+    if (error) return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ key: newKey });
+});
+
 export default router;
