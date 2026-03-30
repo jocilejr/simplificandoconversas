@@ -571,9 +571,9 @@ router.post("/send-message", async (req, res) => {
   const userId = await resolveUserByApiKey(req, res);
   if (!userId) return;
 
-  const { phone, message, type, reference_id, customer_name, amount } = req.body;
-  if (!phone || !message) {
-    return res.status(400).json({ error: "phone and message are required" });
+  const { phone, message, instance, type, reference_id, customer_name, amount } = req.body;
+  if (!phone || !message || !instance) {
+    return res.status(400).json({ error: "phone, message and instance are required" });
   }
 
   const cleaned = phone.replace(/\D/g, "");
@@ -581,20 +581,7 @@ router.post("/send-message", async (req, res) => {
 
   const remoteJid = `${cleaned}@s.whatsapp.net`;
   const sb = getServiceClient();
-
-  // Find an active instance for this user
-  const { data: instances } = await sb
-    .from("whatsapp_instances")
-    .select("instance_name, status")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .limit(1);
-
-  if (!instances || instances.length === 0) {
-    return res.status(400).json({ error: "No active WhatsApp instance found" });
-  }
-
-  const instanceName = instances[0].instance_name;
+  const instanceName = instance;
 
   try {
     // Send via Evolution API
