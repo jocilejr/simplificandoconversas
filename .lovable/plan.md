@@ -1,25 +1,36 @@
 
 
-# Plano: Sincronizar status do lembrete com API externa ao marcar como concluído
+# Plano: Corrigir URL da sincronização externa de lembretes
 
-## Resumo
+## Problema
+O `app_public_url` no banco é `https://app.chatbotsimplificado.com` (domínio do frontend), mas os endpoints da API REST ficam em `https://api.chatbotsimplificado.com`. A chamada PATCH vai para o domínio errado e falha silenciosamente.
 
-Quando o usuário marcar um lembrete como concluído (ou desmarcar) na interface, além de atualizar no banco local, o sistema também enviará um `PATCH` para a API externa (`/api/platform/reminders/:id`) para manter o sistema externo sincronizado.
+## Solução
 
-## O que será alterado
+Duas opções:
 
-### Arquivo: `src/hooks/useReminders.ts` — função `useToggleReminder`
+**Opção A — Corrigir o valor no banco**: Atualizar `app_public_url` para `https://api.chatbotsimplificado.com` na VPS. Sem mudança de código.
 
-Após atualizar o lembrete no banco local com sucesso (`onSuccess`), fazer uma chamada `PATCH` para a API da plataforma:
+**Opção B (recomendada) — Derivar o domínio da API no código**: Alterar `src/hooks/useReminders.ts` para substituir `app.` por `api.` na URL, ou usar a variável de ambiente `VITE_SUPABASE_URL` como base, garantindo que funcione independentemente do valor configurado.
 
-1. Buscar a API key do usuário na tabela `platform_connections` (platform = `custom_api`)
-2. Buscar o `app_public_url` do perfil do usuário (que contém o domínio da API na VPS)
-3. Se ambos existirem, enviar `PATCH` para `{app_public_url}/api/platform/reminders/{id}` com `{ completed: true/false }` e header `X-API-Key`
-4. Se a chamada externa falhar, apenas logar no console (não bloquear o fluxo local)
+### Implementação (Opção B)
 
-### Detalhes técnicos
+**Arquivo**: `src/hooks/useReminders.ts`, linha 129
 
-- A chamada externa será feita no `onSuccess` do mutation, de forma assíncrona (fire-and-forget)
-- Caso o usuário não tenha API key configurada ou `app_public_url`, a sincronização será silenciosamente ignorada
-- Nenhuma mudança no backend é necessária — o endpoint `PATCH /api/platform/reminders/:id` já existe e aceita `{ completed }` no body
+Trocar:
+```ts
+const url = `${baseUrl.replace(/\/$/, "")}/api/platform/reminders/${variables.id}`;
+```
+
+Por:
+```ts
+const apiUrl = baseUrl.replace(/\/$/, "").replace("://app.", "://api.");
+const url = `${apiUrl}/api/platform/reminders/${variables.id}`;
+```
+
+Isso garante que mesmo com `app_public_url = https://app.chatbotsimplificado.com`, a requisição vá para `https://api.chatbotsimplificado.com/api/platform/reminders/{id}`.
+
+## Escopo
+- 1 arquivo alterado, 1 linha modificada
+- Sem mudança de banco ou backend
 
