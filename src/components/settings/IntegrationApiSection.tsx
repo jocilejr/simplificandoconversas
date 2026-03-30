@@ -144,6 +144,17 @@ export function IntegrationApiSection() {
             </AccordionContent>
           </AccordionItem>
 
+          <AccordionItem value="instances">
+            <AccordionTrigger className="text-sm">Instâncias WhatsApp</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-2 text-xs font-mono">
+                <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/instances</div>
+                <div className="text-muted-foreground">Retorna lista de instâncias com campos: <code className="bg-muted px-1 rounded">instance_name</code>, <code className="bg-muted px-1 rounded">status</code>, <code className="bg-muted px-1 rounded">is_active</code>, <code className="bg-muted px-1 rounded">connected</code> (true se número conectado)</div>
+                <div className="text-muted-foreground">Use o valor de <code className="bg-muted px-1 rounded">instance_name</code> no campo <code className="bg-muted px-1 rounded">instance</code> dos endpoints de envio</div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
           <AccordionItem value="contacts">
             <AccordionTrigger className="text-sm">Contatos / Clientes</AccordionTrigger>
             <AccordionContent>

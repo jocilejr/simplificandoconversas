@@ -72,6 +72,39 @@ router.get("/ping", (_req, res) => {
 });
 
 // ═══════════════════════════════════════════════════
+// INSTANCES / INSTÂNCIAS
+// ═══════════════════════════════════════════════════
+
+// GET /api/platform/instances
+router.get("/instances", async (req, res) => {
+  const userId = await resolveUserByApiKey(req, res);
+  if (!userId) return;
+
+  try {
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("whatsapp_instances")
+      .select("instance_name, status, is_active, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+
+    const instances = (data || []).map((i: any) => ({
+      instance_name: i.instance_name,
+      status: i.status,
+      is_active: i.is_active,
+      connected: i.status === "open",
+    }));
+
+    res.json({ data: instances, count: instances.length });
+  } catch (err: any) {
+    console.error("GET /instances error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════
 // CONTACTS / CLIENTES
 // ═══════════════════════════════════════════════════
 
