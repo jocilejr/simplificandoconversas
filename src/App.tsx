@@ -13,7 +13,6 @@ import ChatbotBuilder from "./pages/ChatbotBuilder";
 
 import SettingsPage from "./pages/SettingsPage";
 import Reminders from "./pages/Reminders";
-import Transacoes from "./pages/Transacoes";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 
@@ -35,7 +34,6 @@ const App = () => (
               <Route path="/contacts" element={<Contacts />} />
               <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
-              <Route path="/transacoes" element={<Transacoes />} />
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>

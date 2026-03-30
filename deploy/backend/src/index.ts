@@ -10,7 +10,6 @@ import healthDbRouter from "./routes/health-db";
 import { processTimeouts } from "./routes/check-timeouts";
 import { lightSync } from "./routes/light-sync";
 import extensionApiRouter from "./routes/extension-api";
-import webhookTransactionsRouter from "./routes/webhook-transactions";
 
 const app = express();
 app.use(cors());
@@ -22,7 +21,6 @@ app.use("/api/execute-flow", executeFlowRouter);
 app.use("/api/link-redirect", linkRedirectRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/ext", extensionApiRouter);
-app.use("/api/webhook-transactions", webhookTransactionsRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);

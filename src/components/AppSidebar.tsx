@@ -6,7 +6,6 @@ import {
   LogOut,
   Send,
   Bell,
-  DollarSign,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -57,7 +56,6 @@ export function AppSidebar() {
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Contatos", url: "/contacts", icon: Users },
     { title: "Fluxos", url: "/chatbot", icon: Workflow },
-    { title: "Transações", url: "/transacoes", icon: DollarSign },
     { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
 

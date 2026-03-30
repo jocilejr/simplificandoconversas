@@ -1,14 +1,11 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers, Radio, Download, Upload } from "lucide-react";
+import { Plus, Play, Square, MoreHorizontal, Trash2, Workflow, Calendar, Layers, Radio } from "lucide-react";
 import { FlowEditor } from "@/components/chatbot/FlowEditor";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useAuth } from "@/hooks/useAuth";
-import { exportFlow, importFlowFromFile } from "@/lib/flowExportImport";
-import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,8 +17,6 @@ const ChatbotBuilder = () => {
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const { data: flows, isLoading, createFlow, updateFlow, deleteFlow } = useChatbotFlows();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreateFlow = async () => {
     try {
@@ -29,68 +24,6 @@ const ChatbotBuilder = () => {
       setEditingFlowId(result.id);
     } catch {
       toast.error("Erro ao criar fluxo");
-    }
-  };
-
-  const handleExportFlow = async (flow: any) => {
-    await exportFlow({
-      name: flow.name,
-      nodes: flow.nodes as any[],
-      edges: flow.edges as any[],
-      instance_names: flow.instance_names as string[],
-    });
-  };
-
-  const uploadMediaFn = async (file: File, filename: string): Promise<string | null> => {
-    try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const { data } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: {
-          action: "media-upload",
-          userId: user?.id,
-          fileName: filename,
-          fileBase64: base64,
-          mimeType: file.type,
-        },
-      });
-
-      return data?.url || null;
-    } catch {
-      return null;
-    }
-  };
-
-  const handleImportFlow = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // Reset input so same file can be re-selected
-    e.target.value = "";
-
-    const result = await importFlowFromFile(file, uploadMediaFn);
-    if (!result) return;
-
-    try {
-      const created = await createFlow.mutateAsync(result.name);
-      await updateFlow.mutateAsync({
-        id: created.id,
-        name: result.name,
-        nodes: result.nodes,
-        edges: result.edges,
-        instance_names: result.instanceNames,
-      });
-      queryClient.invalidateQueries({ queryKey: ["chatbot-flows"] });
-      setEditingFlowId(created.id);
-    } catch {
-      toast.error("Erro ao salvar fluxo importado");
     }
   };
 
@@ -124,21 +57,9 @@ const ChatbotBuilder = () => {
           <h1 className="text-2xl font-bold tracking-tight">Fluxos Automáticos</h1>
           <p className="text-sm text-muted-foreground mt-1">Gerencie seus fluxos de automação e chatbots</p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleImportFlow}
-          />
-          <Button onClick={() => importInputRef.current?.click()} size="sm" variant="outline">
-            <Upload className="h-4 w-4" /> Importar
-          </Button>
-          <Button onClick={handleCreateFlow} disabled={createFlow.isPending} size="sm" variant="outline">
-            <Plus className="h-4 w-4" /> Novo Fluxo
-          </Button>
-        </div>
+        <Button onClick={handleCreateFlow} disabled={createFlow.isPending} size="sm" variant="outline">
+          <Plus className="h-4 w-4" /> Novo Fluxo
+        </Button>
       </div>
 
       {isLoading ? (
@@ -201,9 +122,6 @@ const ChatbotBuilder = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenuItem onClick={() => handleExportFlow(flow)}>
-                          <Download className="h-4 w-4 mr-2" /> Exportar
-                        </DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => deleteFlow.mutate(flow.id)}>
                           <Trash2 className="h-4 w-4 mr-2" /> Excluir
                         </DropdownMenuItem>
