@@ -22,6 +22,7 @@ app.use("/api/execute-flow", executeFlowRouter);
 app.use("/api/link-redirect", linkRedirectRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/ext", extensionApiRouter);
+app.use("/api/webhook-transactions", webhookTransactionsRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);

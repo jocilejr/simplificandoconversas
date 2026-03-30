@@ -57,6 +57,7 @@ export function AppSidebar() {
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Contatos", url: "/contacts", icon: Users },
     { title: "Fluxos", url: "/chatbot", icon: Workflow },
+    { title: "Transações", url: "/transacoes", icon: DollarSign },
     { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
 
