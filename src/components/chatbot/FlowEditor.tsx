@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Plus, History, Check, Loader2, Save, icons, Radio } from "lucide-react";
+import { ArrowLeft, Plus, History, Check, Loader2, Save, icons, Radio, Download } from "lucide-react";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   AlertDialog,
@@ -47,6 +47,7 @@ import {
 import { toast } from "sonner";
 import { useFlowHistory, type FlowHistoryEntry } from "@/hooks/useFlowHistory";
 import { FlowHistoryPanel } from "@/components/chatbot/FlowHistoryPanel";
+import { exportFlow } from "@/lib/flowExportImport";
 
 const DOCK_THRESHOLD = 80;
 const FINALIZER_TYPES: FlowNodeType[] = ["waitForReply", "waitForClick"];
@@ -899,6 +900,14 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, initial
           </Panel>
 
           <Panel position="top-right" className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => exportFlow({ name, nodes, edges, instance_names: instanceNames })}
+              >
+                <Download className="h-3 w-3 mr-1" /> Exportar
+              </Button>
               <Button
                 variant={saveStatus === "saved" ? "outline" : "default"}
                 size="sm"
