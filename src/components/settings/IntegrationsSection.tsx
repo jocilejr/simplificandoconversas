@@ -146,7 +146,7 @@ function ConnectionCard({
 
 export function IntegrationsSection() {
   const { user } = useAuth();
-  const { profile } = useProfile();
+  
   const { connections, upsertConnection, deleteConnection } = usePlatformConnections();
 
   const [dialogOpen, setDialogOpen] = useState(false);
