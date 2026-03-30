@@ -218,11 +218,11 @@ export function IntegrationsSection() {
         </Button>
       </div>
 
-      {!baseUrl && (
+      {!apiBaseUrl && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>
-            Configure a <strong>URL pública da aplicação</strong> na aba "Aplicação" para que os webhooks sejam gerados automaticamente.
+            URL da API não configurada. Verifique a variável <strong>VITE_SUPABASE_URL</strong>.
           </span>
         </div>
       )}
