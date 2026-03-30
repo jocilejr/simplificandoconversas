@@ -13,6 +13,7 @@ import ChatbotBuilder from "./pages/ChatbotBuilder";
 
 import SettingsPage from "./pages/SettingsPage";
 import Reminders from "./pages/Reminders";
+import Transacoes from "./pages/Transacoes";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 
