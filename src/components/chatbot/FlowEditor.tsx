@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Plus, History, Check, Loader2, Save, icons, Radio } from "lucide-react";
+import { ArrowLeft, Plus, History, Check, Loader2, Save, icons, Radio, Download } from "lucide-react";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   AlertDialog,

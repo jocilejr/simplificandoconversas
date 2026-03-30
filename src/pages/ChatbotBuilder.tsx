@@ -201,6 +201,9 @@ const ChatbotBuilder = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem onClick={() => handleExportFlow(flow)}>
+                          <Download className="h-4 w-4 mr-2" /> Exportar
+                        </DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => deleteFlow.mutate(flow.id)}>
                           <Trash2 className="h-4 w-4 mr-2" /> Excluir
                         </DropdownMenuItem>
