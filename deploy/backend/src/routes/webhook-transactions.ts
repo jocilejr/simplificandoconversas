@@ -18,35 +18,58 @@ interface NormalizedTransaction {
   metadata?: any;
 }
 
-function normalizeMercadoPago(body: any): NormalizedTransaction | null {
-  const action = body.action || body.type;
-  const data = body.data;
-  if (!data?.id) return null;
-
-  let status = "pendente";
-  if (action === "payment.updated" || action === "payment") {
-    const st = body.data?.status || body.status;
-    if (st === "approved") status = "pago";
-    else if (st === "rejected" || st === "cancelled") status = "cancelado";
-    else if (st === "expired") status = "expirado";
-    else status = "pendente";
+async function fetchMercadoPagoPayment(paymentId: string, accessToken: string): Promise<any> {
+  const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    console.error(`[webhook-transactions] MP API error: ${res.status} ${res.statusText}`);
+    return null;
   }
+  return res.json();
+}
 
+function normalizeMercadoPagoPayment(payment: any, rawBody: any): NormalizedTransaction | null {
+  if (!payment?.id) return null;
+
+  const statusMap: Record<string, string> = {
+    approved: "pago",
+    pending: "pendente",
+    in_process: "pendente",
+    rejected: "cancelado",
+    cancelled: "cancelado",
+    refunded: "reembolsado",
+    charged_back: "reembolsado",
+  };
+  const status = statusMap[payment.status] || "pendente";
+
+  const ptMap: Record<string, string> = {
+    credit_card: "cartao",
+    debit_card: "cartao",
+    prepaid_card: "cartao",
+    bank_transfer: "pix",
+    pix: "pix",
+    ticket: "boleto",
+    bolbradesco: "boleto",
+  };
+  const type = ptMap[payment.payment_type_id] || "pix";
+
+  const payer = payment.payer || {};
   return {
-    external_id: String(data.id),
+    external_id: String(payment.id),
     source: "mercadopago",
-    type: body.data?.payment_type || "pix",
+    type,
     status,
-    amount: Number(body.data?.transaction_amount || body.data?.amount || 0),
-    description: body.data?.description || body.data?.reason,
-    customer_name: body.data?.payer?.first_name
-      ? `${body.data.payer.first_name} ${body.data.payer.last_name || ""}`.trim()
+    amount: Number(payment.transaction_amount || 0),
+    description: payment.description || payment.reason,
+    customer_name: payer.first_name
+      ? `${payer.first_name} ${payer.last_name || ""}`.trim()
       : undefined,
-    customer_email: body.data?.payer?.email,
-    customer_phone: body.data?.payer?.phone?.number,
-    customer_document: body.data?.payer?.identification?.number,
-    paid_at: status === "pago" ? new Date().toISOString() : undefined,
-    metadata: body,
+    customer_email: payer.email,
+    customer_phone: payer.phone?.number,
+    customer_document: payer.identification?.number,
+    paid_at: status === "pago" ? (payment.date_approved || new Date().toISOString()) : undefined,
+    metadata: { webhook: rawBody, payment },
   };
 }
 
