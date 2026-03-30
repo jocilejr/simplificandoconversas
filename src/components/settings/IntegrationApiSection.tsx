@@ -190,6 +190,27 @@ export function IntegrationApiSection() {
             </AccordionContent>
           </AccordionItem>
 
+          <AccordionItem value="messaging">
+            <AccordionTrigger className="text-sm">Envio de Mensagens</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3 text-xs font-mono">
+                <div>
+                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/send-message</div>
+                  <div className="text-muted-foreground ml-4">{"{ phone, message }"} — Envia texto</div>
+                </div>
+                <div>
+                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/send-media</div>
+                  <div className="text-muted-foreground ml-4">{"{ phone, media_url, type, caption?, instance? }"}</div>
+                  <div className="text-muted-foreground ml-4">type: <code className="bg-muted px-1 rounded">image</code> | <code className="bg-muted px-1 rounded">video</code> | <code className="bg-muted px-1 rounded">audio</code> | <code className="bg-muted px-1 rounded">document</code></div>
+                </div>
+                <div>
+                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/validate-number</div>
+                  <div className="text-muted-foreground ml-4">{"{ phone }"} — Verifica se número existe no WhatsApp</div>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
           <AccordionItem value="webhook-entrada">
             <AccordionTrigger className="text-sm">Webhook de Entrada</AccordionTrigger>
             <AccordionContent>
