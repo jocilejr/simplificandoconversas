@@ -47,6 +47,7 @@ import {
 import { toast } from "sonner";
 import { useFlowHistory, type FlowHistoryEntry } from "@/hooks/useFlowHistory";
 import { FlowHistoryPanel } from "@/components/chatbot/FlowHistoryPanel";
+import { exportFlow } from "@/lib/flowExportImport";
 
 const DOCK_THRESHOLD = 80;
 const FINALIZER_TYPES: FlowNodeType[] = ["waitForReply", "waitForClick"];
