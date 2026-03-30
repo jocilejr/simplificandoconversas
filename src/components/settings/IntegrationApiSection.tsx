@@ -30,9 +30,6 @@ export function IntegrationApiSection() {
       if (data?.credentials?.api_key) {
         setApiKey(data.credentials.api_key);
       }
-      if (data?.credentials?.webhook_url) {
-        setWebhookUrl(data.credentials.webhook_url);
-      }
     } catch (err) {
       console.error("Error loading API key:", err);
     } finally {
