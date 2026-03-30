@@ -11,7 +11,7 @@ const router = Router();
  * 
  * Expected payload:
  * {
- *   event: "payment_confirmed" | "payment_failed" | "payment_refunded" | "customer_updated" | "invoice_created",
+ *   event: "payment_confirmed" | "payment_failed" | "payment_refunded" | "customer_updated" | "invoice_created" | "sync_reminder" | "reminder_updated" | "reminder_deleted",
  *   reference_id?: string,       // maps to transactions.external_id
  *   external_id?: string,        // alternative to reference_id
  *   phone?: string,              // customer phone
@@ -47,6 +47,8 @@ router.post("/", async (req, res) => {
   const userId = conn.user_id;
   const {
     event,
+    id: reminderId,
+    reference_id,
     reference_id,
     external_id,
     phone,
@@ -208,6 +210,42 @@ router.post("/", async (req, res) => {
         }
       } else {
         results.actions.push({ type: "message_skipped", reason: "no_active_instance" });
+      }
+    }
+
+    // ── 6. Reminder events ──
+    if (["sync_reminder", "reminder_updated", "reminder_deleted"].includes(event) && reminderId) {
+      if (event === "reminder_deleted") {
+        const { error: delErr } = await sb
+          .from("reminders")
+          .delete()
+          .eq("id", reminderId)
+          .eq("user_id", userId);
+        if (!delErr) {
+          results.actions.push({ type: "reminder_deleted", id: reminderId });
+        }
+      } else {
+        const updates: any = {};
+        if (req.body.completed !== undefined) updates.completed = req.body.completed;
+        if (req.body.title) updates.title = req.body.title;
+        if (req.body.description !== undefined) updates.description = req.body.description;
+        if (req.body.due_date) updates.due_date = req.body.due_date;
+
+        if (Object.keys(updates).length > 0) {
+          const { data: updated, error: updErr } = await sb
+            .from("reminders")
+            .update(updates)
+            .eq("id", reminderId)
+            .eq("user_id", userId)
+            .select("id")
+            .maybeSingle();
+
+          if (updated) {
+            results.actions.push({ type: "reminder_updated", id: updated.id });
+          } else if (updErr) {
+            results.actions.push({ type: "reminder_update_failed", error: updErr.message });
+          }
+        }
       }
     }
 
