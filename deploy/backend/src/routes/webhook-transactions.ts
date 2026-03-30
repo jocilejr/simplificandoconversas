@@ -136,7 +136,6 @@ function normalizeYampi(body: any): NormalizedTransaction | null {
 }
 
 const normalizers: Record<string, (body: any) => NormalizedTransaction | null> = {
-  mercadopago: normalizeMercadoPago,
   openpix: normalizeOpenPix,
   yampi: normalizeYampi,
 };
