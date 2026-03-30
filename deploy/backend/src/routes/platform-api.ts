@@ -186,7 +186,6 @@ router.post("/contacts", async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
-    sendWebhook(userId, "contact_updated", data);
     return res.json({ data, created: false });
   }
 
@@ -203,7 +202,6 @@ router.post("/contacts", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "contact_created", data);
   res.status(201).json({ data, created: true });
 });
 
@@ -269,7 +267,6 @@ router.post("/transactions", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "transaction_created", data);
   res.status(201).json({ data });
 });
 
@@ -303,7 +300,6 @@ router.patch("/transactions/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Transaction not found" });
 
-  sendWebhook(userId, "transaction_updated", data);
   res.json({ data });
 });
 
@@ -391,7 +387,6 @@ router.post("/tags", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "tag_added", { ...data, phone: cleaned });
   res.status(201).json({ data, created: true });
 });
 
@@ -415,7 +410,6 @@ router.delete("/tags", async (req, res) => {
     .eq("tag_name", tag_name);
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "tag_removed", { phone: cleaned, tag_name, remote_jid: remoteJid });
   res.json({ ok: true });
 });
 
@@ -491,7 +485,6 @@ router.post("/reminders", async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  sendWebhook(userId, "reminder_created", data);
   res.status(201).json({ data });
 });
 
@@ -525,7 +518,6 @@ router.patch("/reminders/:id", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: "Reminder not found" });
 
-  sendWebhook(userId, "reminder_updated", data);
   res.json({ data });
 });
 
@@ -555,7 +547,6 @@ router.delete("/reminders/:id", async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  sendWebhook(userId, "reminder_deleted", existing);
   res.json({ ok: true });
 });
 
@@ -689,7 +680,6 @@ router.post("/send-message", async (req, res) => {
       }
     }
 
-    sendWebhook(userId, "message_sent", {
       phone: cleaned,
       remote_jid: remoteJid,
       message: message.substring(0, 200),
