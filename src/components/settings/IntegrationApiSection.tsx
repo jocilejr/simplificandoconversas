@@ -9,7 +9,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [webhookUrl, setWebhookUrl] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
