@@ -157,9 +157,10 @@ export function useDeleteReminder() {
       const { error } = await (supabase as any).from("reminders").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete removido" });
+      forwardToVps("DELETE", `/reminders/${id}`);
     },
   });
 }

@@ -708,6 +708,14 @@ router.post("/send-message", async (req, res) => {
       }
     }
 
+    sendWebhook(userId, "message_sent", {
+      phone: cleaned,
+      remote_jid: remoteJid,
+      message: message.substring(0, 200),
+      instance: instanceName,
+      message_id: result?.key?.id || null,
+    });
+
     console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
     res.json({
       ok: true,
