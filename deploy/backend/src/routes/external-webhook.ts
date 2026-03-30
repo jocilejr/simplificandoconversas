@@ -47,6 +47,8 @@ router.post("/", async (req, res) => {
   const userId = conn.user_id;
   const {
     event,
+    id: reminderId,
+    reference_id,
     reference_id,
     external_id,
     phone,
