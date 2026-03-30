@@ -3,27 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 
-async function sendWebhookToExternal(event: string, data: object) {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const origin = window.location.origin;
-    const apiBase = origin.includes("localhost")
-      ? "http://localhost:3001"
-      : origin;
-
-    fetch(`${apiBase}/api/platform/webhook-notify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ event, data }),
-    }).catch(() => {});
-  } catch {}
-}
-
 export interface Reminder {
   id: string;
   user_id: string;
