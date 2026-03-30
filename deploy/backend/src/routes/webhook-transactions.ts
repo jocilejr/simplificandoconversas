@@ -164,9 +164,13 @@ router.post("/:source", async (req: Request, res: Response) => {
 
   // --- Mercado Pago: needs to fetch payment from API ---
   if (source === "mercadopago") {
-    const paymentId = req.body?.data?.id;
+    const paymentId = req.body?.data?.id 
+      || req.body?.id 
+      || req.body?.payment_id 
+      || req.body?.resource;
+
     if (!paymentId) {
-      console.warn(`[webhook-transactions] MP webhook without data.id — acknowledging`);
+      console.warn(`[webhook-transactions] MP webhook without data.id — body keys: ${JSON.stringify(Object.keys(req.body || {}))} — full body: ${JSON.stringify(req.body).substring(0, 500)}`);
       return res.json({ ok: true, skipped: true, reason: "no_data_id" });
     }
 
