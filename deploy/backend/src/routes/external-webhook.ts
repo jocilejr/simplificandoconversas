@@ -213,6 +213,42 @@ router.post("/", async (req, res) => {
       }
     }
 
+    // ── 6. Reminder events ──
+    if (["sync_reminder", "reminder_updated", "reminder_deleted"].includes(event) && reminderId) {
+      if (event === "reminder_deleted") {
+        const { error: delErr } = await sb
+          .from("reminders")
+          .delete()
+          .eq("id", reminderId)
+          .eq("user_id", userId);
+        if (!delErr) {
+          results.actions.push({ type: "reminder_deleted", id: reminderId });
+        }
+      } else {
+        const updates: any = {};
+        if (req.body.completed !== undefined) updates.completed = req.body.completed;
+        if (req.body.title) updates.title = req.body.title;
+        if (req.body.description !== undefined) updates.description = req.body.description;
+        if (req.body.due_date) updates.due_date = req.body.due_date;
+
+        if (Object.keys(updates).length > 0) {
+          const { data: updated, error: updErr } = await sb
+            .from("reminders")
+            .update(updates)
+            .eq("id", reminderId)
+            .eq("user_id", userId)
+            .select("id")
+            .maybeSingle();
+
+          if (updated) {
+            results.actions.push({ type: "reminder_updated", id: updated.id });
+          } else if (updErr) {
+            results.actions.push({ type: "reminder_update_failed", error: updErr.message });
+          }
+        }
+      }
+    }
+
     console.log(`[external-webhook] ${event} from user ${userId}:`, JSON.stringify(results.actions));
     res.json({ ok: true, ...results });
   } catch (err: any) {
