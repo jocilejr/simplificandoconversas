@@ -85,7 +85,7 @@ export function IntegrationApiSection() {
 
   const maskedKey = apiKey ? apiKey.substring(0, 8) + "••••••••••••••••" + apiKey.substring(apiKey.length - 8) : "";
 
-  const baseUrl = "https://SEU_API_DOMAIN";
+  const baseUrl = window.location.origin;
 
   return (
     <Card>
