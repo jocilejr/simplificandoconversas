@@ -49,7 +49,6 @@ router.post("/", async (req, res) => {
     event,
     id: reminderId,
     reference_id,
-    reference_id,
     external_id,
     phone,
     status,
