@@ -3,6 +3,32 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 
+async function forwardToVps(id: string, completed: boolean) {
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("app_public_url")
+      .maybeSingle();
+
+    const { data: conn } = await (supabase as any)
+      .from("platform_connections")
+      .select("credentials")
+      .eq("platform", "custom_api")
+      .maybeSingle();
+
+    const appUrl = profile?.app_public_url;
+    const apiKey = conn?.credentials?.api_key;
+    if (!appUrl || !apiKey) return;
+
+    const apiUrl = appUrl.replace("app.", "api.");
+    fetch(`${apiUrl}/api/platform/reminders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ completed }),
+    }).catch(() => {});
+  } catch {}
+}
+
 export interface Reminder {
   id: string;
   user_id: string;
