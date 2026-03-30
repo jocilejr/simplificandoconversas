@@ -9,9 +9,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [savingWebhook, setSavingWebhook] = useState(false);
 
   useEffect(() => {
     loadKey();
@@ -28,6 +30,9 @@ export function IntegrationApiSection() {
 
       if (data?.credentials?.api_key) {
         setApiKey(data.credentials.api_key);
+      }
+      if (data?.credentials?.webhook_url) {
+        setWebhookUrl(data.credentials.webhook_url);
       }
     } catch (err) {
       console.error("Error loading API key:", err);
