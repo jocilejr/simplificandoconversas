@@ -794,6 +794,7 @@ router.post("/send-message", async (req, res) => {
 
 
     console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
+    logApiRequest(userId, req, 200, `Message sent to ${cleaned} via ${instanceName}, id: ${result?.key?.id || "?"}`);
     res.json({
       ok: true,
       message_id: result?.key?.id || null,
@@ -801,6 +802,7 @@ router.post("/send-message", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[platform-api] send-message error:", err.message);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to send message" });
   }
 });
