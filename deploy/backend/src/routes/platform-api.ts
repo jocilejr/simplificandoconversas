@@ -342,7 +342,11 @@ router.post("/transactions", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Transaction created: ${data.id}`);
   res.status(201).json({ data });
 });
 
