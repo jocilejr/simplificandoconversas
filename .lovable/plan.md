@@ -1,31 +1,47 @@
 
 
-# Plano: Ignorar áudios com mais de 5 minutos
+# Plano: Pastas com drag-and-drop na listagem de fluxos
 
-## Alteração em `deploy/backend/src/routes/webhook.ts`
+## Abordagem
+Adicionar coluna `folder` na tabela `chatbot_flows` e reorganizar a página de listagem (`ChatbotBuilder.tsx`) com pastas no topo e drag-and-drop nativo para mover fluxos entre pastas.
 
-Na função `transcribeAudio`, após ler o arquivo (linha 102), verificar o tamanho do arquivo e ignorar se exceder ~5 minutos.
-
-Como não é trivial obter a duração exata de um OGG sem biblioteca, usaremos o **tamanho do arquivo** como proxy. Áudios OGG do WhatsApp tipicamente usam ~6-8 KB/s (Opus codec). 5 minutos ≈ 300s × 8KB = ~2.4 MB. Usaremos **3 MB** como limite seguro.
-
-### Código a adicionar após `const fileBuffer = await fs.readFile(localPath);` (linha 102):
-
-```typescript
-// Skip audios longer than ~5 minutes (3MB ≈ 5min at WhatsApp Opus bitrate)
-const MAX_AUDIO_SIZE = 3 * 1024 * 1024; // 3MB
-if (fileBuffer.length > MAX_AUDIO_SIZE) {
-  console.log(`[transcribe] Skipping large audio (${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB > 3MB limit): ${localPath}`);
-  return null;
-}
+## 1. Migração de banco de dados
+```sql
+ALTER TABLE public.chatbot_flows ADD COLUMN folder text DEFAULT null;
 ```
 
-### Resultado
-- Áudios > 3MB (~5min) são ignorados automaticamente
-- Log registra o skip para debug
-- Economiza tokens do Whisper
+## 2. Atualizar `useChatbotFlows.ts`
+- Adicionar `folder` ao tipo `ChatbotFlow`
+- Incluir `folder` nos parâmetros de `updateFlow`
 
-Após deploy, rebuild na VPS:
-```bash
-cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
+## 3. Reescrever listagem em `ChatbotBuilder.tsx`
+
+### Layout
+```text
+┌──────────────────────────────────────────────┐
+│ Fluxos Automáticos     [+ Pasta] [+ Fluxo]  │
+├──────────────────────────────────────────────┤
+│ 📁 Vendas (3)    📁 Suporte (2)             │  ← pastas no topo, drop targets
+├──────────────────────────────────────────────┤
+│ [Fluxo A ≡]  [Fluxo B ≡]  [Fluxo C ≡]  [+]│  ← fluxos sem pasta, draggable
+└──────────────────────────────────────────────┘
 ```
+
+### Comportamento
+- **Pastas** aparecem como cards na parte superior com ícone de pasta e contagem de fluxos
+- **Fluxos sem pasta** aparecem abaixo, como estão hoje
+- **Arrastar fluxo** sobre uma pasta move o fluxo para dentro dela (drag-and-drop nativo HTML5)
+- **Clicar numa pasta** abre a visão dos fluxos daquela pasta, com botão de voltar
+- **Dentro da pasta**: mesma grid de cards atual, com possibilidade de arrastar fluxo de volta para fora (soltar fora das pastas = remover da pasta)
+- **Menu de contexto da pasta**: renomear, excluir (fluxos voltam para raiz)
+- **Menu de contexto do fluxo**: opção "Mover para pasta" com lista das pastas existentes
+- **Dialog simples** para criar/renomear pasta (input com nome)
+
+### Drag-and-drop
+Usar API nativa do HTML5 (`draggable`, `onDragStart`, `onDragOver`, `onDrop`) — sem biblioteca extra. Ao soltar um fluxo numa pasta, faz `updateFlow({ id, folder: nomeDaPasta })`.
+
+## Arquivos modificados
+1. **Migração SQL** — coluna `folder`
+2. **`src/hooks/useChatbotFlows.ts`** — tipo + mutations
+3. **`src/pages/ChatbotBuilder.tsx`** — pastas no topo, drag-and-drop, navegação pasta/raiz, dialogs
 
