@@ -377,9 +377,16 @@ router.patch("/transactions/:id", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: "Transaction not found" });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  if (!data) {
+    logApiRequest(userId, req, 404, "Transaction not found");
+    return res.status(404).json({ error: "Transaction not found" });
+  }
 
+  logApiRequest(userId, req, 200, `Transaction updated: ${data.id}`);
   res.json({ data });
 });
 
