@@ -249,7 +249,11 @@ router.post("/contacts", async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logApiRequest(userId, req, 500, error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    logApiRequest(userId, req, 200, `Contact updated: ${cleaned}`);
     return res.json({ data, created: false });
   }
 
@@ -265,7 +269,11 @@ router.post("/contacts", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Contact created: ${cleaned}`);
   res.status(201).json({ data, created: true });
 });
 
