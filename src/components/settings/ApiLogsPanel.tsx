@@ -92,7 +92,15 @@ export function ApiLogsPanel() {
         </Button>
       </CardHeader>
       <CardContent>
-        {logs.length === 0 && !loading ? (
+        {error ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-center">
+            <p className="text-sm font-medium text-destructive">Erro ao carregar logs</p>
+            <p className="text-xs text-muted-foreground mt-1">{error}</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Verifique se a tabela <code className="bg-muted px-1 rounded">api_request_logs</code> existe no banco de dados da VPS.
+            </p>
+          </div>
+        ) : logs.length === 0 && !loading ? (
           <p className="text-sm text-muted-foreground text-center py-8">
             Nenhuma requisição registrada ainda. As requisições feitas à API serão exibidas aqui.
           </p>
