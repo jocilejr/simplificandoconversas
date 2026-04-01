@@ -447,7 +447,11 @@ router.get("/tags", async (req, res) => {
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 200, `${data?.length || 0} tags`);
   res.json({ data: data || [] });
 });
 
