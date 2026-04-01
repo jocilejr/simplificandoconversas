@@ -863,7 +863,7 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: messageContent },
+          { role: "user", content: isTranscription ? `[Áudio transcrito]: ${messageContent}` : messageContent },
         ],
         tools: [
           {
