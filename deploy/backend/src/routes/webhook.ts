@@ -782,7 +782,7 @@ async function checkAndAutoReply(
 
 // ── AI Listen (auto-create reminders) ──
 async function checkAndAutoListen(
-  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null
+  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null, isTranscription: boolean = false
 ) {
   // Check if user explicitly disabled listen for this contact (opt-out model)
   const { data: aiListenOff } = await supabase
