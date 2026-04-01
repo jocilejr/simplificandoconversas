@@ -48,12 +48,13 @@ async function downloadAndUploadMedia(
 
     if (!base64) return null;
 
-    const mimetype = mediaMessage?.mimetype || (messageType === "image" ? "image/jpeg" : messageType === "video" ? "video/mp4" : "audio/ogg");
+    const rawMimetype = mediaMessage?.mimetype || (messageType === "image" ? "image/jpeg" : messageType === "video" ? "video/mp4" : "audio/ogg");
+    const mimetype = rawMimetype.split(";")[0].trim();
     const extMap: Record<string, string> = {
       "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
       "video/mp4": "mp4", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a",
     };
-    const ext = extMap[mimetype] || mimetype.split("/")[1] || "bin";
+    const ext = extMap[mimetype] || mimetype.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
     const fileName = `${userId}/${crypto.randomUUID()}.${ext}`;
 
     const binaryStr = atob(base64);
