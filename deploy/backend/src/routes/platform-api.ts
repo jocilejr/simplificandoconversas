@@ -511,7 +511,11 @@ router.delete("/tags", async (req, res) => {
     .eq("remote_jid", remoteJid)
     .eq("tag_name", tag_name);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 200, `Tag deleted: ${req.body.tag_name}`);
   res.json({ ok: true });
 });
 
