@@ -594,7 +594,11 @@ router.post("/reminders", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Reminder created: ${req.body.title}`);
   res.status(201).json({ data });
 });
 
