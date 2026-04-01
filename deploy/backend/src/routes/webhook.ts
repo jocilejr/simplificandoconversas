@@ -452,10 +452,31 @@ router.post("/*", async (req, res) => {
       }
     }
 
-    // AI Listen: runs independently — analyzes messages for reminders
-    if (!fromMe && messageContent) {
+    // AI Listen: runs independently — analyzes messages for reminders (text + audio)
+    if (!fromMe && (messageContent || (messageType === "audio" && mediaUrl))) {
       try {
-        await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, messageContent, contactName);
+        let listenContent = messageContent;
+        let isTranscription = false;
+
+        // If it's an audio message, transcribe it first
+        if (messageType === "audio" && mediaUrl && !messageContent) {
+          const [profileRes2] = await Promise.all([
+            supabase.from("profiles").select("openai_api_key").eq("user_id", userId).single(),
+          ]);
+          const openaiKey = profileRes2.data?.openai_api_key;
+          if (openaiKey) {
+            const transcribed = await transcribeAudio(mediaUrl, openaiKey);
+            if (transcribed) {
+              listenContent = transcribed;
+              isTranscription = true;
+              console.log(`[ai-listen] Audio transcribed for ${remoteJid}: ${transcribed.substring(0, 80)}...`);
+            }
+          }
+        }
+
+        if (listenContent) {
+          await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, listenContent, contactName, isTranscription);
+        }
       } catch (listenErr: any) {
         console.error("AI listen error (non-fatal):", listenErr);
       }
