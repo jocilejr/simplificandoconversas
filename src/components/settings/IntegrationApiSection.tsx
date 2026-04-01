@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { Copy, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ApiLogsPanel } from "./ApiLogsPanel";
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
