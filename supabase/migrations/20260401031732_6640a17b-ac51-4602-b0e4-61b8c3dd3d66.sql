@@ -1,0 +1,1 @@
+ALTER TABLE public.chatbot_flows ADD COLUMN folder text DEFAULT null;
