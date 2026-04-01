@@ -1,40 +1,29 @@
 
 
-# Plano: Corrigir extensão do arquivo de áudio para transcrição Whisper
+# Plano: Melhorar qualidade da transcrição Whisper
 
 ## Problema
-O log mostra claramente o erro:
-
-```
-mediaUrl: '...4a58d131.ogg; codecs=opus'
-[transcribe] OpenAI Whisper error 400: Invalid file format
-```
-
-O `mimetype` do áudio vem do WhatsApp como `"audio/ogg; codecs=opus"` (com parâmetro de codec). O código atual faz lookup direto no `extMap` e não encontra match, então usa `mimetype.split("/")[1]` que retorna `"ogg; codecs=opus"`. O arquivo é salvo como `uuid.ogg; codecs=opus` — extensão inválida.
+O Whisper transcreve áudios em português com erros ("sete de feira" → "sexta-feira") porque não recebe o parâmetro `language`, forçando auto-detecção.
 
 ## Solução
-Duas correções simples no `deploy/backend/src/routes/webhook.ts`:
+Adicionar o campo `language=pt` no multipart form data enviado ao Whisper em `deploy/backend/src/routes/webhook.ts`.
 
-### 1. Limpar mimetype antes do lookup (linha ~51)
-Extrair apenas a parte base do mimetype, removendo parâmetros como `; codecs=opus`:
-
-```typescript
-const rawMimetype = mediaMessage?.mimetype || "...";
-const mimetype = rawMimetype.split(";")[0].trim();
-```
-
-### 2. Sanitizar extensão como fallback (linha ~56)
-Garantir que o fallback também não contenha caracteres inválidos:
+### Alteração em `transcribeAudio` (~linha 120-125)
+Adicionar um campo `language` no form data, logo após o campo `model`:
 
 ```typescript
-const ext = extMap[mimetype] || mimetype.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
+// language field
+parts.push(Buffer.from(
+  `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n`
+));
 ```
 
 ### Resultado
-- `"audio/ogg; codecs=opus"` → mimetype limpo `"audio/ogg"` → ext `"ogg"`
-- Arquivo salvo como `uuid.ogg` → Whisper aceita → transcrição funciona → lembretes via áudio funcionam
+- Whisper saberá que o áudio é em português
+- Precisão muito maior para palavras como "sexta-feira", "pagamento", datas em PT-BR
+- Sem impacto em performance ou custo
 
-Após o deploy, será necessário rebuildar o backend na VPS:
+Após deploy, rebuild na VPS:
 ```bash
 cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
 ```
