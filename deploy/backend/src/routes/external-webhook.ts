@@ -260,8 +260,8 @@ router.post("/", async (req, res) => {
         response_summary: `Webhook ${event}: ${results.actions.map((a: any) => a.type).join(", ")}`.substring(0, 500),
         ip_address: req.ip || req.socket?.remoteAddress || null,
       });
-    } catch (logErr) {
-      console.error("[external-webhook] Failed to log request:", logErr);
+    } catch (logErr: any) {
+      console.error(`[external-webhook] Failed to log request to api_request_logs:`, logErr?.message || logErr);
     }
     res.json({ ok: true, ...results });
   } catch (err: any) {
