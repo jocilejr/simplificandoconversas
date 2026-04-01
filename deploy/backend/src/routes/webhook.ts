@@ -100,6 +100,14 @@ async function transcribeAudio(mediaUrl: string, openaiKey: string): Promise<str
     }
 
     const fileBuffer = await fs.readFile(localPath);
+
+    // Skip audios longer than ~5 minutes (3MB ≈ 5min at WhatsApp Opus bitrate)
+    const MAX_AUDIO_SIZE = 3 * 1024 * 1024; // 3MB
+    if (fileBuffer.length > MAX_AUDIO_SIZE) {
+      console.log(`[transcribe] Skipping large audio (${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB > 3MB limit): ${localPath}`);
+      return null;
+    }
+
     const fileName = path.basename(localPath);
 
     // Build multipart form data manually
