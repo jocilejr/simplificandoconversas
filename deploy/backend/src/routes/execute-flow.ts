@@ -130,8 +130,10 @@ async function executeStep(
   if (nodeType === "sendFile" && (stepData as any).fileUrl) {
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
+    const caption = (stepData as any).caption || "";
+    console.log(`[execute-flow] sendFile fileName="${fileName}" caption="${caption}" url="${(stepData as any).fileUrl}"`);
     const queue = getMessageQueue(instanceName);
-    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" }), `sendFile→${num}`);
+    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf", caption }), `sendFile→${num}`);
     console.log(`[execute-flow] sendFile response:`, JSON.stringify(r));
     if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Arquivo:`, JSON.stringify(r));
     

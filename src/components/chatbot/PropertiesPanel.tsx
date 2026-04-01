@@ -105,7 +105,7 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
       {d.type === "sendFile" && (
         <>
           <MediaUpload label="Documento PDF" value={d.fileUrl || ""} accept=".pdf,application/pdf" onChange={(url) => {
-            update({ fileUrl: url, fileName: d.fileName || "documento.pdf" });
+            update({ fileUrl: url });
           }} />
           {d.fileUrl && (
             <div className="space-y-1.5">
