@@ -10,6 +10,7 @@ export interface ChatbotFlow {
   edges: any[];
   active: boolean;
   instance_names: string[];
+  folder: string | null;
   created_at: string;
   updated_at: string;
 }
