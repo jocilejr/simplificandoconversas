@@ -202,9 +202,11 @@ router.get("/contacts/:phone", async (req, res) => {
   ]);
 
   if (!convRes.data || convRes.data.length === 0) {
+    logApiRequest(userId, req, 404, "Contact not found");
     return res.status(404).json({ error: "Contact not found" });
   }
 
+  logApiRequest(userId, req, 200, `Contact found: ${convRes.data[0]?.contact_name || phone}`);
   res.json({
     contact: convRes.data[0],
     all_instances: convRes.data,
