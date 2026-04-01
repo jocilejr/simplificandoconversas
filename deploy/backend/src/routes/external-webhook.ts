@@ -249,9 +249,35 @@ router.post("/", async (req, res) => {
     }
 
     console.log(`[external-webhook] ${event} from user ${userId}:`, JSON.stringify(results.actions));
+    // Log the webhook request
+    try {
+      await sb.from("api_request_logs").insert({
+        user_id: userId,
+        method: req.method,
+        path: req.originalUrl || req.path,
+        status_code: 200,
+        request_body: req.body,
+        response_summary: `Webhook ${event}: ${results.actions.map((a: any) => a.type).join(", ")}`.substring(0, 500),
+        ip_address: req.ip || req.socket?.remoteAddress || null,
+      });
+    } catch (logErr) {
+      console.error("[external-webhook] Failed to log request:", logErr);
+    }
     res.json({ ok: true, ...results });
   } catch (err: any) {
     console.error("[external-webhook] error:", err);
+    // Log error
+    try {
+      await sb.from("api_request_logs").insert({
+        user_id: userId,
+        method: req.method,
+        path: req.originalUrl || req.path,
+        status_code: 500,
+        request_body: req.body,
+        response_summary: err.message?.substring(0, 500),
+        ip_address: req.ip || req.socket?.remoteAddress || null,
+      });
+    } catch (logErr) { /* ignore */ }
     res.status(500).json({ error: err.message || "Internal server error" });
   }
 });

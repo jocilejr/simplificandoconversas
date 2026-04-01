@@ -1,8 +1,30 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
 
-
 const router = Router();
+
+// ── API Request Logger ──
+async function logApiRequest(
+  userId: string,
+  req: Request,
+  statusCode: number,
+  responseSummary?: string
+) {
+  try {
+    const sb = getServiceClient();
+    await sb.from("api_request_logs").insert({
+      user_id: userId,
+      method: req.method,
+      path: req.originalUrl || req.path,
+      status_code: statusCode,
+      request_body: req.body && Object.keys(req.body).length ? req.body : null,
+      response_summary: responseSummary?.substring(0, 500) || null,
+      ip_address: req.ip || req.socket?.remoteAddress || null,
+    });
+  } catch (err) {
+    console.error("[logApiRequest] Failed to log:", err);
+  }
+}
 
 // ── Simple in-memory rate limiting ──
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -97,9 +119,12 @@ router.get("/instances", async (req, res) => {
       connected: i.status === "open",
     }));
 
-    res.json({ data: instances, count: instances.length });
+    const response = { data: instances, count: instances.length };
+    logApiRequest(userId, req, 200, `${instances.length} instances`);
+    res.json(response);
   } catch (err: any) {
     console.error("GET /instances error:", err);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -138,8 +163,12 @@ router.get("/contacts", async (req, res) => {
   query = query.range(offset, offset + limit - 1);
 
   const { data, error, count } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
+  logApiRequest(userId, req, 200, `${data?.length || 0} contacts`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
@@ -173,9 +202,11 @@ router.get("/contacts/:phone", async (req, res) => {
   ]);
 
   if (!convRes.data || convRes.data.length === 0) {
+    logApiRequest(userId, req, 404, "Contact not found");
     return res.status(404).json({ error: "Contact not found" });
   }
 
+  logApiRequest(userId, req, 200, `Contact found: ${convRes.data[0]?.contact_name || phone}`);
   res.json({
     contact: convRes.data[0],
     all_instances: convRes.data,
@@ -218,7 +249,11 @@ router.post("/contacts", async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logApiRequest(userId, req, 500, error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    logApiRequest(userId, req, 200, `Contact updated: ${cleaned}`);
     return res.json({ data, created: false });
   }
 
@@ -234,7 +269,11 @@ router.post("/contacts", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Contact created: ${cleaned}`);
   res.status(201).json({ data, created: true });
 });
 
@@ -266,8 +305,12 @@ router.get("/transactions", async (req, res) => {
   query = query.range(offset, offset + limit - 1);
 
   const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
+  logApiRequest(userId, req, 200, `${data?.length || 0} transactions`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
@@ -299,7 +342,11 @@ router.post("/transactions", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Transaction created: ${data.id}`);
   res.status(201).json({ data });
 });
 
@@ -330,9 +377,16 @@ router.patch("/transactions/:id", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: "Transaction not found" });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  if (!data) {
+    logApiRequest(userId, req, 404, "Transaction not found");
+    return res.status(404).json({ error: "Transaction not found" });
+  }
 
+  logApiRequest(userId, req, 200, `Transaction updated: ${data.id}`);
   res.json({ data });
 });
 
@@ -359,9 +413,16 @@ router.post("/transactions/webhook", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: "Transaction not found for this external_id" });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  if (!data) {
+    logApiRequest(userId, req, 404, "Transaction not found for this external_id");
+    return res.status(404).json({ error: "Transaction not found for this external_id" });
+  }
 
+  logApiRequest(userId, req, 200, `Transaction webhook updated: ${data.id}`);
   res.json({ data });
 });
 
@@ -386,7 +447,11 @@ router.get("/tags", async (req, res) => {
     .eq("user_id", userId)
     .eq("remote_jid", remoteJid);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 200, `${data?.length || 0} tags`);
   res.json({ data: data || [] });
 });
 
@@ -419,7 +484,11 @@ router.post("/tags", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Tag created: ${req.body.tag_name}`);
   res.status(201).json({ data, created: true });
 });
 
@@ -442,7 +511,11 @@ router.delete("/tags", async (req, res) => {
     .eq("remote_jid", remoteJid)
     .eq("tag_name", tag_name);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 200, `Tag deleted: ${req.body.tag_name}`);
   res.json({ ok: true });
 });
 
@@ -483,8 +556,12 @@ router.get("/reminders", async (req, res) => {
   query = query.range(offset, offset + limit - 1);
 
   const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
+  logApiRequest(userId, req, 200, `${data?.length || 0} reminders`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
@@ -517,7 +594,11 @@ router.post("/reminders", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Reminder created: ${req.body.title}`);
   res.status(201).json({ data });
 });
 
@@ -548,9 +629,16 @@ router.patch("/reminders/:id", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: "Reminder not found" });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  if (!data) {
+    logApiRequest(userId, req, 404, "Reminder not found");
+    return res.status(404).json({ error: "Reminder not found" });
+  }
 
+  logApiRequest(userId, req, 200, `Reminder updated: ${id}`);
   res.json({ data });
 });
 
@@ -578,8 +666,12 @@ router.delete("/reminders/:id", async (req, res) => {
     .eq("id", id)
     .eq("user_id", userId);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
+  logApiRequest(userId, req, 200, `Reminder deleted: ${id}`);
   res.json({ ok: true });
 });
 
@@ -702,6 +794,7 @@ router.post("/send-message", async (req, res) => {
 
 
     console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
+    logApiRequest(userId, req, 200, `Message sent to ${cleaned} via ${instanceName}, id: ${result?.key?.id || "?"}`);
     res.json({
       ok: true,
       message_id: result?.key?.id || null,
@@ -709,6 +802,7 @@ router.post("/send-message", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[platform-api] send-message error:", err.message);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to send message" });
   }
 });
@@ -808,9 +902,11 @@ router.post("/send-media", async (req, res) => {
     }
 
     console.log(`[platform-api] send-media (${mediaType}) to ${cleaned} via ${instanceName}`);
+    logApiRequest(userId, req, 200, `Media (${mediaType}) sent to ${cleaned} via ${instanceName}`);
     res.json({ ok: true, message_id: result?.key?.id || null, instance: instanceName });
   } catch (err: any) {
     console.error("[platform-api] send-media error:", err.message);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to send media" });
   }
 });
@@ -848,14 +944,16 @@ router.post("/validate-number", async (req, res) => {
       .eq("remote_jid", remoteJid)
       .maybeSingle();
 
+    logApiRequest(userId, req, 200, `Number ${cleaned}: exists=${exists}`);
     res.json({
       exists,
-      is_mobile: exists, // WhatsApp numbers are mobile
+      is_mobile: exists,
       jid: numberInfo?.jid || remoteJid,
       known_contact: conv ? { name: conv.contact_name } : null,
     });
   } catch (err: any) {
     console.error("[platform-api] validate-number error:", err.message);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to validate number" });
   }
 });

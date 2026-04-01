@@ -98,6 +98,42 @@ export type Database = {
         }
         Relationships: []
       }
+      api_request_logs: {
+        Row: {
+          created_at: string
+          id: string
+          ip_address: string | null
+          method: string
+          path: string
+          request_body: Json | null
+          response_summary: string | null
+          status_code: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          method: string
+          path: string
+          request_body?: Json | null
+          response_summary?: string | null
+          status_code: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          method?: string
+          path?: string
+          request_body?: Json | null
+          response_summary?: string | null
+          status_code?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       chatbot_flow_history: {
         Row: {
           created_at: string
