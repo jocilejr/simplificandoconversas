@@ -79,6 +79,77 @@ async function downloadAndUploadMedia(
   }
 }
 
+async function transcribeAudio(mediaUrl: string, openaiKey: string): Promise<string | null> {
+  try {
+    // mediaUrl format: https://domain/media/userId/filename.ogg
+    // Extract local path from URL
+    const mediaMatch = mediaUrl.match(/\/media\/(.+)$/);
+    if (!mediaMatch) {
+      console.error("[transcribe] Could not extract path from mediaUrl:", mediaUrl);
+      return null;
+    }
+    const localPath = path.join("/media-files", mediaMatch[1]);
+
+    // Check file exists
+    try {
+      await fs.access(localPath);
+    } catch {
+      console.error("[transcribe] File not found:", localPath);
+      return null;
+    }
+
+    const fileBuffer = await fs.readFile(localPath);
+    const fileName = path.basename(localPath);
+
+    // Build multipart form data manually
+    const boundary = `----FormBoundary${crypto.randomUUID()}`;
+    const ext = path.extname(fileName).slice(1);
+    const mimeMap: Record<string, string> = {
+      ogg: "audio/ogg", mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", webm: "audio/webm", mp4: "audio/mp4",
+    };
+    const mime = mimeMap[ext] || "audio/ogg";
+
+    const parts: Buffer[] = [];
+    // file field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${mime}\r\n\r\n`
+    ));
+    parts.push(fileBuffer);
+    parts.push(Buffer.from("\r\n"));
+    // model field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n`
+    ));
+    // close
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+
+    const body = Buffer.concat(parts);
+
+    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      },
+      body,
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[transcribe] OpenAI Whisper error ${resp.status}:`, errText);
+      return null;
+    }
+
+    const result = await resp.json() as any;
+    const text = result?.text?.trim();
+    console.log(`[transcribe] Transcribed audio (${fileName}): ${text?.substring(0, 80)}...`);
+    return text || null;
+  } catch (e: any) {
+    console.error("[transcribe] Error:", e.message);
+    return null;
+  }
+}
+
 router.post("/*", async (req, res) => {
   try {
     const body = req.body;
@@ -381,10 +452,31 @@ router.post("/*", async (req, res) => {
       }
     }
 
-    // AI Listen: runs independently — analyzes messages for reminders
-    if (!fromMe && messageContent) {
+    // AI Listen: runs independently — analyzes messages for reminders (text + audio)
+    if (!fromMe && (messageContent || (messageType === "audio" && mediaUrl))) {
       try {
-        await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, messageContent, contactName);
+        let listenContent = messageContent;
+        let isTranscription = false;
+
+        // If it's an audio message, transcribe it first
+        if (messageType === "audio" && mediaUrl && !messageContent) {
+          const [profileRes2] = await Promise.all([
+            supabase.from("profiles").select("openai_api_key").eq("user_id", userId).single(),
+          ]);
+          const openaiKey = profileRes2.data?.openai_api_key;
+          if (openaiKey) {
+            const transcribed = await transcribeAudio(mediaUrl, openaiKey);
+            if (transcribed) {
+              listenContent = transcribed;
+              isTranscription = true;
+              console.log(`[ai-listen] Audio transcribed for ${remoteJid}: ${transcribed.substring(0, 80)}...`);
+            }
+          }
+        }
+
+        if (listenContent) {
+          await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, listenContent, contactName, isTranscription);
+        }
       } catch (listenErr: any) {
         console.error("AI listen error (non-fatal):", listenErr);
       }
@@ -690,7 +782,7 @@ async function checkAndAutoReply(
 
 // ── AI Listen (auto-create reminders) ──
 async function checkAndAutoListen(
-  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null
+  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null, isTranscription: boolean = false
 ) {
   // Check if user explicitly disabled listen for this contact (opt-out model)
   const { data: aiListenOff } = await supabase
@@ -771,7 +863,7 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: messageContent },
+          { role: "user", content: isTranscription ? `[Áudio transcrito]: ${messageContent}` : messageContent },
         ],
         tools: [
           {
