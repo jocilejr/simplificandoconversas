@@ -1,27 +1,28 @@
 
 
-# Plano: Melhorar qualidade da transcrição Whisper
+# Plano: Ignorar áudios com mais de 5 minutos
 
-## Problema
-O Whisper transcreve áudios em português com erros ("sete de feira" → "sexta-feira") porque não recebe o parâmetro `language`, forçando auto-detecção.
+## Alteração em `deploy/backend/src/routes/webhook.ts`
 
-## Solução
-Adicionar o campo `language=pt` no multipart form data enviado ao Whisper em `deploy/backend/src/routes/webhook.ts`.
+Na função `transcribeAudio`, após ler o arquivo (linha 102), verificar o tamanho do arquivo e ignorar se exceder ~5 minutos.
 
-### Alteração em `transcribeAudio` (~linha 120-125)
-Adicionar um campo `language` no form data, logo após o campo `model`:
+Como não é trivial obter a duração exata de um OGG sem biblioteca, usaremos o **tamanho do arquivo** como proxy. Áudios OGG do WhatsApp tipicamente usam ~6-8 KB/s (Opus codec). 5 minutos ≈ 300s × 8KB = ~2.4 MB. Usaremos **3 MB** como limite seguro.
+
+### Código a adicionar após `const fileBuffer = await fs.readFile(localPath);` (linha 102):
 
 ```typescript
-// language field
-parts.push(Buffer.from(
-  `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n`
-));
+// Skip audios longer than ~5 minutes (3MB ≈ 5min at WhatsApp Opus bitrate)
+const MAX_AUDIO_SIZE = 3 * 1024 * 1024; // 3MB
+if (fileBuffer.length > MAX_AUDIO_SIZE) {
+  console.log(`[transcribe] Skipping large audio (${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB > 3MB limit): ${localPath}`);
+  return null;
+}
 ```
 
 ### Resultado
-- Whisper saberá que o áudio é em português
-- Precisão muito maior para palavras como "sexta-feira", "pagamento", datas em PT-BR
-- Sem impacto em performance ou custo
+- Áudios > 3MB (~5min) são ignorados automaticamente
+- Log registra o skip para debug
+- Economiza tokens do Whisper
 
 Após deploy, rebuild na VPS:
 ```bash
