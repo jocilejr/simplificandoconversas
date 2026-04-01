@@ -105,19 +105,13 @@ function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<
       {d.type === "sendFile" && (
         <>
           <MediaUpload label="Documento PDF" value={d.fileUrl || ""} accept=".pdf,application/pdf" onChange={(url) => {
-            update({ fileUrl: url });
+            update({ fileUrl: url, fileName: d.fileName || "documento.pdf" });
           }} />
           {d.fileUrl && (
             <div className="space-y-1.5">
               <Label className="text-xs">Nome do arquivo</Label>
               <Input value={d.fileName || ""} onChange={(e) => update({ fileName: e.target.value })} placeholder="Ex: proposta.pdf" className="h-8 text-xs" />
               <p className="text-[10px] text-muted-foreground">Nome exibido para o contato no WhatsApp</p>
-            </div>
-          )}
-          {d.fileUrl && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Legenda</Label>
-              <Input value={d.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Descrição opcional do documento" className="h-8 text-xs" />
             </div>
           )}
         </>
