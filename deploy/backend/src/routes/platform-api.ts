@@ -666,8 +666,12 @@ router.delete("/reminders/:id", async (req, res) => {
     .eq("id", id)
     .eq("user_id", userId);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
+  logApiRequest(userId, req, 200, `Reminder deleted: ${id}`);
   res.json({ ok: true });
 });
 
