@@ -141,6 +141,7 @@ export type Database = {
           active: boolean
           created_at: string
           edges: Json
+          folder: string | null
           id: string
           instance_names: string[]
           name: string
@@ -152,6 +153,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           edges?: Json
+          folder?: string | null
           id?: string
           instance_names?: string[]
           name: string
@@ -163,6 +165,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           edges?: Json
+          folder?: string | null
           id?: string
           instance_names?: string[]
           name?: string
