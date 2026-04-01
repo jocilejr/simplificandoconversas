@@ -944,14 +944,16 @@ router.post("/validate-number", async (req, res) => {
       .eq("remote_jid", remoteJid)
       .maybeSingle();
 
+    logApiRequest(userId, req, 200, `Number ${cleaned}: exists=${exists}`);
     res.json({
       exists,
-      is_mobile: exists, // WhatsApp numbers are mobile
+      is_mobile: exists,
       jid: numberInfo?.jid || remoteJid,
       known_contact: conv ? { name: conv.contact_name } : null,
     });
   } catch (err: any) {
     console.error("[platform-api] validate-number error:", err.message);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to validate number" });
   }
 });
