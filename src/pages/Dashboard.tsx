@@ -51,7 +51,7 @@ const Dashboard = () => {
       return <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Atrasado</Badge>;
     }
     if (isToday(d)) {
-      return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30 text-[10px] px-1.5 py-0">Hoje</Badge>;
+      return <Badge variant="outline" className="bg-accent text-accent-foreground text-[10px] px-1.5 py-0">Hoje</Badge>;
     }
     return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Futuro</Badge>;
   };
