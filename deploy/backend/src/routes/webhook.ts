@@ -121,6 +121,10 @@ async function transcribeAudio(mediaUrl: string, openaiKey: string): Promise<str
     parts.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n`
     ));
+    // language field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n`
+    ));
     // close
     parts.push(Buffer.from(`--${boundary}--\r\n`));
 
