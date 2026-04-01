@@ -413,9 +413,16 @@ router.post("/transactions/webhook", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: "Transaction not found for this external_id" });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  if (!data) {
+    logApiRequest(userId, req, 404, "Transaction not found for this external_id");
+    return res.status(404).json({ error: "Transaction not found for this external_id" });
+  }
 
+  logApiRequest(userId, req, 200, `Transaction webhook updated: ${data.id}`);
   res.json({ data });
 });
 
