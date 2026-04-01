@@ -79,6 +79,77 @@ async function downloadAndUploadMedia(
   }
 }
 
+async function transcribeAudio(mediaUrl: string, openaiKey: string): Promise<string | null> {
+  try {
+    // mediaUrl format: https://domain/media/userId/filename.ogg
+    // Extract local path from URL
+    const mediaMatch = mediaUrl.match(/\/media\/(.+)$/);
+    if (!mediaMatch) {
+      console.error("[transcribe] Could not extract path from mediaUrl:", mediaUrl);
+      return null;
+    }
+    const localPath = path.join("/media-files", mediaMatch[1]);
+
+    // Check file exists
+    try {
+      await fs.access(localPath);
+    } catch {
+      console.error("[transcribe] File not found:", localPath);
+      return null;
+    }
+
+    const fileBuffer = await fs.readFile(localPath);
+    const fileName = path.basename(localPath);
+
+    // Build multipart form data manually
+    const boundary = `----FormBoundary${crypto.randomUUID()}`;
+    const ext = path.extname(fileName).slice(1);
+    const mimeMap: Record<string, string> = {
+      ogg: "audio/ogg", mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", webm: "audio/webm", mp4: "audio/mp4",
+    };
+    const mime = mimeMap[ext] || "audio/ogg";
+
+    const parts: Buffer[] = [];
+    // file field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: ${mime}\r\n\r\n`
+    ));
+    parts.push(fileBuffer);
+    parts.push(Buffer.from("\r\n"));
+    // model field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n`
+    ));
+    // close
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+
+    const body = Buffer.concat(parts);
+
+    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      },
+      body,
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[transcribe] OpenAI Whisper error ${resp.status}:`, errText);
+      return null;
+    }
+
+    const result = await resp.json() as any;
+    const text = result?.text?.trim();
+    console.log(`[transcribe] Transcribed audio (${fileName}): ${text?.substring(0, 80)}...`);
+    return text || null;
+  } catch (e: any) {
+    console.error("[transcribe] Error:", e.message);
+    return null;
+  }
+}
+
 router.post("/*", async (req, res) => {
   try {
     const body = req.body;
