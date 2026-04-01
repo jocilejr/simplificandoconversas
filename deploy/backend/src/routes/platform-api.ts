@@ -163,8 +163,12 @@ router.get("/contacts", async (req, res) => {
   query = query.range(offset, offset + limit - 1);
 
   const { data, error, count } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
 
+  logApiRequest(userId, req, 200, `${data?.length || 0} contacts`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
