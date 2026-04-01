@@ -119,9 +119,12 @@ router.get("/instances", async (req, res) => {
       connected: i.status === "open",
     }));
 
-    res.json({ data: instances, count: instances.length });
+    const response = { data: instances, count: instances.length };
+    logApiRequest(userId, req, 200, `${instances.length} instances`);
+    res.json(response);
   } catch (err: any) {
     console.error("GET /instances error:", err);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message });
   }
 });
