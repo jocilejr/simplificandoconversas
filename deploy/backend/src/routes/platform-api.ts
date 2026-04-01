@@ -902,9 +902,11 @@ router.post("/send-media", async (req, res) => {
     }
 
     console.log(`[platform-api] send-media (${mediaType}) to ${cleaned} via ${instanceName}`);
+    logApiRequest(userId, req, 200, `Media (${mediaType}) sent to ${cleaned} via ${instanceName}`);
     res.json({ ok: true, message_id: result?.key?.id || null, instance: instanceName });
   } catch (err: any) {
     console.error("[platform-api] send-media error:", err.message);
+    logApiRequest(userId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to send media" });
   }
 });
