@@ -49,19 +49,28 @@ function MethodBadge({ method }: { method: string }) {
 export function ApiLogsPanel() {
   const [logs, setLogs] = useState<ApiLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const { data } = await (supabase as any)
+      const { data, error: queryError } = await (supabase as any)
         .from("api_request_logs")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(50);
-      setLogs(data || []);
-    } catch (err) {
+      if (queryError) {
+        console.error("Error fetching API logs:", queryError);
+        setError(queryError.message || "Erro ao buscar logs");
+        setLogs([]);
+      } else {
+        setLogs(data || []);
+      }
+    } catch (err: any) {
       console.error("Error fetching API logs:", err);
+      setError(err?.message || "Erro ao buscar logs");
     } finally {
       setLoading(false);
     }

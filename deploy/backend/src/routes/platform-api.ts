@@ -21,8 +21,9 @@ async function logApiRequest(
       response_summary: responseSummary?.substring(0, 500) || null,
       ip_address: req.ip || req.socket?.remoteAddress || null,
     });
-  } catch (err) {
-    console.error("[logApiRequest] Failed to log:", err);
+  } catch (err: any) {
+    const msg = err?.message || JSON.stringify(err);
+    console.error(`[logApiRequest] Failed to log ${req.method} ${req.originalUrl || req.path} (${statusCode}):`, msg);
   }
 }
 

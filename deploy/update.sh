@@ -145,18 +145,41 @@ GRANT ALL ON public.reminders TO anon, authenticated, service_role;
 -- Add results column to flow_executions for audit
 ALTER TABLE public.flow_executions ADD COLUMN IF NOT EXISTS results jsonb DEFAULT NULL;
 
+-- API Request Logs
+CREATE TABLE IF NOT EXISTS public.api_request_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  method text NOT NULL,
+  path text NOT NULL,
+  status_code integer NOT NULL,
+  request_body jsonb DEFAULT null,
+  response_summary text DEFAULT null,
+  ip_address text DEFAULT null,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.api_request_logs ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'api_request_logs' AND policyname = 'Users can view own api logs') THEN
+    CREATE POLICY "Users can view own api logs" ON public.api_request_logs FOR SELECT TO authenticated USING (user_id = auth.uid());
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_api_logs_user_created ON public.api_request_logs(user_id, created_at DESC);
+GRANT ALL ON public.api_request_logs TO anon, authenticated, service_role;
+
 -- Force PostgREST schema cache reload
 NOTIFY pgrst, 'reload schema';
 EOSQL
 echo "✓ Migrations aplicadas"
 
-# Validate meta_pixels table exists
-TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.meta_pixels');")
-if [ "$TABLE_EXISTS" = "" ] || [ "$TABLE_EXISTS" = " " ]; then
-  echo "❌ Tabela meta_pixels não encontrada após migração! Abortando."
-  exit 1
-fi
-echo "✓ Tabela meta_pixels verificada"
+# Validate tables exist
+for tbl in meta_pixels api_request_logs; do
+  TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.$tbl');")
+  if [ "$TABLE_EXISTS" = "" ] || [ "$TABLE_EXISTS" = " " ]; then
+    echo "❌ Tabela $tbl não encontrada após migração! Abortando."
+    exit 1
+  fi
+  echo "✓ Tabela $tbl verificada"
+done
 
 # Restart PostgREST to guarantee schema reload
 docker compose restart postgrest 2>/dev/null || echo "⚠ PostgREST não encontrado (ok se não usar)"
