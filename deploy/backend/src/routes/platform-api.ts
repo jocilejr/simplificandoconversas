@@ -484,7 +484,11 @@ router.post("/tags", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    logApiRequest(userId, req, 500, error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  logApiRequest(userId, req, 201, `Tag created: ${req.body.tag_name}`);
   res.status(201).json({ data, created: true });
 });
 
