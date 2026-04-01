@@ -1,8 +1,30 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
 
-
 const router = Router();
+
+// ── API Request Logger ──
+async function logApiRequest(
+  userId: string,
+  req: Request,
+  statusCode: number,
+  responseSummary?: string
+) {
+  try {
+    const sb = getServiceClient();
+    await sb.from("api_request_logs").insert({
+      user_id: userId,
+      method: req.method,
+      path: req.originalUrl || req.path,
+      status_code: statusCode,
+      request_body: req.body && Object.keys(req.body).length ? req.body : null,
+      response_summary: responseSummary?.substring(0, 500) || null,
+      ip_address: req.ip || req.socket?.remoteAddress || null,
+    });
+  } catch (err) {
+    console.error("[logApiRequest] Failed to log:", err);
+  }
+}
 
 // ── Simple in-memory rate limiting ──
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
