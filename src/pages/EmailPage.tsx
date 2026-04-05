@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmailTemplatesTab } from "@/components/email/EmailTemplatesTab";
 import { EmailCampaignsTab } from "@/components/email/EmailCampaignsTab";
 import { EmailHistoryTab } from "@/components/email/EmailHistoryTab";
+import { EmailWebhooksTab } from "@/components/email/EmailWebhooksTab";
 import { Mail } from "lucide-react";
 
 export default function EmailPage() {
@@ -20,6 +21,7 @@ export default function EmailPage() {
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
           <TabsTrigger value="history">Histórico</TabsTrigger>
+          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
         </TabsList>
 
         <TabsContent value="templates" className="mt-4">
@@ -30,6 +32,9 @@ export default function EmailPage() {
         </TabsContent>
         <TabsContent value="history" className="mt-4">
           <EmailHistoryTab />
+        </TabsContent>
+        <TabsContent value="webhooks" className="mt-4">
+          <EmailWebhooksTab />
         </TabsContent>
       </Tabs>
     </div>

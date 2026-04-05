@@ -6,8 +6,9 @@ export function useSmtpConfig() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: config, isLoading } = useQuery({
-    queryKey: ["smtp-config"],
+  // Load ALL smtp configs for the user (multiple accounts)
+  const { data: configs = [], isLoading } = useQuery({
+    queryKey: ["smtp-configs"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -15,44 +16,55 @@ export function useSmtpConfig() {
         .from("smtp_config")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .order("created_at", { ascending: true });
       if (error) throw error;
-      return data;
+      return data || [];
     },
   });
 
+  // Backward compat: first config
+  const config = configs.length > 0 ? configs[0] : null;
+
   const saveConfig = useMutation({
-    mutationFn: async (c: { host: string; port: number; username: string; password: string; from_email: string; from_name: string }) => {
+    mutationFn: async (c: { id?: string; host: string; port: number; username: string; password: string; from_email: string; from_name: string; label?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data: existing } = await supabase
-        .from("smtp_config")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (existing) {
-        const { error } = await supabase.from("smtp_config").update(c).eq("id", existing.id);
+      if (c.id) {
+        const { error } = await supabase.from("smtp_config").update({
+          host: c.host, port: c.port, username: c.username, password: c.password,
+          from_email: c.from_email, from_name: c.from_name, label: c.label || "Principal",
+        }).eq("id", c.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("smtp_config").insert({ ...c, user_id: user.id });
+        const { error } = await supabase.from("smtp_config").insert({
+          ...c, user_id: user.id, label: c.label || "Principal",
+        });
         if (error) throw error;
       }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["smtp-config"] }); toast({ title: "Configuração SMTP salva!" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["smtp-configs"] }); toast({ title: "Configuração SMTP salva!" }); },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteConfig = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("smtp_config").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["smtp-configs"] }); toast({ title: "Configuração removida!" }); },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const testSmtp = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (smtpConfigId?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
       const resp = await fetch(`${baseUrl}/functions/v1/email/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: user.id, smtpConfigId }),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.error || "Erro no teste SMTP");
@@ -62,5 +74,23 @@ export function useSmtpConfig() {
     onError: (e: Error) => toast({ title: "Erro no teste", description: e.message, variant: "destructive" }),
   });
 
-  return { config, isLoading, saveConfig, testSmtp };
+  const verifySmtp = useMutation({
+    mutationFn: async (smtpConfigId?: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+      const resp = await fetch(`${baseUrl}/functions/v1/email/verify-smtp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, smtpConfigId }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Erro na verificação");
+      return json;
+    },
+    onSuccess: () => toast({ title: "Conexão SMTP verificada com sucesso!" }),
+    onError: (e: Error) => toast({ title: "Falha na conexão", description: e.message, variant: "destructive" }),
+  });
+
+  return { config, configs, isLoading, saveConfig, deleteConfig, testSmtp, verifySmtp };
 }

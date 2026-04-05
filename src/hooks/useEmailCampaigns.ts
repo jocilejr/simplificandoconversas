@@ -22,7 +22,7 @@ export function useEmailCampaigns() {
   });
 
   const addCampaign = useMutation({
-    mutationFn: async (c: { name: string; template_id: string; tag_filter?: string }) => {
+    mutationFn: async (c: { name: string; template_id: string; tag_filter?: string; smtp_config_id?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase
@@ -41,7 +41,6 @@ export function useEmailCampaigns() {
     mutationFn: async (campaignId: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-
       const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
       const resp = await fetch(`${baseUrl}/functions/v1/email/campaign`, {
         method: "POST",

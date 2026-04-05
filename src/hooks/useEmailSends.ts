@@ -1,7 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export function useEmailSends(filters?: { status?: string; campaignId?: string }) {
+interface Filters {
+  status?: string;
+  campaignId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function useEmailSends(filters?: Filters) {
+  const page = filters?.page || 0;
+  const pageSize = filters?.pageSize || 50;
+
   const { data: sends = [], isLoading, refetch } = useQuery({
     queryKey: ["email-sends", filters],
     queryFn: async () => {
@@ -13,7 +23,7 @@ export function useEmailSends(filters?: { status?: string; campaignId?: string }
         .select("*, email_templates(name), email_campaigns(name)")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (filters?.status) q = q.eq("status", filters.status);
       if (filters?.campaignId) q = q.eq("campaign_id", filters.campaignId);
@@ -25,5 +35,20 @@ export function useEmailSends(filters?: { status?: string; campaignId?: string }
     refetchInterval: 30000,
   });
 
-  return { sends, isLoading, refetch };
+  // Stats query
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["email-stats"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+      const resp = await fetch(`${baseUrl}/functions/v1/email/stats?userId=${user.id}`);
+      if (!resp.ok) return { total: 0, sent: 0, failed: 0, opened: 0, pending: 0, openRate: "0" };
+      return resp.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  return { sends, isLoading, refetch, stats, statsLoading };
 }
