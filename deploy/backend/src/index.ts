@@ -26,6 +26,7 @@ app.use("/api/webhook", webhookRouter);
 app.use("/api/ext", extensionApiRouter);
 app.use("/api/platform", platformApiRouter);
 app.use("/api/external-messaging-webhook", externalWebhookRouter);
+app.use("/api/email", emailRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
