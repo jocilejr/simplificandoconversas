@@ -302,6 +302,7 @@ export type Database = {
         Row: {
           contact_name: string | null
           created_at: string
+          email: string | null
           id: string
           instance_name: string | null
           last_message: string | null
@@ -315,6 +316,7 @@ export type Database = {
         Insert: {
           contact_name?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           instance_name?: string | null
           last_message?: string | null
@@ -328,6 +330,7 @@ export type Database = {
         Update: {
           contact_name?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           instance_name?: string | null
           last_message?: string | null
@@ -336,6 +339,137 @@ export type Database = {
           phone_number?: string | null
           remote_jid?: string
           unread_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      email_campaigns: {
+        Row: {
+          created_at: string
+          failed_count: number
+          id: string
+          name: string
+          sent_at: string | null
+          sent_count: number
+          status: string
+          tag_filter: string | null
+          template_id: string | null
+          total_recipients: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          failed_count?: number
+          id?: string
+          name: string
+          sent_at?: string | null
+          sent_count?: number
+          status?: string
+          tag_filter?: string | null
+          template_id?: string | null
+          total_recipients?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          failed_count?: number
+          id?: string
+          name?: string
+          sent_at?: string | null
+          sent_count?: number
+          status?: string
+          tag_filter?: string | null
+          template_id?: string | null
+          total_recipients?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_campaigns_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sends: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          recipient_email: string
+          recipient_name: string | null
+          status: string
+          template_id: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          recipient_email: string
+          recipient_name?: string | null
+          status?: string
+          template_id?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          recipient_email?: string
+          recipient_name?: string | null
+          status?: string
+          template_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sends_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "email_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_templates: {
+        Row: {
+          created_at: string
+          html_body: string
+          id: string
+          name: string
+          subject: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          html_body?: string
+          id?: string
+          name: string
+          subject?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          html_body?: string
+          id?: string
+          name?: string
+          subject?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -681,6 +815,45 @@ export type Database = {
           remote_jid?: string
           title?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      smtp_config: {
+        Row: {
+          created_at: string
+          from_email: string
+          from_name: string
+          host: string
+          id: string
+          password: string
+          port: number
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          host?: string
+          id?: string
+          password?: string
+          port?: number
+          updated_at?: string
+          user_id: string
+          username?: string
+        }
+        Update: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          host?: string
+          id?: string
+          password?: string
+          port?: number
+          updated_at?: string
+          user_id?: string
+          username?: string
         }
         Relationships: []
       }

@@ -6,6 +6,7 @@ import {
   LogOut,
   Send,
   Bell,
+  Mail,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -56,6 +57,7 @@ export function AppSidebar() {
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Contatos", url: "/contacts", icon: Users },
     { title: "Fluxos", url: "/chatbot", icon: Workflow },
+    { title: "E-mail", url: "/email", icon: Mail },
     { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
 

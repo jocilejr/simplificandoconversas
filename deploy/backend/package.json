@@ -13,6 +13,7 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.16",
     "pg": "^8.13.1"
   },
   "devDependencies": {
@@ -21,6 +22,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.0",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.10",
     "typescript": "^5.7.2"
   }
