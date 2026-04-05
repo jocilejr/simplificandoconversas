@@ -12,6 +12,7 @@ import { lightSync } from "./routes/light-sync";
 import extensionApiRouter from "./routes/extension-api";
 import platformApiRouter from "./routes/platform-api";
 import externalWebhookRouter from "./routes/external-webhook";
+import emailRouter from "./routes/email";
 
 const app = express();
 app.use(cors());
