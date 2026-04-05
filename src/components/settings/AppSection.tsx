@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { useProfile } from "@/hooks/useProfile";
 import { useMetaPixels, type MetaPixel } from "@/hooks/useMetaPixels";
 import { Loader2, Plus, Trash2, Pencil, Check, X, Eye, EyeOff, Copy } from "lucide-react";
-import { SmtpSection } from "@/components/settings/SmtpSection";
 import { useToast } from "@/hooks/use-toast";
 
 function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
@@ -118,8 +117,6 @@ export function AppSection() {
 
   return (
     <div className="space-y-6">
-      <SmtpSection />
-
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-lg">URL Pública do App</CardTitle>
