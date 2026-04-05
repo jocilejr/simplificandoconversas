@@ -26,11 +26,12 @@ const SettingsPage = () => {
       </div>
 
       <Tabs defaultValue="connections" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="profile">Perfil</TabsTrigger>
           <TabsTrigger value="connections">Conexões</TabsTrigger>
           <TabsTrigger value="ai">IA</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
+          <TabsTrigger value="email">E-mail</TabsTrigger>
           <TabsTrigger value="app">Aplicação</TabsTrigger>
         </TabsList>
 
@@ -48,6 +49,10 @@ const SettingsPage = () => {
 
         <TabsContent value="api">
           <IntegrationApiSection />
+        </TabsContent>
+
+        <TabsContent value="email">
+          <EmailSettingsSection />
         </TabsContent>
 
         <TabsContent value="app">

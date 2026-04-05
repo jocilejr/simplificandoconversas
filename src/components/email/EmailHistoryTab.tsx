@@ -2,16 +2,15 @@ import { useState, useCallback } from "react";
 import { useEmailSends } from "@/hooks/useEmailSends";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Download, ChevronLeft, ChevronRight, Mail, MailCheck, MailX, Eye } from "lucide-react";
+import { Loader2, Download, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { format } from "date-fns";
 
 const statusColors: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
-  sent: "bg-green-500/20 text-green-700 dark:text-green-400",
-  failed: "bg-destructive/20 text-destructive",
+  pending: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
+  sent: "bg-green-500/15 text-green-700 dark:text-green-400",
+  failed: "bg-destructive/15 text-destructive",
 };
 const statusLabels: Record<string, string> = {
   pending: "Pendente", sent: "Enviado", failed: "Falhou",
@@ -22,7 +21,7 @@ export function EmailHistoryTab() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  const { sends, isLoading, stats, statsLoading } = useEmailSends({
+  const { sends, isLoading } = useEmailSends({
     status: statusFilter && statusFilter !== "__all__" ? statusFilter : undefined,
     page,
     pageSize: PAGE_SIZE,
@@ -32,10 +31,8 @@ export function EmailHistoryTab() {
     if (sends.length === 0) return;
     const headers = ["Destinatário", "Nome", "Template", "Campanha", "Status", "Data", "Erro"];
     const rows = sends.map((s: any) => [
-      s.recipient_email,
-      s.recipient_name || "",
-      s.email_templates?.name || "",
-      s.email_campaigns?.name || "",
+      s.recipient_email, s.recipient_name || "",
+      s.email_templates?.name || "", s.email_campaigns?.name || "",
       statusLabels[s.status] || s.status,
       format(new Date(s.created_at), "dd/MM/yyyy HH:mm"),
       s.error_message || "",
@@ -50,62 +47,11 @@ export function EmailHistoryTab() {
 
   return (
     <div className="space-y-4">
-      {/* Stats cards */}
-      {!statsLoading && stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <Card>
-            <CardContent className="p-3 flex items-center gap-3">
-              <Mail className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Total</p>
-                <p className="text-lg font-bold">{stats.total}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 flex items-center gap-3">
-              <MailCheck className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-xs text-muted-foreground">Enviados</p>
-                <p className="text-lg font-bold">{stats.sent}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 flex items-center gap-3">
-              <MailX className="h-5 w-5 text-destructive" />
-              <div>
-                <p className="text-xs text-muted-foreground">Falhas</p>
-                <p className="text-lg font-bold">{stats.failed}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 flex items-center gap-3">
-              <Eye className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-xs text-muted-foreground">Abertos</p>
-                <p className="text-lg font-bold">{stats.opened}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 flex items-center gap-3">
-              <Mail className="h-5 w-5 text-yellow-500" />
-              <div>
-                <p className="text-xs text-muted-foreground">Taxa Abertura</p>
-                <p className="text-lg font-bold">{stats.openRate}%</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <Select value={statusFilter || "__all__"} onValueChange={(v) => { setStatusFilter(v === "__all__" ? "" : v); setPage(0); }}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filtrar por status" />
+          <SelectTrigger className="w-[160px] bg-card">
+            <SelectValue placeholder="Filtrar status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">Todos</SelectItem>
@@ -115,43 +61,48 @@ export function EmailHistoryTab() {
           </SelectContent>
         </Select>
 
-        <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={sends.length === 0}>
-          <Download className="h-4 w-4 mr-1" /> Exportar CSV
+        <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={sends.length === 0} className="gap-1.5">
+          <Download className="h-3.5 w-3.5" /> CSV
         </Button>
 
-        <p className="text-xs text-muted-foreground ml-auto">Atualiza a cada 30s</p>
+        <p className="text-[10px] text-muted-foreground ml-auto flex items-center gap-1">
+          <Clock className="h-3 w-3" /> Atualiza a cada 30s
+        </p>
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : sends.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">Nenhum envio encontrado.</p>
+        <div className="text-center py-16">
+          <Clock className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+          <p className="text-sm text-muted-foreground">Nenhum envio encontrado</p>
+        </div>
       ) : (
         <>
-          <div className="rounded-md border">
+          <div className="rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Destinatário</TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead>Campanha</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Aberto</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Erro</TableHead>
+                <TableRow className="bg-muted/30">
+                  <TableHead className="text-xs font-semibold">Destinatário</TableHead>
+                  <TableHead className="text-xs font-semibold">Template</TableHead>
+                  <TableHead className="text-xs font-semibold">Campanha</TableHead>
+                  <TableHead className="text-xs font-semibold">Status</TableHead>
+                  <TableHead className="text-xs font-semibold">Aberto</TableHead>
+                  <TableHead className="text-xs font-semibold">Data</TableHead>
+                  <TableHead className="text-xs font-semibold">Erro</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sends.map((s: any) => (
-                  <TableRow key={s.id}>
+                  <TableRow key={s.id} className="hover:bg-muted/20">
                     <TableCell>
                       <div>
-                        <p className="text-sm">{s.recipient_email}</p>
-                        {s.recipient_name && <p className="text-xs text-muted-foreground">{s.recipient_name}</p>}
+                        <p className="text-sm text-foreground">{s.recipient_email}</p>
+                        {s.recipient_name && <p className="text-[10px] text-muted-foreground">{s.recipient_name}</p>}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{s.email_templates?.name || "—"}</TableCell>
-                    <TableCell className="text-sm">{s.email_campaigns?.name || "—"}</TableCell>
+                    <TableCell className="text-xs">{s.email_templates?.name || "—"}</TableCell>
+                    <TableCell className="text-xs">{s.email_campaigns?.name || "—"}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={statusColors[s.status] || ""}>
                         {statusLabels[s.status] || s.status}
@@ -163,7 +114,7 @@ export function EmailHistoryTab() {
                     <TableCell className="text-xs text-muted-foreground">
                       {format(new Date(s.created_at), "dd/MM/yy HH:mm")}
                     </TableCell>
-                    <TableCell className="text-xs text-destructive max-w-[200px] truncate">
+                    <TableCell className="text-xs text-destructive max-w-[180px] truncate">
                       {s.error_message || "—"}
                     </TableCell>
                   </TableRow>
@@ -172,7 +123,6 @@ export function EmailHistoryTab() {
             </Table>
           </div>
 
-          {/* Pagination */}
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">Página {page + 1}</p>
             <div className="flex gap-1">

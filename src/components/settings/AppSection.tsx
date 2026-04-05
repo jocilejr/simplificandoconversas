@@ -117,8 +117,6 @@ export function AppSection() {
 
   return (
     <div className="space-y-6">
-      <SmtpSection />
-
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-lg">URL Pública do App</CardTitle>
