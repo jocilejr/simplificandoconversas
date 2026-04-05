@@ -1,63 +1,150 @@
 
-Problema confirmado: o deploy da VPS está com o código novo, mas o banco local da VPS não recebeu a criação da tabela `api_request_logs`.
 
-O que verifiquei no código:
-- `deploy/backend/src/routes/platform-api.ts` já chama `logApiRequest(...)`
-- `deploy/backend/src/routes/external-webhook.ts` também tenta inserir em `api_request_logs`
-- a migration `supabase/migrations/20260401041948_8e266261-7f7a-4fb8-a03a-1e3ff54364b8.sql` existe
-- porém o script `deploy/update.sh` não executa as migrations da pasta `supabase/migrations/`; ele só roda um bloco SQL fixo e esse bloco não inclui `api_request_logs`
+# Plano: Sistema de E-mail Marketing + Transacional (Hostinger SMTP)
 
-Conclusão:
-- o `bash update.sh` recompila o backend, então `logApiRequest` existe no container
-- mas a tabela nunca foi criada na VPS
-- por isso os inserts de log falham silenciosamente e nada aparece na aba API
+## Visão geral
 
-Plano de correção
+Criar uma página "E-mail" no app com capacidade de:
+- Criar e salvar templates de e-mail (editor visual)
+- Enviar e-mails individuais (transacionais) e em massa (campanhas)
+- Selecionar destinatários por tags dos contatos
+- Acompanhar histórico de envios
+- Tudo via SMTP da Hostinger, processado no backend Express da VPS
 
-1. Corrigir o deploy da VPS
-- Atualizar `deploy/update.sh` para incluir a criação de `public.api_request_logs`
-- Incluir também:
-  - `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`
-  - policy de `SELECT` para o usuário autenticado
-  - índice `user_id, created_at DESC`
-- Adicionar uma verificação explícita pós-migração, igual já existe para `meta_pixels`, mas para `api_request_logs`
+## Pré-requisitos do usuário
 
-2. Melhorar o diagnóstico no backend
-- Em `logApiRequest`, manter o `catch`, mas logar o erro de forma mais específica
-- Se a tabela não existir, o backend deve imprimir algo claro como falha ao inserir em `api_request_logs`
-- Fazer o mesmo padrão no `external-webhook.ts`, que hoje também falha em silêncio na prática
+Você vai precisar configurar nas variáveis de ambiente do deploy (`.env`):
+- `SMTP_HOST` (ex: `smtp.hostinger.com`)
+- `SMTP_PORT` (ex: `465`)
+- `SMTP_USER` (seu e-mail Hostinger)
+- `SMTP_PASS` (senha do e-mail)
+- `SMTP_FROM` (ex: `contato@seudominio.com`)
 
-3. Ajustar a UX do painel de logs
-- Em `src/components/settings/ApiLogsPanel.tsx`, capturar e mostrar erro de leitura quando a tabela não existir ou a query falhar
-- Exibir estado de erro visível no card, em vez de simplesmente parecer que “não há logs”
+---
 
-4. Validação na sua VPS
-Depois da implementação, você vai rodar na VPS:
-```bash
-cd /root/simplificandoconversas/deploy
-bash update.sh
+## 1. Banco de dados -- 3 novas tabelas
 
-docker compose exec postgres psql -U postgres -d postgres -c "\d public.api_request_logs"
-docker compose exec postgres psql -U postgres -d postgres -c "SELECT count(*) FROM public.api_request_logs;"
+### `email_templates`
+- `id`, `user_id`, `name`, `subject`, `html_body`, `created_at`, `updated_at`
+
+### `email_campaigns`
+- `id`, `user_id`, `name`, `template_id` (FK), `tag_filter` (text, tag usada para filtrar contatos), `status` (draft/sending/sent/failed), `total_recipients`, `sent_count`, `failed_count`, `created_at`, `sent_at`
+
+### `email_sends`
+- `id`, `user_id`, `campaign_id` (FK nullable), `template_id` (FK), `recipient_email`, `recipient_name`, `status` (pending/sent/failed), `error_message`, `created_at`
+
+RLS: todas com policy `user_id = auth.uid()` para ALL.
+Incluir no `deploy/update.sh` e `deploy/init-db.sql`.
+
+## 2. Backend Express -- nova rota `/api/email`
+
+Adicionar `nodemailer` ao `deploy/backend/package.json`.
+
+### Endpoints:
+
+- **POST `/api/email/send`** -- Envio individual
+  - Body: `{ to, subject, html, userId }`
+  - Usa Nodemailer com SMTP Hostinger
+  - Registra em `email_sends`
+
+- **POST `/api/email/campaign`** -- Disparo em massa
+  - Body: `{ campaignId, userId }`
+  - Busca contatos pela tag da campanha (da tabela `conversations` + `contact_tags`)
+  - Filtra contatos que tenham `customer_email` ou extrai do campo disponível
+  - Envia sequencialmente com delay configurável (evitar bloqueio SMTP)
+  - Atualiza `email_campaigns.sent_count` e `email_campaigns.status`
+  - Registra cada envio em `email_sends`
+
+### Importante:
+- Delay de 2-5 segundos entre envios para não ser bloqueado pelo SMTP
+- Tratamento de erro por destinatário (não para a campanha toda)
+
+## 3. Frontend -- nova página `/email`
+
+### Sidebar
+- Adicionar item "E-mail" com ícone `Mail` no menu principal
+
+### Página com 3 abas:
+
+**Aba "Templates"**
+- Lista de templates salvos
+- Botão "Novo Template"
+- Editor: nome, assunto, corpo HTML (textarea com preview)
+- CRUD completo via Supabase client
+
+**Aba "Campanhas"**
+- Lista de campanhas com status (badge colorido)
+- Botão "Nova Campanha"
+- Formulário: nome, selecionar template, selecionar tag de filtro
+- Preview de quantos contatos serão atingidos
+- Botão "Enviar Campanha" com confirmação
+- Chamada ao backend `/api/email/campaign`
+
+**Aba "Histórico"**
+- Tabela de envios recentes (`email_sends`)
+- Colunas: Destinatário, Template, Status, Data
+- Filtro por status e por campanha
+- Auto-refresh a cada 30s
+
+## 4. Campo de e-mail nos contatos
+
+A tabela `conversations` não tem campo de e-mail. Duas opções:
+- Adicionar coluna `email` na tabela `conversations`
+- Usar a tabela `transactions` que já tem `customer_email`
+
+Vou adicionar `email` à tabela `conversations` para ser mais direto. Isso permite editar o e-mail na página de Contatos.
+
+## 5. Configuração SMTP nas Settings
+
+Na aba "Aplicação" das configurações, adicionar seção "E-mail SMTP":
+- Campos: Host, Porta, Usuário, Senha, E-mail remetente
+- Salvar na tabela `profiles` (novas colunas) ou em uma tabela `smtp_config` dedicada
+- O backend lê essas configurações do banco ao enviar
+
+Melhor: criar tabela `smtp_config` (`id`, `user_id`, `host`, `port`, `username`, `password`, `from_email`, `from_name`).
+
+---
+
+## Arquivos a criar/modificar
+
+| Arquivo | Ação |
+|---|---|
+| `deploy/init-db.sql` | Adicionar tabelas `email_templates`, `email_campaigns`, `email_sends`, `smtp_config`, coluna `email` em `conversations` |
+| `deploy/update.sh` | Incluir migrations das novas tabelas |
+| `deploy/backend/package.json` | Adicionar `nodemailer` |
+| `deploy/backend/src/routes/email.ts` | Nova rota com endpoints send + campaign |
+| `deploy/backend/src/index.ts` | Registrar rota `/api/email` |
+| `src/pages/EmailPage.tsx` | Nova página com 3 abas |
+| `src/hooks/useEmailTemplates.ts` | CRUD de templates |
+| `src/hooks/useEmailCampaigns.ts` | Gestão de campanhas |
+| `src/hooks/useEmailSends.ts` | Histórico de envios |
+| `src/hooks/useSmtpConfig.ts` | Config SMTP |
+| `src/components/AppSidebar.tsx` | Adicionar item "E-mail" |
+| `src/App.tsx` | Adicionar rota `/email` |
+| `src/components/settings/AppSection.tsx` | Seção de configuração SMTP |
+| Migração Supabase | Tabelas + RLS + coluna email |
+
+## Fluxo resumido
+
+```text
+Usuário configura SMTP (Settings)
+         │
+         ▼
+Cria template de e-mail (aba Templates)
+         │
+         ▼
+Cria campanha: escolhe template + tag (aba Campanhas)
+         │
+         ▼
+Clica "Enviar" → backend busca contatos com aquela tag
+         │
+         ▼
+Backend envia via SMTP com delay entre cada um
+         │
+         ▼
+Cada envio registrado em email_sends
+         │
+         ▼
+Histórico visível na aba Histórico
 ```
 
-5. Teste ponta a ponta na VPS
-- Fazer uma chamada real para `/api/platform/send-message`
-- Conferir:
-```bash
-docker compose logs backend --tail=100 | grep -i "logApiRequest\|api_request_logs\|send-message"
-docker compose exec postgres psql -U postgres -d postgres -c "SELECT method, path, status_code, created_at FROM public.api_request_logs ORDER BY created_at DESC LIMIT 10;"
-```
-- Depois abrir a aba API no app da VPS e validar se os registros aparecem
-
-Detalhes técnicos
-- A causa não é RLS do frontend
-- A causa também não é falta de deploy do backend
-- A causa é exclusivamente o fluxo de migração da VPS: o arquivo `supabase/migrations/...sql` existe no repositório, mas o `update.sh` não o aplica
-- Ou seja: hoje seu processo de deploy atualiza código, mas não sincroniza todas as mudanças de schema
-
-Arquivos a ajustar
-- `deploy/update.sh`
-- `deploy/backend/src/routes/platform-api.ts`
-- `deploy/backend/src/routes/external-webhook.ts`
-- `src/components/settings/ApiLogsPanel.tsx`
