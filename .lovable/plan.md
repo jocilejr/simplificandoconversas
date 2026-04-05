@@ -1,40 +1,66 @@
 
 
-# Correção: Tabelas de e-mail faltando no update.sh
+# Plano: Mover config de e-mail para Configurações + Redesign completo da página de E-mail
 
-## Problema
-O `update.sh` tenta criar `email_follow_ups` (que referencia `email_campaigns`), `email_events` (que referencia `email_sends`), e faz `ALTER TABLE` em `smtp_config`, `email_campaigns`, `email_sends` — mas **nenhuma dessas tabelas base é criada no update.sh**. Elas só existem no `init-db.sql`, que só roda na instalação inicial.
+## Resumo
+Mover SMTP e Webhooks para a página de Configurações (nova aba "E-mail") e redesenhar completamente a página /email com layout profissional, eliminando botões genéricos e melhorando o editor de templates.
 
-## Solução
-Adicionar os CREATE TABLE das 4 tabelas base **antes** das tabelas que as referenciam no `update.sh`:
+---
 
-1. `email_templates` (sem dependências)
-2. `smtp_config` (sem dependências) 
-3. `email_campaigns` (referencia `email_templates` e `smtp_config`)
-4. `email_sends` (referencia `email_campaigns` e `email_templates`)
+## 1. Configurações — Nova aba "E-mail"
 
-Depois disso, as tabelas existentes no script (`email_follow_ups`, `email_follow_up_sends`, `email_events`, `email_suppressions`) e os ALTER TABLEs vão funcionar.
+Adicionar uma 6a aba "E-mail" nas Configurações que conterá:
+- **SMTP** (mover `SmtpSection` da aba "Aplicação" para cá)
+- **Webhooks** (mover conteúdo de `EmailWebhooksTab` para cá, com documentação de endpoints e logs)
+- **Chave de API** — mostrar a API Key existente (da `platform_connections`) com aviso de que é usada no header `X-API-Key` dos webhooks
 
-Também adicionar a coluna `email` na tabela `conversations` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`).
+Remover `SmtpSection` da `AppSection`.
 
-## Arquivo modificado
-- `deploy/update.sh` — inserir os 4 blocos CREATE TABLE + RLS + GRANT entre a seção `api_request_logs` (linha 167) e `email_follow_ups` (linha 169)
+**Arquivo**: `src/components/settings/EmailSettingsSection.tsx` (novo)
+**Modificar**: `SettingsPage.tsx` (adicionar aba), `AppSection.tsx` (remover SmtpSection)
 
-## Ordem final das migrations no update.sh
-```text
-... (tabelas existentes) ...
-api_request_logs
-email_templates        ← NOVO
-smtp_config            ← NOVO  
-email_campaigns        ← NOVO
-email_sends            ← NOVO
-conversations.email    ← NOVO (ALTER TABLE ADD COLUMN)
-email_follow_ups       (já existe)
-email_follow_up_sends  (já existe)
-email_events           (já existe)
-email_suppressions     (já existe)
-ALTER smtp_config      (já existe)
-ALTER email_campaigns  (já existe)
-ALTER email_sends      (já existe)
-```
+---
+
+## 2. Redesign da página /email
+
+### Cabeçalho
+- Título maior com subtítulo descritivo
+- Cards de métricas (stats) no topo da página (não dentro da aba Histórico)
+
+### Aba Templates — Redesign completo
+- **Lista de templates**: cards com preview thumbnail do HTML (mini iframe), nome, assunto, data de criação
+- **Editor**: layout mais polido com:
+  - Header com nome/assunto em inputs limpos (sem labels pesados)
+  - Barra de ferramentas mais visual com ícones maiores e tooltips
+  - Editor de código com fundo escuro e fonte mono
+  - Preview com borda e sombra, toggle desktop/mobile mais visível
+  - Botões de ação com cores distintas (Salvar = primary, Preview = outline, Cancelar = ghost)
+
+### Aba Campanhas — Melhorias visuais
+- Cards de campanha mais elaborados com progress bar para envio
+- Status badges com ícones
+- Formulário de criação mais organizado com seções visuais
+
+### Aba Histórico — Mover stats para o header da página
+- Remover cards de stats da aba (já estarão no topo)
+- Tabela com estilo mais limpo
+
+### Remover aba "Webhooks" da página /email
+- Já estará nas Configurações
+
+**Resultado**: página /email fica com 3 abas: Templates, Campanhas, Histórico
+
+---
+
+## 3. Arquivos a criar/modificar
+
+| Arquivo | Ação |
+|---|---|
+| `src/components/settings/EmailSettingsSection.tsx` | **Novo** — SMTP + Webhooks + API Key |
+| `src/pages/SettingsPage.tsx` | Adicionar aba "E-mail" (6 colunas no grid) |
+| `src/components/settings/AppSection.tsx` | Remover import e uso de `SmtpSection` |
+| `src/pages/EmailPage.tsx` | Redesign: stats no topo, remover aba Webhooks |
+| `src/components/email/EmailTemplatesTab.tsx` | Redesign completo do layout |
+| `src/components/email/EmailCampaignsTab.tsx` | Melhorias visuais (progress bar, badges) |
+| `src/components/email/EmailHistoryTab.tsx` | Remover stats (movidos para header) |
 
