@@ -166,6 +166,94 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_api_logs_user_created ON public.api_request_logs(user_id, created_at DESC);
 GRANT ALL ON public.api_request_logs TO anon, authenticated, service_role;
 
+-- Email Templates (base table, no dependencies)
+CREATE TABLE IF NOT EXISTS public.email_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  name text NOT NULL,
+  subject text NOT NULL DEFAULT '',
+  html_body text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_templates' AND policyname = 'Users can manage own email templates') THEN
+    CREATE POLICY "Users can manage own email templates" ON public.email_templates FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.email_templates TO anon, authenticated, service_role;
+
+-- SMTP Config (base table, no dependencies)
+CREATE TABLE IF NOT EXISTS public.smtp_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  host text NOT NULL DEFAULT '',
+  port integer NOT NULL DEFAULT 465,
+  username text NOT NULL DEFAULT '',
+  password text NOT NULL DEFAULT '',
+  from_email text NOT NULL DEFAULT '',
+  from_name text NOT NULL DEFAULT '',
+  label text NOT NULL DEFAULT 'Principal',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.smtp_config ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'smtp_config' AND policyname = 'Users can manage own smtp config') THEN
+    CREATE POLICY "Users can manage own smtp config" ON public.smtp_config FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.smtp_config TO anon, authenticated, service_role;
+
+-- Email Campaigns (references email_templates, smtp_config)
+CREATE TABLE IF NOT EXISTS public.email_campaigns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  name text NOT NULL,
+  template_id uuid REFERENCES public.email_templates(id) ON DELETE SET NULL,
+  smtp_config_id uuid REFERENCES public.smtp_config(id) ON DELETE SET NULL,
+  tag_filter text,
+  status text NOT NULL DEFAULT 'draft',
+  total_recipients integer NOT NULL DEFAULT 0,
+  sent_count integer NOT NULL DEFAULT 0,
+  failed_count integer NOT NULL DEFAULT 0,
+  opened_count integer NOT NULL DEFAULT 0,
+  sent_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.email_campaigns ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_campaigns' AND policyname = 'Users can manage own email campaigns') THEN
+    CREATE POLICY "Users can manage own email campaigns" ON public.email_campaigns FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.email_campaigns TO anon, authenticated, service_role;
+
+-- Email Sends (references email_campaigns, email_templates)
+CREATE TABLE IF NOT EXISTS public.email_sends (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  campaign_id uuid REFERENCES public.email_campaigns(id) ON DELETE SET NULL,
+  template_id uuid REFERENCES public.email_templates(id) ON DELETE SET NULL,
+  recipient_email text NOT NULL,
+  recipient_name text,
+  status text NOT NULL DEFAULT 'pending',
+  error_message text,
+  opened_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.email_sends ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_sends' AND policyname = 'Users can manage own email sends') THEN
+    CREATE POLICY "Users can manage own email sends" ON public.email_sends FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.email_sends TO anon, authenticated, service_role;
+
+-- Add email column to conversations
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS email text;
+
 -- Email Follow-ups
 CREATE TABLE IF NOT EXISTS public.email_follow_ups (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
