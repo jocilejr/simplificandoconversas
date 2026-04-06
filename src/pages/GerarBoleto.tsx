@@ -33,7 +33,6 @@ const GerarBoleto = () => {
   const [form, setForm] = useState({
     customer_name: "",
     customer_phone: "",
-    customer_email: "",
     customer_document: "",
     amount: "",
     description: "",
