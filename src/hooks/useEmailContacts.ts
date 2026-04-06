@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { normalizeEmail } from "@/lib/emailNormalizer";
 
 export interface EmailContact {
   id: string;
@@ -41,10 +42,14 @@ export function useEmailContacts() {
 
   const addContact = async (email: string, name?: string, tags?: string[]) => {
     if (!user) return;
+    const result = normalizeEmail(email);
+    if (result.corrected) {
+      toast.info(`E-mail corrigido: ${result.original} → ${result.email}`);
+    }
     const { error } = await supabase.from("email_contacts").upsert(
       {
         user_id: user.id,
-        email: email.toLowerCase().trim(),
+        email: result.email,
         name: name || null,
         tags: tags || [],
         source: "manual",
@@ -95,11 +100,15 @@ export function useEmailContacts() {
       return;
     }
 
+    let correctedCount = 0;
     const rows = lines.slice(1).map((line) => {
       const parts = line.split(sep).map((v) => v.trim().replace(/^"|"$/g, ""));
+      const rawEmail = parts[emailIdx]?.trim() || "";
+      const result = normalizeEmail(rawEmail);
+      if (result.corrected) correctedCount++;
       return {
         user_id: user.id,
-        email: parts[emailIdx]?.toLowerCase().trim(),
+        email: result.email,
         name: nameIdx >= 0 ? parts[nameIdx] || null : null,
         tags: [] as string[],
         source: "import" as const,
@@ -120,7 +129,8 @@ export function useEmailContacts() {
       toast.error("Erro ao importar: " + error.message);
       return;
     }
-    toast.success(`${rows.length} contatos importados!`);
+    const corrMsg = correctedCount > 0 ? ` (${correctedCount} e-mails corrigidos)` : "";
+    toast.success(`${rows.length} contatos importados!${corrMsg}`);
     fetchContacts();
   };
 

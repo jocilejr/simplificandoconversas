@@ -4,6 +4,71 @@ import nodemailer from "nodemailer";
 
 const router = Router();
 
+// ─── Email normalizer (deterministic domain typo dictionary) ────────────────
+
+const DOMAIN_TYPOS: Record<string, string> = {
+  "gemil.com":"gmail.com","gmial.com":"gmail.com","gmai.com":"gmail.com","gnail.com":"gmail.com",
+  "gamil.com":"gmail.com","gmal.com":"gmail.com","gmaill.com":"gmail.com","gmail.com.br":"gmail.com",
+  "gmail.co":"gmail.com","gmail.cm":"gmail.com","gmail.om":"gmail.com","gmail.con":"gmail.com",
+  "gmail.comm":"gmail.com","gmail.coom":"gmail.com","gmaio.com":"gmail.com","gmaul.com":"gmail.com",
+  "gmeil.com":"gmail.com","gmil.com":"gmail.com","gimail.com":"gmail.com","gemail.com":"gmail.com",
+  "gmiall.com":"gmail.com","gamail.com":"gmail.com","gmsil.com":"gmail.com","gmaiil.com":"gmail.com",
+  "ggmail.com":"gmail.com",
+  "hotmal.com":"hotmail.com","hotmial.com":"hotmail.com","hotmai.com":"hotmail.com",
+  "hotmaill.com":"hotmail.com","hotmeil.com":"hotmail.com","hotmil.com":"hotmail.com",
+  "hotamail.com":"hotmail.com","hotmali.com":"hotmail.com","hotmall.com":"hotmail.com",
+  "hotmaol.com":"hotmail.com","homail.com":"hotmail.com","hhotmail.com":"hotmail.com",
+  "hotamil.com":"hotmail.com","hotmail.co":"hotmail.com","hotmail.con":"hotmail.com",
+  "hotmail.cm":"hotmail.com","hotmail.comm":"hotmail.com",
+  "outlok.com":"outlook.com","outllook.com":"outlook.com","outloock.com":"outlook.com",
+  "outlool.com":"outlook.com","outloook.com":"outlook.com","outlookk.com":"outlook.com",
+  "outlook.co":"outlook.com","outlook.con":"outlook.com","outlook.cm":"outlook.com",
+  "outlook.comm":"outlook.com","outolok.com":"outlook.com","oultook.com":"outlook.com",
+  "outiook.com":"outlook.com","outook.com":"outlook.com",
+  "yaho.com":"yahoo.com","yahooo.com":"yahoo.com","yahho.com":"yahoo.com",
+  "yahoou.com":"yahoo.com","yhaoo.com":"yahoo.com","yahoo.co":"yahoo.com",
+  "yahoo.con":"yahoo.com","yahoo.cm":"yahoo.com","yahoo.comm":"yahoo.com",
+  "yaho.com.br":"yahoo.com.br",
+  "iclould.com":"icloud.com","iclod.com":"icloud.com","icloude.com":"icloud.com",
+  "icloud.co":"icloud.com","icloud.con":"icloud.com",
+  "live.co":"live.com","live.con":"live.com","live.cm":"live.com",
+  "uol.com":"uol.com.br","uol.con.br":"uol.com.br","uol.co.br":"uol.com.br","uol.cm.br":"uol.com.br",
+  "bol.com":"bol.com.br","bol.con.br":"bol.com.br",
+  "terra.com":"terra.com.br","terra.con.br":"terra.com.br",
+  "ig.com":"ig.com.br","ig.con.br":"ig.com.br",
+  "globo.co":"globo.com","globo.con":"globo.com","globomail.co":"globomail.com",
+  "protonmail.co":"protonmail.com","protonmail.con":"protonmail.com","protonmal.com":"protonmail.com",
+};
+const INCOMPLETE_DOMAINS: Record<string,string> = {
+  gmail:"gmail.com",hotmail:"hotmail.com",outlook:"outlook.com",yahoo:"yahoo.com",
+  icloud:"icloud.com",live:"live.com",uol:"uol.com.br",bol:"bol.com.br",
+  terra:"terra.com.br",ig:"ig.com.br",globo:"globo.com",protonmail:"protonmail.com",globomail:"globomail.com",
+};
+const KNOWN_DOMAINS = ["gmail.com","hotmail.com","hotmail.com.br","outlook.com","outlook.com.br","yahoo.com","yahoo.com.br","icloud.com","live.com","uol.com.br","bol.com.br","terra.com.br","ig.com.br","globo.com","globomail.com","protonmail.com"];
+
+function normalizeEmail(input: string): { email: string; corrected: boolean; original: string } {
+  const original = input.trim().toLowerCase();
+  if (!original) return { email: original, corrected: false, original };
+  let localPart: string, domain: string;
+  if (original.includes("@")) {
+    const i = original.indexOf("@");
+    localPart = original.substring(0, i);
+    domain = original.substring(i + 1);
+  } else {
+    let found: string | null = null;
+    for (const d of KNOWN_DOMAINS) { if (original.endsWith(d) && original.length > d.length) { found = d; break; } }
+    if (!found) { for (const [t] of Object.entries(DOMAIN_TYPOS)) { if (original.endsWith(t) && original.length > t.length) { found = t; break; } } }
+    if (found) { localPart = original.substring(0, original.length - found.length); domain = found; }
+    else return { email: original, corrected: false, original };
+  }
+  if (!localPart || !domain) return { email: original, corrected: false, original };
+  let corrected = !original.includes("@");
+  let cd = domain;
+  if (DOMAIN_TYPOS[domain]) { cd = DOMAIN_TYPOS[domain]; corrected = true; }
+  if (!cd.includes(".") && INCOMPLETE_DOMAINS[cd]) { cd = INCOMPLETE_DOMAINS[cd]; corrected = true; }
+  return { email: `${localPart}@${cd}`, corrected, original };
+}
+
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -610,12 +675,17 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         const { email: regEmail, name: regName, tags: regTags } = data || {};
         if (!regEmail) return res.status(400).json({ error: "register_email requer: email" });
 
+        const normalized = normalizeEmail(regEmail);
+        if (normalized.corrected) {
+          console.log(`[email/webhook] E-mail corrigido: ${normalized.original} → ${normalized.email}`);
+        }
+
         const { data: contact, error: upsertErr } = await supabase
           .from("email_contacts")
           .upsert(
             {
               user_id: userId,
-              email: regEmail.toLowerCase().trim(),
+              email: normalized.email,
               name: regName || null,
               tags: regTags || [],
               source: "webhook",
@@ -627,7 +697,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .single();
 
         if (upsertErr) return res.status(500).json({ error: upsertErr.message });
-        return res.json({ ok: true, contactId: contact?.id });
+        return res.json({ ok: true, contactId: contact?.id, corrected: normalized.corrected, email: normalized.email });
       }
 
       default:
