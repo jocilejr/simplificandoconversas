@@ -3,9 +3,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmailTemplatesTab } from "@/components/email/EmailTemplatesTab";
 import { EmailCampaignsTab } from "@/components/email/EmailCampaignsTab";
 import { EmailHistoryTab } from "@/components/email/EmailHistoryTab";
+import { EmailContactsTab } from "@/components/email/EmailContactsTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEmailSends } from "@/hooks/useEmailSends";
-import { Mail, MailCheck, MailX, Eye, TrendingUp, FileText, Megaphone, Clock } from "lucide-react";
+import { Mail, MailCheck, MailX, Eye, TrendingUp, FileText, Megaphone, Clock, Users } from "lucide-react";
 
 export default function EmailPage() {
   const [activeTab, setActiveTab] = useState("templates");
