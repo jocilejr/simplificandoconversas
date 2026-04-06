@@ -97,6 +97,9 @@ export default function EmailPage() {
           <TabsTrigger value="campaigns" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Megaphone className="h-3.5 w-3.5" /> Campanhas
           </TabsTrigger>
+          <TabsTrigger value="contacts" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <Users className="h-3.5 w-3.5" /> Contatos
+          </TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Clock className="h-3.5 w-3.5" /> Histórico
           </TabsTrigger>
