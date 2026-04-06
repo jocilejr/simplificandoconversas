@@ -7,6 +7,14 @@ import {
   Send,
   Bell,
   Mail,
+  Receipt,
+  UserCircle,
+  RefreshCw,
+  FileText,
+  UsersRound,
+  Crown,
+  Package,
+  LinkIcon,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -61,6 +69,17 @@ export function AppSidebar() {
     { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
 
+  const financeItems = [
+    { title: "Transações", url: "/transacoes", icon: Receipt },
+    { title: "Clientes", url: "/clientes-financeiro", icon: UserCircle },
+    { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
+    { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
+    { title: "Grupos", url: "/grupos", icon: UsersRound },
+    { title: "Área de Membros", url: "/area-membros", icon: Crown },
+    { title: "Entrega Digital", url: "/entrega", icon: Package },
+    { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon },
+  ];
+
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="p-5">
@@ -82,6 +101,37 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="space-y-0.5">
               {mainItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    className="h-10 rounded-lg transition-all duration-200"
+                  >
+                    <NavLink
+                      to={item.url}
+                      end
+                      className="hover:bg-sidebar-accent/80"
+                      activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {!collapsed && <span className="text-sm">{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <Separator className="my-2 opacity-50" />
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-1">
+            Financeiro
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-0.5">
+              {financeItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild

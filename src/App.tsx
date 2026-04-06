@@ -16,6 +16,14 @@ import Reminders from "./pages/Reminders";
 import EmailPage from "./pages/EmailPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
+import Transacoes from "./pages/Transacoes";
+import ClientesFinanceiro from "./pages/ClientesFinanceiro";
+import RecuperacaoBoletos from "./pages/RecuperacaoBoletos";
+import GerarBoleto from "./pages/GerarBoleto";
+import GruposPage from "./pages/GruposPage";
+import AreaMembros from "./pages/AreaMembros";
+import EntregaDigital from "./pages/EntregaDigital";
+import LinksUteis from "./pages/LinksUteis";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +46,14 @@ const App = () => (
               <Route path="/email" element={<EmailPage />} />
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/transacoes" element={<Transacoes />} />
+              <Route path="/clientes-financeiro" element={<ClientesFinanceiro />} />
+              <Route path="/recuperacao" element={<RecuperacaoBoletos />} />
+              <Route path="/gerar-boleto" element={<GerarBoleto />} />
+              <Route path="/grupos" element={<GruposPage />} />
+              <Route path="/area-membros" element={<AreaMembros />} />
+              <Route path="/entrega" element={<EntregaDigital />} />
+              <Route path="/links-uteis" element={<LinksUteis />} />
             </Route>
           </Route>
           <Route path="*" element={<NotFound />} />
