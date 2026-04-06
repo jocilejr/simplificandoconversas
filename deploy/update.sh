@@ -335,6 +335,7 @@ ALTER TABLE public.smtp_config ADD COLUMN IF NOT EXISTS label text NOT NULL DEFA
 -- Alter email_campaigns: add smtp_config_id, opened_count
 ALTER TABLE public.email_campaigns ADD COLUMN IF NOT EXISTS smtp_config_id uuid REFERENCES public.smtp_config(id) ON DELETE SET NULL;
 ALTER TABLE public.email_campaigns ADD COLUMN IF NOT EXISTS opened_count integer NOT NULL DEFAULT 0;
+ALTER TABLE public.email_campaigns ADD COLUMN IF NOT EXISTS auto_send boolean NOT NULL DEFAULT false;
 
 -- Alter email_sends: add opened_at
 ALTER TABLE public.email_sends ADD COLUMN IF NOT EXISTS opened_at timestamptz;
