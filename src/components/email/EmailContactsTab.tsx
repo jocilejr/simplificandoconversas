@@ -13,15 +13,22 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Plus, Trash2, Search, Users, Loader2, Wand2, CheckCircle2, AlertCircle, PenLine, Copy, AlertTriangle,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { format } from "date-fns";
+
+const PREVIEW_LIMIT = 100;
 
 export function EmailContactsTab() {
   const {
     contacts, loading, search, setSearch,
     addContact, deleteContact, processEmails, confirmBulkImport,
     activeCount, fixEmails, fixing,
+    page, setPage, perPage, setPerPage, totalContacts, totalPages,
   } = useEmailContacts();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -30,7 +37,6 @@ export function EmailContactsTab() {
   const [newTags, setNewTags] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // Bulk import states
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -86,6 +92,9 @@ export function EmailContactsTab() {
   const duplicateCount = processed?.filter((c) => c.status === "duplicate").length ?? 0;
   const importableCount = validCount + correctedCount;
 
+  const previewItems = processed ? processed.slice(0, PREVIEW_LIMIT) : [];
+  const hasMoreItems = processed ? processed.length > PREVIEW_LIMIT : false;
+
   const sourceLabel: Record<string, string> = {
     manual: "Manual", import: "Importado", webhook: "Webhook",
   };
@@ -131,12 +140,29 @@ export function EmailContactsTab() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
-            <div className="relative">
+          {/* Search + Per Page selector */}
+          <div className="mb-4 flex items-center gap-3">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Buscar por nome ou e-mail..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Exibir:</span>
+              <Select value={String(perPage)} onValueChange={(v) => setPerPage(Number(v))}>
+                <SelectTrigger className="w-[90px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="500">500</SelectItem>
+                  <SelectItem value="0">Todos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
           ) : contacts.length === 0 ? (
@@ -146,48 +172,82 @@ export function EmailContactsTab() {
               <p className="text-sm">Adicione manualmente ou importe uma lista de e-mails.</p>
             </div>
           ) : (
-            <div className="rounded-md border border-border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>E-mail</TableHead>
-                    <TableHead>Tags</TableHead>
-                    <TableHead>Origem</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Cadastro</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {contacts.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">{c.name || "—"}</TableCell>
-                      <TableCell>{c.email}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {c.tags.map((t) => (
-                            <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">{t}</Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{sourceLabel[c.source] || c.source}</TableCell>
-                      <TableCell>
-                        <Badge variant={c.status === "active" ? "default" : "secondary"} className="text-[10px]">
-                          {c.status === "active" ? "Ativo" : "Descadastrado"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{format(new Date(c.created_at), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteContact(c.id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </TableCell>
+            <>
+              <div className="rounded-md border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>E-mail</TableHead>
+                      <TableHead>Tags</TableHead>
+                      <TableHead>Origem</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Cadastro</TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {contacts.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.name || "—"}</TableCell>
+                        <TableCell>{c.email}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {c.tags.map((t) => (
+                              <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">{t}</Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{sourceLabel[c.source] || c.source}</TableCell>
+                        <TableCell>
+                          <Badge variant={c.status === "active" ? "default" : "secondary"} className="text-[10px]">
+                            {c.status === "active" ? "Ativo" : "Descadastrado"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{format(new Date(c.created_at), "dd/MM/yyyy")}</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteContact(c.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination controls */}
+              {perPage > 0 && totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-xs text-muted-foreground">
+                    {totalContacts} contato(s) — Página {page} de {totalPages}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      Próxima <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {perPage === 0 && (
+                <div className="mt-3 text-xs text-muted-foreground">
+                  {totalContacts} contato(s) exibidos
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -239,6 +299,12 @@ export function EmailContactsTab() {
                 </div>
               </div>
 
+              {hasMoreItems && (
+                <p className="text-xs text-muted-foreground">
+                  Mostrando {PREVIEW_LIMIT} de {processed.length} — os contadores acima refletem o total.
+                </p>
+              )}
+
               <div className="flex-1 overflow-auto rounded-md border border-border">
                 <Table>
                   <TableHeader>
@@ -250,7 +316,7 @@ export function EmailContactsTab() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {processed.map((p, i) => (
+                    {previewItems.map((p, i) => (
                       <TableRow key={i} className={p.status === "invalid" || p.status === "duplicate" ? "opacity-50" : ""}>
                         <TableCell>{statusIcon(p.status)}</TableCell>
                         <TableCell className="font-mono text-xs">{p.email}</TableCell>
