@@ -48,7 +48,6 @@ const App = () => (
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/transacoes" element={<Transacoes />} />
-              <Route path="/clientes-financeiro" element={<ClientesFinanceiro />} />
               <Route path="/recuperacao" element={<RecuperacaoBoletos />} />
               <Route path="/gerar-boleto" element={<GerarBoleto />} />
               <Route path="/grupos" element={<GruposPage />} />

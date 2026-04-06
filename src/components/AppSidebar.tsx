@@ -50,7 +50,7 @@ const mainItems = [
 
 const financeItems = [
   { title: "Transações", url: "/transacoes", icon: Receipt },
-  { title: "Clientes", url: "/clientes-financeiro", icon: UserCircle },
+  
   { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
   { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
   { title: "Grupos", url: "/grupos", icon: UsersRound },
