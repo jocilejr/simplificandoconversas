@@ -42,13 +42,13 @@ import { Button } from "@/components/ui/button";
 
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Leads", url: "/leads", icon: Users },
   { title: "Fluxos", url: "/chatbot", icon: Workflow },
   { title: "E-mail", url: "/email", icon: Mail },
   { title: "Lembretes", url: "/reminders", icon: Bell },
 ];
 
 const financeItems = [
+  { title: "Leads", url: "/leads", icon: Users },
   { title: "Transações", url: "/transacoes", icon: Receipt },
   
   { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },

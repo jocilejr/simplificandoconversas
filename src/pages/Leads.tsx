@@ -3,10 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+  Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users,
+  Phone, Mail, ShoppingCart, DollarSign, Bell, ChevronRight as Arrow,
+} from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -21,6 +21,13 @@ import type { Lead } from "@/hooks/useLeads";
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
+
+const formatPhone = (jid: string, phone?: string | null) => {
+  const num = (phone || jid).replace("@s.whatsapp.net", "").replace(/\D/g, "");
+  if (num.length >= 12) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
+  if (num.length >= 10) return `(${num.slice(0, 2)}) ${num.slice(2, 7)}-${num.slice(7)}`;
+  return num;
+};
 
 const Leads = () => {
   const {
@@ -62,14 +69,9 @@ const Leads = () => {
     e.target.value = "";
   };
 
-  const formatPhone = (jid: string) => {
-    const num = jid.replace("@s.whatsapp.net", "");
-    if (num.length >= 12) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
-    return num;
-  };
-
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
@@ -85,6 +87,7 @@ const Leads = () => {
         </div>
       </div>
 
+      {/* Search + Tag Filter */}
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -122,6 +125,7 @@ const Leads = () => {
         </div>
       )}
 
+      {/* Tabs */}
       <Tabs value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v as any); setPage(1); }}>
         <TabsList>
           <TabsTrigger value="all">Todos ({counts.all})</TabsTrigger>
@@ -130,63 +134,100 @@ const Leads = () => {
         </TabsList>
       </Tabs>
 
-      <Card className="bg-card border-border">
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
-          ) : leads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Users className="h-12 w-12 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">
-                {search || tagFilter ? "Nenhum lead encontrado com esses filtros." : "Nenhum lead cadastrado ainda."}
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead className="hidden sm:table-cell">Tags</TableHead>
-                  <TableHead>Status Pgto</TableHead>
-                  <TableHead className="hidden md:table-cell">Total Pago</TableHead>
-                  <TableHead className="hidden lg:table-cell">Última mensagem</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {leads.map((l) => (
-                  <TableRow key={l.remote_jid} className="cursor-pointer" onClick={() => setSelectedLead(l)}>
-                    <TableCell className="font-medium">{l.contact_name || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{l.phone_number || formatPhone(l.remote_jid)}</TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <div className="flex gap-1 flex-wrap">
-                        {l.tags.slice(0, 3).map((t) => (
-                          <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
-                        ))}
-                        {l.tags.length > 3 && <Badge variant="outline" className="text-xs">+{l.tags.length - 3}</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {l.hasPaid ? (
-                        <Badge className="bg-green-500/10 text-green-600 border-green-500/30" variant="outline">Pagou</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground">Não pagou</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell font-mono text-sm">
-                      {l.hasPaid ? formatCurrency(l.totalPaid) : "—"}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell text-muted-foreground text-xs max-w-[200px] truncate">
-                      {l.last_message || "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Card Grid */}
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
+      ) : leads.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <Users className="h-12 w-12 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
+            {search || tagFilter ? "Nenhum lead encontrado com esses filtros." : "Nenhum lead cadastrado ainda."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {leads.map((l) => (
+            <Card
+              key={l.remote_jid}
+              className="cursor-pointer hover:border-primary/40 hover:shadow-md transition-all group"
+              onClick={() => setSelectedLead(l)}
+            >
+              <CardContent className="p-4 space-y-3">
+                {/* Name + Arrow */}
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm truncate flex-1">
+                    {l.contact_name || "Sem nome"}
+                  </h3>
+                  <Arrow className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </div>
 
+                {/* Phone */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Phone className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{formatPhone(l.remote_jid, l.phone_number)}</span>
+                </div>
+
+                {/* Email if exists */}
+                {l.customer_email && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Mail className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{l.customer_email}</span>
+                  </div>
+                )}
+
+                {/* Metrics Row */}
+                <div className="flex items-center gap-3 pt-1 border-t border-border">
+                  <div className="flex items-center gap-1" title="Pedidos pagos">
+                    <ShoppingCart className="h-3.5 w-3.5 text-green-500" />
+                    <span className="text-xs font-medium">{l.paidOrdersCount}</span>
+                  </div>
+                  <div className="flex items-center gap-1" title="Valor total pago">
+                    <DollarSign className="h-3.5 w-3.5 text-green-500" />
+                    <span className="text-xs font-mono font-medium">
+                      {l.totalPaid > 0 ? formatCurrency(l.totalPaid) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1" title="Agendamentos">
+                    <Bell className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs font-medium">{l.remindersCount}</span>
+                  </div>
+                </div>
+
+                {/* Tags */}
+                {l.tags.length > 0 && (
+                  <div className="flex gap-1 flex-wrap">
+                    {l.tags.slice(0, 3).map((t) => (
+                      <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">
+                        {t}
+                      </Badge>
+                    ))}
+                    {l.tags.length > 3 && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        +{l.tags.length - 3}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
+                {/* Payment status badge */}
+                <div>
+                  {l.hasPaid ? (
+                    <Badge className="bg-green-500/10 text-green-600 border-green-500/30 text-[10px]" variant="outline">
+                      ✅ Pagou
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                      ❌ Não pagou
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
