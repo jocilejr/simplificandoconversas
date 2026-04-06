@@ -152,7 +152,37 @@ function normalizeEmail(input: string): { email: string; status: "valid" | "corr
 
 // ─── CSV parser heurístico ─────────────────────────────────────────────────
 
-function parseCSVLine(line: string): string[] {
+function detectDelimiter(lines: string[]): string {
+  const candidates = ["\t", ",", ";", "|"];
+  const testLines = lines.slice(0, Math.min(lines.length, 10));
+
+  let bestDelim = ",";
+  let bestScore = -1;
+
+  for (const delim of candidates) {
+    const counts = testLines.map(l => l.split(delim).length);
+    const allSame = counts.every(c => c === counts[0]);
+    const colCount = counts[0];
+    if (colCount > 1 && allSame) {
+      const score = colCount * 100;
+      if (score > bestScore) { bestScore = score; bestDelim = delim; }
+    } else if (colCount > 1) {
+      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+      const variance = counts.reduce((a, b) => a + Math.abs(b - avg), 0) / counts.length;
+      const score = avg - variance;
+      if (score > bestScore) { bestScore = score; bestDelim = delim; }
+    }
+  }
+
+  return bestDelim;
+}
+
+function hasHeaderRow(firstLine: string, delimiter: string): boolean {
+  const cols = firstLine.split(delimiter).map(c => c.trim().replace(/^"|"$/g, ""));
+  return !cols.some(c => c.includes("@"));
+}
+
+function parseCSVLine(line: string, delimiter: string): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -165,7 +195,7 @@ function parseCSVLine(line: string): string[] {
       } else current += ch;
     } else {
       if (ch === '"') inQuotes = true;
-      else if (ch === "," || ch === ";") { result.push(current.trim()); current = ""; }
+      else if (ch === delimiter) { result.push(current.trim()); current = ""; }
       else current += ch;
     }
   }
@@ -175,17 +205,23 @@ function parseCSVLine(line: string): string[] {
 
 function analyzeCSVHeuristic(csvText: string) {
   const lines = csvText.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return { contacts: [], total_csv_lines: 0 };
+  if (lines.length < 1) return { contacts: [], total_csv_lines: 0 };
 
-  const header = parseCSVLine(lines[0]);
-  const dataLines = lines.slice(1);
+  const delimiter = detectDelimiter(lines);
+  const headerPresent = hasHeaderRow(lines[0], delimiter);
+
+  console.log(`[analyze-csv] Delimiter: ${JSON.stringify(delimiter)}, header: ${headerPresent}, lines: ${lines.length}`);
+
+  const dataLines = headerPresent ? lines.slice(1) : lines;
+  const headerLine = headerPresent ? lines[0] : null;
+  const numCols = parseCSVLine(dataLines[0] || (headerLine ?? ""), delimiter).length;
 
   const sampleSize = Math.min(dataLines.length, 50);
-  const colScores = header.map(() => ({ emailScore: 0, nameScore: 0, total: 0 }));
+  const colScores = Array.from({ length: numCols }, () => ({ emailScore: 0, nameScore: 0, total: 0 }));
 
   for (let i = 0; i < sampleSize; i++) {
-    const cols = parseCSVLine(dataLines[i]);
-    for (let c = 0; c < Math.min(cols.length, header.length); c++) {
+    const cols = parseCSVLine(dataLines[i], delimiter);
+    for (let c = 0; c < Math.min(cols.length, numCols); c++) {
       const val = cols[c];
       if (!val) continue;
       colScores[c].total++;
@@ -209,11 +245,13 @@ function analyzeCSVHeuristic(csvText: string) {
     if (ratio > bestNameRatio && ratio > 0.3) { bestNameRatio = ratio; nameCol = c; }
   }
 
-  const tagCols = header.map((_, i) => i).filter(i => i !== emailCol && i !== nameCol);
+  const tagCols = Array.from({ length: numCols }, (_, i) => i).filter(i => i !== emailCol && i !== nameCol);
+
+  console.log(`[analyze-csv] emailCol=${emailCol}, nameCol=${nameCol}, tagCols=${JSON.stringify(tagCols)}, numCols=${numCols}`);
 
   const contacts: any[] = [];
   for (const line of dataLines) {
-    const cols = parseCSVLine(line);
+    const cols = parseCSVLine(line, delimiter);
     const rawEmail = cols[emailCol]?.trim();
     if (!rawEmail) continue;
 
