@@ -15,12 +15,10 @@ export interface EmailContact {
   created_at: string;
 }
 
-export interface AnalyzedContact {
+export interface ProcessedEmail {
   email: string;
-  name: string | null;
-  tags: string[];
-  status: "valid" | "corrected" | "invalid";
-  original_email?: string;
+  original: string;
+  status: "valid" | "corrected" | "invalid" | "duplicate";
   reason?: string;
 }
 
@@ -99,61 +97,70 @@ export function useEmailContacts() {
     toast.success("Contato excluído");
   };
 
-  const analyzeCSV = async (file: File): Promise<AnalyzedContact[] | null> => {
-    if (!user) return null;
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    if (lines.length < 1) {
-      toast.error("Arquivo vazio ou sem dados");
-      return null;
+  const processEmails = async (text: string): Promise<ProcessedEmail[]> => {
+    if (!user) return [];
+
+    const raw = text
+      .split(/[,;\n\r]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (raw.length === 0) return [];
+
+    // Normalize all emails
+    const processed: ProcessedEmail[] = raw.map((original) => {
+      const result = normalizeEmail(original);
+      if (result.status === "invalid") {
+        return { email: original, original, status: "invalid" as const, reason: result.reason || "formato inválido" };
+      }
+      if (result.status === "ambiguous") {
+        return { email: original, original, status: "invalid" as const, reason: result.reason || "domínio suspeito" };
+      }
+      if (result.corrected) {
+        return { email: result.email, original: result.original || original, status: "corrected" as const, reason: `corrigido de ${result.original}` };
+      }
+      return { email: result.email, original, status: "valid" as const };
+    });
+
+    // Check duplicates against DB
+    const validEmails = processed
+      .filter((p) => p.status === "valid" || p.status === "corrected")
+      .map((p) => p.email);
+
+    if (validEmails.length > 0) {
+      const { data: existing } = await supabase
+        .from("email_contacts")
+        .select("email")
+        .eq("user_id", user.id)
+        .in("email", validEmails);
+
+      const existingSet = new Set((existing || []).map((e) => e.email));
+
+      for (const p of processed) {
+        if ((p.status === "valid" || p.status === "corrected") && existingSet.has(p.email)) {
+          p.status = "duplicate";
+          p.reason = "já existe na lista";
+        }
+      }
     }
 
-    try {
-      const { data, error } = await supabase.functions.invoke("analyze-csv-contacts", {
-        body: { csv_text: text },
-      });
-
-      if (error) {
-        toast.error("Erro ao analisar CSV: " + error.message);
-        return null;
-      }
-
-      if (data?.error) {
-        toast.error(data.error);
-        return null;
-      }
-
-      const contacts = data.contacts as AnalyzedContact[];
-      if (!contacts || contacts.length === 0) {
-        const debug = data.debug;
-        const reason = debug?.error || "Nenhuma coluna de e-mail foi reconhecida no CSV";
-        toast.error(reason);
-        console.error("[CSV import] Empty result. Debug:", JSON.stringify(debug));
-        return null;
-      }
-
-      return contacts;
-    } catch (err) {
-      console.error("Erro na análise de CSV:", err);
-      toast.error("Erro ao analisar CSV");
-      return null;
-    }
+    return processed;
   };
 
-  const confirmImport = async (analyzedContacts: AnalyzedContact[]) => {
+  const confirmBulkImport = async (emails: ProcessedEmail[]) => {
     if (!user) return;
 
-    const validContacts = analyzedContacts.filter((c) => c.status !== "invalid");
-    if (validContacts.length === 0) {
-      toast.error("Nenhum contato válido para importar");
+    const toInsert = emails.filter((e) => e.status === "valid" || e.status === "corrected");
+    if (toInsert.length === 0) {
+      toast.error("Nenhum e-mail novo para importar");
       return;
     }
 
-    const rows = validContacts.map((c) => ({
+    const rows = toInsert.map((e) => ({
       user_id: user.id,
-      email: c.email.toLowerCase().trim(),
-      name: c.name || null,
-      tags: c.tags || [],
+      email: e.email.toLowerCase().trim(),
+      name: null,
+      tags: [],
       source: "import" as const,
       status: "active" as const,
     }));
@@ -167,12 +174,7 @@ export function useEmailContacts() {
       return;
     }
 
-    const corrected = analyzedContacts.filter((c) => c.status === "corrected").length;
-    const invalid = analyzedContacts.filter((c) => c.status === "invalid").length;
-    const msgs: string[] = [`${validContacts.length} contatos importados!`];
-    if (corrected > 0) msgs.push(`${corrected} corrigidos`);
-    if (invalid > 0) msgs.push(`${invalid} ignorados`);
-    toast.success(msgs.join(" · "));
+    toast.success(`${toInsert.length} e-mail(s) importado(s)!`);
     fetchContacts();
   };
 
@@ -242,8 +244,8 @@ export function useEmailContacts() {
     setSearch,
     addContact,
     deleteContact,
-    analyzeCSV,
-    confirmImport,
+    processEmails,
+    confirmBulkImport,
     activeCount,
     refetch: fetchContacts,
     fixEmails,

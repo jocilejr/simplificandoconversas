@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
-import { useEmailContacts, AnalyzedContact } from "@/hooks/useEmailContacts";
+import { useState } from "react";
+import { useEmailContacts, ProcessedEmail } from "@/hooks/useEmailContacts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -12,14 +13,14 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Plus, Upload, Trash2, Search, Users, Loader2, Wand2, CheckCircle2, AlertCircle, PenLine,
+  Plus, Trash2, Search, Users, Loader2, Wand2, CheckCircle2, AlertCircle, PenLine, Copy, AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 
 export function EmailContactsTab() {
   const {
     contacts, loading, search, setSearch,
-    addContact, deleteContact, analyzeCSV, confirmImport,
+    addContact, deleteContact, processEmails, confirmBulkImport,
     activeCount, fixEmails, fixing,
   } = useEmailContacts();
 
@@ -28,12 +29,12 @@ export function EmailContactsTab() {
   const [newName, setNewName] = useState("");
   const [newTags, setNewTags] = useState("");
   const [adding, setAdding] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  // CSV preview states
-  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analyzedContacts, setAnalyzedContacts] = useState<AnalyzedContact[] | null>(null);
+  // Bulk import states
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [processed, setProcessed] = useState<ProcessedEmail[] | null>(null);
   const [importing, setImporting] = useState(false);
 
   const handleAdd = async () => {
@@ -48,51 +49,46 @@ export function EmailContactsTab() {
     setDialogOpen(false);
   };
 
-  const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (fileRef.current) fileRef.current.value = "";
-
-    setCsvDialogOpen(true);
-    setAnalyzing(true);
-    setAnalyzedContacts(null);
-
-    const result = await analyzeCSV(file);
-    setAnalyzedContacts(result);
-    setAnalyzing(false);
-
-    if (!result) {
-      setCsvDialogOpen(false);
-    }
+  const handleProcess = async () => {
+    if (!bulkText.trim()) return;
+    setProcessing(true);
+    const result = await processEmails(bulkText);
+    setProcessed(result);
+    setProcessing(false);
   };
 
   const handleConfirmImport = async () => {
-    if (!analyzedContacts) return;
+    if (!processed) return;
     setImporting(true);
-    await confirmImport(analyzedContacts);
+    await confirmBulkImport(processed);
     setImporting(false);
-    setCsvDialogOpen(false);
-    setAnalyzedContacts(null);
+    setBulkOpen(false);
+    setBulkText("");
+    setProcessed(null);
   };
 
-  const handleCancelImport = () => {
-    setCsvDialogOpen(false);
-    setAnalyzedContacts(null);
-  };
-
-  const sourceLabel: Record<string, string> = {
-    manual: "Manual", import: "Importado", webhook: "Webhook",
+  const handleCancelBulk = () => {
+    setBulkOpen(false);
+    setBulkText("");
+    setProcessed(null);
   };
 
   const statusIcon = (status: string) => {
     if (status === "valid") return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
     if (status === "corrected") return <PenLine className="h-3.5 w-3.5 text-yellow-500" />;
+    if (status === "duplicate") return <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />;
     return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
   };
 
-  const validCount = analyzedContacts?.filter((c) => c.status !== "invalid").length ?? 0;
-  const correctedCount = analyzedContacts?.filter((c) => c.status === "corrected").length ?? 0;
-  const invalidCount = analyzedContacts?.filter((c) => c.status === "invalid").length ?? 0;
+  const validCount = processed?.filter((c) => c.status === "valid").length ?? 0;
+  const correctedCount = processed?.filter((c) => c.status === "corrected").length ?? 0;
+  const invalidCount = processed?.filter((c) => c.status === "invalid").length ?? 0;
+  const duplicateCount = processed?.filter((c) => c.status === "duplicate").length ?? 0;
+  const importableCount = validCount + correctedCount;
+
+  const sourceLabel: Record<string, string> = {
+    manual: "Manual", import: "Importado", webhook: "Webhook",
+  };
 
   return (
     <>
@@ -108,9 +104,8 @@ export function EmailContactsTab() {
               </Badge>
             </div>
             <div className="flex items-center gap-2">
-              <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSV} />
-              <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-                <Upload className="h-3.5 w-3.5 mr-1" /> Importar arquivo
+              <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
+                <Copy className="h-3.5 w-3.5 mr-1" /> Importar e-mails
               </Button>
               <Button variant="outline" size="sm" onClick={fixEmails} disabled={fixing}>
                 {fixing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
@@ -148,7 +143,7 @@ export function EmailContactsTab() {
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="font-medium">Nenhum contato cadastrado</p>
-              <p className="text-sm">Adicione manualmente, importe um arquivo ou use o webhook.</p>
+              <p className="text-sm">Adicione manualmente ou importe uma lista de e-mails.</p>
             </div>
           ) : (
             <div className="rounded-md border border-border overflow-hidden">
@@ -197,33 +192,50 @@ export function EmailContactsTab() {
         </CardContent>
       </Card>
 
-      {/* CSV Preview Dialog */}
-      <Dialog open={csvDialogOpen} onOpenChange={(open) => { if (!open) handleCancelImport(); }}>
-        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+      {/* Bulk Import Dialog */}
+      <Dialog open={bulkOpen} onOpenChange={(open) => { if (!open) handleCancelBulk(); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Importação de contatos</DialogTitle>
+            <DialogTitle>Importar e-mails</DialogTitle>
           </DialogHeader>
 
-          {analyzing ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Analisando CSV...</p>
-              <p className="text-xs text-muted-foreground">Identificando colunas e corrigindo e-mails</p>
+          {!processed ? (
+            <div className="space-y-4">
+              <div>
+                <Label>Cole os e-mails abaixo (separados por vírgula, ponto-e-vírgula ou nova linha)</Label>
+                <Textarea
+                  className="mt-2 min-h-[200px] font-mono text-sm"
+                  placeholder={"email1@gmail.com, email2@hotmail.com\nemail3@yahoo.com; email4@outlook.com"}
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={handleCancelBulk}>Cancelar</Button>
+                <Button onClick={handleProcess} disabled={processing || !bulkText.trim()}>
+                  {processing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Processar
+                </Button>
+              </DialogFooter>
             </div>
-          ) : analyzedContacts ? (
+          ) : (
             <>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span>{validCount - correctedCount} válidos</span>
+                  <span>{validCount} válidos</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <PenLine className="h-4 w-4 text-yellow-500" />
                   <span>{correctedCount} corrigidos</span>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  <span>{duplicateCount} duplicados</span>
+                </div>
+                <div className="flex items-center gap-1.5">
                   <AlertCircle className="h-4 w-4 text-destructive" />
-                  <span>{invalidCount} ignorados</span>
+                  <span>{invalidCount} inválidos</span>
                 </div>
               </div>
 
@@ -233,30 +245,19 @@ export function EmailContactsTab() {
                     <TableRow>
                       <TableHead className="w-10"></TableHead>
                       <TableHead>E-mail</TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Tags</TableHead>
+                      <TableHead>Original</TableHead>
                       <TableHead>Observação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {analyzedContacts.map((c, i) => (
-                      <TableRow key={i} className={c.status === "invalid" ? "opacity-50" : ""}>
-                        <TableCell>{statusIcon(c.status)}</TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {c.email}
-                          {c.status === "corrected" && c.original_email && (
-                            <span className="block text-[10px] text-muted-foreground line-through">{c.original_email}</span>
-                          )}
+                    {processed.map((p, i) => (
+                      <TableRow key={i} className={p.status === "invalid" || p.status === "duplicate" ? "opacity-50" : ""}>
+                        <TableCell>{statusIcon(p.status)}</TableCell>
+                        <TableCell className="font-mono text-xs">{p.email}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {p.status === "corrected" ? <span className="line-through">{p.original}</span> : "—"}
                         </TableCell>
-                        <TableCell className="text-sm">{c.name || "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {c.tags?.map((t) => (
-                              <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">{t}</Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{c.reason || ""}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{p.reason || ""}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -264,14 +265,14 @@ export function EmailContactsTab() {
               </div>
 
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={handleCancelImport}>Cancelar</Button>
-                <Button onClick={handleConfirmImport} disabled={importing || validCount === 0}>
+                <Button variant="outline" onClick={() => setProcessed(null)}>Voltar</Button>
+                <Button onClick={handleConfirmImport} disabled={importing || importableCount === 0}>
                   {importing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                  Confirmar importação ({validCount})
+                  Confirmar importação ({importableCount})
                 </Button>
               </DialogFooter>
             </>
-          ) : null}
+          )}
         </DialogContent>
       </Dialog>
     </>
