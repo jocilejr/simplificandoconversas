@@ -42,8 +42,7 @@ export function useEmailSends(filters?: Filters) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-      const resp = await fetch(`${baseUrl}/functions/v1/email/stats?userId=${user.id}`);
+      const resp = await fetch(`/api/email/stats?userId=${user.id}`);
       if (!resp.ok) return { total: 0, sent: 0, failed: 0, opened: 0, pending: 0, openRate: "0" };
       return resp.json();
     },

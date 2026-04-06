@@ -60,8 +60,7 @@ export function useSmtpConfig() {
     mutationFn: async (smtpConfigId?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-      const resp = await fetch(`${baseUrl}/functions/v1/email/test`, {
+      const resp = await fetch(`/api/email/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, smtpConfigId }),
@@ -78,8 +77,7 @@ export function useSmtpConfig() {
     mutationFn: async (smtpConfigId?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-      const resp = await fetch(`${baseUrl}/functions/v1/email/verify-smtp`, {
+      const resp = await fetch(`/api/email/verify-smtp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, smtpConfigId }),
