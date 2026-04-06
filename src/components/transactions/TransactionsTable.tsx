@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Transaction } from "@/hooks/useTransactions";
+import { TransactionDetailDialog } from "./TransactionDetailDialog";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
