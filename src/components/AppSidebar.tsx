@@ -1,4 +1,5 @@
 import {
+import {
   LayoutDashboard,
   Users,
   Workflow,
@@ -7,6 +8,14 @@ import {
   Send,
   Bell,
   Mail,
+  Receipt,
+  UserCircle,
+  RefreshCw,
+  FileText,
+  UsersRound,
+  Crown,
+  Package,
+  LinkIcon,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
