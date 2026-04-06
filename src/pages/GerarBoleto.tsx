@@ -64,7 +64,6 @@ const GerarBoleto = () => {
     setForm({
       customer_name: "",
       customer_phone: "",
-      customer_email: "",
       customer_document: "",
       amount: "",
       description: "",
