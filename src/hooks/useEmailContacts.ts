@@ -129,7 +129,8 @@ export function useEmailContacts() {
       toast.error("Erro ao importar: " + error.message);
       return;
     }
-    toast.success(`${rows.length} contatos importados!`);
+    const corrMsg = correctedCount > 0 ? ` (${correctedCount} e-mails corrigidos)` : "";
+    toast.success(`${rows.length} contatos importados!${corrMsg}`);
     fetchContacts();
   };
 
