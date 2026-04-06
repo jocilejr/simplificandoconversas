@@ -23,7 +23,7 @@ export function useEmailCampaigns() {
   });
 
   const addCampaign = useMutation({
-    mutationFn: async (c: { name: string; template_id: string; tag_filter?: string; smtp_config_id?: string }) => {
+    mutationFn: async (c: { name: string; template_id: string; tag_filter?: string; smtp_config_id?: string; auto_send?: boolean }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase

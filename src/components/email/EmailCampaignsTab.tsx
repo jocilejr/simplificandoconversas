@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEmailCampaigns } from "@/hooks/useEmailCampaigns";
 import { useEmailTemplates } from "@/hooks/useEmailTemplates";
@@ -14,12 +15,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Send, Trash2, Loader2, X, ChevronDown, ChevronUp, Clock,
-  Megaphone, FileEdit, CheckCircle, AlertCircle, MailCheck, ArrowLeft,
+  Megaphone, FileEdit, CheckCircle, AlertCircle, MailCheck, ArrowLeft, Zap,
 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
   draft: { label: "Rascunho", icon: FileEdit, className: "bg-muted text-muted-foreground" },
+  auto: { label: "Automática", icon: Zap, className: "bg-purple-500/15 text-purple-700 dark:text-purple-400" },
   sending: { label: "Enviando", icon: Loader2, className: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400" },
   sent: { label: "Enviado", icon: CheckCircle, className: "bg-green-500/15 text-green-700 dark:text-green-400" },
   failed: { label: "Falhou", icon: AlertCircle, className: "bg-destructive/15 text-destructive" },
@@ -38,15 +40,18 @@ export function EmailCampaignsTab() {
   const [smtpConfigId, setSmtpConfigId] = useState("");
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<{ templateId: string; delayDays: number }[]>([]);
+  const [autoSend, setAutoSend] = useState(false);
 
+  // Query tags from email_contacts instead of contact_tags
   const { data: tags = [] } = useQuery({
-    queryKey: ["unique-tags"],
+    queryKey: ["email-contact-tags"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
-      const { data } = await supabase.from("contact_tags").select("tag_name").eq("user_id", user.id);
+      const { data } = await supabase.from("email_contacts").select("tags").eq("user_id", user.id);
       if (!data) return [];
-      return [...new Set(data.map((t: any) => t.tag_name))].sort();
+      const allTags = data.flatMap((c: any) => c.tags || []);
+      return [...new Set(allTags)].sort() as string[];
     },
   });
 
@@ -77,7 +82,7 @@ export function EmailCampaignsTab() {
   });
 
   const resetForm = () => {
-    setName(""); setTemplateId(""); setTagFilter(""); setSmtpConfigId(""); setFollowUps([]);
+    setName(""); setTemplateId(""); setTagFilter(""); setSmtpConfigId(""); setFollowUps([]); setAutoSend(false);
     setShowForm(false);
   };
 
@@ -88,6 +93,7 @@ export function EmailCampaignsTab() {
         name, template_id: templateId,
         tag_filter: tagFilter && tagFilter !== "__all__" ? tagFilter : undefined,
         smtp_config_id: smtpConfigId || undefined,
+        auto_send: autoSend,
       },
       {
         onSuccess: async (data: any) => {
@@ -148,6 +154,20 @@ export function EmailCampaignsTab() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Auto-send toggle */}
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-purple-500" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Envio automático</p>
+                  <p className="text-xs text-muted-foreground">
+                    Envia automaticamente ao receber um contato com a tag selecionada
+                  </p>
+                </div>
+              </div>
+              <Switch checked={autoSend} onCheckedChange={setAutoSend} disabled={!tagFilter || tagFilter === "__all__"} />
             </div>
 
             {configs && configs.length > 1 && (
@@ -237,7 +257,8 @@ export function EmailCampaignsTab() {
 
       <div className="grid gap-3">
         {campaigns.map((c: any) => {
-          const cfg = statusConfig[c.status] || statusConfig.draft;
+          const displayStatus = c.auto_send && c.status === "draft" ? "auto" : c.status;
+          const cfg = statusConfig[displayStatus] || statusConfig.draft;
           const StatusIcon = cfg.icon;
           const progress = c.total_recipients > 0 ? Math.round((c.sent_count / c.total_recipients) * 100) : 0;
 
@@ -263,7 +284,7 @@ export function EmailCampaignsTab() {
                       onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)}>
                       {expandedCampaign === c.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </Button>
-                    {c.status === "draft" && (
+                    {c.status === "draft" && !c.auto_send && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button size="sm" className="gap-1.5">
