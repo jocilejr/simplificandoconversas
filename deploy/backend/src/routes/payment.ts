@@ -88,7 +88,7 @@ router.post("/create", async (req: Request, res: Response) => {
       body: JSON.stringify(paymentBody),
     });
 
-    const mpData = await mpResp.json();
+    const mpData: any = await mpResp.json();
 
     if (!mpResp.ok) {
       console.error("[payment] MP error:", JSON.stringify(mpData));
