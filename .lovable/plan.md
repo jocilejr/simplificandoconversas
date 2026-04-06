@@ -1,17 +1,16 @@
 
 
-# Adicionar evento `register_email` na documentação do webhook
+# Adicionar `register_email` na documentação correta
 
 ## Problema
-O evento `register_email` foi implementado no backend mas não foi adicionado à tabela de documentação no componente `EmailWebhooksTab.tsx`.
+O evento `register_email` foi adicionado ao componente antigo (`EmailWebhooksTab.tsx`), mas a documentação que aparece na aba Configurações vem de `EmailSettingsSection.tsx`, que tem seu proprio array `EVENTS_DOC` sem o evento.
 
 ## Correção
-Adicionar uma entrada no array `EVENTS_DOC` e atualizar o exemplo de payload.
 
-### Arquivo: `src/components/email/EmailWebhooksTab.tsx`
-- Adicionar ao array `EVENTS_DOC`:
+### Arquivo: `src/components/settings/EmailSettingsSection.tsx`
+- Linha 18: adicionar `register_email` ao array `EVENTS_DOC`:
   ```
   { event: "register_email", desc: "Cadastra e-mail na lista de contatos", fields: "email, name?, tags?" }
   ```
-- Atualizar o exemplo de payload para mostrar o novo evento `register_email`
+- Atualizar o exemplo de payload (linha 139-147) para mostrar o evento `register_email` com os campos `email`, `name` e `tags`
 
