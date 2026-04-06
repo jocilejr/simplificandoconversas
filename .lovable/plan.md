@@ -1,91 +1,80 @@
 
 Objetivo
 
-Parar de retornar vazio e separar corretamente:
-- e-mail
-- tags
-- timestamp
+Criar uma solução específica para o padrão real do seu arquivo, em vez de continuar tentando “adivinhar” colunas genericamente.
 
-sem depender da IA para decidir isso na VPS.
+Problema real
 
-Diagnóstico provável
+O TXT enviado tem um formato consistente e simples:
 
-O comportamento “0 válidos / 0 corrigidos / 0 ignorados” indica que o backend está devolvendo `contacts: []`.
-No código atual isso acontece quando o parser não consegue eleger uma coluna de e-mail (`emailCol === -1`).
-
-Os pontos mais frágeis hoje são:
-- `detectDelimiter()` usa `split()` simples, enquanto o parser real usa `parseCSVLine()`; isso pode escolher o delimitador errado
-- `hasHeaderRow()` também usa divisão simplificada
-- se a detecção falha, o backend retorna vazio em vez de mostrar linhas inválidas ou um motivo claro
-- a VPS ainda pode estar em `auto`, então o comportamento fica menos previsível
-
-Plano de correção
-
-1. Tornar o importador 100% heurístico na VPS
-- definir `CSV_ANALYZER_MODE=heuristic` no `deploy/docker-compose.yml`
-- remover a IA da decisão principal para esse fluxo
-- manter IA apenas como opcional futura, não como caminho usado agora
-
-2. Unificar a leitura do CSV
-- refatorar `detectDelimiter()` e `hasHeaderRow()` para usar a mesma lógica de `parseCSVLine()`
-- normalizar antes do parse:
-  - remover BOM
-  - ignorar linha `sep=,` / `sep=;`
-  - remover linhas vazias
-  - aparar aspas e espaços extras
-
-3. Melhorar a eleição da coluna de e-mail
-- escolher a coluna com maior taxa de valores `email-like`, mas com fallback mais robusto
-- se nenhuma coluna passar no threshold, fazer fallback por linha:
-  - procurar o único token com `@`
-  - tratar os demais tokens como tag/timestamp conforme a classificação
-- isso evita voltar `[]` em CSVs simples como:
 ```text
+email,tag,timestamp
 rosefujita2019@gmail.com,etapa4,2025-09-09 02:35:32.632
 ```
 
-4. Separar tags e timestamp por regra fixa
-- `timestamp` nunca entra em `tags`
-- `etapa4`, `lead`, `grupo_x`, `campanha_y` entram como tag
-- nome só entra se realmente parecer nome humano
-- se não houver nome confiável, salvar `name = null`
+O importador atual ainda tenta fazer detecção genérica de colunas. Isso falha porque:
+- o arquivo não tem cabeçalho
+- a 1ª coluna contém e-mails com alguns erros de digitação
+- a 2ª coluna é uma tag curta (`etapa4`, `etapa8`, etc.)
+- a 3ª coluna é sempre timestamp e deve ser ignorada
 
-5. Parar de falhar em silêncio
-- quando não houver coluna de e-mail clara, retornar diagnóstico útil em vez de lista vazia “muda”
-- backend pode responder com metadados de debug, por exemplo:
-  - delimitador detectado
-  - se havia header
-  - tipos de colunas
-  - motivo do fallback
-- o frontend pode exibir toast/mensagem como “Nenhuma coluna de e-mail foi reconhecida”
+Resultado: o sistema às vezes não elege nenhuma coluna de e-mail e retorna vazio.
+
+Solução que vou implementar
+
+1. Criar um parser dedicado para esse padrão
+- Detectar automaticamente quando o arquivo seguir o padrão:
+  - 3 colunas
+  - coluna 1 = e-mail
+  - coluna 2 = tag
+  - coluna 3 = timestamp
+- Quando esse padrão for reconhecido, parar de usar heurística genérica para esse caso
+
+2. Separar os campos de forma fixa
+- `coluna 1` → `email`
+- `coluna 2` → `tags = [valor]`
+- `coluna 3` → ignorar completamente
+- `name = null`
+
+3. Usar normalização de e-mail apenas na 1ª coluna
+- Corrigir domínios com erro de digitação
+- Manter a parte local intacta
+- Se a linha tiver e-mail inválido, marcar como inválida com motivo, sem quebrar a importação inteira
+
+4. Aceitar TXT além de CSV
+- Atualizar o seletor de arquivo para aceitar `.txt` e `.csv`
+- Ajustar os textos da interface para refletir isso
+
+5. Melhorar o diagnóstico
+- O backend vai retornar modo de análise e amostras do parse
+- Se o formato fixo não for reconhecido, aí sim cai para o modo heurístico
+- O frontend passa a exibir erro mais claro quando o arquivo não seguir nenhum formato reconhecido
 
 Arquivos a ajustar
 
 - `deploy/backend/src/routes/analyze-csv-contacts.ts`
-  - unificar parsing
-  - normalizar entrada
-  - reforçar detecção de e-mail
-  - adicionar fallback por linha
-  - impedir retorno vazio sem explicação
-  - ignorar timestamp nas tags
-
-- `deploy/docker-compose.yml`
-  - definir `CSV_ANALYZER_MODE=heuristic`
+  - adicionar detector de “formato fixo email/tag/timestamp”
+  - adicionar parser dedicado para esse formato
+  - usar esse parser antes da heurística genérica
+  - manter timestamp fora de tags e fora de nome
 
 - `src/hooks/useEmailContacts.ts`
-  - tratar melhor resposta vazia com mensagem mais clara ao usuário
+  - melhorar o tratamento de erro/debug retornado pelo backend
 
 - `src/components/email/EmailContactsTab.tsx`
-  - opcional: trocar o texto “Analisando CSV com IA...” por algo neutro como “Analisando CSV...”
+  - aceitar `.txt,.csv`
+  - ajustar textos de importação para não falar só “CSV”
 
 Resultado esperado
 
-Para linhas como:
+Para uma linha como:
+
 ```text
 rosefujita2019@gmail.com,etapa4,2025-09-09 02:35:32.632
 ```
 
-o sistema deve produzir:
+o sistema deverá gerar:
+
 ```text
 email = rosefujita2019@gmail.com
 name = null
@@ -94,27 +83,73 @@ timestamp = ignorado
 status = valid
 ```
 
+Para linhas com erro:
+
+```text
+socorrolopes8460@gmailcom.br,etapa4,2025-09-09 02:48:12.304
+```
+
+o sistema deverá:
+- tentar corrigir o e-mail
+- importar se a correção for confiável
+- ou marcar como inválido com motivo
+
+Detalhes técnicos
+
+```text
+Fluxo novo:
+1. Ler linhas não vazias
+2. Detectar se >= grande maioria das linhas tem:
+   - 3 colunas
+   - 3ª coluna timestamp
+   - 2ª coluna tag curta
+   - 1ª coluna parecendo campo de e-mail
+3. Se sim:
+   - parser fixo
+4. Se não:
+   - heurística genérica existente como fallback
+```
+
+Sem mudanças de banco
+- Não precisa migration
+- Não precisa alterar autenticação
+- Não precisa alterar tabelas
+
 Validação dentro da VPS
 
-Depois da correção, a checagem deve ser feita na VPS com:
+Depois da implementação, a conferência deve ser feita aí dentro:
+
+```bash
+cd /root/simplificandoconversas/deploy && ./update.sh
+```
 
 ```bash
 cd /root/simplificandoconversas/deploy
-docker compose exec -T backend sh -lc 'echo CSV_ANALYZER_MODE=${CSV_ANALYZER_MODE:-auto}'
 docker compose logs backend --tail=200 | grep analyze-csv
 ```
 
-Se ainda houver problema, a próxima inspeção deve mostrar no log:
-- delimitador detectado
-- header=true/false
-- colTypes
-- emailCol
-- motivo do fallback
+Para confirmar que a VPS está com a versão certa do parser:
 
-Resumo técnico
+```bash
+cd /root/simplificandoconversas/deploy
+docker compose exec -T backend sh -lc 'grep -n "fixed-format" dist/routes/analyze-csv-contacts.js'
+```
 
-A próxima correção precisa atacar o motivo do “retornou nada”:
-- não deixar a detecção de delimitador/header usar lógica simplificada
-- adicionar fallback por linha para achar o e-mail mesmo quando a coluna não for eleita
-- forçar modo heurístico na VPS
-- nunca devolver lista vazia sem diagnóstico
+Se ainda falhar, o próximo passo de investigação na VPS será:
+
+```bash
+cd /root/simplificandoconversas/deploy
+docker compose logs backend --tail=300
+```
+
+e conferir se o log mostra:
+- `mode=fixed-format`
+- quantidade de linhas reconhecidas
+- motivo de fallback, se houver
+
+Resumo
+
+A solução certa aqui não é insistir em IA nem em heurística ampla. É criar um caminho dedicado para o padrão real do seu arquivo TXT:
+- 1ª coluna = e-mail
+- 2ª coluna = tag
+- 3ª coluna = timestamp ignorado
