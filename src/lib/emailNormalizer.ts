@@ -199,8 +199,12 @@ export function normalizeEmail(input: string): NormalizeResult {
   // Clean trailing dots
   domain = domain.replace(/\.+$/, "");
 
+  // Clean junk from domain (leading digits, trailing non-alpha)
+  const cleanedDomain = cleanDomain(domain);
+
   // Check known aliases first (uol.com → uol.com.br, etc.)
-  if (KNOWN_ALIASES[domain]) {
+  const aliasKey = KNOWN_ALIASES[domain] ? domain : KNOWN_ALIASES[cleanedDomain] ? cleanedDomain : null;
+  if (aliasKey) {
     return {
       email: `${localPart}@${KNOWN_ALIASES[domain]}`,
       status: "corrected",
