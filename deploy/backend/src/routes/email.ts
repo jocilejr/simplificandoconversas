@@ -816,15 +816,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
 
                 const template = camp.email_templates as any;
 
-                // Check if already sent to this contact for this campaign
-                const { data: existingSend } = await supabase
-                  .from("email_sends")
-                  .select("id")
-                  .eq("campaign_id", camp.id)
-                  .eq("recipient_email", normalized.email)
-                  .maybeSingle();
-
-                if (existingSend) continue; // Already sent
+                // Allow re-sending on every webhook event (no dedup check)
 
                 // Check suppression
                 if (await isSuppressed(userId, normalized.email)) continue;
