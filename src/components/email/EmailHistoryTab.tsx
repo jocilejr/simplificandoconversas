@@ -1,10 +1,13 @@
 import { useState, useCallback } from "react";
 import { useEmailSends } from "@/hooks/useEmailSends";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Download, ChevronLeft, ChevronRight, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, Download, ChevronLeft, ChevronRight, Clock, MousePointerClick, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 
 const statusColors: Record<string, string> = {
@@ -19,12 +22,48 @@ const statusLabels: Record<string, string> = {
 export function EmailHistoryTab() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(0);
+  const [selectedSendId, setSelectedSendId] = useState<string | null>(null);
   const PAGE_SIZE = 50;
 
   const { sends, isLoading } = useEmailSends({
     status: statusFilter && statusFilter !== "__all__" ? statusFilter : undefined,
     page,
     pageSize: PAGE_SIZE,
+  });
+
+  // Fetch click counts for current sends
+  const sendIds = sends.map((s: any) => s.id);
+  const { data: clickCounts = {} } = useQuery({
+    queryKey: ["email-click-counts", sendIds],
+    queryFn: async () => {
+      if (sendIds.length === 0) return {};
+      const { data } = await supabase
+        .from("email_link_clicks")
+        .select("send_id, clicked")
+        .in("send_id", sendIds)
+        .eq("clicked", true);
+      const counts: Record<string, number> = {};
+      (data || []).forEach((c: any) => {
+        counts[c.send_id] = (counts[c.send_id] || 0) + 1;
+      });
+      return counts;
+    },
+    enabled: sendIds.length > 0,
+  });
+
+  // Fetch click details for selected send
+  const { data: clickDetails = [], isLoading: detailsLoading } = useQuery({
+    queryKey: ["email-click-details", selectedSendId],
+    queryFn: async () => {
+      if (!selectedSendId) return [];
+      const { data } = await supabase
+        .from("email_link_clicks")
+        .select("*")
+        .eq("send_id", selectedSendId)
+        .order("created_at", { ascending: true });
+      return data || [];
+    },
+    enabled: !!selectedSendId,
   });
 
   const handleExportCSV = useCallback(() => {
@@ -88,6 +127,7 @@ export function EmailHistoryTab() {
                   <TableHead className="text-xs font-semibold">Campanha</TableHead>
                   <TableHead className="text-xs font-semibold">Status</TableHead>
                   <TableHead className="text-xs font-semibold">Aberto</TableHead>
+                  <TableHead className="text-xs font-semibold">Cliques</TableHead>
                   <TableHead className="text-xs font-semibold">Data</TableHead>
                   <TableHead className="text-xs font-semibold">Erro</TableHead>
                 </TableRow>
@@ -110,6 +150,21 @@ export function EmailHistoryTab() {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {s.opened_at ? format(new Date(s.opened_at), "dd/MM HH:mm") : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {(clickCounts as Record<string, number>)[s.id] ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 h-6 px-2 text-purple-600"
+                          onClick={() => setSelectedSendId(s.id)}
+                        >
+                          <MousePointerClick className="h-3 w-3" />
+                          {(clickCounts as Record<string, number>)[s.id]}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {format(new Date(s.created_at), "dd/MM/yy HH:mm")}
@@ -136,6 +191,45 @@ export function EmailHistoryTab() {
           </div>
         </>
       )}
+
+      {/* Click details dialog */}
+      <Dialog open={!!selectedSendId} onOpenChange={(open) => !open && setSelectedSendId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MousePointerClick className="h-4 w-4" /> Detalhes de cliques
+            </DialogTitle>
+          </DialogHeader>
+          {detailsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : clickDetails.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum link rastreado</p>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {clickDetails.map((c: any) => (
+                <div key={c.id} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/20">
+                  <ExternalLink className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-foreground truncate">{c.original_url}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {c.clicked ? (
+                        <span className="text-green-600">Clicado em {format(new Date(c.clicked_at), "dd/MM/yy HH:mm")}</span>
+                      ) : (
+                        <span>Não clicado</span>
+                      )}
+                    </p>
+                  </div>
+                  {c.clicked && (
+                    <Badge variant="secondary" className="bg-green-500/15 text-green-700 dark:text-green-400 text-[10px]">
+                      ✓
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
