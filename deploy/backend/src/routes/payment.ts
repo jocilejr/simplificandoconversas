@@ -198,7 +198,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
         return res.sendStatus(200);
       }
 
-      const mpData = await mpResp.json();
+      const mpData: any = await mpResp.json();
       const newStatus = STATUS_MAP[mpData.status] || mpData.status;
       const supabase = getServiceClient();
 
