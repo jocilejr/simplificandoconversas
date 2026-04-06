@@ -30,6 +30,7 @@ app.use("/api/platform", platformApiRouter);
 app.use("/api/external-messaging-webhook", externalWebhookRouter);
 app.use("/api/email", emailRouter);
 app.use("/api/analyze-csv-contacts", analyzeCsvRouter);
+app.use("/api/payment", paymentRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
