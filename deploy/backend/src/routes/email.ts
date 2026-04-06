@@ -675,12 +675,17 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         const { email: regEmail, name: regName, tags: regTags } = data || {};
         if (!regEmail) return res.status(400).json({ error: "register_email requer: email" });
 
+        const normalized = normalizeEmail(regEmail);
+        if (normalized.corrected) {
+          console.log(`[email/webhook] E-mail corrigido: ${normalized.original} → ${normalized.email}`);
+        }
+
         const { data: contact, error: upsertErr } = await supabase
           .from("email_contacts")
           .upsert(
             {
               user_id: userId,
-              email: regEmail.toLowerCase().trim(),
+              email: normalized.email,
               name: regName || null,
               tags: regTags || [],
               source: "webhook",
@@ -692,7 +697,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .single();
 
         if (upsertErr) return res.status(500).json({ error: upsertErr.message });
-        return res.json({ ok: true, contactId: contact?.id });
+        return res.json({ ok: true, contactId: contact?.id, corrected: normalized.corrected, email: normalized.email });
       }
 
       default:
