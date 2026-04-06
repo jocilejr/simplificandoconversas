@@ -50,7 +50,6 @@ const GerarBoleto = () => {
     const data = await createPayment.mutateAsync({
       customer_name: form.customer_name,
       customer_phone: form.customer_phone.replace(/\D/g, ""),
-      customer_email: form.customer_email || undefined,
       customer_document: form.customer_document.replace(/\D/g, "") || undefined,
       amount,
       description: form.description || undefined,
