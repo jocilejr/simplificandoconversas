@@ -41,6 +41,8 @@ export function EmailContactsTab() {
     deleteContact,
     importCSV,
     activeCount,
+    fixEmails,
+    fixing,
   } = useEmailContacts();
 
   const [dialogOpen, setDialogOpen] = useState(false);
