@@ -40,18 +40,73 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
+const mainItems = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Contatos", url: "/contacts", icon: Users },
+  { title: "Fluxos", url: "/chatbot", icon: Workflow },
+  { title: "E-mail", url: "/email", icon: Mail },
+  { title: "Lembretes", url: "/reminders", icon: Bell },
+];
+
+const financeItems = [
+  { title: "Transações", url: "/transacoes", icon: Receipt },
+  { title: "Clientes", url: "/clientes-financeiro", icon: UserCircle },
+  { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
+  { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
+  { title: "Grupos", url: "/grupos", icon: UsersRound },
+  { title: "Área de Membros", url: "/area-membros", icon: Crown },
+  { title: "Entrega Digital", url: "/entrega", icon: Package },
+  { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon },
+];
+
+function MenuGroup({ label, items, collapsed, isActive }: {
+  label: string;
+  items: typeof mainItems;
+  collapsed: boolean;
+  isActive: (path: string) => boolean;
+}) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-0.5 px-2">
+        {label}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive(item.url)}
+                className="h-8 rounded-md transition-colors"
+              >
+                <NavLink
+                  to={item.url}
+                  end
+                  className="hover:bg-sidebar-accent/80"
+                  activeClassName="bg-sidebar-accent text-primary font-medium"
+                >
+                  <item.icon className="h-4 w-4" />
+                  {!collapsed && <span className="text-xs">{item.title}</span>}
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path;
-  
+
   const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
   const { profile } = useProfile();
-
-
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -61,32 +116,13 @@ export function AppSidebar() {
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "Usuário";
   const initials = displayName.slice(0, 2).toUpperCase();
 
-  const mainItems = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-    { title: "Contatos", url: "/contacts", icon: Users },
-    { title: "Fluxos", url: "/chatbot", icon: Workflow },
-    { title: "E-mail", url: "/email", icon: Mail },
-    { title: "Lembretes", url: "/reminders", icon: Bell },
-  ];
-
-  const financeItems = [
-    { title: "Transações", url: "/transacoes", icon: Receipt },
-    { title: "Clientes", url: "/clientes-financeiro", icon: UserCircle },
-    { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
-    { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
-    { title: "Grupos", url: "/grupos", icon: UsersRound },
-    { title: "Área de Membros", url: "/area-membros", icon: Crown },
-    { title: "Entrega Digital", url: "/entrega", icon: Package },
-    { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon },
-  ];
-
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="p-5">
-        <div className="flex items-center gap-3">
-          <img src="/images/logo-ov.png" alt="Origem Viva" className="h-9 w-9 shrink-0 rounded-xl" />
+      <SidebarHeader className="p-3">
+        <div className="flex items-center gap-2">
+          <img src="/images/logo-ov.png" alt="Origem Viva" className="h-7 w-7 shrink-0 rounded-lg" />
           {!collapsed && (
-            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground leading-tight">
+            <span className="text-xs font-semibold tracking-tight text-sidebar-foreground leading-tight">
               Chatbot Interno<br />Origem Viva
             </span>
           )}
@@ -94,97 +130,43 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-1">
-            Menu
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="space-y-0.5">
-              {mainItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    className="h-10 rounded-lg transition-all duration-200"
-                  >
-                    <NavLink
-                      to={item.url}
-                      end
-                      className="hover:bg-sidebar-accent/80"
-                      activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {!collapsed && <span className="text-sm">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <MenuGroup label="Menu" items={mainItems} collapsed={collapsed} isActive={isActive} />
 
-        <Separator className="my-2 opacity-50" />
+        <Separator className="my-1 opacity-40" />
+
+        <MenuGroup label="Financeiro" items={financeItems} collapsed={collapsed} isActive={isActive} />
+
+        <Separator className="my-1 opacity-40" />
 
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-1">
-            Financeiro
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="space-y-0.5">
-              {financeItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    className="h-10 rounded-lg transition-all duration-200"
-                  >
-                    <NavLink
-                      to={item.url}
-                      end
-                      className="hover:bg-sidebar-accent/80"
-                      activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {!collapsed && <span className="text-sm">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <Separator className="my-2 opacity-50" />
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-1">
+          <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-0.5 px-2">
             Sistema
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  className="h-10 rounded-lg transition-all duration-200 cursor-pointer hover:bg-sidebar-accent/80"
+                  className="h-8 rounded-md transition-colors cursor-pointer hover:bg-sidebar-accent/80"
                   onClick={() => setTriggerOpen(true)}
                 >
-                  <Send className="h-5 w-5" />
-                  {!collapsed && <span className="text-sm">Disparar Fluxo</span>}
+                  <Send className="h-4 w-4" />
+                  {!collapsed && <span className="text-xs">Disparar Fluxo</span>}
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
                   isActive={isActive("/settings")}
-                  className="h-10 rounded-lg transition-all duration-200"
+                  className="h-8 rounded-md transition-colors"
                 >
                   <NavLink
                     to="/settings"
                     end
                     className="hover:bg-sidebar-accent/80"
-                    activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
+                    activeClassName="bg-sidebar-accent text-primary font-medium"
                   >
-                    <Settings className="h-5 w-5" />
-                    {!collapsed && <span className="text-sm">Configurações</span>}
+                    <Settings className="h-4 w-4" />
+                    {!collapsed && <span className="text-xs">Configurações</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -193,26 +175,26 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <div className={`flex items-center gap-3 rounded-xl bg-sidebar-accent/60 p-3 ${collapsed ? "justify-center" : ""}`}>
-          <Avatar className="h-8 w-8 shrink-0">
-            <AvatarFallback className="bg-primary/15 text-primary text-xs font-semibold">
+      <SidebarFooter className="p-2">
+        <div className={`flex items-center gap-2 rounded-lg bg-sidebar-accent/60 p-2 ${collapsed ? "justify-center" : ""}`}>
+          <Avatar className="h-7 w-7 shrink-0">
+            <AvatarFallback className="bg-primary/15 text-primary text-[10px] font-semibold">
               {initials}
             </AvatarFallback>
           </Avatar>
           {!collapsed && (
             <>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground truncate">{displayName}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                <p className="text-[11px] font-medium text-sidebar-foreground truncate">{displayName}</p>
+                <p className="text-[9px] text-muted-foreground truncate">{user?.email}</p>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={handleLogout}
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-3.5 w-3.5" />
               </Button>
             </>
           )}

@@ -1,14 +1,28 @@
 import { useProfile } from "@/hooks/useProfile";
-import { Loader2 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, User, Plug, Brain, Code, Mail, AppWindow, Puzzle } from "lucide-react";
+import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
 import { ConnectionsSection } from "@/components/settings/ConnectionsSection";
 import { AISection } from "@/components/settings/AISection";
 import { AppSection } from "@/components/settings/AppSection";
 import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
 import { EmailSettingsSection } from "@/components/settings/EmailSettingsSection";
+import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
+
+const sections = [
+  { key: "profile", label: "Perfil", icon: User },
+  { key: "connections", label: "Conexões", icon: Plug },
+  { key: "integrations", label: "Integrações", icon: Puzzle },
+  { key: "ai", label: "IA", icon: Brain },
+  { key: "api", label: "API", icon: Code },
+  { key: "email", label: "E-mail", icon: Mail },
+  { key: "app", label: "Aplicação", icon: AppWindow },
+];
+
 const SettingsPage = () => {
   const { isLoading } = useProfile();
+  const [active, setActive] = useState("connections");
 
   if (isLoading) {
     return (
@@ -18,47 +32,51 @@ const SettingsPage = () => {
     );
   }
 
+  const renderContent = () => {
+    switch (active) {
+      case "profile": return <ProfileSection />;
+      case "connections": return <ConnectionsSection />;
+      case "integrations": return <IntegrationsSection />;
+      case "ai": return <AISection />;
+      case "api": return <IntegrationApiSection />;
+      case "email": return <EmailSettingsSection />;
+      case "app": return <AppSection />;
+      default: return null;
+    }
+  };
+
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-4 max-w-5xl">
       <div>
         <h1 className="text-2xl font-bold">Configurações</h1>
-        <p className="text-muted-foreground">Gerencie suas preferências e conexões</p>
+        <p className="text-sm text-muted-foreground">Gerencie suas preferências e conexões</p>
       </div>
 
-      <Tabs defaultValue="connections" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="profile">Perfil</TabsTrigger>
-          <TabsTrigger value="connections">Conexões</TabsTrigger>
-          <TabsTrigger value="ai">IA</TabsTrigger>
-          <TabsTrigger value="api">API</TabsTrigger>
-          <TabsTrigger value="email">E-mail</TabsTrigger>
-          <TabsTrigger value="app">Aplicação</TabsTrigger>
-        </TabsList>
+      <div className="flex gap-6">
+        {/* Navegação lateral */}
+        <nav className="w-48 shrink-0 space-y-0.5">
+          {sections.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setActive(s.key)}
+              className={cn(
+                "flex items-center gap-2 w-full rounded-md px-3 py-2 text-xs font-medium transition-colors text-left",
+                active === s.key
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+              )}
+            >
+              <s.icon className="h-4 w-4 shrink-0" />
+              {s.label}
+            </button>
+          ))}
+        </nav>
 
-        <TabsContent value="profile">
-          <ProfileSection />
-        </TabsContent>
-
-        <TabsContent value="connections">
-          <ConnectionsSection />
-        </TabsContent>
-
-        <TabsContent value="ai">
-          <AISection />
-        </TabsContent>
-
-        <TabsContent value="api">
-          <IntegrationApiSection />
-        </TabsContent>
-
-        <TabsContent value="email">
-          <EmailSettingsSection />
-        </TabsContent>
-
-        <TabsContent value="app">
-          <AppSection />
-        </TabsContent>
-      </Tabs>
+        {/* Conteúdo */}
+        <div className="flex-1 min-w-0">
+          {renderContent()}
+        </div>
+      </div>
     </div>
   );
 };
