@@ -261,7 +261,7 @@ router.get("/status/:transactionId", async (req: Request, res: Response) => {
 
     // If MP, refresh status
     if (data.source === "mercadopago" && data.external_id) {
-      const token = getMPToken();
+      const token = await getMPTokenForUser(data.user_id);
       if (token) {
         const mpResp = await fetch(`${MP_API}/v1/payments/${data.external_id}`, {
           headers: { Authorization: `Bearer ${token}` },
