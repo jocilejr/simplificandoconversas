@@ -36,9 +36,26 @@ const STATUS_MAP: Record<string, string> = {
 // ─── POST /create ───
 router.post("/create", async (req: Request, res: Response) => {
   try {
-    const token = getMPToken();
+    const authHeader = req.headers.authorization || "";
+    const supabase = getServiceClient();
+
+    // Decode JWT to get user_id
+    let userId: string | null = null;
+    if (authHeader) {
+      const jwt = await import("jsonwebtoken");
+      const decoded: any = jwt.default.verify(
+        authHeader.replace("Bearer ", ""),
+        process.env.JWT_SECRET || ""
+      );
+      userId = decoded.sub;
+    }
+    if (!userId) {
+      return res.status(401).json({ error: "Não autenticado" });
+    }
+
+    const token = await getMPTokenForUser(userId);
     if (!token) {
-      return res.status(500).json({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado" });
+      return res.status(500).json({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado. Configure na aba Integrações." });
     }
 
     const authHeader = req.headers.authorization || "";
