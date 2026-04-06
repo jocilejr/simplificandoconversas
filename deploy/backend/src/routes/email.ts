@@ -508,22 +508,13 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
     let userId: string | null = profile?.user_id || null;
 
     if (!userId) {
-      const { data: conn } = await supabase
+      const { data: pc } = await supabase
         .from("platform_connections")
         .select("user_id")
-        .eq("platform", "api_key")
+        .eq("platform", "custom_api")
+        .eq("credentials->>api_key", apiKey)
         .maybeSingle();
-      
-      if (conn) {
-        const { data: pc } = await supabase
-          .from("platform_connections")
-          .select("user_id, credentials")
-          .eq("platform", "api_key")
-          .single();
-        if (pc && (pc.credentials as any)?.api_key === apiKey) {
-          userId = pc.user_id;
-        }
-      }
+      if (pc) userId = pc.user_id;
     }
 
     if (!userId) return res.status(401).json({ error: "API Key inválida" });
