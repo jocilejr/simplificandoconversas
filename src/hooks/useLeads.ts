@@ -14,6 +14,8 @@ export interface Lead {
   tags: string[];
   hasPaid: boolean;
   totalPaid: number;
+  paidOrdersCount: number;
+  remindersCount: number;
   transactions: Transaction[];
   customer_email: string | null;
   customer_document: string | null;
@@ -37,6 +39,7 @@ export function useLeads() {
       const { data, error } = await supabase
         .from("conversations")
         .select("remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at")
+        .not("remote_jid", "like", "%@lid")
         .order("last_message_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -66,7 +69,17 @@ export function useLeads() {
     },
   });
 
-  // Build transaction map by last 8 digits of phone
+  const { data: allReminders = [] } = useQuery({
+    queryKey: ["leads-reminders"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("reminders")
+        .select("remote_jid");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   const txByPhone = useMemo(() => {
     const map = new Map<string, Transaction[]>();
     for (const tx of allTransactions) {
@@ -78,7 +91,14 @@ export function useLeads() {
     return map;
   }, [allTransactions]);
 
-  // Deduplicate by remote_jid, attach tags + transactions
+  const remindersByJid = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of allReminders) {
+      map.set(r.remote_jid, (map.get(r.remote_jid) || 0) + 1);
+    }
+    return map;
+  }, [allReminders]);
+
   const leads = useMemo(() => {
     const map = new Map<string, Lead>();
     for (const c of rawConversations) {
@@ -98,6 +118,8 @@ export function useLeads() {
           tags: [],
           hasPaid: approvedTxs.length > 0,
           totalPaid: approvedTxs.reduce((s, t) => s + Number(t.amount), 0),
+          paidOrdersCount: approvedTxs.length,
+          remindersCount: remindersByJid.get(c.remote_jid) || 0,
           transactions: txs,
           customer_email: firstTxWithData?.customer_email || null,
           customer_document: firstTxWithData?.customer_document || null,
@@ -111,7 +133,7 @@ export function useLeads() {
       }
     }
     return Array.from(map.values());
-  }, [rawConversations, allTags, txByPhone]);
+  }, [rawConversations, allTags, txByPhone, remindersByJid]);
 
   const uniqueTags = useMemo(() => {
     const set = new Set<string>();

@@ -48,6 +48,7 @@ const mainItems = [
 ];
 
 const financeItems = [
+  { title: "Leads", url: "/leads", icon: Users },
   { title: "Transações", url: "/transacoes", icon: Receipt },
   
   { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
