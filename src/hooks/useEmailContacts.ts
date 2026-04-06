@@ -42,10 +42,14 @@ export function useEmailContacts() {
 
   const addContact = async (email: string, name?: string, tags?: string[]) => {
     if (!user) return;
+    const result = normalizeEmail(email);
+    if (result.corrected) {
+      toast.info(`E-mail corrigido: ${result.original} → ${result.email}`);
+    }
     const { error } = await supabase.from("email_contacts").upsert(
       {
         user_id: user.id,
-        email: email.toLowerCase().trim(),
+        email: result.email,
         name: name || null,
         tags: tags || [],
         source: "manual",
