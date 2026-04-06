@@ -223,6 +223,26 @@ export function normalizeEmail(input: string): NormalizeResult {
     wasCorrected = true;
   }
 
+  // 3. Correção genérica de TLD
+  const TLD_FIXES: [RegExp, string][] = [
+    [/\.com\.br[a-z]$/, ".com.br"],  // .com.brr, .com.brn (must be before .com[a-z])
+    [/\.com[a-z]$/, ".com"],          // .comn, .coml, .coma, etc.
+    [/\.comm+$/, ".com"],             // .comm, .commm
+    [/\.[cvxdf]om$/, ".com"],         // .vom, .cpm, .xom, .dom, .fom
+    [/\.c0m$/, ".com"],               // .c0m
+    [/\.con$/, ".com"],               // .con (genérico)
+    [/\.nte$/, ".net"],
+    [/\.ogr$/, ".org"],
+  ];
+
+  for (const [pattern, fix] of TLD_FIXES) {
+    if (pattern.test(correctedDomain)) {
+      correctedDomain = correctedDomain.replace(pattern, fix);
+      wasCorrected = true;
+      break;
+    }
+  }
+
   const finalEmail = `${localPart}@${correctedDomain}`;
 
   return {

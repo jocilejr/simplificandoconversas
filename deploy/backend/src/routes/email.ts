@@ -66,6 +66,18 @@ function normalizeEmail(input: string): { email: string; corrected: boolean; ori
   let cd = domain;
   if (DOMAIN_TYPOS[domain]) { cd = DOMAIN_TYPOS[domain]; corrected = true; }
   if (!cd.includes(".") && INCOMPLETE_DOMAINS[cd]) { cd = INCOMPLETE_DOMAINS[cd]; corrected = true; }
+  // Generic TLD fixes
+  const TLD_FIXES: [RegExp, string][] = [
+    [/\.com\.br[a-z]$/, ".com.br"],
+    [/\.com[a-z]$/, ".com"],
+    [/\.comm+$/, ".com"],
+    [/\.[cvxdf]om$/, ".com"],
+    [/\.c0m$/, ".com"],
+    [/\.con$/, ".com"],
+    [/\.nte$/, ".net"],
+    [/\.ogr$/, ".org"],
+  ];
+  for (const [p, fix] of TLD_FIXES) { if (p.test(cd)) { cd = cd.replace(p, fix); corrected = true; break; } }
   return { email: `${localPart}@${cd}`, corrected, original };
 }
 
