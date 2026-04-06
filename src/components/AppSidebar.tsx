@@ -8,7 +8,7 @@ import {
   Bell,
   Mail,
   Receipt,
-  UserCircle,
+  
   RefreshCw,
   FileText,
   UsersRound,
