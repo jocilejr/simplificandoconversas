@@ -216,9 +216,17 @@ export function useEmailContacts() {
       status: "active" as const,
     }));
 
+    // Deduplicate by email before upsert
+    const seen = new Set<string>();
+    const uniqueRows = rows.filter((r) => {
+      if (seen.has(r.email)) return false;
+      seen.add(r.email);
+      return true;
+    });
+
     // Insert in batches of 500
-    for (let i = 0; i < rows.length; i += 500) {
-      const batch = rows.slice(i, i + 500);
+    for (let i = 0; i < uniqueRows.length; i += 500) {
+      const batch = uniqueRows.slice(i, i + 500);
       const { error } = await supabase
         .from("email_contacts")
         .upsert(batch, { onConflict: "user_id,email" });
@@ -228,7 +236,7 @@ export function useEmailContacts() {
       }
     }
 
-    toast.success(`${toInsert.length} e-mail(s) importado(s)!`);
+    toast.success(`${uniqueRows.length} e-mail(s) importado(s)!`);
     fetchContacts();
     fetchActiveCount();
   };
