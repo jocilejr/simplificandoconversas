@@ -27,6 +27,7 @@ import {
   Search,
   Users,
   Loader2,
+  Wand2,
 } from "lucide-react";
 import { format } from "date-fns";
 
