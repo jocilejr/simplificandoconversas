@@ -123,7 +123,16 @@ function findBestMatch(inputDomain: string): {
     const distRaw = damerauLevenshtein(inputDomain, cd);
     const distClean = damerauLevenshtein(cleaned, cd);
     const usedCleaned = distClean < distRaw;
-    const dist = Math.min(distRaw, distClean);
+    let dist = Math.min(distRaw, distClean);
+
+    // Prefix bonus: if the input's name part is a prefix of the canonical's name part,
+    // reduce distance to favor the logical match (e.g. gm → gmail over r7)
+    const inputName = (usedCleaned ? cleaned : inputDomain).split(".")[0];
+    const cdName = cd.split(".")[0];
+    if (inputName.length >= 2 && cdName.startsWith(inputName)) {
+      dist = Math.max(0, dist - 2);
+    }
+
     candidates.push({ domain: cd, dist, usedCleaned });
   }
 
