@@ -54,33 +54,35 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const unpaidTxs = lead?.transactions.filter((t) => t.status !== "aprovado") || [];
 
   const { data: reminders = [] } = useQuery({
-    queryKey: ["lead-reminders", lead.remote_jid],
+    queryKey: ["lead-reminders", lead?.remote_jid],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("reminders")
         .select("*")
-        .eq("remote_jid", lead.remote_jid)
+        .eq("remote_jid", lead!.remote_jid)
         .order("due_date", { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    enabled: open,
+    enabled: open && !!lead,
   });
 
   const { data: messages = [] } = useQuery({
-    queryKey: ["lead-messages", lead.remote_jid],
+    queryKey: ["lead-messages", lead?.remote_jid],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("messages")
         .select("content, direction, created_at, message_type")
-        .eq("remote_jid", lead.remote_jid)
+        .eq("remote_jid", lead!.remote_jid)
         .order("created_at", { ascending: false })
         .limit(10);
       if (error) throw error;
       return data || [];
     },
-    enabled: open,
+    enabled: open && !!lead,
   });
+
+  if (!lead) return null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
