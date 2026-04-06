@@ -4,81 +4,144 @@ import nodemailer from "nodemailer";
 
 const router = Router();
 
-// ─── Email normalizer (deterministic domain typo dictionary) ────────────────
+// ─── Email normalizer (similarity-based engine) ────────────────────────────
 
-const DOMAIN_TYPOS: Record<string, string> = {
-  "gemil.com":"gmail.com","gmial.com":"gmail.com","gmai.com":"gmail.com","gnail.com":"gmail.com",
-  "gamil.com":"gmail.com","gmal.com":"gmail.com","gmaill.com":"gmail.com","gmail.com.br":"gmail.com",
-  "gmail.co":"gmail.com","gmail.cm":"gmail.com","gmail.om":"gmail.com","gmail.con":"gmail.com",
-  "gmail.comm":"gmail.com","gmail.coom":"gmail.com","gmaio.com":"gmail.com","gmaul.com":"gmail.com",
-  "gmeil.com":"gmail.com","gmil.com":"gmail.com","gimail.com":"gmail.com","gemail.com":"gmail.com",
-  "gmiall.com":"gmail.com","gamail.com":"gmail.com","gmsil.com":"gmail.com","gmaiil.com":"gmail.com",
-  "ggmail.com":"gmail.com",
-  "hotmal.com":"hotmail.com","hotmial.com":"hotmail.com","hotmai.com":"hotmail.com",
-  "hotmaill.com":"hotmail.com","hotmeil.com":"hotmail.com","hotmil.com":"hotmail.com",
-  "hotamail.com":"hotmail.com","hotmali.com":"hotmail.com","hotmall.com":"hotmail.com",
-  "hotmaol.com":"hotmail.com","homail.com":"hotmail.com","hhotmail.com":"hotmail.com",
-  "hotamil.com":"hotmail.com","hotmail.co":"hotmail.com","hotmail.con":"hotmail.com",
-  "hotmail.cm":"hotmail.com","hotmail.comm":"hotmail.com",
-  "outlok.com":"outlook.com","outllook.com":"outlook.com","outloock.com":"outlook.com",
-  "outlool.com":"outlook.com","outloook.com":"outlook.com","outlookk.com":"outlook.com",
-  "outlook.co":"outlook.com","outlook.con":"outlook.com","outlook.cm":"outlook.com",
-  "outlook.comm":"outlook.com","outolok.com":"outlook.com","oultook.com":"outlook.com",
-  "outiook.com":"outlook.com","outook.com":"outlook.com",
-  "yaho.com":"yahoo.com","yahooo.com":"yahoo.com","yahho.com":"yahoo.com",
-  "yahoou.com":"yahoo.com","yhaoo.com":"yahoo.com","yahoo.co":"yahoo.com",
-  "yahoo.con":"yahoo.com","yahoo.cm":"yahoo.com","yahoo.comm":"yahoo.com",
-  "yaho.com.br":"yahoo.com.br",
-  "iclould.com":"icloud.com","iclod.com":"icloud.com","icloude.com":"icloud.com",
-  "icloud.co":"icloud.com","icloud.con":"icloud.com",
-  "live.co":"live.com","live.con":"live.com","live.cm":"live.com",
-  "uol.com":"uol.com.br","uol.con.br":"uol.com.br","uol.co.br":"uol.com.br","uol.cm.br":"uol.com.br",
-  "bol.com":"bol.com.br","bol.con.br":"bol.com.br",
-  "terra.com":"terra.com.br","terra.con.br":"terra.com.br",
-  "ig.com":"ig.com.br","ig.con.br":"ig.com.br",
-  "globo.co":"globo.com","globo.con":"globo.com","globomail.co":"globomail.com",
-  "protonmail.co":"protonmail.com","protonmail.con":"protonmail.com","protonmal.com":"protonmail.com",
+const CANONICAL_DOMAINS = [
+  "gmail.com","hotmail.com","hotmail.com.br","outlook.com","outlook.com.br",
+  "yahoo.com","yahoo.com.br","icloud.com","live.com","uol.com.br","bol.com.br",
+  "terra.com.br","ig.com.br","globo.com","globomail.com","protonmail.com",
+  "msn.com","aol.com","zoho.com","r7.com",
+];
+const CANONICAL_SET = new Set(CANONICAL_DOMAINS);
+const KNOWN_ALIASES: Record<string,string> = {
+  "gmail.com.br":"gmail.com","uol.com":"uol.com.br","bol.com":"bol.com.br",
+  "terra.com":"terra.com.br","ig.com":"ig.com.br",
 };
-const INCOMPLETE_DOMAINS: Record<string,string> = {
-  gmail:"gmail.com",hotmail:"hotmail.com",outlook:"outlook.com",yahoo:"yahoo.com",
-  icloud:"icloud.com",live:"live.com",uol:"uol.com.br",bol:"bol.com.br",
-  terra:"terra.com.br",ig:"ig.com.br",globo:"globo.com",protonmail:"protonmail.com",globomail:"globomail.com",
-};
-const KNOWN_DOMAINS = ["gmail.com","hotmail.com","hotmail.com.br","outlook.com","outlook.com.br","yahoo.com","yahoo.com.br","icloud.com","live.com","uol.com.br","bol.com.br","terra.com.br","ig.com.br","globo.com","globomail.com","protonmail.com"];
 
-function normalizeEmail(input: string): { email: string; corrected: boolean; original: string } {
-  const original = input.trim().toLowerCase();
-  if (!original) return { email: original, corrected: false, original };
+function damerauLevenshtein(a: string, b: string): number {
+  const la = a.length, lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
+  const d: number[][] = [];
+  for (let i = 0; i <= la; i++) { d[i] = new Array(lb + 1).fill(0); }
+  for (let i = 0; i <= la; i++) d[i][0] = i;
+  for (let j = 0; j <= lb; j++) d[0][j] = j;
+  for (let i = 1; i <= la; i++) {
+    for (let j = 1; j <= lb; j++) {
+      const cost = a[i-1] === b[j-1] ? 0 : 1;
+      d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost);
+      if (i>1 && j>1 && a[i-1]===b[j-2] && a[i-2]===b[j-1])
+        d[i][j] = Math.min(d[i][j], d[i-2][j-2]+cost);
+    }
+  }
+  return d[la][lb];
+}
+
+function cleanDomain(raw: string): string {
+  let c = raw.replace(/^[^a-z]+/, "");
+  c = c.replace(/[^a-z.]+$/, "");
+  c = c.replace(/\.+$/, "");
+  return c;
+}
+
+function hasValidStructure(domain: string): boolean {
+  if (!domain.includes(".")) return false;
+  const parts = domain.split(".");
+  const tld = parts[parts.length - 1];
+  if (!/^[a-z]{2,6}$/.test(tld)) return false;
+  if (tld === "br" && parts.length >= 3) {
+    const sld = parts[parts.length - 2];
+    if (!/^[a-z]{2,4}$/.test(sld)) return false;
+  }
+  const provider = parts[0];
+  if (provider.length === 0 || !/^[a-z]/.test(provider)) return false;
+  return true;
+}
+
+function normalizeEmail(input: string): { email: string; corrected: boolean; original: string; status: string } {
+  const original = input.trim().toLowerCase().replace(/\s+/g, "");
+  if (!original) return { email: original, corrected: false, original, status: "invalid" };
+
   let localPart: string, domain: string;
   if (original.includes("@")) {
     const i = original.indexOf("@");
     localPart = original.substring(0, i);
     domain = original.substring(i + 1);
   } else {
-    let found: string | null = null;
-    for (const d of KNOWN_DOMAINS) { if (original.endsWith(d) && original.length > d.length) { found = d; break; } }
-    if (!found) { for (const [t] of Object.entries(DOMAIN_TYPOS)) { if (original.endsWith(t) && original.length > t.length) { found = t; break; } } }
-    if (found) { localPart = original.substring(0, original.length - found.length); domain = found; }
-    else return { email: original, corrected: false, original };
+    // Try to infer missing @
+    let found: { local: string; domain: string } | null = null;
+    for (const cd of CANONICAL_DOMAINS) {
+      if (original.endsWith(cd) && original.length > cd.length) {
+        found = { local: original.substring(0, original.length - cd.length), domain: cd };
+        break;
+      }
+    }
+    if (!found) return { email: original, corrected: false, original, status: "invalid" };
+    localPart = found.local;
+    domain = found.domain;
   }
-  if (!localPart || !domain) return { email: original, corrected: false, original };
-  let corrected = !original.includes("@");
-  let cd = domain;
-  if (DOMAIN_TYPOS[domain]) { cd = DOMAIN_TYPOS[domain]; corrected = true; }
-  if (!cd.includes(".") && INCOMPLETE_DOMAINS[cd]) { cd = INCOMPLETE_DOMAINS[cd]; corrected = true; }
-  // Generic TLD fixes
-  const TLD_FIXES: [RegExp, string][] = [
-    [/\.com\.br[a-z]$/, ".com.br"],
-    [/\.com[a-z]$/, ".com"],
-    [/\.comm+$/, ".com"],
-    [/\.[cvxdf]om$/, ".com"],
-    [/\.c0m$/, ".com"],
-    [/\.con$/, ".com"],
-    [/\.nte$/, ".net"],
-    [/\.ogr$/, ".org"],
-  ];
-  for (const [p, fix] of TLD_FIXES) { if (p.test(cd)) { cd = cd.replace(p, fix); corrected = true; break; } }
-  return { email: `${localPart}@${cd}`, corrected, original };
+  if (!localPart || !domain) return { email: original, corrected: false, original, status: "invalid" };
+
+  domain = domain.replace(/\.+$/, "");
+  const cleaned = cleanDomain(domain);
+
+  // Known aliases
+  const aliasKey = KNOWN_ALIASES[domain] ? domain : KNOWN_ALIASES[cleaned] ? cleaned : null;
+  if (aliasKey) {
+    const target = KNOWN_ALIASES[aliasKey];
+    return { email: `${localPart}@${target}`, corrected: true, original, status: "corrected" };
+  }
+
+  // Already canonical
+  if (CANONICAL_SET.has(domain)) {
+    const e = `${localPart}@${domain}`;
+    return { email: e, corrected: e !== original, original, status: e !== original ? "corrected" : "exact" };
+  }
+
+  // Similarity match
+  const candidates = CANONICAL_DOMAINS.map(cd => ({
+    domain: cd,
+    dist: Math.min(damerauLevenshtein(domain, cd), damerauLevenshtein(cleaned, cd)),
+  })).sort((a, b) => a.dist - b.dist);
+
+  const best = candidates[0];
+  const gap = candidates.length > 1 ? candidates[1].dist - best.dist : best.dist + 2;
+  const maxLen = Math.max(domain.length, best.domain.length);
+  const similarity = 1 - best.dist / maxLen;
+
+  // Exact after cleaning
+  if (best.dist === 0 && domain !== best.domain) {
+    return { email: `${localPart}@${best.domain}`, corrected: true, original, status: "corrected" };
+  }
+  if (best.dist === 0) {
+    return { email: `${localPart}@${best.domain}`, corrected: false, original, status: "exact" };
+  }
+
+  // Confidence calc
+  let conf = 0;
+  if (best.dist === 1 && gap >= 1) conf = 0.95;
+  else if (best.dist <= 2 && gap >= 2) conf = 0.9;
+  else if (best.dist <= 2 && gap >= 1) conf = 0.85;
+  else if (best.dist <= 3 && gap >= 2 && similarity >= 0.65) conf = 0.8;
+  else if (best.dist <= 3 && gap >= 1 && similarity >= 0.6) conf = 0.75;
+  else if (best.dist <= 4 && gap >= 2 && similarity >= 0.6) conf = 0.65;
+  else if (best.dist <= 4 && gap >= 1 && similarity >= 0.55) conf = 0.55;
+  else if (similarity >= 0.5) conf = 0.4;
+  else conf = 0.2;
+
+  if (conf >= 0.7) {
+    return { email: `${localPart}@${best.domain}`, corrected: true, original, status: "corrected" };
+  }
+
+  // Valid custom domain?
+  if (hasValidStructure(domain) && best.dist > 4) {
+    return { email: `${localPart}@${domain}`, corrected: false, original, status: "exact" };
+  }
+  if (hasValidStructure(domain) && conf < 0.4) {
+    return { email: `${localPart}@${domain}`, corrected: false, original, status: "exact" };
+  }
+
+  return { email: `${localPart}@${domain}`, corrected: false, original, status: "ambiguous" };
 }
 
 const supabaseUrl = process.env.SUPABASE_URL || "";
@@ -688,6 +751,14 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         if (!regEmail) return res.status(400).json({ error: "register_email requer: email" });
 
         const normalized = normalizeEmail(regEmail);
+
+        if (normalized.status === "invalid") {
+          return res.status(400).json({ error: "E-mail inválido", original: normalized.original });
+        }
+        if (normalized.status === "ambiguous") {
+          return res.status(400).json({ error: "E-mail suspeito — domínio não reconhecido", original: normalized.original });
+        }
+
         if (normalized.corrected) {
           console.log(`[email/webhook] E-mail corrigido: ${normalized.original} → ${normalized.email}`);
         }
