@@ -182,6 +182,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CSV_ANALYZER_MODE: heuristic
       APP_PUBLIC_URL: ${APP_URL}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
 
   # ─── Nginx (roteamento interno) ───
   nginx:

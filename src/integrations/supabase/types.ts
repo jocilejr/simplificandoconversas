@@ -1228,6 +1228,7 @@ export type Database = {
           id: string
           metadata: Json | null
           paid_at: string | null
+          payment_url: string | null
           source: string
           status: string
           type: string
@@ -1245,6 +1246,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           paid_at?: string | null
+          payment_url?: string | null
           source?: string
           status?: string
           type?: string
@@ -1262,6 +1264,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           paid_at?: string | null
+          payment_url?: string | null
           source?: string
           status?: string
           type?: string
