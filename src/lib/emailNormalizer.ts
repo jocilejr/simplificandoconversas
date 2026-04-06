@@ -34,6 +34,20 @@ const CANONICAL_SET = new Set(CANONICAL_DOMAINS);
 // Known aliases: domains that look valid but should be mapped to the canonical
 const KNOWN_ALIASES: Record<string, string> = {
   "gmail.com.br": "gmail.com",
+  "gm.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmal.com": "gmail.com",
+  "gmil.com": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gmaill.com": "gmail.com",
+  "hotmal.com": "hotmail.com",
+  "hotmai.com": "hotmail.com",
+  "hotmial.com": "hotmail.com",
+  "outloo.com": "outlook.com",
+  "outlok.com": "outlook.com",
+  "outllok.com": "outlook.com",
+  "yaho.com": "yahoo.com",
+  "yahooo.com": "yahoo.com",
   "uol.com": "uol.com.br",
   "bol.com": "bol.com.br",
   "terra.com": "terra.com.br",
@@ -109,7 +123,16 @@ function findBestMatch(inputDomain: string): {
     const distRaw = damerauLevenshtein(inputDomain, cd);
     const distClean = damerauLevenshtein(cleaned, cd);
     const usedCleaned = distClean < distRaw;
-    const dist = Math.min(distRaw, distClean);
+    let dist = Math.min(distRaw, distClean);
+
+    // Prefix bonus: if the input's name part is a prefix of the canonical's name part,
+    // reduce distance to favor the logical match (e.g. gm → gmail over r7)
+    const inputName = (usedCleaned ? cleaned : inputDomain).split(".")[0];
+    const cdName = cd.split(".")[0];
+    if (inputName.length >= 2 && cdName.startsWith(inputName)) {
+      dist = Math.max(0, dist - 2);
+    }
+
     candidates.push({ domain: cd, dist, usedCleaned });
   }
 
