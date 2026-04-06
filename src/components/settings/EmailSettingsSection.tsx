@@ -30,7 +30,7 @@ export function EmailSettingsSection() {
         .from("platform_connections")
         .select("credentials")
         .eq("user_id", user.id)
-        .eq("platform", "integration_api")
+        .eq("platform", "custom_api")
         .maybeSingle();
       return (data?.credentials as any)?.api_key || null;
     },

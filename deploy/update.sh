@@ -342,6 +342,52 @@ ALTER TABLE public.email_sends ADD COLUMN IF NOT EXISTS opened_at timestamptz;
 -- Index for follow-up scheduling
 CREATE INDEX IF NOT EXISTS idx_follow_up_sends_scheduled ON public.email_follow_up_sends(scheduled_at) WHERE status = 'pending';
 
+-- Platform Connections (API keys)
+CREATE TABLE IF NOT EXISTS public.platform_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  platform text NOT NULL,
+  credentials jsonb NOT NULL DEFAULT '{}',
+  enabled boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.platform_connections ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'platform_connections' AND policyname = 'Users can manage own platform connections') THEN
+    CREATE POLICY "Users can manage own platform connections" ON public.platform_connections FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.platform_connections TO anon, authenticated, service_role;
+
+-- Email Contacts
+CREATE TABLE IF NOT EXISTS public.email_contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  email text NOT NULL,
+  name text,
+  tags text[] NOT NULL DEFAULT '{}',
+  source text NOT NULL DEFAULT 'manual',
+  status text NOT NULL DEFAULT 'active',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.email_contacts ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_contacts' AND policyname = 'Users can manage own email contacts') THEN
+    CREATE POLICY "Users can manage own email contacts" ON public.email_contacts FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.email_contacts TO anon, authenticated, service_role;
+
+-- Unique constraint for upsert on email_contacts
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'email_contacts_user_id_email_key') THEN
+    ALTER TABLE public.email_contacts ADD CONSTRAINT email_contacts_user_id_email_key UNIQUE (user_id, email);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_email_contacts_user_email ON public.email_contacts(user_id, email);
+
 -- Force PostgREST schema cache reload
 NOTIFY pgrst, 'reload schema';
 EOSQL
