@@ -318,7 +318,7 @@ IMPORTANTE: Analise TODAS as linhas fornecidas. Preserve a parte local do e-mail
       return null;
     }
 
-    const aiResult = await response.json();
+    const aiResult: any = await response.json();
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) return null;
 
