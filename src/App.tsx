@@ -16,6 +16,14 @@ import Reminders from "./pages/Reminders";
 import EmailPage from "./pages/EmailPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
+import Transacoes from "./pages/Transacoes";
+import ClientesFinanceiro from "./pages/ClientesFinanceiro";
+import RecuperacaoBoletos from "./pages/RecuperacaoBoletos";
+import GerarBoleto from "./pages/GerarBoleto";
+import GruposPage from "./pages/GruposPage";
+import AreaMembros from "./pages/AreaMembros";
+import EntregaDigital from "./pages/EntregaDigital";
+import LinksUteis from "./pages/LinksUteis";
 
 const queryClient = new QueryClient();
 
