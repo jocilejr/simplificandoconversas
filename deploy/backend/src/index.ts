@@ -28,6 +28,7 @@ app.use("/api/ext", extensionApiRouter);
 app.use("/api/platform", platformApiRouter);
 app.use("/api/external-messaging-webhook", externalWebhookRouter);
 app.use("/api/email", emailRouter);
+app.use("/api/analyze-csv-contacts", analyzeCsvRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
