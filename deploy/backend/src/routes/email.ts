@@ -450,9 +450,10 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .select()
         .single();
 
-      const finalHtml = sendLog
+      let finalHtml = sendLog
         ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
         : personalizedHtml;
+      if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
 
       try {
         await transporter.sendMail({ from: fromAddress, to: recipient.email, subject: personalizedSubject, html: finalHtml });
