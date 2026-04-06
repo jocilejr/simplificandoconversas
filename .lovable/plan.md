@@ -1,53 +1,52 @@
 
 
-# Métricas individuais por template + envio manual de teste
+# Corrigir rastreamento de abertura/cliques e HTML do e-mail
 
-## O que será feito
+## Problemas identificados
 
-1. **Taxa de abertura por template** — cada card de template exibirá métricas: total de envios, aberturas e taxa de abertura (%). Os dados vêm de uma query em `email_sends` agrupada por `template_id`, cruzando com `opened_at IS NOT NULL`.
+### 1. URLs de tracking apontam para endereço interno do Docker
+No backend, `appUrl` é definido como `process.env.APP_PUBLIC_URL || supabaseUrl`. Como `APP_PUBLIC_URL` **não está configurado** no `docker-compose.yml`, ele cai no fallback `supabaseUrl` que é `http://nginx:80` — um endereço interno do Docker, inacessível pelo destinatário do e-mail.
 
-2. **Envio manual de teste** — botão em cada template card para enviar o template a um contato específico. Um dialog permite digitar o e-mail do destinatário (com autocomplete dos contatos existentes) e enviar via `/api/email/send`.
+Resultado: tanto o pixel de abertura quanto os links de clique apontam para `http://nginx:80/...`, que nunca é alcançado.
 
-## Arquivos alterados
+### 2. Pixel de abertura usa caminho errado
+`injectTrackingPixel` gera URL com `/functions/v1/email/track/...`, mas no Nginx do APP_DOMAIN só existe proxy para `/api/email/`. Logo, mesmo com URL correta, o pixel retornaria 404 ou o index.html do SPA.
 
-### 1. `src/hooks/useEmailTemplates.ts`
+### 3. Inconsistência de caminhos
+- Pixel: `/functions/v1/email/track/:id` (errado para APP_DOMAIN)
+- Clique: `/api/email/click/:id` (correto para APP_DOMAIN)
 
-- Adicionar query separada para buscar métricas por template:
-  ```sql
-  SELECT template_id, 
-    COUNT(*) as total_sent, 
-    COUNT(opened_at) as total_opened
-  FROM email_sends 
-  WHERE user_id = ? AND template_id IS NOT NULL
-  GROUP BY template_id
-  ```
-- Retornar `templateStats` como `Record<templateId, { sent, opened, openRate }>`
+## Solução
 
-### 2. `src/components/email/EmailTemplatesTab.tsx`
+### 1. Adicionar `APP_PUBLIC_URL` ao docker-compose.yml
+No serviço `backend`, adicionar a variável de ambiente:
+```
+APP_PUBLIC_URL: ${APP_URL}
+```
+Isso faz `appUrl` resolver para `https://app.seudominio.com` — acessível publicamente.
 
-**Métricas no card:**
-- Abaixo do nome/assunto, exibir uma linha com: `Enviados: X | Aberturas: Y (Z%)`
-- Usar badges ou texto pequeno estilizado
+### 2. Corrigir caminho do tracking pixel
+Em `deploy/backend/src/routes/email.ts`, alterar `injectTrackingPixel` para usar `/api/email/track/` em vez de `/functions/v1/email/track/`:
+```
+// DE:
+const pixel = `<img src="${baseUrl}/functions/v1/email/track/${sendId}" ...`
+// PARA:
+const pixel = `<img src="${baseUrl}/api/email/track/${sendId}" ...`
+```
 
-**Botão de envio manual:**
-- Adicionar ícone `Send` nos botões de ação do card (junto com preview, duplicar, editar, excluir)
-- Ao clicar, abrir dialog com:
-  - Input de e-mail do destinatário (com sugestões dos contatos existentes via `email_contacts`)
-  - Input opcional de nome do destinatário
-  - Botão "Enviar"
-- O envio chama `/api/email/send` com `{ to, subject: t.subject, html: t.html_body, userId, templateId: t.id, recipientName }`
-- As variáveis `{{nome}}`, `{{email}}` são substituídas pelos dados informados antes do envio
+### Arquivos alterados
+- `deploy/docker-compose.yml` — adicionar `APP_PUBLIC_URL: ${APP_URL}` no backend
+- `deploy/backend/src/routes/email.ts` — corrigir path do pixel de `/functions/v1/email/track/` para `/api/email/track/`
 
-## Fluxo do envio manual
+### Após o deploy
+O usuário precisará rodar na VPS:
+```bash
+cd /root/simplificandoconversas/deploy && ./update.sh
+```
 
-1. Clica no ícone Send no card do template
-2. Dialog abre com campo de e-mail e nome
-3. Ao enviar, as variáveis do HTML são substituídas
-4. POST para `/api/email/send` com o HTML processado
-5. Toast de sucesso/erro
-6. Métricas do template atualizam automaticamente (refetch)
+Depois, qualquer e-mail enviado terá:
+- Pixel: `https://app.seudominio.com/api/email/track/:sendId`
+- Links: `https://app.seudominio.com/api/email/click/:clickId`
 
-## Sem mudanças de backend ou banco
-
-Todas as queries usam tabelas existentes (`email_sends`, `email_contacts`). O endpoint `/api/email/send` já suporta `templateId`. Nenhuma migration necessária.
+Ambos são proxied pelo Nginx do APP_DOMAIN para o backend.
 
