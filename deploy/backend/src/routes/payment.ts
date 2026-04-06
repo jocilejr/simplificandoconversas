@@ -5,7 +5,19 @@ const router = Router();
 
 const MP_API = "https://api.mercadopago.com";
 
-function getMPToken(): string {
+async function getMPTokenForUser(userId: string): Promise<string> {
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from("platform_connections")
+    .select("credentials")
+    .eq("user_id", userId)
+    .eq("platform", "mercadopago")
+    .eq("enabled", true)
+    .single();
+
+  const token = (data?.credentials as any)?.access_token;
+  if (token) return token;
+
   return process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 }
 
