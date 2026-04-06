@@ -15,6 +15,15 @@ export interface EmailContact {
   created_at: string;
 }
 
+export interface AnalyzedContact {
+  email: string;
+  name: string | null;
+  tags: string[];
+  status: "valid" | "corrected" | "invalid";
+  original_email?: string;
+  reason?: string;
+}
+
 export function useEmailContacts() {
   const { user } = useAuth();
   const [contacts, setContacts] = useState<EmailContact[]>([]);
@@ -90,59 +99,55 @@ export function useEmailContacts() {
     toast.success("Contato excluído");
   };
 
-  const importCSV = async (file: File) => {
-    if (!user) return;
+  const analyzeCSV = async (file: File): Promise<AnalyzedContact[] | null> => {
+    if (!user) return null;
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(Boolean);
     if (lines.length < 2) {
       toast.error("CSV vazio ou sem dados");
-      return;
+      return null;
     }
 
-    const header = lines[0].toLowerCase();
-    const sep = header.includes(";") ? ";" : ",";
-    const cols = header.split(sep).map((c) => c.trim());
-    const emailIdx = cols.findIndex((c) => c === "email" || c === "e-mail");
-    const nameIdx = cols.findIndex((c) => c === "nome" || c === "name");
-
-    if (emailIdx === -1) {
-      toast.error('Coluna "email" não encontrada no CSV');
-      return;
-    }
-
-    let correctedCount = 0;
-    let skippedCount = 0;
-    const rows: { user_id: string; email: string; name: string | null; tags: string[]; source: "import"; status: "active" }[] = [];
-
-    for (const line of lines.slice(1)) {
-      const parts = line.split(sep).map((v) => v.trim().replace(/^"|"$/g, ""));
-      const rawEmail = parts[emailIdx]?.trim() || "";
-      if (!rawEmail || !rawEmail.includes("@")) {
-        skippedCount++;
-        continue;
-      }
-      const result = normalizeEmail(rawEmail);
-
-      if (result.status === "invalid" || result.status === "ambiguous") {
-        skippedCount++;
-        continue;
-      }
-      if (result.corrected) correctedCount++;
-
-      rows.push({
-        user_id: user.id,
-        email: result.email,
-        name: nameIdx >= 0 ? parts[nameIdx] || null : null,
-        tags: [],
-        source: "import",
-        status: "active",
+    try {
+      const { data, error } = await supabase.functions.invoke("analyze-csv-contacts", {
+        body: { csv_text: text },
       });
-    }
 
-    if (rows.length === 0) {
-      toast.error("Nenhum e-mail válido encontrado no CSV");
+      if (error) {
+        toast.error("Erro ao analisar CSV: " + error.message);
+        return null;
+      }
+
+      if (data?.error) {
+        toast.error(data.error);
+        return null;
+      }
+
+      return data.contacts as AnalyzedContact[];
+    } catch (err) {
+      console.error("Erro na análise de CSV:", err);
+      toast.error("Erro ao analisar CSV com IA");
+      return null;
+    }
+  };
+
+  const confirmImport = async (analyzedContacts: AnalyzedContact[]) => {
+    if (!user) return;
+
+    const validContacts = analyzedContacts.filter((c) => c.status !== "invalid");
+    if (validContacts.length === 0) {
+      toast.error("Nenhum contato válido para importar");
       return;
     }
+
+    const rows = validContacts.map((c) => ({
+      user_id: user.id,
+      email: c.email.toLowerCase().trim(),
+      name: c.name || null,
+      tags: c.tags || [],
+      source: "import" as const,
+      status: "active" as const,
+    }));
 
     const { error } = await supabase
       .from("email_contacts")
@@ -153,9 +158,11 @@ export function useEmailContacts() {
       return;
     }
 
-    const msgs: string[] = [`${rows.length} contatos importados!`];
-    if (correctedCount > 0) msgs.push(`${correctedCount} corrigidos`);
-    if (skippedCount > 0) msgs.push(`${skippedCount} ignorados`);
+    const corrected = analyzedContacts.filter((c) => c.status === "corrected").length;
+    const invalid = analyzedContacts.filter((c) => c.status === "invalid").length;
+    const msgs: string[] = [`${validContacts.length} contatos importados!`];
+    if (corrected > 0) msgs.push(`${corrected} corrigidos`);
+    if (invalid > 0) msgs.push(`${invalid} ignorados`);
     toast.success(msgs.join(" · "));
     fetchContacts();
   };
@@ -226,7 +233,8 @@ export function useEmailContacts() {
     setSearch,
     addContact,
     deleteContact,
-    importCSV,
+    analyzeCSV,
+    confirmImport,
     activeCount,
     refetch: fetchContacts,
     fixEmails,
