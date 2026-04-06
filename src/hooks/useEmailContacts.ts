@@ -43,9 +43,19 @@ export function useEmailContacts() {
   const addContact = async (email: string, name?: string, tags?: string[]) => {
     if (!user) return;
     const result = normalizeEmail(email);
+
+    if (result.status === "invalid") {
+      toast.error(`E-mail inválido: ${result.reason || "formato não reconhecido"}`);
+      return;
+    }
+    if (result.status === "ambiguous") {
+      toast.error(`E-mail suspeito (${result.reason || "domínio não reconhecido"}). Verifique e tente novamente.`);
+      return;
+    }
     if (result.corrected) {
       toast.info(`E-mail corrigido: ${result.original} → ${result.email}`);
     }
+
     const { error } = await supabase.from("email_contacts").upsert(
       {
         user_id: user.id,
@@ -101,20 +111,33 @@ export function useEmailContacts() {
     }
 
     let correctedCount = 0;
-    const rows = lines.slice(1).map((line) => {
+    let skippedCount = 0;
+    const rows: { user_id: string; email: string; name: string | null; tags: string[]; source: "import"; status: "active" }[] = [];
+
+    for (const line of lines.slice(1)) {
       const parts = line.split(sep).map((v) => v.trim().replace(/^"|"$/g, ""));
       const rawEmail = parts[emailIdx]?.trim() || "";
+      if (!rawEmail || !rawEmail.includes("@")) {
+        skippedCount++;
+        continue;
+      }
       const result = normalizeEmail(rawEmail);
+
+      if (result.status === "invalid" || result.status === "ambiguous") {
+        skippedCount++;
+        continue;
+      }
       if (result.corrected) correctedCount++;
-      return {
+
+      rows.push({
         user_id: user.id,
         email: result.email,
         name: nameIdx >= 0 ? parts[nameIdx] || null : null,
-        tags: [] as string[],
-        source: "import" as const,
-        status: "active" as const,
-      };
-    }).filter((r) => r.email && r.email.includes("@"));
+        tags: [],
+        source: "import",
+        status: "active",
+      });
+    }
 
     if (rows.length === 0) {
       toast.error("Nenhum e-mail válido encontrado no CSV");
@@ -129,8 +152,11 @@ export function useEmailContacts() {
       toast.error("Erro ao importar: " + error.message);
       return;
     }
-    const corrMsg = correctedCount > 0 ? ` (${correctedCount} e-mails corrigidos)` : "";
-    toast.success(`${rows.length} contatos importados!${corrMsg}`);
+
+    const msgs: string[] = [`${rows.length} contatos importados!`];
+    if (correctedCount > 0) msgs.push(`${correctedCount} corrigidos`);
+    if (skippedCount > 0) msgs.push(`${skippedCount} ignorados`);
+    toast.success(msgs.join(" · "));
     fetchContacts();
   };
 
@@ -152,11 +178,8 @@ export function useEmailContacts() {
     setFixing(true);
     try {
       const toFix = contacts
-        .map((c) => {
-          const result = normalizeEmail(c.email);
-          return { ...c, result };
-        })
-        .filter((c) => c.result.corrected);
+        .map((c) => ({ ...c, result: normalizeEmail(c.email) }))
+        .filter((c) => c.result.status === "corrected");
 
       if (toFix.length === 0) {
         toast.info("Todos os e-mails já estão corretos!");
@@ -166,19 +189,16 @@ export function useEmailContacts() {
       let fixedCount = 0;
       for (const item of toFix) {
         const correctedEmail = item.result.email;
-        // Check if corrected email already exists for this user
         const existing = contacts.find(
           (c) => c.id !== item.id && c.email === correctedEmail
         );
         if (existing) {
-          // Duplicate: delete the record with the typo
           await supabase
             .from("email_contacts")
             .delete()
             .eq("id", item.id)
             .eq("user_id", user.id);
         } else {
-          // Update the email
           await supabase
             .from("email_contacts")
             .update({ email: correctedEmail })
