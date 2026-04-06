@@ -660,6 +660,43 @@ router.get("/track/:sendId", async (req: Request, res: Response) => {
   res.end(pixel);
 });
 
+// ─── GET /api/email/click/:clickId — link click tracking ────────────────────
+
+router.get("/click/:clickId", async (req: Request, res: Response) => {
+  try {
+    const { clickId } = req.params;
+
+    const { data: click, error } = await supabase
+      .from("email_link_clicks")
+      .select("*, email_sends(user_id, campaign_id)")
+      .eq("id", clickId)
+      .single();
+
+    if (error || !click) return res.status(404).send("Link not found");
+
+    // Mark as clicked (only first time)
+    if (!click.clicked) {
+      await supabase
+        .from("email_link_clicks")
+        .update({ clicked: true, clicked_at: new Date().toISOString() })
+        .eq("id", clickId);
+
+      const send = click.email_sends as any;
+      if (send) {
+        await logEvent(click.send_id, send.user_id, "link_clicked", {
+          url: click.original_url,
+          click_id: clickId,
+        });
+      }
+    }
+
+    return res.redirect(302, click.original_url);
+  } catch (err: any) {
+    console.error("[email/click]", err);
+    return res.status(500).send("Error");
+  }
+});
+
 // ─── GET /api/email/stats — aggregated metrics ──────────────────────────────
 
 router.get("/stats", async (req: Request, res: Response) => {
@@ -678,7 +715,21 @@ router.get("/stats", async (req: Request, res: Response) => {
     const opened = sends?.filter((s: any) => s.opened_at).length || 0;
     const pending = sends?.filter((s: any) => s.status === "pending").length || 0;
 
-    res.json({ total, sent, failed, opened, pending, openRate: sent > 0 ? ((opened / sent) * 100).toFixed(1) : "0" });
+    // Click stats
+    const { data: clicks } = await supabase
+      .from("email_link_clicks")
+      .select("send_id, clicked")
+      .eq("user_id", userId)
+      .eq("clicked", true);
+
+    const clickedSendIds = new Set((clicks || []).map((c: any) => c.send_id));
+    const clicked = clickedSendIds.size;
+
+    res.json({
+      total, sent, failed, opened, pending, clicked,
+      openRate: sent > 0 ? ((opened / sent) * 100).toFixed(1) : "0",
+      clickRate: sent > 0 ? ((clicked / sent) * 100).toFixed(1) : "0",
+    });
   } catch (err: any) {
     console.error("[email/stats]", err.message);
     res.status(500).json({ error: err.message });
