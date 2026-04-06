@@ -821,91 +821,24 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
                 // Check suppression
                 if (await isSuppressed(userId, normalized.email)) continue;
 
-                // Send email
+                // Enqueue instead of sending inline
                 try {
-                  const smtpConfig = await getSmtpConfig(userId, camp.smtp_config_id || undefined);
-                  const transporter = createTransporter(smtpConfig);
-                  const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
-
-                  const personalizedHtml = replaceVariables(template.html_body, {
-                    nome: regName || null,
-                    email: normalized.email,
-                    telefone: null,
-                  });
-                  const personalizedSubject = replaceVariables(template.subject, {
-                    nome: regName || null,
-                    email: normalized.email,
-                    telefone: null,
+                  await supabase.from("email_queue").insert({
+                    user_id: userId,
+                    campaign_id: camp.id,
+                    template_id: template.id,
+                    smtp_config_id: camp.smtp_config_id || null,
+                    recipient_email: normalized.email,
+                    recipient_name: regName || null,
+                    personalization: { nome: regName || null, email: normalized.email, telefone: null },
+                    status: "pending",
                   });
 
-                  const { data: sendLog } = await supabase
-                    .from("email_sends")
-                    .insert({
-                      user_id: userId,
-                      campaign_id: camp.id,
-                      template_id: template.id,
-                      recipient_email: normalized.email,
-                      recipient_name: regName || null,
-                      status: "pending",
-                    })
-                    .select()
-                    .single();
+                  // (follow-ups are now handled inside the queue block above)
 
-                  const finalHtml = sendLog
-                    ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
-                    : personalizedHtml;
-
-                  await transporter.sendMail({
-                    from: smtpConfig.from_name
-                      ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
-                      : smtpConfig.from_email,
-                    to: normalized.email,
-                    subject: personalizedSubject,
-                    html: finalHtml,
-                  });
-
-                  if (sendLog) {
-                    await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-                    await logEvent(sendLog.id, userId, "sent");
-                  }
-
-                  // Update campaign counters
-                  const { data: campData } = await supabase
-                    .from("email_campaigns")
-                    .select("sent_count, total_recipients")
-                    .eq("id", camp.id)
-                    .single();
-                  if (campData) {
-                    await supabase.from("email_campaigns").update({
-                      sent_count: (campData.sent_count || 0) + 1,
-                      total_recipients: (campData.total_recipients || 0) + 1,
-                    }).eq("id", camp.id);
-                  }
-
-                  // Schedule follow-ups
-                  const { data: followUps } = await supabase
-                    .from("email_follow_ups")
-                    .select("*")
-                    .eq("campaign_id", camp.id)
-                    .order("step_order", { ascending: true });
-
-                  if (followUps && followUps.length > 0) {
-                    for (const fu of followUps) {
-                      const scheduledAt = new Date();
-                      scheduledAt.setDate(scheduledAt.getDate() + fu.delay_days);
-                      await supabase.from("email_follow_up_sends").insert({
-                        follow_up_id: fu.id,
-                        user_id: userId,
-                        recipient_email: normalized.email,
-                        status: "pending",
-                        scheduled_at: scheduledAt.toISOString(),
-                      });
-                    }
-                  }
-
-                  console.log(`[email/auto-send] Campanha "${camp.name}" enviada para ${normalized.email}`);
-                } catch (sendErr: any) {
-                  console.error(`[email/auto-send] Falha ao enviar campanha "${camp.name}" para ${normalized.email}:`, sendErr.message);
+                  console.log(`[email/auto-send] Campanha "${camp.name}" enfileirada para ${normalized.email}`);
+                } catch (queueErr: any) {
+                  console.error(`[email/auto-send] Falha ao enfileirar campanha "${camp.name}" para ${normalized.email}:`, queueErr.message);
                 }
               }
             }
@@ -1035,6 +968,142 @@ router.post("/check-follow-ups", async (req: Request, res: Response) => {
     res.json({ ok: true, processed });
   } catch (err: any) {
     console.error("[email/check-follow-ups]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/email/process-queue — process pending email queue (cron) ─────
+
+router.post("/process-queue", async (_req: Request, res: Response) => {
+  try {
+    const { data: items } = await supabase
+      .from("email_queue")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(50);
+
+    if (!items || items.length === 0) {
+      return res.json({ ok: true, processed: 0 });
+    }
+
+    let processed = 0;
+    let failed = 0;
+
+    // Group by smtp_config_id to reuse transporter
+    const transporterCache = new Map<string, any>();
+    const smtpConfigCache = new Map<string, any>();
+
+    for (const item of items) {
+      try {
+        // Get SMTP config (cached)
+        const configKey = item.smtp_config_id || item.user_id;
+        if (!smtpConfigCache.has(configKey)) {
+          const cfg = await getSmtpConfig(item.user_id, item.smtp_config_id || undefined);
+          smtpConfigCache.set(configKey, cfg);
+          transporterCache.set(configKey, createTransporter(cfg));
+        }
+        const smtpConfig = smtpConfigCache.get(configKey)!;
+        const transporter = transporterCache.get(configKey)!;
+
+        // Get template
+        const { data: template } = await supabase
+          .from("email_templates")
+          .select("*")
+          .eq("id", item.template_id)
+          .single();
+
+        if (!template) {
+          await supabase.from("email_queue").update({
+            status: "failed",
+            error_message: "Template não encontrado",
+            processed_at: new Date().toISOString(),
+          }).eq("id", item.id);
+          failed++;
+          continue;
+        }
+
+        const vars = (item.personalization as any) || {};
+        const personalizedHtml = replaceVariables(template.html_body, vars);
+        const personalizedSubject = replaceVariables(template.subject, vars);
+
+        // Create email_sends record
+        const { data: sendLog } = await supabase
+          .from("email_sends")
+          .insert({
+            user_id: item.user_id,
+            campaign_id: item.campaign_id,
+            template_id: item.template_id,
+            recipient_email: item.recipient_email,
+            recipient_name: item.recipient_name,
+            status: "pending",
+          })
+          .select()
+          .single();
+
+        const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
+        const finalHtml = sendLog
+          ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
+          : personalizedHtml;
+
+        const fromAddress = smtpConfig.from_name
+          ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
+          : smtpConfig.from_email;
+
+        await transporter.sendMail({
+          from: fromAddress,
+          to: item.recipient_email,
+          subject: personalizedSubject,
+          html: finalHtml,
+        });
+
+        // Mark queue item as sent
+        await supabase.from("email_queue").update({
+          status: "sent",
+          processed_at: new Date().toISOString(),
+        }).eq("id", item.id);
+
+        // Update email_sends
+        if (sendLog) {
+          await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
+          await logEvent(sendLog.id, item.user_id, "sent");
+        }
+
+        // Update campaign counters
+        if (item.campaign_id) {
+          const { data: campData } = await supabase
+            .from("email_campaigns")
+            .select("sent_count, total_recipients")
+            .eq("id", item.campaign_id)
+            .single();
+          if (campData) {
+            await supabase.from("email_campaigns").update({
+              sent_count: (campData.sent_count || 0) + 1,
+              total_recipients: (campData.total_recipients || 0) + 1,
+            }).eq("id", item.campaign_id);
+          }
+        }
+
+        processed++;
+        console.log(`[email/queue] Enviado para ${item.recipient_email} (${processed}/${items.length})`);
+      } catch (sendErr: any) {
+        failed++;
+        await supabase.from("email_queue").update({
+          status: "failed",
+          error_message: sendErr.message,
+          processed_at: new Date().toISOString(),
+        }).eq("id", item.id);
+        console.error(`[email/queue] Falha para ${item.recipient_email}:`, sendErr.message);
+      }
+
+      // Delay between sends to prevent SMTP blocking
+      await sleep(3000);
+    }
+
+    console.log(`[email/queue] Ciclo finalizado: ${processed} enviados, ${failed} falhas`);
+    res.json({ ok: true, processed, failed });
+  } catch (err: any) {
+    console.error("[email/process-queue]", err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -50,6 +50,16 @@ cron.schedule("*/5 * * * *", async () => {
   }
 });
 
+// Process email queue every 30 seconds
+cron.schedule("*/30 * * * * *", async () => {
+  try {
+    const resp = await fetch(`http://localhost:${PORT}/api/email/process-queue`, { method: "POST" });
+    if (!resp.ok) console.error("[cron] email-queue error:", await resp.text());
+  } catch (err: any) {
+    console.error("[cron] email-queue error:", err.message);
+  }
+});
+
 const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
