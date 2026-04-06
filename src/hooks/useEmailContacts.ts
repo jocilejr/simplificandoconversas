@@ -145,6 +145,59 @@ export function useEmailContacts() {
 
   const activeCount = contacts.filter((c) => c.status === "active").length;
 
+  const [fixing, setFixing] = useState(false);
+
+  const fixEmails = async () => {
+    if (!user) return;
+    setFixing(true);
+    try {
+      const toFix = contacts
+        .map((c) => {
+          const result = normalizeEmail(c.email);
+          return { ...c, result };
+        })
+        .filter((c) => c.result.corrected);
+
+      if (toFix.length === 0) {
+        toast.info("Todos os e-mails já estão corretos!");
+        return;
+      }
+
+      let fixedCount = 0;
+      for (const item of toFix) {
+        const correctedEmail = item.result.email;
+        // Check if corrected email already exists for this user
+        const existing = contacts.find(
+          (c) => c.id !== item.id && c.email === correctedEmail
+        );
+        if (existing) {
+          // Duplicate: delete the record with the typo
+          await supabase
+            .from("email_contacts")
+            .delete()
+            .eq("id", item.id)
+            .eq("user_id", user.id);
+        } else {
+          // Update the email
+          await supabase
+            .from("email_contacts")
+            .update({ email: correctedEmail })
+            .eq("id", item.id)
+            .eq("user_id", user.id);
+        }
+        fixedCount++;
+      }
+
+      toast.success(`${fixedCount} e-mail(s) corrigido(s)!`);
+      fetchContacts();
+    } catch (err) {
+      console.error("Erro ao corrigir e-mails:", err);
+      toast.error("Erro ao corrigir e-mails");
+    } finally {
+      setFixing(false);
+    }
+  };
+
   return {
     contacts: filtered,
     allContacts: contacts,
@@ -156,5 +209,7 @@ export function useEmailContacts() {
     importCSV,
     activeCount,
     refetch: fetchContacts,
+    fixEmails,
+    fixing,
   };
 }
