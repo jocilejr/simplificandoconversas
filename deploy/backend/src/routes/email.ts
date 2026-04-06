@@ -303,9 +303,33 @@ router.post("/campaign", async (req: Request, res: Response) => {
 
     await supabase.from("email_campaigns").update({ status: "sending" }).eq("id", campaignId);
 
-    // Get recipients
+    // Get recipients from email_contacts (primary source) + conversations
     let recipients: { email: string; name: string | null; phone: string | null }[] = [];
+    const existingEmails = new Set<string>();
 
+    // 1. Email contacts (with tag filter support)
+    let ecQuery = supabase
+      .from("email_contacts")
+      .select("email, name")
+      .eq("user_id", userId)
+      .eq("status", "active");
+
+    if (campaign.tag_filter) {
+      ecQuery = ecQuery.contains("tags", [campaign.tag_filter]);
+    }
+
+    const { data: emailContacts } = await ecQuery;
+    if (emailContacts) {
+      for (const ec of emailContacts) {
+        const lower = ec.email.toLowerCase();
+        if (!existingEmails.has(lower)) {
+          recipients.push({ email: ec.email, name: ec.name, phone: null });
+          existingEmails.add(lower);
+        }
+      }
+    }
+
+    // 2. Conversations (with tag filter via contact_tags)
     const getConversations = async (jids?: string[]) => {
       let q = supabase
         .from("conversations")
@@ -319,6 +343,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .map((c: any) => ({ email: c.email, name: c.contact_name, phone: c.phone_number }));
     };
 
+    let convRecipients: typeof recipients = [];
     if (campaign.tag_filter) {
       const { data: tagged } = await supabase
         .from("contact_tags")
@@ -326,26 +351,17 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .eq("user_id", userId)
         .eq("tag_name", campaign.tag_filter);
       if (tagged && tagged.length > 0) {
-        recipients = await getConversations(tagged.map((t: any) => t.remote_jid));
+        convRecipients = await getConversations(tagged.map((t: any) => t.remote_jid));
       }
     } else {
-      recipients = await getConversations();
+      convRecipients = await getConversations();
     }
 
-    // Merge email_contacts table
-    const { data: emailContacts } = await supabase
-      .from("email_contacts")
-      .select("email, name")
-      .eq("user_id", userId)
-      .eq("status", "active");
-
-    if (emailContacts && emailContacts.length > 0) {
-      const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
-      for (const ec of emailContacts) {
-        if (!existingEmails.has(ec.email.toLowerCase())) {
-          recipients.push({ email: ec.email, name: ec.name, phone: null });
-          existingEmails.add(ec.email.toLowerCase());
-        }
+    for (const cr of convRecipients) {
+      const lower = cr.email.toLowerCase();
+      if (!existingEmails.has(lower)) {
+        recipients.push(cr);
+        existingEmails.add(lower);
       }
     }
 
@@ -780,6 +796,132 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .single();
 
         if (upsertErr) return res.status(500).json({ error: upsertErr.message });
+
+        // Auto-send: check for campaigns with auto_send=true matching contact tags
+        const contactTags: string[] = regTags || [];
+        if (contactTags.length > 0) {
+          try {
+            const { data: autoCampaigns } = await supabase
+              .from("email_campaigns")
+              .select("*, email_templates(*)")
+              .eq("user_id", userId)
+              .eq("auto_send", true)
+              .eq("status", "draft")
+              .not("tag_filter", "is", null);
+
+            if (autoCampaigns && autoCampaigns.length > 0) {
+              for (const camp of autoCampaigns) {
+                if (!contactTags.includes(camp.tag_filter)) continue;
+                if (!camp.email_templates) continue;
+
+                const template = camp.email_templates as any;
+
+                // Check if already sent to this contact for this campaign
+                const { data: existingSend } = await supabase
+                  .from("email_sends")
+                  .select("id")
+                  .eq("campaign_id", camp.id)
+                  .eq("recipient_email", normalized.email)
+                  .maybeSingle();
+
+                if (existingSend) continue; // Already sent
+
+                // Check suppression
+                if (await isSuppressed(userId, normalized.email)) continue;
+
+                // Send email
+                try {
+                  const smtpConfig = await getSmtpConfig(userId, camp.smtp_config_id || undefined);
+                  const transporter = createTransporter(smtpConfig);
+                  const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
+
+                  const personalizedHtml = replaceVariables(template.html_body, {
+                    nome: regName || null,
+                    email: normalized.email,
+                    telefone: null,
+                  });
+                  const personalizedSubject = replaceVariables(template.subject, {
+                    nome: regName || null,
+                    email: normalized.email,
+                    telefone: null,
+                  });
+
+                  const { data: sendLog } = await supabase
+                    .from("email_sends")
+                    .insert({
+                      user_id: userId,
+                      campaign_id: camp.id,
+                      template_id: template.id,
+                      recipient_email: normalized.email,
+                      recipient_name: regName || null,
+                      status: "pending",
+                    })
+                    .select()
+                    .single();
+
+                  const finalHtml = sendLog
+                    ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
+                    : personalizedHtml;
+
+                  await transporter.sendMail({
+                    from: smtpConfig.from_name
+                      ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
+                      : smtpConfig.from_email,
+                    to: normalized.email,
+                    subject: personalizedSubject,
+                    html: finalHtml,
+                  });
+
+                  if (sendLog) {
+                    await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
+                    await logEvent(sendLog.id, userId, "sent");
+                  }
+
+                  // Update campaign counters
+                  const { data: campData } = await supabase
+                    .from("email_campaigns")
+                    .select("sent_count, total_recipients")
+                    .eq("id", camp.id)
+                    .single();
+                  if (campData) {
+                    await supabase.from("email_campaigns").update({
+                      sent_count: (campData.sent_count || 0) + 1,
+                      total_recipients: (campData.total_recipients || 0) + 1,
+                    }).eq("id", camp.id);
+                  }
+
+                  // Schedule follow-ups
+                  const { data: followUps } = await supabase
+                    .from("email_follow_ups")
+                    .select("*")
+                    .eq("campaign_id", camp.id)
+                    .order("step_order", { ascending: true });
+
+                  if (followUps && followUps.length > 0) {
+                    for (const fu of followUps) {
+                      const scheduledAt = new Date();
+                      scheduledAt.setDate(scheduledAt.getDate() + fu.delay_days);
+                      await supabase.from("email_follow_up_sends").insert({
+                        follow_up_id: fu.id,
+                        user_id: userId,
+                        recipient_email: normalized.email,
+                        status: "pending",
+                        scheduled_at: scheduledAt.toISOString(),
+                      });
+                    }
+                  }
+
+                  console.log(`[email/auto-send] Campanha "${camp.name}" enviada para ${normalized.email}`);
+                } catch (sendErr: any) {
+                  console.error(`[email/auto-send] Falha ao enviar campanha "${camp.name}" para ${normalized.email}:`, sendErr.message);
+                }
+              }
+            }
+          } catch (autoErr: any) {
+            console.error("[email/auto-send] Erro ao processar auto-send:", autoErr.message);
+          }
+        }
+
         return res.json({ ok: true, contactId: contact?.id, corrected: normalized.corrected, email: normalized.email });
       }
 

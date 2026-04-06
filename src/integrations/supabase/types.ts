@@ -345,6 +345,7 @@ export type Database = {
       }
       email_campaigns: {
         Row: {
+          auto_send: boolean
           created_at: string
           failed_count: number
           id: string
@@ -360,6 +361,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_send?: boolean
           created_at?: string
           failed_count?: number
           id?: string
@@ -375,6 +377,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_send?: boolean
           created_at?: string
           failed_count?: number
           id?: string
