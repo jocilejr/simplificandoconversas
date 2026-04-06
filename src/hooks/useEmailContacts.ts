@@ -103,8 +103,8 @@ export function useEmailContacts() {
     if (!user) return null;
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) {
-      toast.error("CSV vazio ou sem dados");
+    if (lines.length < 1) {
+      toast.error("Arquivo vazio ou sem dados");
       return null;
     }
 

@@ -108,9 +108,9 @@ export function EmailContactsTab() {
               </Badge>
             </div>
             <div className="flex items-center gap-2">
-              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSV} />
+              <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSV} />
               <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-                <Upload className="h-3.5 w-3.5 mr-1" /> Importar CSV
+                <Upload className="h-3.5 w-3.5 mr-1" /> Importar arquivo
               </Button>
               <Button variant="outline" size="sm" onClick={fixEmails} disabled={fixing}>
                 {fixing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
@@ -148,7 +148,7 @@ export function EmailContactsTab() {
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="font-medium">Nenhum contato cadastrado</p>
-              <p className="text-sm">Adicione manualmente, importe um CSV ou use o webhook.</p>
+              <p className="text-sm">Adicione manualmente, importe um arquivo ou use o webhook.</p>
             </div>
           ) : (
             <div className="rounded-md border border-border overflow-hidden">
@@ -201,7 +201,7 @@ export function EmailContactsTab() {
       <Dialog open={csvDialogOpen} onOpenChange={(open) => { if (!open) handleCancelImport(); }}>
         <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Importação inteligente de CSV</DialogTitle>
+            <DialogTitle>Importação de contatos</DialogTitle>
           </DialogHeader>
 
           {analyzing ? (

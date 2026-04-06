@@ -147,41 +147,6 @@ function normalizeEmail(input: string): { email: string; status: "valid" | "corr
   return { email: `${localPart}@${domain}`, status: "invalid", reason: "domínio não reconhecido" };
 }
 
-// ─── Column classifiers ────────────────────────────────────────────────────
-
-function isTimestampLike(value: string): boolean {
-  if (!value) return false;
-  if (/\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}/.test(value)) return true;
-  if (/\d{2}[-/]\d{2}[-/]\d{4}[\sT]\d{2}:\d{2}/.test(value)) return true;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return true;
-  // Also catch standalone dates with time: "2025-09-09 02:35:32.632"
-  if (/^\d{4}-\d{2}-\d{2}\s/.test(value)) return true;
-  return false;
-}
-
-function isEmailLike(value: string): boolean {
-  if (!value) return false;
-  const v = value.trim();
-  const atCount = (v.match(/@/g) || []).length;
-  if (atCount !== 1) return false;
-  if (/[,;|\t]/.test(v)) return false;
-  if (/\s/.test(v)) return false;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return false;
-  return true;
-}
-
-function isHumanNameLike(value: string): boolean {
-  if (!value || value.length < 2 || value.length > 80) return false;
-  if (value.includes("@")) return false;
-  if (isTimestampLike(value)) return false;
-  if (!/[a-zA-ZÀ-ÿ]/.test(value)) return false;
-  if (/^\d+$/.test(value)) return false;
-  if (/^[a-zA-ZÀ-ÿ]+\d+$/.test(value)) return false;
-  if (/^\d+[a-zA-ZÀ-ÿ]+$/.test(value)) return false;
-  if (!value.includes(" ") && value.length <= 12 && /^[a-z0-9_-]+$/i.test(value)) return false;
-  return true;
-}
-
 // ─── CSV parser ────────────────────────────────────────────────────────────
 
 function parseCSVLine(line: string, delimiter: string): string[] {
@@ -207,7 +172,6 @@ function parseCSVLine(line: string, delimiter: string): string[] {
 
 function normalizeCSVInput(csvText: string): string[] {
   let text = csvText;
-  // Remove BOM
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   
   const lines = text.split(/\r?\n/);
@@ -216,7 +180,6 @@ function normalizeCSVInput(csvText: string): string[] {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    // Skip sep= lines
     if (/^sep\s*=\s*.$/i.test(trimmed)) continue;
     result.push(trimmed);
   }
@@ -224,52 +187,133 @@ function normalizeCSVInput(csvText: string): string[] {
   return result;
 }
 
-function detectDelimiter(lines: string[]): string {
-  const candidates = [",", "\t", ";", "|"];
-  const testLines = lines.slice(0, Math.min(lines.length, 10));
+// ─── Classifiers ──────────────────────────────────────────────────────────
 
-  let bestDelim = ",";
-  let bestScore = -1;
-
-  for (const delim of candidates) {
-    // Use parseCSVLine for accurate column counting
-    const counts = testLines.map(l => parseCSVLine(l, delim).length);
-    const colCount = counts[0];
-    
-    if (colCount <= 1) continue;
-    
-    const allSame = counts.every(c => c === counts[0]);
-    if (allSame) {
-      // Consistent column count = high confidence
-      const score = colCount * 1000 + (delim === "," ? 2 : delim === "\t" ? 3 : 1);
-      if (score > bestScore) { bestScore = score; bestDelim = delim; }
-    } else {
-      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
-      const variance = counts.reduce((a, b) => a + Math.abs(b - avg), 0) / counts.length;
-      if (avg > 1.5 && variance < 1) {
-        const score = avg * 100 - variance * 50;
-        if (score > bestScore) { bestScore = score; bestDelim = delim; }
-      }
-    }
-  }
-
-  return bestDelim;
+function isTimestampLike(value: string): boolean {
+  if (!value) return false;
+  if (/\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}/.test(value)) return true;
+  if (/\d{2}[-/]\d{2}[-/]\d{4}[\sT]\d{2}:\d{2}/.test(value)) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return true;
+  if (/^\d{4}-\d{2}-\d{2}\s/.test(value)) return true;
+  return false;
 }
 
-function hasHeaderRow(firstLine: string, delimiter: string): boolean {
-  const cols = parseCSVLine(firstLine, delimiter);
-  // If any column contains @, it's data not header
-  if (cols.some(c => c.includes("@"))) return false;
-  // If columns look like labels (email, nome, name, tag, etc.)
-  const headerKeywords = /^(e-?mail|nome|name|tag|tags|data|date|status|categoria|grupo|etapa|origem)$/i;
-  if (cols.some(c => headerKeywords.test(c.trim()))) return true;
-  // Default: if no @ found, assume header
+function looksLikeEmail(value: string): boolean {
+  if (!value) return false;
+  const v = value.trim().toLowerCase();
+  // Must contain @
+  if (v.includes("@")) return true;
+  // Check if it ends with a known domain (missing @)
+  for (const cd of CANONICAL_DOMAINS) {
+    if (v.endsWith(cd) && v.length > cd.length) return true;
+  }
+  return false;
+}
+
+function isTagLike(value: string): boolean {
+  if (!value) return false;
+  if (isTimestampLike(value)) return false;
+  if (looksLikeEmail(value)) return false;
+  if (value.length > 60) return false;
   return true;
 }
 
-// ─── Column type detection ─────────────────────────────────────────────────
+// ─── FIXED-FORMAT DETECTOR ────────────────────────────────────────────────
+// Detects the pattern: email, tag, timestamp (the user's actual file format)
+
+function detectFixedFormat(lines: string[], delimiter: string): boolean {
+  if (lines.length < 3) return false;
+  
+  // Sample up to 20 lines
+  const sampleSize = Math.min(lines.length, 20);
+  let matchCount = 0;
+  
+  for (let i = 0; i < sampleSize; i++) {
+    const cols = parseCSVLine(lines[i], delimiter);
+    if (cols.length < 2 || cols.length > 4) continue;
+    
+    const col0 = cols[0]?.trim();
+    const col1 = cols[1]?.trim();
+    const col2 = cols[2]?.trim();
+    
+    // Col 0 must look like email (contains @ or ends with known domain)
+    const hasEmail = looksLikeEmail(col0);
+    // Col 1 must be a short tag (not timestamp, not email)
+    const hasTag = col1 && isTagLike(col1);
+    // Col 2 (if exists) must be timestamp
+    const hasTimestamp = !col2 || isTimestampLike(col2);
+    
+    if (hasEmail && hasTag && hasTimestamp) matchCount++;
+  }
+  
+  const ratio = matchCount / sampleSize;
+  console.log(`[analyze-csv] fixed-format check: ${matchCount}/${sampleSize} lines match (${(ratio * 100).toFixed(0)}%)`);
+  return ratio >= 0.6;
+}
+
+function parseFixedFormat(lines: string[], delimiter: string) {
+  const contacts: any[] = [];
+  
+  for (const line of lines) {
+    const cols = parseCSVLine(line, delimiter);
+    const rawEmail = cols[0]?.trim();
+    
+    if (!rawEmail) continue;
+    
+    // Skip header-like lines
+    if (/^e-?mail$/i.test(rawEmail)) continue;
+    
+    // Normalize email
+    const normalized = normalizeEmail(rawEmail);
+    
+    // Col 1 = tag (skip if timestamp)
+    const rawTag = cols[1]?.trim();
+    const tags: string[] = [];
+    if (rawTag && isTagLike(rawTag)) {
+      tags.push(rawTag);
+    }
+    
+    // Col 2+ = ignore (timestamp)
+    
+    contacts.push({
+      email: normalized.email,
+      name: null,
+      tags,
+      status: normalized.status,
+      original_email: normalized.original_email,
+      reason: normalized.reason,
+    });
+  }
+  
+  return contacts;
+}
+
+// ─── Column type detection (generic fallback) ─────────────────────────────
 
 type ColumnType = "email" | "name" | "tag" | "timestamp" | "unknown";
+
+function isHumanNameLike(value: string): boolean {
+  if (!value || value.length < 2 || value.length > 80) return false;
+  if (value.includes("@")) return false;
+  if (isTimestampLike(value)) return false;
+  if (!/[a-zA-ZÀ-ÿ]/.test(value)) return false;
+  if (/^\d+$/.test(value)) return false;
+  if (/^[a-zA-ZÀ-ÿ]+\d+$/.test(value)) return false;
+  if (/^\d+[a-zA-ZÀ-ÿ]+$/.test(value)) return false;
+  if (!value.includes(" ") && value.length <= 12 && /^[a-z0-9_-]+$/i.test(value)) return false;
+  return true;
+}
+
+function isStrictEmailLike(value: string): boolean {
+  if (!value) return false;
+  const v = value.trim();
+  const atCount = (v.match(/@/g) || []).length;
+  if (atCount !== 1) return false;
+  if (/[,;|\t]/.test(v)) return false;
+  if (/\s/.test(v)) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return false;
+  return true;
+}
 
 function classifyColumns(dataLines: string[], delimiter: string, numCols: number): ColumnType[] {
   const sampleSize = Math.min(dataLines.length, 50);
@@ -283,17 +327,15 @@ function classifyColumns(dataLines: string[], delimiter: string, numCols: number
       const val = cols[c]?.trim();
       if (!val) continue;
       colStats[c].total++;
-      if (isEmailLike(val)) colStats[c].emailCount++;
+      if (isStrictEmailLike(val)) colStats[c].emailCount++;
       if (isTimestampLike(val)) colStats[c].timestampCount++;
       if (isHumanNameLike(val)) colStats[c].nameCount++;
-      // Only count as tag if it's not timestamp and not email
-      if (!isTimestampLike(val) && !isEmailLike(val) && val.length <= 60) colStats[c].tagCount++;
+      if (!isTimestampLike(val) && !isStrictEmailLike(val) && val.length <= 60) colStats[c].tagCount++;
     }
   }
 
   const types: ColumnType[] = new Array(numCols).fill("unknown");
 
-  // 1. Find email column - use LOW threshold (even 1 email in sample is enough)
   let bestEmailIdx = -1;
   let bestEmailRatio = 0;
   for (let c = 0; c < numCols; c++) {
@@ -303,12 +345,10 @@ function classifyColumns(dataLines: string[], delimiter: string, numCols: number
       bestEmailIdx = c;
     }
   }
-  // Accept if at least 20% of values look like emails (was 30%, too strict)
   if (bestEmailIdx >= 0 && bestEmailRatio >= 0.2) {
     types[bestEmailIdx] = "email";
   }
 
-  // 2. Classify remaining columns
   for (let c = 0; c < numCols; c++) {
     if (types[c] !== "unknown") continue;
     const s = colStats[c];
@@ -340,10 +380,9 @@ function extractContactFromRow(tokens: string[]): { email: string; name: string 
     const val = token.trim();
     if (!val) continue;
 
-    if (!email && isEmailLike(val)) {
+    if (!email && looksLikeEmail(val)) {
       email = val;
     } else if (isTimestampLike(val)) {
-      // skip timestamps entirely
       continue;
     } else if (isHumanNameLike(val)) {
       if (!name) name = val;
@@ -357,12 +396,57 @@ function extractContactFromRow(tokens: string[]): { email: string; name: string 
   return { email, name, tags };
 }
 
-// ─── Heuristic analyzer ───────────────────────────────────────────────────
+// ─── Delimiter & header detection ─────────────────────────────────────────
+
+function detectDelimiter(lines: string[]): string {
+  const candidates = [",", "\t", ";", "|"];
+  const testLines = lines.slice(0, Math.min(lines.length, 10));
+
+  let bestDelim = ",";
+  let bestScore = -1;
+
+  for (const delim of candidates) {
+    const counts = testLines.map(l => parseCSVLine(l, delim).length);
+    const colCount = counts[0];
+    
+    if (colCount <= 1) continue;
+    
+    const allSame = counts.every(c => c === counts[0]);
+    if (allSame) {
+      const score = colCount * 1000 + (delim === "," ? 2 : delim === "\t" ? 3 : 1);
+      if (score > bestScore) { bestScore = score; bestDelim = delim; }
+    } else {
+      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+      const variance = counts.reduce((a, b) => a + Math.abs(b - avg), 0) / counts.length;
+      if (avg > 1.5 && variance < 1) {
+        const score = avg * 100 - variance * 50;
+        if (score > bestScore) { bestScore = score; bestDelim = delim; }
+      }
+    }
+  }
+
+  return bestDelim;
+}
+
+function hasHeaderRow(firstLine: string, delimiter: string): boolean {
+  const cols = parseCSVLine(firstLine, delimiter);
+  if (cols.some(c => c.includes("@"))) return false;
+  const headerKeywords = /^(e-?mail|nome|name|tag|tags|data|date|status|categoria|grupo|etapa|origem)$/i;
+  if (cols.some(c => headerKeywords.test(c.trim()))) return true;
+  // If first row has no @, check if ALL values are short non-numeric labels
+  const allLabels = cols.every(c => {
+    const v = c.trim();
+    return v.length > 0 && v.length <= 30 && !/\d{4}/.test(v) && !v.includes("@");
+  });
+  return allLabels;
+}
+
+// ─── Main analyzer ────────────────────────────────────────────────────────
 
 function analyzeCSVHeuristic(csvText: string) {
   const lines = normalizeCSVInput(csvText);
   if (lines.length < 1) {
-    return { contacts: [], total_csv_lines: 0, mode: "heuristic", debug: { error: "CSV vazio" } };
+    return { contacts: [], total_csv_lines: 0, mode: "heuristic", debug: { error: "Arquivo vazio" } };
   }
 
   const delimiter = detectDelimiter(lines);
@@ -373,6 +457,32 @@ function analyzeCSVHeuristic(csvText: string) {
     return { contacts: [], total_csv_lines: 0, mode: "heuristic", debug: { delimiter, headerPresent, error: "Sem linhas de dados" } };
   }
 
+  console.log(`[analyze-csv] delimiter=${JSON.stringify(delimiter)}, header=${headerPresent}, dataLines=${dataLines.length}`);
+
+  // ─── TRY FIXED FORMAT FIRST ───
+  if (detectFixedFormat(dataLines, delimiter)) {
+    console.log(`[analyze-csv] Using FIXED-FORMAT parser (email,tag,timestamp)`);
+    const contacts = parseFixedFormat(dataLines, delimiter);
+    
+    const validCount = contacts.filter((c: any) => c.status !== "invalid").length;
+    const correctedCount = contacts.filter((c: any) => c.status === "corrected").length;
+    const invalidCount = contacts.filter((c: any) => c.status === "invalid").length;
+    console.log(`[analyze-csv] fixed-format result: ${contacts.length} total, ${validCount} valid, ${correctedCount} corrected, ${invalidCount} invalid`);
+
+    return {
+      contacts,
+      total_csv_lines: dataLines.length,
+      mode: "fixed-format",
+      debug: {
+        delimiter: delimiter === "\t" ? "TAB" : delimiter,
+        headerPresent,
+        method: "fixed-format",
+        pattern: "email,tag,timestamp",
+      },
+    };
+  }
+
+  // ─── GENERIC HEURISTIC FALLBACK ───
   const firstParsed = parseCSVLine(dataLines[0], delimiter);
   const numCols = firstParsed.length;
   const colTypes = classifyColumns(dataLines, delimiter, numCols);
@@ -393,27 +503,24 @@ function analyzeCSVHeuristic(csvText: string) {
     method: emailCol >= 0 ? "column-based" : "row-scan-fallback",
   };
 
-  console.log(`[analyze-csv] delimiter=${JSON.stringify(delimiter)}, header=${headerPresent}, lines=${dataLines.length}, cols=${numCols}`);
-  console.log(`[analyze-csv] colTypes=${JSON.stringify(colTypes)}, emailCol=${emailCol}, nameCol=${nameCol}, tagCols=${JSON.stringify(tagCols)}`);
-  console.log(`[analyze-csv] firstDataRow=${JSON.stringify(firstParsed)}`);
+  console.log(`[analyze-csv] generic: colTypes=${JSON.stringify(colTypes)}, emailCol=${emailCol}`);
 
   const contacts: any[] = [];
 
   if (emailCol >= 0) {
-    // ─── Column-based extraction ───
     for (const line of dataLines) {
       const cols = parseCSVLine(line, delimiter);
       const rawEmail = cols[emailCol]?.trim();
       if (!rawEmail) continue;
 
-      if (/[,;|\t]/.test(rawEmail) || /\s/.test(rawEmail)) {
-        contacts.push({ email: rawEmail, status: "invalid", reason: "contém delimitadores ou espaços" });
+      if (!looksLikeEmail(rawEmail)) {
+        contacts.push({ email: rawEmail, status: "invalid", reason: "não parece e-mail", name: null, tags: [] });
         continue;
       }
 
       const normalized = normalizeEmail(rawEmail);
       if (normalized.status === "invalid") {
-        contacts.push({ email: rawEmail, status: "invalid", reason: normalized.reason });
+        contacts.push({ email: rawEmail, status: "invalid", reason: normalized.reason, name: null, tags: [] });
         continue;
       }
 
@@ -434,7 +541,7 @@ function analyzeCSVHeuristic(csvText: string) {
       });
     }
   } else {
-    // ─── ROW-SCAN FALLBACK: no clear email column, scan each row for @ ───
+    // ROW-SCAN FALLBACK
     console.log("[analyze-csv] No email column elected, using row-scan fallback");
     for (const line of dataLines) {
       const cols = parseCSVLine(line, delimiter);
@@ -443,11 +550,10 @@ function analyzeCSVHeuristic(csvText: string) {
 
       const normalized = normalizeEmail(extracted.email);
       if (normalized.status === "invalid") {
-        contacts.push({ email: extracted.email, status: "invalid", reason: normalized.reason });
+        contacts.push({ email: extracted.email, status: "invalid", reason: normalized.reason, name: null, tags: [] });
         continue;
       }
 
-      // Filter out timestamps from tags
       const cleanTags = extracted.tags.filter(t => !isTimestampLike(t));
 
       contacts.push({
@@ -490,9 +596,8 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     const rawLines = csv_text.split(/\r?\n/).filter(Boolean).length;
-    console.log(`[analyze-csv] Received CSV with ${rawLines} raw lines, mode=${process.env.CSV_ANALYZER_MODE || "auto"}`);
+    console.log(`[analyze-csv] Received file with ${rawLines} raw lines`);
 
-    // Always use heuristic - simple, deterministic, reliable
     const result = analyzeCSVHeuristic(csv_text);
 
     if (result.contacts.length === 0) {
