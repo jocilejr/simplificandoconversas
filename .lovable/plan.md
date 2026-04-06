@@ -1,42 +1,37 @@
 
 
-# Corrigir normalização de domínios curtos (gm.com → gmail.com, não r7.com)
+# Corrigir performance: paginação na aba de contatos + virtualização no preview de importação
 
-## Problema
+## Problemas
 
-O algoritmo Damerau-Levenshtein puro favorece domínios canônicos curtos (como `r7.com`) sobre domínios mais longos (como `gmail.com`) quando o input também é curto. `gm.com` tem distância 2 de `r7.com` mas distância 3 de `gmail.com`, então o sistema escolhe errado.
-
-Isso afeta qualquer abreviação acidental de domínios populares: `gm.com`, `gmai.com`, `hot.com`, `outl.com`, etc.
+1. **Aba de contatos carrega TODOS os e-mails** — sem paginação, renderiza milhares de linhas de uma vez
+2. **Preview da importação em massa** — renderiza todas as linhas processadas numa tabela DOM, travando o navegador com listas grandes
 
 ## Solução
 
-Duas correções complementares no `src/lib/emailNormalizer.ts`:
+### 1. Paginação na aba de contatos (`useEmailContacts.ts` + `EmailContactsTab.tsx`)
 
-### 1. Adicionar aliases conhecidos para abreviações comuns
-Expandir o `KNOWN_ALIASES` com mapeamentos diretos para os casos mais frequentes:
-- `gm.com` → `gmail.com`
-- `gmai.com` → `gmail.com`
-- `gmal.com` → `gmail.com`
-- `gmil.com` → `gmail.com`
-- `hotmal.com` → `hotmail.com`
-- `hotmai.com` → `hotmail.com`
-- `outloo.com` → `outlook.com`
-- `outlok.com` → `outlook.com`
-- `yaho.com` → `yahoo.com`
+**Hook:**
+- Adicionar estado `perPage` (default: 10) e `page` (default: 1)
+- Mover a busca para o banco com paginação server-side usando `.range(from, to)` e `.ilike()` para o search
+- Buscar `count` total com `{ count: "exact", head: true }` para calcular páginas
+- Expor `perPage`, `setPerPage`, `page`, `setPage`, `totalContacts`, `totalPages`
 
-Aliases têm prioridade sobre a heurística — resolvem o problema sem tocar no algoritmo.
+**Componente:**
+- Adicionar seletor de "Exibir por página": 10, 50, 100, 500, Todos
+- Adicionar navegação de página (anterior/próxima + indicador "página X de Y")
+- Resetar para página 1 ao mudar search ou perPage
 
-### 2. Adicionar bonus de prefixo na heurística
-Quando o domínio de input é **prefixo** de um domínio canônico (ex: `gm` é prefixo de `gmail`), reduzir a distância efetiva em 2 pontos. Isso faz `gmail.com` ganhar de `r7.com` mesmo quando a distância pura diz o contrário.
+### 2. Limitar preview na importação em massa (`EmailContactsTab.tsx`)
 
-Lógica na função `findBestMatch`:
-```
-// Se a parte antes do primeiro "." do input é prefixo da parte antes do "." do canônico
-// → aplicar bonus (reduzir dist em 2)
-```
+- Mostrar no máximo 100 linhas no preview da tabela de processamento
+- Exibir aviso tipo "Mostrando 100 de 3.500 — os contadores acima refletem o total"
+- Os contadores (válidos, corrigidos, etc.) continuam calculados sobre o array completo
 
-### Arquivo alterado
-- `src/lib/emailNormalizer.ts` — expandir `KNOWN_ALIASES` + adicionar lógica de prefixo em `findBestMatch`
+### Arquivos alterados
 
-Nenhuma mudança de banco, backend ou UI necessária.
+- `src/hooks/useEmailContacts.ts` — paginação server-side, estado perPage/page
+- `src/components/email/EmailContactsTab.tsx` — seletor perPage, botões de página, limitar preview de importação
+
+Sem mudanças de banco, migrations ou backend.
 
