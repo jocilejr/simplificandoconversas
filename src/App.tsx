@@ -7,7 +7,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import Contacts from "./pages/Contacts";
+import Leads from "./pages/Leads";
 
 import ChatbotBuilder from "./pages/ChatbotBuilder";
 
@@ -17,7 +17,6 @@ import EmailPage from "./pages/EmailPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 import Transacoes from "./pages/Transacoes";
-import ClientesFinanceiro from "./pages/ClientesFinanceiro";
 import RecuperacaoBoletos from "./pages/RecuperacaoBoletos";
 import GerarBoleto from "./pages/GerarBoleto";
 import GruposPage from "./pages/GruposPage";
