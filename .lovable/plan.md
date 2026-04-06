@@ -1,38 +1,41 @@
 
 
-# Hotfix: adicionar coluna `auto_send` na VPS
+# Permitir reenvio automático a cada evento de webhook
 
 ## Problema
-O `update.sh` cria a tabela `email_campaigns` com `CREATE TABLE IF NOT EXISTS`, mas como a tabela já existe, ele não adiciona colunas novas. A coluna `auto_send` nunca é criada na VPS, causando o erro "Could not find the 'auto_send' column".
+A lógica de auto-send no `register_email` verifica se já existe um `email_sends` para aquela campanha+email e **pula o envio** se encontrar. Isso impede que o e-mail seja reenviado quando o mesmo contato recebe novamente a tag via webhook.
 
 ## Solução
-Adicionar o `ALTER TABLE` da coluna `auto_send` no `update.sh`, logo após o bloco de criação da tabela `email_campaigns` (após a linha 231). Assim, em qualquer deploy futuro a coluna será criada se não existir.
+Remover a verificação de envio duplicado (`existingSend`) no bloco de auto-send (linhas 819-827 de `deploy/backend/src/routes/email.ts`). Assim, **toda vez** que o webhook `register_email` chegar com a tag correspondente, o e-mail da campanha será enviado novamente.
 
-## Arquivo modificado
-**`deploy/update.sh`** — Adicionar após a linha 337 (onde já existem outros `ALTER TABLE` para `email_campaigns`):
+## Arquivo alterado
 
-```sql
-ALTER TABLE public.email_campaigns ADD COLUMN IF NOT EXISTS auto_send boolean NOT NULL DEFAULT false;
+**`deploy/backend/src/routes/email.ts`** — Dentro do bloco auto-send (linhas ~819-827):
+
+Remover este trecho:
+```typescript
+// Check if already sent to this contact for this campaign
+const { data: existingSend } = await supabase
+  .from("email_sends")
+  .select("id")
+  .eq("campaign_id", camp.id)
+  .eq("recipient_email", normalized.email)
+  .maybeSingle();
+
+if (existingSend) continue; // Already sent
 ```
 
-## Ação imediata na VPS
-Após o deploy, execute na VPS:
-
+## Após o deploy
+Na VPS, executar:
 ```bash
 cd /root/simplificandoconversas/deploy
-
-docker compose exec -T postgres psql -U postgres -d postgres -c "
-ALTER TABLE public.email_campaigns ADD COLUMN IF NOT EXISTS auto_send boolean NOT NULL DEFAULT false;
-NOTIFY pgrst, 'reload schema';
-"
-
-docker compose restart postgrest
-
 ./update.sh
 ```
 
-## Detalhes técnicos
-- O `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` é idempotente (seguro rodar várias vezes)
-- O `NOTIFY pgrst, 'reload schema'` força o PostgREST a reconhecer a nova coluna
-- O restart do PostgREST garante que o schema cache seja limpo
+Depois testar enviando um novo evento de webhook com a tag da campanha para confirmar que o e-mail é disparado mesmo para contatos que já receberam anteriormente.
+
+## Detalhe técnico
+- A verificação de supressão (`isSuppressed`) permanece, garantindo que bounces/unsubscribes continuem bloqueados
+- Cada envio gera um novo registro em `email_sends`, mantendo o histórico completo
+- Os contadores da campanha (`sent_count`, `total_recipients`) continuam sendo incrementados normalmente
 
