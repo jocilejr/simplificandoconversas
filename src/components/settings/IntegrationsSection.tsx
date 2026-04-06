@@ -40,6 +40,17 @@ const INTEGRATIONS: Integration[] = [
     ],
   },
   {
+    id: "openpix",
+    name: "Woovi / OpenPix",
+    description: "Cobranças PIX com QR Code",
+    platform: "openpix",
+    icon: "🟢",
+    available: true,
+    fields: [
+      { key: "app_id", label: "App ID", placeholder: "Q2xpZW50ZV9JZC...", type: "password" },
+    ],
+  },
+  {
     id: "stripe",
     name: "Stripe",
     description: "Pagamentos internacionais",

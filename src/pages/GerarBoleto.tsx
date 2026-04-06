@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Loader2 } from "lucide-react";
 import { useCreatePayment, type PaymentResult as PaymentResultType } from "@/hooks/useCreatePayment";
+import { useCreatePaymentOpenpix } from "@/hooks/useCreatePaymentOpenpix";
 import { PaymentResult } from "@/components/transactions/PaymentResult";
 
 // Masks
@@ -37,24 +38,34 @@ const GerarBoleto = () => {
     amount: "",
     description: "",
     type: "pix" as "boleto" | "pix",
+    gateway: "mercadopago" as "mercadopago" | "openpix",
   });
 
   const [result, setResult] = useState<PaymentResultType | null>(null);
-  const createPayment = useCreatePayment();
+  const createPaymentMP = useCreatePayment();
+  const createPaymentOP = useCreatePaymentOpenpix();
+
+  const isPending = createPaymentMP.isPending || createPaymentOP.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseCurrency(form.amount);
     if (amount <= 0) return;
 
-    const data = await createPayment.mutateAsync({
+    const payload = {
       customer_name: form.customer_name,
       customer_phone: form.customer_phone.replace(/\D/g, ""),
       customer_document: form.customer_document.replace(/\D/g, "") || undefined,
       amount,
       description: form.description || undefined,
-      type: form.type,
-    });
+    };
+
+    let data: PaymentResultType;
+    if (form.gateway === "openpix") {
+      data = await createPaymentOP.mutateAsync(payload);
+    } else {
+      data = await createPaymentMP.mutateAsync({ ...payload, type: form.type });
+    }
 
     setResult(data);
   };
@@ -68,6 +79,7 @@ const GerarBoleto = () => {
       amount: "",
       description: "",
       type: "pix",
+      gateway: "mercadopago",
     });
   };
 
@@ -91,17 +103,41 @@ const GerarBoleto = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="type">Tipo de Cobrança</Label>
-              <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as "boleto" | "pix" })}>
+              <Label htmlFor="gateway">Gateway</Label>
+              <Select value={form.gateway} onValueChange={(v) => {
+                const gw = v as "mercadopago" | "openpix";
+                setForm({ ...form, gateway: gw, type: gw === "openpix" ? "pix" : form.type });
+              }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="boleto">Boleto</SelectItem>
+                  <SelectItem value="mercadopago">💳 Mercado Pago</SelectItem>
+                  <SelectItem value="openpix">🟢 Woovi / OpenPix</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {form.gateway === "mercadopago" && (
+              <div className="space-y-2">
+                <Label htmlFor="type">Tipo de Cobrança</Label>
+                <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as "boleto" | "pix" })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pix">PIX</SelectItem>
+                    <SelectItem value="boleto">Boleto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {form.gateway === "openpix" && (
+              <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+                🟢 OpenPix gera apenas cobranças PIX com QR Code.
+              </p>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="name">Nome Completo *</Label>
@@ -157,13 +193,15 @@ const GerarBoleto = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={createPayment.isPending}>
-              {createPayment.isPending ? (
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando...
                 </>
               ) : (
-                `Gerar ${form.type === "boleto" ? "Boleto" : "Cobrança PIX"}`
+                form.gateway === "openpix"
+                  ? "Gerar Cobrança PIX (OpenPix)"
+                  : `Gerar ${form.type === "boleto" ? "Boleto" : "Cobrança PIX"}`
               )}
             </Button>
           </form>
