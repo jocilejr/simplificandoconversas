@@ -70,6 +70,17 @@ export function AppSidebar() {
     { title: "Lembretes", url: "/reminders", icon: Bell },
   ];
 
+  const financeItems = [
+    { title: "Transações", url: "/transacoes", icon: Receipt },
+    { title: "Clientes", url: "/clientes-financeiro", icon: UserCircle },
+    { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
+    { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
+    { title: "Grupos", url: "/grupos", icon: UsersRound },
+    { title: "Área de Membros", url: "/area-membros", icon: Crown },
+    { title: "Entrega Digital", url: "/entrega", icon: Package },
+    { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon },
+  ];
+
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="p-5">
