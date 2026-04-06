@@ -44,16 +44,14 @@ const InfoRow = ({ icon: Icon, label, value }: { icon: any; label: string; value
 );
 
 export function LeadDetailDialog({ lead, open, onClose }: Props) {
-  if (!lead) return null;
-
   const formatPhone = (jid: string) => {
     const num = jid.replace("@s.whatsapp.net", "");
     if (num.length >= 12) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
     return num;
   };
 
-  const paidTxs = lead.transactions.filter((t) => t.status === "aprovado");
-  const unpaidTxs = lead.transactions.filter((t) => t.status !== "aprovado");
+  const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
+  const unpaidTxs = lead?.transactions.filter((t) => t.status !== "aprovado") || [];
 
   const { data: reminders = [] } = useQuery({
     queryKey: ["lead-reminders", lead.remote_jid],
