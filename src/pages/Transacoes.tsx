@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Receipt, CheckCircle, Clock, XCircle, DollarSign } from "lucide-react";
+import { Receipt, CheckCircle, Clock, DollarSign } from "lucide-react";
 import { useTransactions } from "@/hooks/useTransactions";
 import { StatCard } from "@/components/transactions/StatCard";
 import { DateFilter } from "@/components/transactions/DateFilter";
@@ -43,18 +43,18 @@ const Transacoes = () => {
           iconColor="text-green-500"
         />
         <StatCard
-          title="Pendentes"
-          value={formatCurrency(stats.pendingAmount)}
-          subtitle={`${stats.pendingCount} transações`}
-          icon={Clock}
-          iconColor="text-yellow-500"
+          title="Boletos"
+          value={formatCurrency(stats.boletosAmount)}
+          subtitle={`${stats.boletosCount} transações`}
+          icon={Receipt}
+          iconColor="text-blue-500"
         />
         <StatCard
-          title="Rejeitados"
-          value={formatCurrency(stats.rejectedAmount)}
-          subtitle={`${stats.rejectedCount} transações`}
-          icon={XCircle}
-          iconColor="text-red-500"
+          title="PIX/Cartão Pendente"
+          value={formatCurrency(stats.pixCartaoPendenteAmount)}
+          subtitle={`${stats.pixCartaoPendenteCount} transações`}
+          icon={Clock}
+          iconColor="text-yellow-500"
         />
       </div>
 
