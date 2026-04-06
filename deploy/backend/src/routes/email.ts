@@ -821,66 +821,18 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
                 // Check suppression
                 if (await isSuppressed(userId, normalized.email)) continue;
 
-                // Send email
+                // Enqueue instead of sending inline
                 try {
-                  const smtpConfig = await getSmtpConfig(userId, camp.smtp_config_id || undefined);
-                  const transporter = createTransporter(smtpConfig);
-                  const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
-
-                  const personalizedHtml = replaceVariables(template.html_body, {
-                    nome: regName || null,
-                    email: normalized.email,
-                    telefone: null,
+                  await supabase.from("email_queue").insert({
+                    user_id: userId,
+                    campaign_id: camp.id,
+                    template_id: template.id,
+                    smtp_config_id: camp.smtp_config_id || null,
+                    recipient_email: normalized.email,
+                    recipient_name: regName || null,
+                    personalization: { nome: regName || null, email: normalized.email, telefone: null },
+                    status: "pending",
                   });
-                  const personalizedSubject = replaceVariables(template.subject, {
-                    nome: regName || null,
-                    email: normalized.email,
-                    telefone: null,
-                  });
-
-                  const { data: sendLog } = await supabase
-                    .from("email_sends")
-                    .insert({
-                      user_id: userId,
-                      campaign_id: camp.id,
-                      template_id: template.id,
-                      recipient_email: normalized.email,
-                      recipient_name: regName || null,
-                      status: "pending",
-                    })
-                    .select()
-                    .single();
-
-                  const finalHtml = sendLog
-                    ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
-                    : personalizedHtml;
-
-                  await transporter.sendMail({
-                    from: smtpConfig.from_name
-                      ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
-                      : smtpConfig.from_email,
-                    to: normalized.email,
-                    subject: personalizedSubject,
-                    html: finalHtml,
-                  });
-
-                  if (sendLog) {
-                    await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-                    await logEvent(sendLog.id, userId, "sent");
-                  }
-
-                  // Update campaign counters
-                  const { data: campData } = await supabase
-                    .from("email_campaigns")
-                    .select("sent_count, total_recipients")
-                    .eq("id", camp.id)
-                    .single();
-                  if (campData) {
-                    await supabase.from("email_campaigns").update({
-                      sent_count: (campData.sent_count || 0) + 1,
-                      total_recipients: (campData.total_recipients || 0) + 1,
-                    }).eq("id", camp.id);
-                  }
 
                   // Schedule follow-ups
                   const { data: followUps } = await supabase
@@ -903,9 +855,9 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
                     }
                   }
 
-                  console.log(`[email/auto-send] Campanha "${camp.name}" enviada para ${normalized.email}`);
-                } catch (sendErr: any) {
-                  console.error(`[email/auto-send] Falha ao enviar campanha "${camp.name}" para ${normalized.email}:`, sendErr.message);
+                  console.log(`[email/auto-send] Campanha "${camp.name}" enfileirada para ${normalized.email}`);
+                } catch (queueErr: any) {
+                  console.error(`[email/auto-send] Falha ao enfileirar campanha "${camp.name}" para ${normalized.email}:`, queueErr.message);
                 }
               }
             }
