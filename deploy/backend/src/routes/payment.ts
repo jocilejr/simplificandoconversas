@@ -38,6 +38,7 @@ const STATUS_MAP: Record<string, string> = {
 // ─── POST /create ───
 router.post("/create", async (req: Request, res: Response) => {
   try {
+    console.log("[payment] Starting payment creation...");
     const authHeader = req.headers.authorization || "";
     const supabase = getServiceClient();
 
