@@ -1,61 +1,73 @@
 
-Objetivo
 
-Resolver o bloqueio atual diretamente na VPS: hoje o teste local falhou porque o container não tem `curl`, e o webhook ainda pode estar quebrando por erro oculto ou por divergência entre o schema self-hosted e o código.
+# Normalização inteligente de e-mails e prevenção de duplicatas
 
-Plano
+## Problema
+Usuários digitam e-mails com erros após o `@` (ex: `@gemil.com`, `@gmial.com`, `@hotmal.com`) ou até sem `@`. Hoje esses e-mails inválidos são registrados como estão, gerando contatos com endereços inutilizáveis e possíveis duplicatas (o mesmo usuário com `@gmail.com` e `@gmial.com`).
 
-1. Corrigir onde a X-API-Key aparece no painel
-- Arquivo: `src/components/settings/EmailSettingsSection.tsx`
-- Ajustar a leitura da chave para buscar `platform = "custom_api"` em vez de `integration_api`.
-- Isso faz a mesma chave de `Configurações → API` aparecer também na aba de webhooks de e-mail.
+## Solução
+Criar uma função utilitária `normalizeEmail()` que corrige erros comuns no domínio (após o `@`) usando um dicionário de correções conhecidas, sem IA externa. Isso é mais rápido, determinístico e não depende de API. A função será aplicada em **todos os pontos de entrada** de e-mail.
 
-2. Melhorar o diagnóstico do webhook
-- Arquivo: `deploy/backend/src/routes/email.ts`
-- Fortalecer o `catch` do endpoint `/webhook/inbound` para logar o erro completo e sempre devolver uma mensagem útil, em vez de `{}`.
-- Logar explicitamente falhas da autenticação e do `upsert` em `email_contacts`.
-- Alinhar a autenticação com o padrão da API principal, incluindo a checagem de `enabled`.
+### Lógica de normalização (sem IA externa — dicionário determinístico)
+Usar IA para corrigir domínios de e-mail seria arriscado (poderia "inventar moda"). Um dicionário de typos conhecidos é mais seguro e previsível:
 
-3. Sincronizar o banco do deploy self-hosted com o recurso de e-mail
-- Arquivos: `deploy/init-db.sql` e `deploy/update.sh`
-- Adicionar ao deploy da VPS as tabelas usadas por esse fluxo e que não estão nesses scripts hoje:
-  - `public.platform_connections`
-  - `public.email_contacts`
-- Em `email_contacts`, garantir índice/constraint único em `(user_id, email)`.
-- Aplicar RLS e grants no mesmo padrão já usado no projeto.
-- Manter reload do PostgREST após as migrações.
+1. **Sem `@`**: tentar detectar padrões como `joaogmail.com` → `joao@gmail.com` (procurar domínios conhecidos no final da string)
+2. **Domínio com typo**: mapear ~50 variações comuns:
+   - `gemil.com`, `gmial.com`, `gmai.com`, `gnail.com` → `gmail.com`
+   - `hotmal.com`, `hotmial.com`, `hotmai.com` → `hotmail.com`
+   - `outlok.com`, `outllook.com` → `outlook.com`
+   - `yaho.com`, `yahooo.com` → `yahoo.com`
+   - etc.
+3. **Domínio incompleto**: `gmail` sem `.com` → `gmail.com`
+4. **Nunca alterar a parte antes do `@`**
 
-4. Não depender de `curl` para validar na VPS
-- Não preciso instalar `curl` agora para resolver o problema.
-- Vou considerar `wget` como ferramenta padrão de teste dentro do container, porque o próprio deploy já usa isso no healthcheck.
-- Só vale adicionar `curl` no Dockerfile se você quiser essa conveniência permanente.
+### Pontos de aplicação (3 locais)
 
-Detalhes técnicos
+1. **Frontend — `useEmailContacts.ts`**
+   - `addContact()`: normalizar antes do upsert
+   - `importCSV()`: normalizar cada linha antes do upsert em lote
 
-- O webhook usa `upsert(..., { onConflict: "user_id,email" })`, então a VPS precisa ter a tabela `email_contacts` com índice/constraint compatível.
-- A UI de E-mail hoje lê a chave do lugar errado, por isso pode parecer que a `X-API-Key` “não existe”.
-- Como seu uso é 100% na VPS, o deploy self-hosted precisa ser a fonte de verdade dessas tabelas e não pode ficar defasado em relação ao app.
+2. **Backend — `deploy/backend/src/routes/email.ts`**
+   - `register_email`: normalizar antes do upsert
 
-Validação na VPS após a implementação
+### Prevenção de duplicatas
+O `upsert` com `onConflict: "user_id,email"` já previne duplicatas quando o e-mail é idêntico. Com a normalização, `joao@gemil.com` será corrigido para `joao@gmail.com` antes do upsert, evitando a duplicata.
 
-```bash
-cd /root/simplificandoconversas/deploy
+### Feedback ao usuário
+Quando o e-mail for corrigido, mostrar um toast informativo:
+- `"E-mail corrigido: joao@gemil.com → joao@gmail.com"`
 
-docker compose exec -T postgres psql -U postgres -d postgres -c "\dt public.email_contacts"
-docker compose exec -T postgres psql -U postgres -d postgres -c "\dt public.platform_connections"
+### Arquivos modificados
 
-docker compose exec -T backend wget -qO- \
-  --header="Content-Type: application/json" \
-  --header="X-API-Key: SUA_CHAVE_API_AQUI" \
-  --post-data='{"event":"register_email","data":{"email":"teste@example.com","name":"Teste","tags":["lead"]}}' \
-  http://localhost:3001/api/email/webhook/inbound
+| Arquivo | Mudança |
+|---------|---------|
+| `src/lib/emailNormalizer.ts` | **Novo** — função `normalizeEmail()` com dicionário de correções |
+| `src/hooks/useEmailContacts.ts` | Importar e aplicar `normalizeEmail()` em `addContact` e `importCSV` |
+| `deploy/backend/src/routes/email.ts` | Copiar a mesma lógica e aplicar no `register_email` |
 
-docker compose logs backend --tail=100
+### Detalhes técnicos
+
+A função `normalizeEmail(input: string)` retorna `{ email: string; corrected: boolean; original: string }`.
+
+Dicionário parcial de correções:
+```text
+gemil.com      → gmail.com
+gmial.com      → gmail.com
+gmai.com       → gmail.com
+gnail.com      → gmail.com
+gamil.com      → gmail.com
+gmail.com.br   → gmail.com
+hotmal.com     → hotmail.com
+hotmial.com    → hotmail.com
+hotmai.com     → hotmail.com
+hotmaill.com   → hotmail.com
+outlok.com     → outlook.com
+outllook.com   → outlook.com
+outloock.com   → outlook.com
+yaho.com       → yahoo.com
+yahooo.com     → yahoo.com
+yahoo.com.br   → yahoo.com.br  (mantém, é válido)
 ```
 
-Deploy esperado
+Para e-mails sem `@`: procurar se a string termina com algum domínio conhecido (ex: `joaogmail.com` → `joao@gmail.com`). Se não encontrar padrão reconhecível, rejeitar com erro.
 
-```bash
-cd /root/simplificandoconversas/deploy
-./update.sh
-```
