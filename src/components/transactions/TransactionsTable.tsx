@@ -44,9 +44,9 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
   const filtered = useMemo(() => {
     let txs = transactions;
 
-    if (tab === "aprovados") txs = txs.filter((t) => t.status === "aprovado");
-    else if (tab === "pendentes") txs = txs.filter((t) => t.status === "pendente");
-    else if (tab === "rejeitados") txs = txs.filter((t) => ["rejeitado", "cancelado", "estornado"].includes(t.status));
+    if (tab === "boletos") txs = txs.filter((t) => t.type === "boleto");
+    else if (tab === "pix-cartao-pendente") txs = txs.filter((t) => t.type !== "boleto" && t.status === "pendente");
+    else if (tab === "aprovados") txs = txs.filter((t) => t.status === "aprovado");
 
     if (search) {
       const s = search.toLowerCase();
