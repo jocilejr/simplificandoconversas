@@ -1,29 +1,32 @@
 
 
-# Adicionar Public Key à integração Mercado Pago
+# Endereço aleatório via API de CEP para boletos
 
-## Problema
-A integração do Mercado Pago exige dois campos: **Access Token** (para chamadas server-side à API) e **Public Key** (para inicialização client-side do SDK/checkout). Atualmente só pede o Access Token.
+## Abordagem
+Em vez de armazenar 3000 endereços completos, armazenar apenas ~3000 CEPs válidos de cidades brasileiras. Na hora de gerar um boleto, sortear um CEP e consultar a **BrasilAPI** (`https://brasilapi.com.br/api/cep/v2/{cep}`) para obter o endereço completo automaticamente.
 
 ## Alterações
 
-### 1. `src/components/settings/IntegrationsSection.tsx`
-- Adicionar campo `public_key` na definição do Mercado Pago:
+### 1. Novo arquivo: `deploy/backend/src/lib/random-ceps.ts`
+- Array exportado com ~3000 CEPs válidos de capitais e cidades grandes
+- Função `getRandomCep()` que retorna um CEP aleatório
+
+### 2. Novo arquivo: `deploy/backend/src/lib/cep-lookup.ts`
+- Função `async lookupCep(cep: string)` que consulta `https://brasilapi.com.br/api/cep/v2/{cep}`
+- Retorna objeto formatado para o Mercado Pago: `{ zip_code, street_name, neighborhood, city, federal_unit }`
+- `street_number` sempre `"s/n"`
+- Fallback para AwesomeAPI (`https://cep.awesomapi.com.br/json/{cep}`) caso BrasilAPI falhe
+
+### 3. `deploy/backend/src/routes/payment.ts`
+- Importar `getRandomCep` e `lookupCep`
+- Na rota `/create`, quando `type === "boleto"`:
 ```ts
-fields: [
-  { key: "access_token", label: "Access Token", placeholder: "APP_USR-...", type: "password" },
-  { key: "public_key", label: "Public Key", placeholder: "APP_USR-...", type: "password" },
-]
+const cep = getRandomCep();
+const addr = await lookupCep(cep);
+paymentBody.payer.address = addr;
 ```
-
-### 2. `deploy/backend/src/routes/payment.ts`
-- Alterar `getMPToken()` para buscar o `access_token` da tabela `platform_connections` em vez da variável de ambiente, usando o `user_id` do JWT
-- Adicionar fallback para a env var `MERCADOPAGO_ACCESS_TOKEN` caso não exista na tabela
-- Retornar a `public_key` no endpoint `/status` ou em um novo endpoint `/config` para que o frontend possa usá-la se necessário
-
-### 3. `src/hooks/useCreatePayment.ts`
-- Nenhuma alteração necessária — o frontend já envia via backend, que usa o token server-side
+- Nenhuma alteração no frontend
 
 ## Resultado
-O dialog de configuração do Mercado Pago passará a pedir Access Token **e** Public Key. Ambos serão salvos no `credentials` JSONB da tabela `platform_connections`.
+Cada boleto terá um endereço real diferente, obtido dinamicamente via API de CEP. O formulário continua sem pedir endereço ao usuário.
 
