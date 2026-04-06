@@ -201,7 +201,7 @@ export function EmailContactsTab() {
       <Dialog open={csvDialogOpen} onOpenChange={(open) => { if (!open) handleCancelImport(); }}>
         <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Importação inteligente de CSV</DialogTitle>
+            <DialogTitle>Importação de contatos</DialogTitle>
           </DialogHeader>
 
           {analyzing ? (
