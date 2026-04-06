@@ -1,65 +1,39 @@
 
 
-# Fix: Envio em massa via webhook com fila de processamento
+# Fix: Importação de CSV na VPS
 
 ## Problema
-O n8n envia 7.710 requisições simultâneas para `/api/email/webhook/inbound` com evento `register_email`. Cada requisição tenta abrir uma conexão SMTP e enviar o e-mail **inline** (dentro da própria request). Com milhares de conexões simultâneas, o servidor SMTP da Hostinger rejeita/ignora a maioria silenciosamente.
-
-O endpoint de campanha (`/campaign`) já resolve isso corretamente: responde imediatamente e envia os e-mails em background com delay de 3s entre cada um. Mas o webhook `register_email` não tem essa proteção.
+A importação de CSV usa `supabase.functions.invoke("analyze-csv-contacts")`, que na VPS é mapeado para `/api/analyze-csv-contacts` no backend Express. Porém essa rota **não existe** no backend — só existe como Edge Function no Lovable Cloud, que você não usa.
 
 ## Solução
-Separar o registro do contato (síncrono) do envio do e-mail (assíncrono com fila). O webhook continuará respondendo `{ ok: true }` imediatamente, mas os e-mails serão enfileirados em uma tabela `email_queue` e processados por um cron job com delay de 3s entre envios.
+Criar a rota `POST /api/analyze-csv-contacts` no backend Express da VPS com a mesma lógica de análise de CSV. A rota terá dois modos:
 
-## Arquivos a modificar
+1. **Com IA** (se `OPENAI_API_KEY` estiver configurado no `.env`): usa a API da OpenAI para analisar o CSV inteligentemente (mesmo comportamento da Edge Function)
+2. **Sem IA** (fallback determinístico): parser heurístico que detecta automaticamente colunas de email, nome e tags por padrão de conteúdo — sem depender de nenhuma API externa
 
-### 1. Migração SQL — criar tabela `email_queue`
-```sql
-CREATE TABLE public.email_queue (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  campaign_id uuid REFERENCES email_campaigns(id),
-  template_id uuid REFERENCES email_templates(id),
-  smtp_config_id uuid,
-  recipient_email text NOT NULL,
-  recipient_name text,
-  personalization jsonb DEFAULT '{}',
-  status text NOT NULL DEFAULT 'pending',
-  error_message text,
-  created_at timestamptz DEFAULT now(),
-  processed_at timestamptz
-);
-CREATE INDEX idx_email_queue_pending ON email_queue(status, created_at) WHERE status = 'pending';
-```
+## Arquivo a criar
 
-### 2. `deploy/backend/src/routes/email.ts` — register_email
-No bloco auto-send (linhas ~803-914), em vez de enviar o e-mail diretamente, inserir na `email_queue`:
-- Manter a verificação de suppression
-- Inserir na fila com os dados necessários (campaign_id, template_id, smtp_config_id, recipient, personalization)
-- Remover toda a lógica de createTransporter/sendMail do webhook
+### `deploy/backend/src/routes/analyze-csv-contacts.ts`
+- Recebe `{ csv_text }` no body
+- Faz parse do CSV linha a linha
+- Detecta qual coluna contém emails (busca por `@`), nomes e tags
+- Aplica a normalização de email já existente no backend (Damerau-Levenshtein)
+- Classifica cada contato como `valid`, `corrected` ou `invalid`
+- Se `OPENAI_API_KEY` estiver disponível, usa a OpenAI para análise inteligente (como a Edge Function faz)
+- Retorna `{ contacts: [...], total_csv_lines }` no mesmo formato da Edge Function
 
-### 3. `deploy/backend/src/routes/email.ts` — novo endpoint `POST /process-queue`
-Criar endpoint que:
-- Busca até 50 itens pendentes da `email_queue` ordenados por `created_at`
-- Para cada item: carrega template, monta HTML, envia via SMTP, atualiza status
-- Delay de 3s entre cada envio (igual ao campaign)
-- Atualiza contadores da campanha
+## Arquivo a modificar
 
-### 4. `deploy/backend/src/index.ts` — adicionar cron job
-Adicionar cron a cada 30 segundos para chamar o endpoint `/api/email/process-queue` (similar ao check-timeouts).
-
-## Fluxo após a mudança
-
-```text
-n8n (7710 requests)
-  → webhook register_email (responde OK + insere na email_queue)
-  → cron a cada 30s processa 50 itens da fila com 3s de delay
-  → ~16 e-mails/min = 7710 em ~8 horas (seguro para SMTP)
-```
+### `deploy/backend/src/index.ts`
+- Importar e registrar a nova rota: `app.use("/api/analyze-csv-contacts", analyzeCsvRouter)`
 
 ## Detalhes técnicos
-- O delay de 3s entre envios previne bloqueio pelo SMTP da Hostinger
-- A fila é persistente (sobrevive a restarts do container)
-- O cron processa 50 por ciclo; com 30s de intervalo e 3s de delay, não há sobreposição
-- Os contatos continuam sendo registrados instantaneamente (o upsert é síncrono)
-- O `update.sh` na VPS precisará incluir o `ALTER TABLE` para criar a `email_queue`
+- O parser heurístico funciona assim:
+  - Lê o header e cada coluna do CSV
+  - Coluna com mais valores contendo `@` = email
+  - Coluna com nomes mais prováveis (sem `@`, sem números) = nome
+  - Outras colunas = tags
+- A normalização de domínio reutiliza o mesmo engine já presente em `email.ts`
+- O formato de resposta é idêntico ao da Edge Function, então o frontend não precisa de alteração
+- Autenticação via JWT (mesmo padrão das outras rotas do backend)
 
