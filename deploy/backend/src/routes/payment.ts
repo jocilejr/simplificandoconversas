@@ -254,7 +254,7 @@ router.get("/status/:transactionId", async (req: Request, res: Response) => {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (mpResp.ok) {
-          const mpData = await mpResp.json();
+          const mpData: any = await mpResp.json();
           const newStatus = STATUS_MAP[mpData.status] || mpData.status;
           if (newStatus !== data.status) {
             await supabase
