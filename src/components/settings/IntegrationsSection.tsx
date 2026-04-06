@@ -1,0 +1,269 @@
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+interface Integration {
+  id: string;
+  name: string;
+  description: string;
+  platform: string;
+  icon: string;
+  available: boolean;
+  fields: { key: string; label: string; placeholder: string; type?: string }[];
+}
+
+const INTEGRATIONS: Integration[] = [
+  {
+    id: "mercadopago",
+    name: "Mercado Pago",
+    description: "Gerar boletos e cobranças PIX",
+    platform: "mercadopago",
+    icon: "💳",
+    available: true,
+    fields: [
+      { key: "access_token", label: "Access Token", placeholder: "APP_USR-...", type: "password" },
+    ],
+  },
+  {
+    id: "stripe",
+    name: "Stripe",
+    description: "Pagamentos internacionais",
+    platform: "stripe",
+    icon: "💰",
+    available: false,
+    fields: [],
+  },
+  {
+    id: "pagbank",
+    name: "PagBank",
+    description: "Boletos e PIX",
+    platform: "pagbank",
+    icon: "🏦",
+    available: false,
+    fields: [],
+  },
+  {
+    id: "asaas",
+    name: "Asaas",
+    description: "Cobranças recorrentes",
+    platform: "asaas",
+    icon: "🔄",
+    available: false,
+    fields: [],
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    description: "Inteligência artificial",
+    platform: "openai",
+    icon: "🤖",
+    available: false,
+    fields: [],
+  },
+];
+
+export function IntegrationsSection() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [connections, setConnections] = useState<Record<string, { id: string; credentials: any; enabled: boolean }>>({});
+  const [loading, setLoading] = useState(true);
+  const [configDialog, setConfigDialog] = useState<Integration | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!user) return;
+    loadConnections();
+  }, [user]);
+
+  const loadConnections = async () => {
+    const { data } = await supabase
+      .from("platform_connections")
+      .select("*")
+      .eq("user_id", user!.id);
+    const map: typeof connections = {};
+    data?.forEach((c) => {
+      map[c.platform] = { id: c.id, credentials: c.credentials, enabled: c.enabled ?? true };
+    });
+    setConnections(map);
+    setLoading(false);
+  };
+
+  const openConfig = (integration: Integration) => {
+    const existing = connections[integration.platform];
+    const vals: Record<string, string> = {};
+    integration.fields.forEach((f) => {
+      vals[f.key] = (existing?.credentials as any)?.[f.key] || "";
+    });
+    setFormValues(vals);
+    setShowSecret({});
+    setConfigDialog(integration);
+  };
+
+  const handleSave = async () => {
+    if (!configDialog || !user) return;
+    setSaving(true);
+    const credentials = { ...formValues };
+    const existing = connections[configDialog.platform];
+
+    let error;
+    if (existing) {
+      ({ error } = await supabase
+        .from("platform_connections")
+        .update({ credentials, enabled: true, updated_at: new Date().toISOString() })
+        .eq("id", existing.id));
+    } else {
+      ({ error } = await supabase
+        .from("platform_connections")
+        .insert({ user_id: user.id, platform: configDialog.platform, credentials, enabled: true }));
+    }
+
+    if (error) {
+      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Integração salva com sucesso" });
+      await loadConnections();
+      setConfigDialog(null);
+    }
+    setSaving(false);
+  };
+
+  const handleDisconnect = async () => {
+    if (!configDialog) return;
+    const existing = connections[configDialog.platform];
+    if (!existing) return;
+    setSaving(true);
+    await supabase.from("platform_connections").delete().eq("id", existing.id);
+    toast({ title: "Integração desconectada" });
+    await loadConnections();
+    setConfigDialog(null);
+    setSaving(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Integrações</h2>
+          <p className="text-xs text-muted-foreground">Conecte serviços externos à plataforma</p>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => {}}>
+          <Plus className="h-3.5 w-3.5" />
+          Nova Integração
+        </Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {INTEGRATIONS.map((integration) => {
+          const conn = connections[integration.platform];
+          const connected = !!conn?.enabled;
+          return (
+            <Card
+              key={integration.id}
+              className={`transition-colors ${!integration.available ? "opacity-50" : "hover:border-primary/30 cursor-pointer"}`}
+              onClick={() => integration.available && openConfig(integration)}
+            >
+              <CardContent className="p-4 flex items-center gap-3">
+                <span className="text-2xl">{integration.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{integration.name}</span>
+                    {connected && (
+                      <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-primary/10 text-primary border-primary/20">
+                        <Check className="h-3 w-3" /> Conectado
+                      </Badge>
+                    )}
+                    {!integration.available && (
+                      <Badge variant="outline" className="text-[10px] h-5">Em breve</Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{integration.description}</p>
+                </div>
+                {integration.available && (
+                  <Settings2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Dialog open={!!configDialog} onOpenChange={(open) => !open && setConfigDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">{configDialog?.icon}</span>
+              {configDialog?.name}
+            </DialogTitle>
+            <DialogDescription>{configDialog?.description}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {configDialog?.fields.map((field) => (
+              <div key={field.key} className="space-y-1.5">
+                <label className="text-xs font-medium">{field.label}</label>
+                <div className="relative">
+                  <Input
+                    type={field.type === "password" && !showSecret[field.key] ? "password" : "text"}
+                    placeholder={field.placeholder}
+                    value={formValues[field.key] || ""}
+                    onChange={(e) => setFormValues((v) => ({ ...v, [field.key]: e.target.value }))}
+                    className="text-xs pr-9"
+                  />
+                  {field.type === "password" && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowSecret((s) => ({ ...s, [field.key]: !s[field.key] }));
+                      }}
+                    >
+                      {showSecret[field.key] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="flex-row gap-2">
+            {connections[configDialog?.platform || ""] && (
+              <Button variant="destructive" size="sm" className="text-xs" onClick={handleDisconnect} disabled={saving}>
+                Desconectar
+              </Button>
+            )}
+            <div className="flex-1" />
+            <Button size="sm" className="text-xs" onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
