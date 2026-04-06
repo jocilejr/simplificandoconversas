@@ -108,9 +108,9 @@ export function EmailContactsTab() {
               </Badge>
             </div>
             <div className="flex items-center gap-2">
-              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSV} />
+              <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSV} />
               <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-                <Upload className="h-3.5 w-3.5 mr-1" /> Importar CSV
+                <Upload className="h-3.5 w-3.5 mr-1" /> Importar arquivo
               </Button>
               <Button variant="outline" size="sm" onClick={fixEmails} disabled={fixing}>
                 {fixing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
