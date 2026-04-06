@@ -615,6 +615,30 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         return res.json({ ok: true, message: "Contato adicionado à campanha" });
       }
 
+      case "register_email": {
+        const { email: regEmail, name: regName, tags: regTags } = data || {};
+        if (!regEmail) return res.status(400).json({ error: "register_email requer: email" });
+
+        const { data: contact, error: upsertErr } = await supabase
+          .from("email_contacts")
+          .upsert(
+            {
+              user_id: userId,
+              email: regEmail.toLowerCase().trim(),
+              name: regName || null,
+              tags: regTags || [],
+              source: "webhook",
+              status: "active",
+            },
+            { onConflict: "user_id,email" }
+          )
+          .select("id")
+          .single();
+
+        if (upsertErr) return res.status(500).json({ error: upsertErr.message });
+        return res.json({ ok: true, contactId: contact?.id });
+      }
+
       default:
         return res.status(400).json({ error: `Evento desconhecido: ${event}` });
     }
