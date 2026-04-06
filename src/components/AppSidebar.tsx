@@ -8,7 +8,7 @@ import {
   Bell,
   Mail,
   Receipt,
-  UserCircle,
+  
   RefreshCw,
   FileText,
   UsersRound,
@@ -42,7 +42,7 @@ import { Button } from "@/components/ui/button";
 
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Contatos", url: "/contacts", icon: Users },
+  { title: "Leads", url: "/leads", icon: Users },
   { title: "Fluxos", url: "/chatbot", icon: Workflow },
   { title: "E-mail", url: "/email", icon: Mail },
   { title: "Lembretes", url: "/reminders", icon: Bell },
@@ -50,7 +50,7 @@ const mainItems = [
 
 const financeItems = [
   { title: "Transações", url: "/transacoes", icon: Receipt },
-  { title: "Clientes", url: "/clientes-financeiro", icon: UserCircle },
+  
   { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
   { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
   { title: "Grupos", url: "/grupos", icon: UsersRound },

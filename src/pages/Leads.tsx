@@ -13,25 +13,35 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { useContacts } from "@/hooks/useContacts";
+import { useLeads } from "@/hooks/useLeads";
+import { LeadDetailDialog } from "@/components/leads/LeadDetailDialog";
+import type { Lead } from "@/hooks/useLeads";
 
-const Contacts = () => {
+const formatCurrency = (val: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
+
+const Leads = () => {
   const {
-    contacts, totalContacts, isLoading, search, setSearch,
+    leads, totalLeads, isLoading, search, setSearch,
     tagFilter, setTagFilter, uniqueTags,
-    page, setPage, totalPages,
+    paymentFilter, setPaymentFilter,
+    page, setPage, totalPages, counts,
     createContact, importCSV,
-  } = useContacts();
+  } = useLeads();
 
   const [newOpen, setNewOpen] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", instance_name: "" });
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleCreate = () => {
     if (!form.phone.trim()) return;
-    createContact.mutate(form, { onSuccess: () => { setNewOpen(false); setForm({ name: "", phone: "", instance_name: "" }); } });
+    createContact.mutate(form, {
+      onSuccess: () => { setNewOpen(false); setForm({ name: "", phone: "", instance_name: "" }); },
+    });
   };
 
   const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -41,7 +51,6 @@ const Contacts = () => {
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       const lines = text.split("\n").filter(Boolean);
-      // skip header
       const rows = lines.slice(1).map((line) => {
         const cols = line.split(/[;,]/);
         return { name: cols[0]?.trim() || "", phone: cols[1]?.trim() || "" };
@@ -63,15 +72,15 @@ const Contacts = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Contatos</h1>
-          <p className="text-muted-foreground">{totalContacts} contato{totalContacts !== 1 ? "s" : ""}</p>
+          <h1 className="text-2xl font-bold">Leads</h1>
+          <p className="text-muted-foreground">{totalLeads} lead{totalLeads !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setCsvOpen(true)}>
             <Upload className="h-4 w-4 mr-1" /> Importar CSV
           </Button>
           <Button size="sm" onClick={() => setNewOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Novo Contato
+            <Plus className="h-4 w-4 mr-1" /> Novo Lead
           </Button>
         </div>
       </div>
@@ -113,15 +122,23 @@ const Contacts = () => {
         </div>
       )}
 
+      <Tabs value={paymentFilter} onValueChange={(v) => { setPaymentFilter(v as any); setPage(1); }}>
+        <TabsList>
+          <TabsTrigger value="all">Todos ({counts.all})</TabsTrigger>
+          <TabsTrigger value="paid">Pagaram ({counts.paid})</TabsTrigger>
+          <TabsTrigger value="unpaid">Não Pagaram ({counts.unpaid})</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <Card className="bg-card border-border">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
-          ) : contacts.length === 0 ? (
+          ) : leads.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Users className="h-12 w-12 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">
-                {search || tagFilter ? "Nenhum contato encontrado com esses filtros." : "Nenhum contato cadastrado ainda. Importe um CSV ou adicione manualmente."}
+                {search || tagFilter ? "Nenhum lead encontrado com esses filtros." : "Nenhum lead cadastrado ainda."}
               </p>
             </div>
           ) : (
@@ -130,26 +147,37 @@ const Contacts = () => {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Telefone</TableHead>
-                  <TableHead className="hidden md:table-cell">Instância</TableHead>
                   <TableHead className="hidden sm:table-cell">Tags</TableHead>
+                  <TableHead>Status Pgto</TableHead>
+                  <TableHead className="hidden md:table-cell">Total Pago</TableHead>
                   <TableHead className="hidden lg:table-cell">Última mensagem</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contacts.map((c) => (
-                  <TableRow key={c.remote_jid}>
-                    <TableCell className="font-medium">{c.contact_name || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.phone_number || formatPhone(c.remote_jid)}</TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground text-xs">{c.instance_name || "—"}</TableCell>
+                {leads.map((l) => (
+                  <TableRow key={l.remote_jid} className="cursor-pointer" onClick={() => setSelectedLead(l)}>
+                    <TableCell className="font-medium">{l.contact_name || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{l.phone_number || formatPhone(l.remote_jid)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <div className="flex gap-1 flex-wrap">
-                        {c.tags.map((t) => (
+                        {l.tags.slice(0, 3).map((t) => (
                           <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
                         ))}
+                        {l.tags.length > 3 && <Badge variant="outline" className="text-xs">+{l.tags.length - 3}</Badge>}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {l.hasPaid ? (
+                        <Badge className="bg-green-500/10 text-green-600 border-green-500/30" variant="outline">Pagou</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">Não pagou</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell font-mono text-sm">
+                      {l.hasPaid ? formatCurrency(l.totalPaid) : "—"}
+                    </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground text-xs max-w-[200px] truncate">
-                      {c.last_message || "—"}
+                      {l.last_message || "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -171,17 +199,17 @@ const Contacts = () => {
         </div>
       )}
 
-      {/* New Contact Dialog */}
+      {/* New Lead Dialog */}
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Novo Contato</DialogTitle>
-            <DialogDescription>Adicione um contato manualmente.</DialogDescription>
+            <DialogTitle>Novo Lead</DialogTitle>
+            <DialogDescription>Adicione um lead manualmente.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Nome</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do contato" />
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome do lead" />
             </div>
             <div className="space-y-2">
               <Label>Telefone *</Label>
@@ -222,8 +250,10 @@ const Contacts = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <LeadDetailDialog lead={selectedLead} open={!!selectedLead} onClose={() => setSelectedLead(null)} />
     </div>
   );
 };
 
-export default Contacts;
+export default Leads;

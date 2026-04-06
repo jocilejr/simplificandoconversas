@@ -7,7 +7,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import Contacts from "./pages/Contacts";
+import Leads from "./pages/Leads";
 
 import ChatbotBuilder from "./pages/ChatbotBuilder";
 
@@ -17,7 +17,6 @@ import EmailPage from "./pages/EmailPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 import Transacoes from "./pages/Transacoes";
-import ClientesFinanceiro from "./pages/ClientesFinanceiro";
 import RecuperacaoBoletos from "./pages/RecuperacaoBoletos";
 import GerarBoleto from "./pages/GerarBoleto";
 import GruposPage from "./pages/GruposPage";
@@ -40,14 +39,15 @@ const App = () => (
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/contacts" element={<Contacts />} />
+              <Route path="/leads" element={<Leads />} />
+              <Route path="/contacts" element={<Navigate to="/leads" replace />} />
+              <Route path="/clientes-financeiro" element={<Navigate to="/leads" replace />} />
               <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
               <Route path="/email" element={<EmailPage />} />
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/transacoes" element={<Transacoes />} />
-              <Route path="/clientes-financeiro" element={<ClientesFinanceiro />} />
               <Route path="/recuperacao" element={<RecuperacaoBoletos />} />
               <Route path="/gerar-boleto" element={<GerarBoleto />} />
               <Route path="/grupos" element={<GruposPage />} />

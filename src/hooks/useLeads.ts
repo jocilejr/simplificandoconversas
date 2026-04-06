@@ -2,8 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useMemo, useState } from "react";
+import type { Transaction } from "@/hooks/useTransactions";
 
-export interface Contact {
+export interface Lead {
   remote_jid: string;
   contact_name: string | null;
   phone_number: string | null;
@@ -11,18 +12,27 @@ export interface Contact {
   last_message: string | null;
   last_message_at: string | null;
   tags: string[];
+  hasPaid: boolean;
+  totalPaid: number;
+  transactions: Transaction[];
+  customer_email: string | null;
+  customer_document: string | null;
 }
 
-export function useContacts() {
+const normalizePhone = (phone: string | null | undefined) =>
+  phone ? phone.replace(/\D/g, "").slice(-8) : "";
+
+export function useLeads() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">("all");
   const [page, setPage] = useState(1);
   const perPage = 50;
 
   const { data: rawConversations = [], isLoading: isLoadingConvos } = useQuery({
-    queryKey: ["contacts-conversations"],
+    queryKey: ["leads-conversations"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
@@ -34,7 +44,7 @@ export function useContacts() {
   });
 
   const { data: allTags = [], isLoading: isLoadingTags } = useQuery({
-    queryKey: ["contacts-tags"],
+    queryKey: ["leads-tags"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("contact_tags")
@@ -44,11 +54,40 @@ export function useContacts() {
     },
   });
 
-  // Deduplicate by remote_jid (keep most recent) and attach tags
-  const contacts = useMemo(() => {
-    const map = new Map<string, Contact>();
+  const { data: allTransactions = [], isLoading: isLoadingTx } = useQuery({
+    queryKey: ["leads-transactions"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as Transaction[];
+    },
+  });
+
+  // Build transaction map by last 8 digits of phone
+  const txByPhone = useMemo(() => {
+    const map = new Map<string, Transaction[]>();
+    for (const tx of allTransactions) {
+      const key = normalizePhone(tx.customer_phone);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(tx);
+    }
+    return map;
+  }, [allTransactions]);
+
+  // Deduplicate by remote_jid, attach tags + transactions
+  const leads = useMemo(() => {
+    const map = new Map<string, Lead>();
     for (const c of rawConversations) {
       if (!map.has(c.remote_jid)) {
+        const phoneKey = normalizePhone(c.phone_number || c.remote_jid);
+        const txs = txByPhone.get(phoneKey) || [];
+        const approvedTxs = txs.filter((t) => t.status === "aprovado");
+        const firstTxWithData = txs.find((t) => t.customer_email || t.customer_document);
+
         map.set(c.remote_jid, {
           remote_jid: c.remote_jid,
           contact_name: c.contact_name,
@@ -57,47 +96,60 @@ export function useContacts() {
           last_message: c.last_message,
           last_message_at: c.last_message_at,
           tags: [],
+          hasPaid: approvedTxs.length > 0,
+          totalPaid: approvedTxs.reduce((s, t) => s + Number(t.amount), 0),
+          transactions: txs,
+          customer_email: firstTxWithData?.customer_email || null,
+          customer_document: firstTxWithData?.customer_document || null,
         });
       }
     }
     for (const t of allTags) {
-      const contact = map.get(t.remote_jid);
-      if (contact && !contact.tags.includes(t.tag_name)) {
-        contact.tags.push(t.tag_name);
+      const lead = map.get(t.remote_jid);
+      if (lead && !lead.tags.includes(t.tag_name)) {
+        lead.tags.push(t.tag_name);
       }
     }
     return Array.from(map.values());
-  }, [rawConversations, allTags]);
+  }, [rawConversations, allTags, txByPhone]);
 
-  // Unique tag names for filter
   const uniqueTags = useMemo(() => {
     const set = new Set<string>();
     for (const t of allTags) set.add(t.tag_name);
     return Array.from(set).sort();
   }, [allTags]);
 
-  // Filtered contacts
   const filtered = useMemo(() => {
-    let list = contacts;
+    let list = leads;
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
         (c) =>
-          (c.contact_name?.toLowerCase().includes(q)) ||
-          (c.phone_number?.toLowerCase().includes(q)) ||
+          c.contact_name?.toLowerCase().includes(q) ||
+          c.phone_number?.toLowerCase().includes(q) ||
           c.remote_jid.toLowerCase().includes(q)
       );
     }
     if (tagFilter) {
       list = list.filter((c) => c.tags.includes(tagFilter));
     }
+    if (paymentFilter === "paid") {
+      list = list.filter((c) => c.hasPaid);
+    } else if (paymentFilter === "unpaid") {
+      list = list.filter((c) => !c.hasPaid);
+    }
     return list;
-  }, [contacts, search, tagFilter]);
+  }, [leads, search, tagFilter, paymentFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
-  // Create contact mutation
+  const counts = useMemo(() => ({
+    all: leads.length,
+    paid: leads.filter((l) => l.hasPaid).length,
+    unpaid: leads.filter((l) => !l.hasPaid).length,
+  }), [leads]);
+
   const createContact = useMutation({
     mutationFn: async (input: { name: string; phone: string; instance_name: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -113,15 +165,14 @@ export function useContacts() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts-conversations"] });
-      toast({ title: "Contato criado com sucesso!" });
+      queryClient.invalidateQueries({ queryKey: ["leads-conversations"] });
+      toast({ title: "Lead criado com sucesso!" });
     },
     onError: (err: Error) => {
-      toast({ title: "Erro ao criar contato", description: err.message, variant: "destructive" });
+      toast({ title: "Erro ao criar lead", description: err.message, variant: "destructive" });
     },
   });
 
-  // CSV import mutation
   const importCSV = useMutation({
     mutationFn: async (rows: { name: string; phone: string }[]) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -136,8 +187,8 @@ export function useContacts() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts-conversations"] });
-      toast({ title: "Contatos importados com sucesso!" });
+      queryClient.invalidateQueries({ queryKey: ["leads-conversations"] });
+      toast({ title: "Leads importados com sucesso!" });
     },
     onError: (err: Error) => {
       toast({ title: "Erro ao importar CSV", description: err.message, variant: "destructive" });
@@ -145,17 +196,16 @@ export function useContacts() {
   });
 
   return {
-    contacts: paginated,
-    totalContacts: filtered.length,
-    isLoading: isLoadingConvos || isLoadingTags,
-    search,
-    setSearch,
-    tagFilter,
-    setTagFilter,
+    leads: paginated,
+    totalLeads: filtered.length,
+    isLoading: isLoadingConvos || isLoadingTags || isLoadingTx,
+    search, setSearch,
+    tagFilter, setTagFilter,
+    paymentFilter, setPaymentFilter,
     uniqueTags,
-    page,
-    setPage,
+    page, setPage,
     totalPages,
+    counts,
     createContact,
     importCSV,
   };
