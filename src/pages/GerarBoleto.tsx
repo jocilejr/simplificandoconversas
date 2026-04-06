@@ -127,26 +127,14 @@ const GerarBoleto = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telefone</Label>
-                <Input
-                  id="phone"
-                  value={form.customer_phone}
-                  onChange={(e) => setForm({ ...form, customer_phone: maskPhone(e.target.value) })}
-                  placeholder="(11) 99999-9999"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={form.customer_email}
-                  onChange={(e) => setForm({ ...form, customer_email: e.target.value })}
-                  placeholder="email@exemplo.com"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Telefone</Label>
+              <Input
+                id="phone"
+                value={form.customer_phone}
+                onChange={(e) => setForm({ ...form, customer_phone: maskPhone(e.target.value) })}
+                placeholder="(11) 99999-9999"
+              />
             </div>
 
             <div className="space-y-2">
