@@ -32,6 +32,7 @@ app.use("/api/external-messaging-webhook", externalWebhookRouter);
 app.use("/api/email", emailRouter);
 app.use("/api/analyze-csv-contacts", analyzeCsvRouter);
 app.use("/api/payment", paymentRouter);
+app.use("/api/payment-openpix", paymentOpenpixRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
