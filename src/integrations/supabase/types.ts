@@ -566,6 +566,66 @@ export type Database = {
           },
         ]
       }
+      email_queue: {
+        Row: {
+          campaign_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          personalization: Json | null
+          processed_at: string | null
+          recipient_email: string
+          recipient_name: string | null
+          smtp_config_id: string | null
+          status: string
+          template_id: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          personalization?: Json | null
+          processed_at?: string | null
+          recipient_email: string
+          recipient_name?: string | null
+          smtp_config_id?: string | null
+          status?: string
+          template_id?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          personalization?: Json | null
+          processed_at?: string | null
+          recipient_email?: string
+          recipient_name?: string | null
+          smtp_config_id?: string | null
+          status?: string
+          template_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_queue_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "email_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_queue_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_sends: {
         Row: {
           campaign_id: string | null
