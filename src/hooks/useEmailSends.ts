@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { apiUrl, safeJsonResponse } from "@/lib/api";
 
 interface Filters {
   status?: string;
@@ -42,9 +43,14 @@ export function useEmailSends(filters?: Filters) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const resp = await fetch(`/api/email/stats?userId=${user.id}`);
-      if (!resp.ok) return { total: 0, sent: 0, failed: 0, opened: 0, pending: 0, openRate: "0" };
-      return resp.json();
+      try {
+        const resp = await fetch(apiUrl(`email/stats?userId=${user.id}`));
+        const json = await safeJsonResponse(resp);
+        if (!resp.ok) return { total: 0, sent: 0, failed: 0, opened: 0, pending: 0, openRate: "0" };
+        return json;
+      } catch {
+        return { total: 0, sent: 0, failed: 0, opened: 0, pending: 0, openRate: "0" };
+      }
     },
     refetchInterval: 30000,
   });

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { apiUrl, safeJsonResponse } from "@/lib/api";
 
 export function useEmailCampaigns() {
   const { toast } = useToast();
@@ -41,13 +42,12 @@ export function useEmailCampaigns() {
     mutationFn: async (campaignId: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-      const resp = await fetch(`${baseUrl}/functions/v1/email/campaign`, {
+      const resp = await fetch(apiUrl("email/campaign"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, userId: user.id }),
       });
-      const json = await resp.json();
+      const json = await safeJsonResponse(resp);
       if (!resp.ok) throw new Error(json.error || "Erro ao enviar campanha");
       return json;
     },
