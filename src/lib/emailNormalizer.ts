@@ -205,13 +205,14 @@ export function normalizeEmail(input: string): NormalizeResult {
   // Check known aliases first (uol.com → uol.com.br, etc.)
   const aliasKey = KNOWN_ALIASES[domain] ? domain : KNOWN_ALIASES[cleanedDomain] ? cleanedDomain : null;
   if (aliasKey) {
+    const target = KNOWN_ALIASES[aliasKey];
     return {
-      email: `${localPart}@${KNOWN_ALIASES[domain]}`,
+      email: `${localPart}@${target}`,
       status: "corrected",
       corrected: true,
       original,
       confidence: 1,
-      reason: `${domain} → ${KNOWN_ALIASES[domain]}`,
+      reason: `${domain} → ${target}`,
     };
   }
 
