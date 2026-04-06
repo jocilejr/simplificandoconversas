@@ -284,7 +284,8 @@ router.post("/send", async (req: Request, res: Response) => {
       .single();
 
     const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
-    const finalHtml = sendLog ? injectTrackingPixel(html, sendLog.id, appUrl) : html;
+    let finalHtml = sendLog ? injectTrackingPixel(html, sendLog.id, appUrl) : html;
+    if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
 
     try {
       await transporter.sendMail({
