@@ -92,13 +92,13 @@ export function EmailTemplatesTab() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
-      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-      const resp = await fetch(`${baseUrl}/functions/v1/email/preview`, {
+      const { apiUrl, safeJsonResponse } = await import("@/lib/api");
+      const resp = await fetch(apiUrl("email/preview"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id, subject, html: htmlBody }),
       });
-      const json = await resp.json();
+      const json = await safeJsonResponse(resp);
       if (!resp.ok) throw new Error(json.error || "Erro ao enviar preview");
       toast({ title: "Preview enviado para seu e-mail!" });
     } catch (e: any) {

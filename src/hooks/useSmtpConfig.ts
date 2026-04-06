@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { apiUrl, safeJsonResponse } from "@/lib/api";
 
 export function useSmtpConfig() {
   const { toast } = useToast();
@@ -57,15 +58,15 @@ export function useSmtpConfig() {
   });
 
   const testSmtp = useMutation({
-    mutationFn: async (smtpConfigId?: string) => {
+    mutationFn: async (params: { smtpConfigId?: string; host?: string; port?: number; username?: string; password?: string; from_email?: string; from_name?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const resp = await fetch(`/api/email/test`, {
+      const resp = await fetch(apiUrl("email/test"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, smtpConfigId }),
+        body: JSON.stringify({ userId: user.id, ...params }),
       });
-      const json = await resp.json();
+      const json = await safeJsonResponse(resp);
       if (!resp.ok) throw new Error(json.error || "Erro no teste SMTP");
       return json;
     },
@@ -74,15 +75,15 @@ export function useSmtpConfig() {
   });
 
   const verifySmtp = useMutation({
-    mutationFn: async (smtpConfigId?: string) => {
+    mutationFn: async (params: { smtpConfigId?: string; host?: string; port?: number; username?: string; password?: string; from_email?: string; from_name?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const resp = await fetch(`/api/email/verify-smtp`, {
+      const resp = await fetch(apiUrl("email/verify-smtp"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, smtpConfigId }),
+        body: JSON.stringify({ userId: user.id, ...params }),
       });
-      const json = await resp.json();
+      const json = await safeJsonResponse(resp);
       if (!resp.ok) throw new Error(json.error || "Erro na verificação");
       return json;
     },

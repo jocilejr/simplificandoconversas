@@ -65,10 +65,24 @@ export function SmtpSection() {
     });
   };
 
+  const buildSmtpParams = (idx: number) => {
+    const f = forms[idx];
+    if (f.id) return { smtpConfigId: f.id };
+    // Not saved yet — send inline credentials
+    return {
+      host: f.host,
+      port: parseInt(f.port) || 465,
+      username: f.username,
+      password: f.password,
+      from_email: f.fromEmail,
+      from_name: f.fromName,
+    };
+  };
+
   const handleVerify = async (idx: number) => {
     setVerifyStatus({ ...verifyStatus, [idx]: "idle" });
     try {
-      await verifySmtp.mutateAsync(forms[idx].id);
+      await verifySmtp.mutateAsync(buildSmtpParams(idx));
       setVerifyStatus({ ...verifyStatus, [idx]: "ok" });
     } catch {
       setVerifyStatus({ ...verifyStatus, [idx]: "error" });
@@ -155,7 +169,7 @@ export function SmtpSection() {
                 {verifySmtp.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wifi className="h-4 w-4 mr-2" />}
                 Verificar Conexão
               </Button>
-              <Button variant="outline" onClick={() => testSmtp.mutate(f.id)} disabled={testSmtp.isPending}>
+              <Button variant="outline" onClick={() => testSmtp.mutate(buildSmtpParams(idx))} disabled={testSmtp.isPending}>
                 {testSmtp.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                 Enviar Teste
               </Button>

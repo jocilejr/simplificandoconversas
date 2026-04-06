@@ -317,10 +317,17 @@ router.post("/campaign", async (req: Request, res: Response) => {
 
 router.post("/test", async (req: Request, res: Response) => {
   try {
-    const { userId, smtpConfigId } = req.body;
+    const { userId, smtpConfigId, host, port, username, password, from_email, from_name } = req.body;
     if (!userId) return res.status(400).json({ error: "userId obrigatório" });
 
-    const smtpConfig = await getSmtpConfig(userId, smtpConfigId);
+    let smtpConfig: any;
+    if (host && username && password && from_email) {
+      // Inline credentials — test without saving
+      smtpConfig = { host, port: port || 465, username, password, from_email, from_name: from_name || "" };
+    } else {
+      smtpConfig = await getSmtpConfig(userId, smtpConfigId);
+    }
+
     const transporter = createTransporter(smtpConfig);
 
     await transporter.sendMail({
@@ -343,10 +350,17 @@ router.post("/test", async (req: Request, res: Response) => {
 
 router.post("/verify-smtp", async (req: Request, res: Response) => {
   try {
-    const { userId, smtpConfigId } = req.body;
+    const { userId, smtpConfigId, host, port, username, password, from_email, from_name } = req.body;
     if (!userId) return res.status(400).json({ error: "userId obrigatório" });
 
-    const smtpConfig = await getSmtpConfig(userId, smtpConfigId);
+    let smtpConfig: any;
+    if (host && username && password) {
+      // Inline credentials — verify without saving
+      smtpConfig = { host, port: port || 465, username, password, from_email: from_email || "", from_name: from_name || "" };
+    } else {
+      smtpConfig = await getSmtpConfig(userId, smtpConfigId);
+    }
+
     const transporter = createTransporter(smtpConfig);
 
     await transporter.verify();
