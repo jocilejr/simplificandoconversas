@@ -36,6 +36,7 @@ const INTEGRATIONS: Integration[] = [
     available: true,
     fields: [
       { key: "access_token", label: "Access Token", placeholder: "APP_USR-...", type: "password" },
+      { key: "public_key", label: "Public Key", placeholder: "APP_USR-...", type: "password" },
     ],
   },
   {

@@ -5,7 +5,19 @@ const router = Router();
 
 const MP_API = "https://api.mercadopago.com";
 
-function getMPToken(): string {
+async function getMPTokenForUser(userId: string): Promise<string> {
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from("platform_connections")
+    .select("credentials")
+    .eq("user_id", userId)
+    .eq("platform", "mercadopago")
+    .eq("enabled", true)
+    .single();
+
+  const token = (data?.credentials as any)?.access_token;
+  if (token) return token;
+
   return process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 }
 
@@ -24,11 +36,6 @@ const STATUS_MAP: Record<string, string> = {
 // ─── POST /create ───
 router.post("/create", async (req: Request, res: Response) => {
   try {
-    const token = getMPToken();
-    if (!token) {
-      return res.status(500).json({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado" });
-    }
-
     const authHeader = req.headers.authorization || "";
     const supabase = getServiceClient();
 
@@ -44,6 +51,11 @@ router.post("/create", async (req: Request, res: Response) => {
     }
     if (!userId) {
       return res.status(401).json({ error: "Não autenticado" });
+    }
+
+    const token = await getMPTokenForUser(userId);
+    if (!token) {
+      return res.status(500).json({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado. Configure na aba Integrações." });
     }
 
     const {
@@ -182,7 +194,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const { type, data } = req.body;
 
     if (type === "payment") {
-      const token = getMPToken();
+      const token = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
       if (!token) return res.sendStatus(200);
 
       const paymentId = data?.id;
@@ -248,7 +260,7 @@ router.get("/status/:transactionId", async (req: Request, res: Response) => {
 
     // If MP, refresh status
     if (data.source === "mercadopago" && data.external_id) {
-      const token = getMPToken();
+      const token = await getMPTokenForUser(data.user_id);
       if (token) {
         const mpResp = await fetch(`${MP_API}/v1/payments/${data.external_id}`, {
           headers: { Authorization: `Bearer ${token}` },
