@@ -151,84 +151,38 @@ function normalizeEmail(input: string): { email: string; status: "valid" | "corr
 
 function isTimestampLike(value: string): boolean {
   if (!value) return false;
-  // Matches: 2025-09-09 02:35:32.632, 09/09/2025 02:35, etc.
   if (/\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}/.test(value)) return true;
   if (/\d{2}[-/]\d{2}[-/]\d{4}[\sT]\d{2}:\d{2}/.test(value)) return true;
-  // ISO dates
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return true;
+  // Also catch standalone dates with time: "2025-09-09 02:35:32.632"
+  if (/^\d{4}-\d{2}-\d{2}\s/.test(value)) return true;
   return false;
 }
 
-function isTagLike(value: string): boolean {
-  if (!value || value.length > 60) return false;
-  // Short categorical strings: etapa4, lead, grupo_x, campanha_y, ativo, inativo
-  if (/^[a-zA-ZÀ-ÿ0-9_-]{1,40}$/.test(value)) return true;
-  return false;
+function isEmailLike(value: string): boolean {
+  if (!value) return false;
+  const v = value.trim();
+  const atCount = (v.match(/@/g) || []).length;
+  if (atCount !== 1) return false;
+  if (/[,;|\t]/.test(v)) return false;
+  if (/\s/.test(v)) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return false;
+  return true;
 }
 
 function isHumanNameLike(value: string): boolean {
   if (!value || value.length < 2 || value.length > 80) return false;
   if (value.includes("@")) return false;
   if (isTimestampLike(value)) return false;
-  // Must contain at least one letter
   if (!/[a-zA-ZÀ-ÿ]/.test(value)) return false;
-  // Pure numeric = not a name
   if (/^\d+$/.test(value)) return false;
-  // If it's a single word with digits mixed in (etapa4, lead2) = tag, not name
   if (/^[a-zA-ZÀ-ÿ]+\d+$/.test(value)) return false;
   if (/^\d+[a-zA-ZÀ-ÿ]+$/.test(value)) return false;
-  // Names usually have spaces (first + last) or are at least 3 chars
-  // Single short words without spaces are more likely tags
   if (!value.includes(" ") && value.length <= 12 && /^[a-z0-9_-]+$/i.test(value)) return false;
   return true;
 }
 
-function isEmailLike(value: string): boolean {
-  if (!value) return false;
-  // Must have exactly one @
-  const atCount = (value.match(/@/g) || []).length;
-  if (atCount !== 1) return false;
-  // Must not contain delimiters
-  if (/[,;|\t]/.test(value)) return false;
-  // Must not contain spaces
-  if (/\s/.test(value)) return false;
-  // Basic structure: something@something.something
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return false;
-  return true;
-}
-
 // ─── CSV parser ────────────────────────────────────────────────────────────
-
-function detectDelimiter(lines: string[]): string {
-  const candidates = ["\t", ",", ";", "|"];
-  const testLines = lines.slice(0, Math.min(lines.length, 10));
-
-  let bestDelim = ",";
-  let bestScore = -1;
-
-  for (const delim of candidates) {
-    const counts = testLines.map(l => l.split(delim).length);
-    const allSame = counts.every(c => c === counts[0]);
-    const colCount = counts[0];
-    if (colCount > 1 && allSame) {
-      const score = colCount * 100;
-      if (score > bestScore) { bestScore = score; bestDelim = delim; }
-    } else if (colCount > 1) {
-      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
-      const variance = counts.reduce((a, b) => a + Math.abs(b - avg), 0) / counts.length;
-      const score = avg - variance;
-      if (score > bestScore) { bestScore = score; bestDelim = delim; }
-    }
-  }
-
-  return bestDelim;
-}
-
-function hasHeaderRow(firstLine: string, delimiter: string): boolean {
-  const cols = firstLine.split(delimiter).map(c => c.trim().replace(/^"|"$/g, ""));
-  // If any column contains @, it's data, not a header
-  return !cols.some(c => c.includes("@"));
-}
 
 function parseCSVLine(line: string, delimiter: string): string[] {
   const result: string[] = [];
@@ -251,6 +205,68 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   return result;
 }
 
+function normalizeCSVInput(csvText: string): string[] {
+  let text = csvText;
+  // Remove BOM
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  
+  const lines = text.split(/\r?\n/);
+  const result: string[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Skip sep= lines
+    if (/^sep\s*=\s*.$/i.test(trimmed)) continue;
+    result.push(trimmed);
+  }
+  
+  return result;
+}
+
+function detectDelimiter(lines: string[]): string {
+  const candidates = [",", "\t", ";", "|"];
+  const testLines = lines.slice(0, Math.min(lines.length, 10));
+
+  let bestDelim = ",";
+  let bestScore = -1;
+
+  for (const delim of candidates) {
+    // Use parseCSVLine for accurate column counting
+    const counts = testLines.map(l => parseCSVLine(l, delim).length);
+    const colCount = counts[0];
+    
+    if (colCount <= 1) continue;
+    
+    const allSame = counts.every(c => c === counts[0]);
+    if (allSame) {
+      // Consistent column count = high confidence
+      const score = colCount * 1000 + (delim === "," ? 2 : delim === "\t" ? 3 : 1);
+      if (score > bestScore) { bestScore = score; bestDelim = delim; }
+    } else {
+      const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+      const variance = counts.reduce((a, b) => a + Math.abs(b - avg), 0) / counts.length;
+      if (avg > 1.5 && variance < 1) {
+        const score = avg * 100 - variance * 50;
+        if (score > bestScore) { bestScore = score; bestDelim = delim; }
+      }
+    }
+  }
+
+  return bestDelim;
+}
+
+function hasHeaderRow(firstLine: string, delimiter: string): boolean {
+  const cols = parseCSVLine(firstLine, delimiter);
+  // If any column contains @, it's data not header
+  if (cols.some(c => c.includes("@"))) return false;
+  // If columns look like labels (email, nome, name, tag, etc.)
+  const headerKeywords = /^(e-?mail|nome|name|tag|tags|data|date|status|categoria|grupo|etapa|origem)$/i;
+  if (cols.some(c => headerKeywords.test(c.trim()))) return true;
+  // Default: if no @ found, assume header
+  return true;
+}
+
 // ─── Column type detection ─────────────────────────────────────────────────
 
 type ColumnType = "email" | "name" | "tag" | "timestamp" | "unknown";
@@ -258,11 +274,7 @@ type ColumnType = "email" | "name" | "tag" | "timestamp" | "unknown";
 function classifyColumns(dataLines: string[], delimiter: string, numCols: number): ColumnType[] {
   const sampleSize = Math.min(dataLines.length, 50);
   const colStats = Array.from({ length: numCols }, () => ({
-    emailCount: 0,
-    timestampCount: 0,
-    nameCount: 0,
-    tagCount: 0,
-    total: 0,
+    emailCount: 0, timestampCount: 0, nameCount: 0, tagCount: 0, total: 0,
   }));
 
   for (let i = 0; i < sampleSize; i++) {
@@ -274,23 +286,27 @@ function classifyColumns(dataLines: string[], delimiter: string, numCols: number
       if (isEmailLike(val)) colStats[c].emailCount++;
       if (isTimestampLike(val)) colStats[c].timestampCount++;
       if (isHumanNameLike(val)) colStats[c].nameCount++;
-      if (isTagLike(val) && !isTimestampLike(val) && !isEmailLike(val)) colStats[c].tagCount++;
+      // Only count as tag if it's not timestamp and not email
+      if (!isTimestampLike(val) && !isEmailLike(val) && val.length <= 60) colStats[c].tagCount++;
     }
   }
 
   const types: ColumnType[] = new Array(numCols).fill("unknown");
 
-  // 1. Find email column (highest email ratio > 0.3)
+  // 1. Find email column - use LOW threshold (even 1 email in sample is enough)
   let bestEmailIdx = -1;
   let bestEmailRatio = 0;
   for (let c = 0; c < numCols; c++) {
     const ratio = colStats[c].total > 0 ? colStats[c].emailCount / colStats[c].total : 0;
-    if (ratio > bestEmailRatio && ratio > 0.3) {
+    if (ratio > bestEmailRatio) {
       bestEmailRatio = ratio;
       bestEmailIdx = c;
     }
   }
-  if (bestEmailIdx >= 0) types[bestEmailIdx] = "email";
+  // Accept if at least 20% of values look like emails (was 30%, too strict)
+  if (bestEmailIdx >= 0 && bestEmailRatio >= 0.2) {
+    types[bestEmailIdx] = "email";
+  }
 
   // 2. Classify remaining columns
   for (let c = 0; c < numCols; c++) {
@@ -300,18 +316,12 @@ function classifyColumns(dataLines: string[], delimiter: string, numCols: number
 
     const tsRatio = s.timestampCount / s.total;
     const nameRatio = s.nameCount / s.total;
-    const tagRatio = s.tagCount / s.total;
 
-    // Timestamp column: > 50% timestamps
-    if (tsRatio > 0.5) {
+    if (tsRatio > 0.4) {
       types[c] = "timestamp";
-    }
-    // Name column: > 40% human names AND higher than tag ratio
-    else if (nameRatio > 0.4 && nameRatio > tagRatio) {
+    } else if (nameRatio > 0.4) {
       types[c] = "name";
-    }
-    // Tag column: > 30% tags
-    else if (tagRatio > 0.3) {
+    } else {
       types[c] = "tag";
     }
   }
@@ -319,187 +329,144 @@ function classifyColumns(dataLines: string[], delimiter: string, numCols: number
   return types;
 }
 
+// ─── Row-level fallback ───────────────────────────────────────────────────
+
+function extractContactFromRow(tokens: string[]): { email: string; name: string | null; tags: string[] } | null {
+  let email: string | null = null;
+  let name: string | null = null;
+  const tags: string[] = [];
+
+  for (const token of tokens) {
+    const val = token.trim();
+    if (!val) continue;
+
+    if (!email && isEmailLike(val)) {
+      email = val;
+    } else if (isTimestampLike(val)) {
+      // skip timestamps entirely
+      continue;
+    } else if (isHumanNameLike(val)) {
+      if (!name) name = val;
+      else tags.push(val);
+    } else if (val.length <= 60) {
+      tags.push(val);
+    }
+  }
+
+  if (!email) return null;
+  return { email, name, tags };
+}
+
 // ─── Heuristic analyzer ───────────────────────────────────────────────────
 
 function analyzeCSVHeuristic(csvText: string) {
-  const lines = csvText.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 1) return { contacts: [], total_csv_lines: 0, mode: "heuristic" };
+  const lines = normalizeCSVInput(csvText);
+  if (lines.length < 1) {
+    return { contacts: [], total_csv_lines: 0, mode: "heuristic", debug: { error: "CSV vazio" } };
+  }
 
   const delimiter = detectDelimiter(lines);
   const headerPresent = hasHeaderRow(lines[0], delimiter);
   const dataLines = headerPresent ? lines.slice(1) : lines;
 
-  if (dataLines.length === 0) return { contacts: [], total_csv_lines: 0, mode: "heuristic" };
+  if (dataLines.length === 0) {
+    return { contacts: [], total_csv_lines: 0, mode: "heuristic", debug: { delimiter, headerPresent, error: "Sem linhas de dados" } };
+  }
 
-  const numCols = parseCSVLine(dataLines[0], delimiter).length;
+  const firstParsed = parseCSVLine(dataLines[0], delimiter);
+  const numCols = firstParsed.length;
   const colTypes = classifyColumns(dataLines, delimiter, numCols);
 
   const emailCol = colTypes.indexOf("email");
   const nameCol = colTypes.indexOf("name");
   const tagCols = colTypes.map((t, i) => ({ t, i })).filter(x => x.t === "tag").map(x => x.i);
 
+  const debugInfo = {
+    delimiter: delimiter === "\t" ? "TAB" : delimiter,
+    headerPresent,
+    numCols,
+    colTypes,
+    emailCol,
+    nameCol,
+    tagCols,
+    firstDataRow: firstParsed,
+    method: emailCol >= 0 ? "column-based" : "row-scan-fallback",
+  };
+
   console.log(`[analyze-csv] delimiter=${JSON.stringify(delimiter)}, header=${headerPresent}, lines=${dataLines.length}, cols=${numCols}`);
   console.log(`[analyze-csv] colTypes=${JSON.stringify(colTypes)}, emailCol=${emailCol}, nameCol=${nameCol}, tagCols=${JSON.stringify(tagCols)}`);
-
-  if (emailCol === -1) {
-    console.log("[analyze-csv] No email column found");
-    return { contacts: [], total_csv_lines: dataLines.length, mode: "heuristic" };
-  }
+  console.log(`[analyze-csv] firstDataRow=${JSON.stringify(firstParsed)}`);
 
   const contacts: any[] = [];
-  for (const line of dataLines) {
-    const cols = parseCSVLine(line, delimiter);
-    const rawEmail = cols[emailCol]?.trim();
-    if (!rawEmail) continue;
 
-    // Extra validation: reject if it looks like a whole CSV row
-    if (/[,;|\t]/.test(rawEmail)) {
-      contacts.push({ email: rawEmail, status: "invalid", reason: "contém delimitadores" });
-      continue;
+  if (emailCol >= 0) {
+    // ─── Column-based extraction ───
+    for (const line of dataLines) {
+      const cols = parseCSVLine(line, delimiter);
+      const rawEmail = cols[emailCol]?.trim();
+      if (!rawEmail) continue;
+
+      if (/[,;|\t]/.test(rawEmail) || /\s/.test(rawEmail)) {
+        contacts.push({ email: rawEmail, status: "invalid", reason: "contém delimitadores ou espaços" });
+        continue;
+      }
+
+      const normalized = normalizeEmail(rawEmail);
+      if (normalized.status === "invalid") {
+        contacts.push({ email: rawEmail, status: "invalid", reason: normalized.reason });
+        continue;
+      }
+
+      const name = nameCol >= 0 ? cols[nameCol]?.trim() || null : null;
+      const tags: string[] = [];
+      for (const tc of tagCols) {
+        const val = cols[tc]?.trim();
+        if (val && !isTimestampLike(val)) tags.push(val);
+      }
+
+      contacts.push({
+        email: normalized.email,
+        name,
+        tags,
+        status: normalized.status,
+        original_email: normalized.original_email,
+        reason: normalized.reason,
+      });
     }
+  } else {
+    // ─── ROW-SCAN FALLBACK: no clear email column, scan each row for @ ───
+    console.log("[analyze-csv] No email column elected, using row-scan fallback");
+    for (const line of dataLines) {
+      const cols = parseCSVLine(line, delimiter);
+      const extracted = extractContactFromRow(cols);
+      if (!extracted) continue;
 
-    const normalized = normalizeEmail(rawEmail);
-    if (normalized.status === "invalid") {
-      contacts.push({ email: rawEmail, status: "invalid", reason: normalized.reason });
-      continue;
+      const normalized = normalizeEmail(extracted.email);
+      if (normalized.status === "invalid") {
+        contacts.push({ email: extracted.email, status: "invalid", reason: normalized.reason });
+        continue;
+      }
+
+      // Filter out timestamps from tags
+      const cleanTags = extracted.tags.filter(t => !isTimestampLike(t));
+
+      contacts.push({
+        email: normalized.email,
+        name: extracted.name,
+        tags: cleanTags,
+        status: normalized.status,
+        original_email: normalized.original_email,
+        reason: normalized.reason,
+      });
     }
-
-    const name = nameCol >= 0 ? cols[nameCol]?.trim() || null : null;
-    const tags: string[] = [];
-    for (const tc of tagCols) {
-      const val = cols[tc]?.trim();
-      if (val && !isTimestampLike(val)) tags.push(val);
-    }
-
-    contacts.push({
-      email: normalized.email,
-      name,
-      tags,
-      status: normalized.status,
-      original_email: normalized.original_email,
-      reason: normalized.reason,
-    });
   }
 
-  console.log(`[analyze-csv] Heuristic: ${contacts.length} contacts (valid=${contacts.filter(c => c.status === "valid").length}, corrected=${contacts.filter(c => c.status === "corrected").length}, invalid=${contacts.filter(c => c.status === "invalid").length})`);
-  return { contacts, total_csv_lines: dataLines.length, mode: "heuristic" };
-}
+  const validCount = contacts.filter(c => c.status !== "invalid").length;
+  const correctedCount = contacts.filter(c => c.status === "corrected").length;
+  const invalidCount = contacts.filter(c => c.status === "invalid").length;
+  console.log(`[analyze-csv] Result: ${contacts.length} total, ${validCount} valid, ${correctedCount} corrected, ${invalidCount} invalid (method: ${debugInfo.method})`);
 
-// ─── AI result validator ───────────────────────────────────────────────────
-
-function shouldRejectAiResult(contacts: any[]): string | null {
-  if (!contacts || contacts.length === 0) return "empty";
-  const sample = contacts.slice(0, 20);
-  let badCount = 0;
-  for (const c of sample) {
-    if (!c.email) { badCount++; continue; }
-    if (/[,;|\t]/.test(c.email)) { badCount++; continue; }
-    if (/\s/.test(c.email)) { badCount++; continue; }
-    if ((c.email.match(/@/g) || []).length !== 1) { badCount++; continue; }
-    if (isTimestampLike(c.email)) { badCount++; continue; }
-  }
-  const badRatio = badCount / sample.length;
-  if (badRatio > 0.3) return `${Math.round(badRatio * 100)}% bad emails`;
-  return null;
-}
-
-// ─── AI analyzer (fallback) ───────────────────────────────────────────────
-
-async function analyzeWithAI(csvText: string) {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  if (!OPENAI_API_KEY) return null;
-
-  const lines = csvText.split(/\r?\n/).filter(Boolean);
-  const truncated = lines.slice(0, 500).join("\n");
-
-  const systemPrompt = `Você é um analisador de CSV especializado em listas de contatos de e-mail.
-
-Sua tarefa:
-1. Analisar o CSV bruto e identificar automaticamente quais colunas contêm: e-mail, nome e tags
-2. Extrair cada contato válido
-3. Corrigir erros comuns de digitação em domínios de e-mail
-4. Classificar cada contato:
-   - "valid": e-mail correto
-   - "corrected": e-mail tinha erro de digitação que foi corrigido
-   - "invalid": e-mail inválido ou ausente
-5. Se houver uma coluna que pareça ser tags, incluí-la como array de tags
-6. Se não encontrar coluna de nome, usar null
-7. Ignorar linhas sem e-mail válido
-8. NUNCA inclua timestamps, datas ou horários no campo de tags
-
-IMPORTANTE: 
-- O campo "email" deve conter APENAS o endereço de e-mail, sem vírgulas, sem tags, sem timestamps
-- Analise TODAS as linhas fornecidas
-- Preserve a parte local do e-mail intacta, corrija apenas o domínio`;
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analise este CSV e extraia os contatos:\n\n${truncated}` },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "return_contacts",
-            description: "Return the analyzed contacts from the CSV",
-            parameters: {
-              type: "object",
-              properties: {
-                contacts: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      email: { type: "string" },
-                      name: { type: "string" },
-                      tags: { type: "array", items: { type: "string" } },
-                      status: { type: "string", enum: ["valid", "corrected", "invalid"] },
-                      original_email: { type: "string" },
-                      reason: { type: "string" },
-                    },
-                    required: ["email", "status"],
-                  },
-                },
-              },
-              required: ["contacts"],
-            },
-          },
-        }],
-        tool_choice: { type: "function", function: { name: "return_contacts" } },
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("[analyze-csv] OpenAI error:", response.status, await response.text());
-      return null;
-    }
-
-    const aiResult: any = await response.json();
-    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) return null;
-
-    const parsed = JSON.parse(toolCall.function.arguments);
-
-    // Validate AI result quality
-    const rejectReason = shouldRejectAiResult(parsed.contacts);
-    if (rejectReason) {
-      console.log(`[analyze-csv] AI result REJECTED: ${rejectReason}`);
-      return null;
-    }
-
-    return { contacts: parsed.contacts, total_csv_lines: lines.length - 1, mode: "ai" };
-  } catch (err: any) {
-    console.error("[analyze-csv] AI error:", err.message);
-    return null;
-  }
+  return { contacts, total_csv_lines: dataLines.length, mode: "heuristic", debug: debugInfo };
 }
 
 // ─── Route ─────────────────────────────────────────────────────────────────
@@ -522,37 +489,17 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "csv_text is required" });
     }
 
-    const lineCount = csv_text.split(/\r?\n/).filter(Boolean).length;
-    console.log(`[analyze-csv] Received CSV with ${lineCount} lines`);
+    const rawLines = csv_text.split(/\r?\n/).filter(Boolean).length;
+    console.log(`[analyze-csv] Received CSV with ${rawLines} raw lines, mode=${process.env.CSV_ANALYZER_MODE || "auto"}`);
 
-    const mode = process.env.CSV_ANALYZER_MODE || "auto";
+    // Always use heuristic - simple, deterministic, reliable
+    const result = analyzeCSVHeuristic(csv_text);
 
-    // HEURISTIC FIRST: always run the deterministic parser
-    const heuristicResult = analyzeCSVHeuristic(csv_text);
-
-    // If heuristic found an email column with results, use it
-    if (heuristicResult.contacts.length > 0) {
-      const validCount = heuristicResult.contacts.filter((c: any) => c.status !== "invalid").length;
-      if (validCount > 0) {
-        console.log(`[analyze-csv] Using HEURISTIC result: ${heuristicResult.contacts.length} contacts (${validCount} valid)`);
-        return res.json(heuristicResult);
-      }
+    if (result.contacts.length === 0) {
+      console.log(`[analyze-csv] WARNING: 0 contacts extracted. Debug: ${JSON.stringify(result.debug)}`);
     }
 
-    // Only try AI as fallback if mode allows it and heuristic failed
-    if (mode !== "heuristic") {
-      console.log("[analyze-csv] Heuristic failed, trying AI fallback...");
-      const aiResult = await analyzeWithAI(csv_text);
-      if (aiResult) {
-        console.log(`[analyze-csv] Using AI fallback: ${aiResult.contacts.length} contacts`);
-        return res.json(aiResult);
-      }
-      console.log("[analyze-csv] AI fallback also failed");
-    }
-
-    // Return heuristic result even if empty
-    console.log(`[analyze-csv] Final result: ${heuristicResult.contacts.length} contacts`);
-    return res.json(heuristicResult);
+    return res.json(result);
   } catch (err: any) {
     console.error("[analyze-csv] error:", err.message);
     return res.status(500).json({ error: err.message || "Unknown error" });

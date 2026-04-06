@@ -123,10 +123,19 @@ export function useEmailContacts() {
         return null;
       }
 
-      return data.contacts as AnalyzedContact[];
+      const contacts = data.contacts as AnalyzedContact[];
+      if (!contacts || contacts.length === 0) {
+        const debug = data.debug;
+        const reason = debug?.error || "Nenhuma coluna de e-mail foi reconhecida no CSV";
+        toast.error(reason);
+        console.error("[CSV import] Empty result. Debug:", JSON.stringify(debug));
+        return null;
+      }
+
+      return contacts;
     } catch (err) {
       console.error("Erro na análise de CSV:", err);
-      toast.error("Erro ao analisar CSV com IA");
+      toast.error("Erro ao analisar CSV");
       return null;
     }
   };
