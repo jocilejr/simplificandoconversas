@@ -1,47 +1,42 @@
 
 
-# Substituir importação por campo de texto simples
+# Corrigir normalização de domínios curtos (gm.com → gmail.com, não r7.com)
 
-## O que muda
+## Problema
 
-Remover toda a lógica de importação de CSV/TXT via IA e substituir por um campo de texto onde você cola e-mails separados por vírgula. O sistema usa o normalizador local (`emailNormalizer.ts`) para corrigir domínios, verifica duplicatas no banco, e insere os novos.
+O algoritmo Damerau-Levenshtein puro favorece domínios canônicos curtos (como `r7.com`) sobre domínios mais longos (como `gmail.com`) quando o input também é curto. `gm.com` tem distância 2 de `r7.com` mas distância 3 de `gmail.com`, então o sistema escolhe errado.
 
-## Arquivos a alterar
+Isso afeta qualquer abreviação acidental de domínios populares: `gm.com`, `gmai.com`, `hot.com`, `outl.com`, etc.
 
-### 1. `src/components/email/EmailContactsTab.tsx`
-- Remover: botão "Importar arquivo", input de file, dialog de preview CSV, estados de analyzing/analyzedContacts
-- Adicionar: botão "Importar e-mails" que abre um dialog com um `<Textarea>` onde o usuário cola e-mails separados por vírgula
-- O dialog mostra preview dos e-mails processados (válidos, corrigidos, inválidos) usando o normalizador local
-- Botão "Confirmar importação" insere os válidos/corrigidos
+## Solução
 
-### 2. `src/hooks/useEmailContacts.ts`
-- Remover: função `analyzeCSV` (que chama a edge function)
-- Remover: interface `AnalyzedContact` (mover para o componente ou simplificar)
-- Adicionar: função `bulkImportEmails(emailsText: string)` que:
-  1. Faz split por vírgula, ponto-e-vírgula, ou nova linha
-  2. Aplica `normalizeEmail()` em cada um
-  3. Verifica quais já existem no banco (query simples)
-  4. Retorna lista classificada: válido, corrigido, inválido, duplicado
-- Adicionar: função `confirmBulkImport(emails)` que faz upsert dos válidos/corrigidos
+Duas correções complementares no `src/lib/emailNormalizer.ts`:
 
-### 3. Arquivos que NÃO serão alterados
-- `src/lib/emailNormalizer.ts` — já funciona bem, será reutilizado
-- `deploy/backend/src/routes/analyze-csv-contacts.ts` — pode ficar como está (não será mais chamado pelo frontend)
-- `supabase/functions/analyze-csv-contacts/index.ts` — idem
+### 1. Adicionar aliases conhecidos para abreviações comuns
+Expandir o `KNOWN_ALIASES` com mapeamentos diretos para os casos mais frequentes:
+- `gm.com` → `gmail.com`
+- `gmai.com` → `gmail.com`
+- `gmal.com` → `gmail.com`
+- `gmil.com` → `gmail.com`
+- `hotmal.com` → `hotmail.com`
+- `hotmai.com` → `hotmail.com`
+- `outloo.com` → `outlook.com`
+- `outlok.com` → `outlook.com`
+- `yaho.com` → `yahoo.com`
 
-## Fluxo do usuário
+Aliases têm prioridade sobre a heurística — resolvem o problema sem tocar no algoritmo.
 
-1. Clica "Importar e-mails"
-2. Cola lista de e-mails no textarea (separados por vírgula, ponto-e-vírgula ou linha)
-3. Clica "Processar"
-4. Vê preview: ✅ válidos, ✏️ corrigidos, ❌ inválidos, ⚠️ já existentes
-5. Clica "Confirmar importação (N)"
-6. Contatos inseridos
+### 2. Adicionar bonus de prefixo na heurística
+Quando o domínio de input é **prefixo** de um domínio canônico (ex: `gm` é prefixo de `gmail`), reduzir a distância efetiva em 2 pontos. Isso faz `gmail.com` ganhar de `r7.com` mesmo quando a distância pura diz o contrário.
 
-## Detalhes técnicos
+Lógica na função `findBestMatch`:
+```
+// Se a parte antes do primeiro "." do input é prefixo da parte antes do "." do canônico
+// → aplicar bonus (reduzir dist em 2)
+```
 
-- O processamento é 100% local no frontend usando `normalizeEmail()`
-- Verificação de duplicatas: query `SELECT email FROM email_contacts WHERE user_id = ? AND email IN (...)`
-- Inserção via `supabase.from("email_contacts").upsert(rows, { onConflict: "user_id,email" })`
-- Sem dependência de IA, edge function, ou backend da VPS para esta funcionalidade
+### Arquivo alterado
+- `src/lib/emailNormalizer.ts` — expandir `KNOWN_ALIASES` + adicionar lógica de prefixo em `findBestMatch`
+
+Nenhuma mudança de banco, backend ou UI necessária.
 
