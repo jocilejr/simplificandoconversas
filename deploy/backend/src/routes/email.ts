@@ -751,6 +751,14 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         if (!regEmail) return res.status(400).json({ error: "register_email requer: email" });
 
         const normalized = normalizeEmail(regEmail);
+
+        if (normalized.status === "invalid") {
+          return res.status(400).json({ error: "E-mail inválido", original: normalized.original });
+        }
+        if (normalized.status === "ambiguous") {
+          return res.status(400).json({ error: "E-mail suspeito — domínio não reconhecido", original: normalized.original });
+        }
+
         if (normalized.corrected) {
           console.log(`[email/webhook] E-mail corrigido: ${normalized.original} → ${normalized.email}`);
         }
