@@ -107,6 +107,19 @@ export function EmailContactsTab() {
             >
               <Upload className="h-3.5 w-3.5 mr-1" /> Importar CSV
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fixEmails}
+              disabled={fixing}
+            >
+              {fixing ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Corrigir e-mails
+            </Button>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
