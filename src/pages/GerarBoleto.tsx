@@ -33,7 +33,6 @@ const GerarBoleto = () => {
   const [form, setForm] = useState({
     customer_name: "",
     customer_phone: "",
-    customer_email: "",
     customer_document: "",
     amount: "",
     description: "",
@@ -51,7 +50,6 @@ const GerarBoleto = () => {
     const data = await createPayment.mutateAsync({
       customer_name: form.customer_name,
       customer_phone: form.customer_phone.replace(/\D/g, ""),
-      customer_email: form.customer_email || undefined,
       customer_document: form.customer_document.replace(/\D/g, "") || undefined,
       amount,
       description: form.description || undefined,
@@ -66,7 +64,6 @@ const GerarBoleto = () => {
     setForm({
       customer_name: "",
       customer_phone: "",
-      customer_email: "",
       customer_document: "",
       amount: "",
       description: "",
@@ -127,26 +124,14 @@ const GerarBoleto = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telefone</Label>
-                <Input
-                  id="phone"
-                  value={form.customer_phone}
-                  onChange={(e) => setForm({ ...form, customer_phone: maskPhone(e.target.value) })}
-                  placeholder="(11) 99999-9999"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={form.customer_email}
-                  onChange={(e) => setForm({ ...form, customer_email: e.target.value })}
-                  placeholder="email@exemplo.com"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Telefone</Label>
+              <Input
+                id="phone"
+                value={form.customer_phone}
+                onChange={(e) => setForm({ ...form, customer_phone: maskPhone(e.target.value) })}
+                placeholder="(11) 99999-9999"
+              />
             </div>
 
             <div className="space-y-2">

@@ -77,13 +77,31 @@ router.post("/create", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Nome do cliente obrigatório" });
     }
 
+    // Resolve email: check conversations table, fallback to fixed email
+    const FALLBACK_EMAIL = "businessvivaorigem@gmail.com";
+    let resolvedEmail = customer_email;
+    if (!resolvedEmail && customer_phone) {
+      const phone = customer_phone.replace(/\D/g, "");
+      const { data: conv } = await supabase
+        .from("conversations")
+        .select("email")
+        .eq("user_id", userId)
+        .eq("phone_number", phone)
+        .not("email", "is", null)
+        .limit(1)
+        .maybeSingle();
+      resolvedEmail = conv?.email || FALLBACK_EMAIL;
+      console.log(`[payment] Resolved email for phone ${phone}: ${resolvedEmail}`);
+    }
+    if (!resolvedEmail) resolvedEmail = FALLBACK_EMAIL;
+
     // Build Mercado Pago payment body
     const paymentBody: any = {
       transaction_amount: Number(amount),
       description: description || `Cobrança - ${customer_name}`,
       payment_method_id: type === "boleto" ? "bolbradesco" : "pix",
       payer: {
-        email: customer_email || "cliente@email.com",
+        email: resolvedEmail,
         first_name: customer_name.split(" ")[0],
         last_name: customer_name.split(" ").slice(1).join(" ") || ".",
         identification: customer_document
