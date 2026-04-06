@@ -303,9 +303,33 @@ router.post("/campaign", async (req: Request, res: Response) => {
 
     await supabase.from("email_campaigns").update({ status: "sending" }).eq("id", campaignId);
 
-    // Get recipients
+    // Get recipients from email_contacts (primary source) + conversations
     let recipients: { email: string; name: string | null; phone: string | null }[] = [];
+    const existingEmails = new Set<string>();
 
+    // 1. Email contacts (with tag filter support)
+    let ecQuery = supabase
+      .from("email_contacts")
+      .select("email, name")
+      .eq("user_id", userId)
+      .eq("status", "active");
+
+    if (campaign.tag_filter) {
+      ecQuery = ecQuery.contains("tags", [campaign.tag_filter]);
+    }
+
+    const { data: emailContacts } = await ecQuery;
+    if (emailContacts) {
+      for (const ec of emailContacts) {
+        const lower = ec.email.toLowerCase();
+        if (!existingEmails.has(lower)) {
+          recipients.push({ email: ec.email, name: ec.name, phone: null });
+          existingEmails.add(lower);
+        }
+      }
+    }
+
+    // 2. Conversations (with tag filter via contact_tags)
     const getConversations = async (jids?: string[]) => {
       let q = supabase
         .from("conversations")
@@ -319,6 +343,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .map((c: any) => ({ email: c.email, name: c.contact_name, phone: c.phone_number }));
     };
 
+    let convRecipients: typeof recipients = [];
     if (campaign.tag_filter) {
       const { data: tagged } = await supabase
         .from("contact_tags")
@@ -326,26 +351,17 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .eq("user_id", userId)
         .eq("tag_name", campaign.tag_filter);
       if (tagged && tagged.length > 0) {
-        recipients = await getConversations(tagged.map((t: any) => t.remote_jid));
+        convRecipients = await getConversations(tagged.map((t: any) => t.remote_jid));
       }
     } else {
-      recipients = await getConversations();
+      convRecipients = await getConversations();
     }
 
-    // Merge email_contacts table
-    const { data: emailContacts } = await supabase
-      .from("email_contacts")
-      .select("email, name")
-      .eq("user_id", userId)
-      .eq("status", "active");
-
-    if (emailContacts && emailContacts.length > 0) {
-      const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
-      for (const ec of emailContacts) {
-        if (!existingEmails.has(ec.email.toLowerCase())) {
-          recipients.push({ email: ec.email, name: ec.name, phone: null });
-          existingEmails.add(ec.email.toLowerCase());
-        }
+    for (const cr of convRecipients) {
+      const lower = cr.email.toLowerCase();
+      if (!existingEmails.has(lower)) {
+        recipients.push(cr);
+        existingEmails.add(lower);
       }
     }
 
