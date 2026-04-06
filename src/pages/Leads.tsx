@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users,
-  Phone, Mail, ShoppingCart, DollarSign, Bell, ChevronRight as Arrow,
 } from "lucide-react";
+import {
+  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+} from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -136,7 +138,7 @@ const Leads = () => {
         </TabsList>
       </Tabs>
 
-      {/* Card Grid */}
+      {/* Table List */}
       {isLoading ? (
         <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
       ) : leads.length === 0 ? (
@@ -147,86 +149,71 @@ const Leads = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {leads.map((l) => (
-            <Card
-              key={l.remote_jid}
-              className="cursor-pointer hover:border-primary/40 hover:shadow-md transition-all group"
-              onClick={() => setSelectedLead(l)}
-            >
-              <CardContent className="p-4 space-y-3">
-                {/* Name + Arrow */}
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm truncate flex-1">
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>Telefone</TableHead>
+                <TableHead className="hidden md:table-cell">Email</TableHead>
+                <TableHead className="text-center">Pedidos</TableHead>
+                <TableHead className="text-right">Total Pago</TableHead>
+                <TableHead className="hidden md:table-cell text-center">Agend.</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Tags</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {leads.map((l) => (
+                <TableRow
+                  key={l.remote_jid}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => setSelectedLead(l)}
+                >
+                  <TableCell className="font-medium max-w-[160px] truncate">
                     {l.contact_name || "Sem nome"}
-                  </h3>
-                  <Arrow className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                </div>
-
-                {/* Phone */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Phone className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{formatPhone(l.remote_jid, l.phone_number)}</span>
-                </div>
-
-                {/* Email if exists */}
-                {l.customer_email && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Mail className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{l.customer_email}</span>
-                  </div>
-                )}
-
-                {/* Metrics Row */}
-                <div className="flex items-center gap-3 pt-1 border-t border-border">
-                  <div className="flex items-center gap-1" title="Pedidos pagos">
-                    <ShoppingCart className="h-3.5 w-3.5 text-green-500" />
-                    <span className="text-xs font-medium">{l.paidOrdersCount}</span>
-                  </div>
-                  <div className="flex items-center gap-1" title="Valor total pago">
-                    <DollarSign className="h-3.5 w-3.5 text-green-500" />
-                    <span className="text-xs font-mono font-medium">
-                      {l.totalPaid > 0 ? formatCurrency(l.totalPaid) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1" title="Agendamentos">
-                    <Bell className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs font-medium">{l.remindersCount}</span>
-                  </div>
-                </div>
-
-                {/* Tags */}
-                {l.tags.length > 0 && (
-                  <div className="flex gap-1 flex-wrap">
-                    {l.tags.slice(0, 3).map((t) => (
-                      <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">
-                        {t}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs font-mono">
+                    {formatPhone(l.remote_jid, l.phone_number)}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground text-xs max-w-[180px] truncate">
+                    {l.customer_email || "—"}
+                  </TableCell>
+                  <TableCell className="text-center">{l.paidOrdersCount}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">
+                    {l.totalPaid > 0 ? formatCurrency(l.totalPaid) : "—"}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-center">{l.remindersCount}</TableCell>
+                  <TableCell>
+                    {l.hasPaid ? (
+                      <Badge className="bg-green-500/10 text-green-600 border-green-500/30 text-[10px]" variant="outline">
+                        ✅ Pagou
                       </Badge>
-                    ))}
-                    {l.tags.length > 3 && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        +{l.tags.length - 3}
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                        ❌ Não pagou
                       </Badge>
                     )}
-                  </div>
-                )}
-
-                {/* Payment status badge */}
-                <div>
-                  {l.hasPaid ? (
-                    <Badge className="bg-green-500/10 text-green-600 border-green-500/30 text-[10px]" variant="outline">
-                      ✅ Pagou
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground text-[10px]">
-                      ❌ Não pagou
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    <div className="flex gap-1 flex-wrap">
+                      {l.tags.slice(0, 2).map((t) => (
+                        <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0">
+                          {t}
+                        </Badge>
+                      ))}
+                      {l.tags.length > 2 && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          +{l.tags.length - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       )}
 
       {/* Pagination */}
