@@ -226,7 +226,7 @@ export function useEmailContacts() {
 
     // Insert in batches of 500
     for (let i = 0; i < uniqueRows.length; i += 500) {
-      const batch = rows.slice(i, i + 500);
+      const batch = uniqueRows.slice(i, i + 500);
       const { error } = await supabase
         .from("email_contacts")
         .upsert(batch, { onConflict: "user_id,email" });
