@@ -103,6 +103,10 @@ export function useLeads() {
     const map = new Map<string, Lead>();
     for (const c of rawConversations) {
       if (!map.has(c.remote_jid)) {
+        // Validate phone: extract digits from remote_jid, must be 12-13 digits (BR standard)
+        const jidDigits = c.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+        if (jidDigits.length < 12 || jidDigits.length > 13) continue;
+
         const phoneKey = normalizePhone(c.phone_number || c.remote_jid);
         const txs = txByPhone.get(phoneKey) || [];
         const approvedTxs = txs.filter((t) => t.status === "aprovado");
