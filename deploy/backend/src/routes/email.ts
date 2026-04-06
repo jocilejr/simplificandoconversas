@@ -634,8 +634,10 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         return res.status(400).json({ error: `Evento desconhecido: ${event}` });
     }
   } catch (err: any) {
-    console.error("[email/webhook/inbound]", err.message);
-    res.status(500).json({ error: err.message });
+    const msg = err?.message || err?.toString?.() || JSON.stringify(err) || "Erro desconhecido";
+    console.error("[email/webhook/inbound] FULL ERROR:", err);
+    console.error("[email/webhook/inbound] Message:", msg);
+    res.status(500).json({ error: msg });
   }
 });
 
