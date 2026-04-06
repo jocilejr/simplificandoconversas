@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Transaction } from "@/hooks/useTransactions";
+import { TransactionDetailDialog } from "./TransactionDetailDialog";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -39,6 +40,7 @@ const typeLabels: Record<string, string> = {
 export function TransactionsTable({ transactions, isLoading }: TransactionsTableProps) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("todos");
+  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
   const filtered = useMemo(() => {
@@ -134,7 +136,7 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
               </TableRow>
             ) : (
               filtered.map((tx) => (
-                <TableRow key={tx.id}>
+                <TableRow key={tx.id} className="cursor-pointer" onClick={() => setSelectedTx(tx)}>
                   <TableCell>
                     <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
                   </TableCell>
@@ -190,6 +192,12 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
           </TableBody>
         </Table>
       </div>
+
+      <TransactionDetailDialog
+        transaction={selectedTx}
+        open={!!selectedTx}
+        onClose={() => setSelectedTx(null)}
+      />
     </div>
   );
 }
