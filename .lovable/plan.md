@@ -1,38 +1,29 @@
 
 
-# Filtrar números de telefone inválidos dos Leads
+# Leads: Trocar grid de cards por lista compacta
 
-## Problema
-A tabela `conversations` contém entradas com números de telefone inválidos (ex: 15 dígitos como "551514997684329"). Esses números foram inseridos pelo Evolution API e não representam contatos reais.
+## Resumo
+Substituir o grid de cards (3 colunas) por uma lista vertical com linhas clicáveis, mais densa e eficiente para escanear muitos leads.
 
-## Solução
+## Layout proposto
 
-### 1. Filtrar no hook `useLeads.ts`
-Adicionar validação no query para excluir `remote_jid` com números fora do padrão brasileiro (deve ter entre 12 e 13 dígitos após remover `@s.whatsapp.net`). A filtragem será feita no `useMemo` que constrói os leads, verificando o comprimento do número extraído do `remote_jid`.
-
-### 2. Limpeza no banco (instrução para VPS)
-Fornecer comando SQL para identificar e remover registros com números inválidos:
-```bash
-# Ver quais estão errados
-docker compose exec postgres psql -U postgres -d postgres -c "
-  SELECT remote_jid, phone_number FROM conversations 
-  WHERE remote_jid LIKE '%@s.whatsapp.net' 
-  AND length(regexp_replace(split_part(remote_jid, '@', 1), '[^0-9]', '', 'g')) NOT BETWEEN 12 AND 13;
-"
-
-# Remover os inválidos
-docker compose exec postgres psql -U postgres -d postgres -c "
-  DELETE FROM conversations 
-  WHERE remote_jid LIKE '%@s.whatsapp.net' 
-  AND length(regexp_replace(split_part(remote_jid, '@', 1), '[^0-9]', '', 'g')) NOT BETWEEN 12 AND 13;
-"
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Nome              Telefone           Email        Pedidos  Total    Agend.  Status │
+├──────────────────────────────────────────────────────────────────────┤
+│ João Silva        +55 (11) 99999...  joao@...     3        R$500   2       ✅ Pagou │
+│ Maria Santos      +55 (14) 99888...  —            0        —       0       ❌       │
+│ Carlos Lima       +55 (11) 98777...  carlos@...   1        R$120   1       ✅ Pagou │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. Melhorar formatação do telefone
-Corrigir a função `formatPhone` para lidar melhor com números irregulares, mostrando o número bruto quando não se encaixa no padrão esperado, evitando formatação quebrada.
+## Alteração
 
-## Arquivos modificados
-- `src/hooks/useLeads.ts` — filtro client-side para números com 12-13 dígitos
-- `src/pages/Leads.tsx` — ajuste na formatação
-- `src/components/leads/LeadDetailDialog.tsx` — ajuste na formatação
+### `src/pages/Leads.tsx`
+- Substituir o `<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">` por uma tabela/lista usando os componentes `Table`, `TableHeader`, `TableRow`, `TableCell` do shadcn
+- Colunas: Nome, Telefone, Email, Pedidos Pagos, Total Pago, Agendamentos, Status, Tags
+- Cada `TableRow` clicável com `onClick={() => setSelectedLead(l)}` e `cursor-pointer`
+- Em mobile, esconder colunas menos importantes (email, agendamentos) com `hidden md:table-cell`
+- Manter header, busca, filtros, tabs e paginação exatamente como estão
+- Manter os dialogs (novo lead, CSV, detalhe) sem alteração
 
