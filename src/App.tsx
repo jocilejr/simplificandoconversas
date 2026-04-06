@@ -39,7 +39,9 @@ const App = () => (
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/contacts" element={<Contacts />} />
+              <Route path="/leads" element={<Leads />} />
+              <Route path="/contacts" element={<Navigate to="/leads" replace />} />
+              <Route path="/clientes-financeiro" element={<Navigate to="/leads" replace />} />
               <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
               <Route path="/chatbot" element={<ChatbotBuilder />} />
               <Route path="/email" element={<EmailPage />} />
