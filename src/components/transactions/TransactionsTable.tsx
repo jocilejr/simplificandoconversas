@@ -192,6 +192,12 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
           </TableBody>
         </Table>
       </div>
+
+      <TransactionDetailDialog
+        transaction={selectedTx}
+        open={!!selectedTx}
+        onClose={() => setSelectedTx(null)}
+      />
     </div>
   );
 }
