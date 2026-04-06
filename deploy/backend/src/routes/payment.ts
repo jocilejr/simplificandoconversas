@@ -195,7 +195,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const { type, data } = req.body;
 
     if (type === "payment") {
-      const token = getMPToken();
+      const token = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
       if (!token) return res.sendStatus(200);
 
       const paymentId = data?.id;
