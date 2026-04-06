@@ -111,6 +111,9 @@ export default function EmailPage() {
         <TabsContent value="campaigns" className="mt-4">
           <EmailCampaignsTab />
         </TabsContent>
+        <TabsContent value="contacts" className="mt-4">
+          <EmailContactsTab />
+        </TabsContent>
         <TabsContent value="history" className="mt-4">
           <EmailHistoryTab />
         </TabsContent>
