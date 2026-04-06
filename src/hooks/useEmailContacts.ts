@@ -236,7 +236,7 @@ export function useEmailContacts() {
       }
     }
 
-    toast.success(`${toInsert.length} e-mail(s) importado(s)!`);
+    toast.success(`${uniqueRows.length} e-mail(s) importado(s)!`);
     fetchContacts();
     fetchActiveCount();
   };
