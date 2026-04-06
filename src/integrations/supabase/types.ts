@@ -406,6 +406,39 @@ export type Database = {
           },
         ]
       }
+      email_contacts: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string | null
+          source: string
+          status: string
+          tags: string[]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          name?: string | null
+          source?: string
+          status?: string
+          tags?: string[]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string | null
+          source?: string
+          status?: string
+          tags?: string[]
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_events: {
         Row: {
           created_at: string

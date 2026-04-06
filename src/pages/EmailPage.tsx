@@ -3,9 +3,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmailTemplatesTab } from "@/components/email/EmailTemplatesTab";
 import { EmailCampaignsTab } from "@/components/email/EmailCampaignsTab";
 import { EmailHistoryTab } from "@/components/email/EmailHistoryTab";
+import { EmailContactsTab } from "@/components/email/EmailContactsTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEmailSends } from "@/hooks/useEmailSends";
-import { Mail, MailCheck, MailX, Eye, TrendingUp, FileText, Megaphone, Clock } from "lucide-react";
+import { Mail, MailCheck, MailX, Eye, TrendingUp, FileText, Megaphone, Clock, Users } from "lucide-react";
 
 export default function EmailPage() {
   const [activeTab, setActiveTab] = useState("templates");
@@ -96,6 +97,9 @@ export default function EmailPage() {
           <TabsTrigger value="campaigns" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Megaphone className="h-3.5 w-3.5" /> Campanhas
           </TabsTrigger>
+          <TabsTrigger value="contacts" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <Users className="h-3.5 w-3.5" /> Contatos
+          </TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Clock className="h-3.5 w-3.5" /> Histórico
           </TabsTrigger>
@@ -106,6 +110,9 @@ export default function EmailPage() {
         </TabsContent>
         <TabsContent value="campaigns" className="mt-4">
           <EmailCampaignsTab />
+        </TabsContent>
+        <TabsContent value="contacts" className="mt-4">
+          <EmailContactsTab />
         </TabsContent>
         <TabsContent value="history" className="mt-4">
           <EmailHistoryTab />
