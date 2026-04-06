@@ -218,6 +218,43 @@ function injectTrackingPixel(html: string, sendId: string, baseUrl: string): str
   return html + pixel;
 }
 
+/** Rewrite all <a href="..."> links in HTML to tracking URLs, creating email_link_clicks records */
+async function rewriteLinks(html: string, sendId: string, userId: string, baseUrl: string): Promise<string> {
+  const linkRegex = /<a\s([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>/gi;
+  const matches: { full: string; pre: string; url: string; post: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = linkRegex.exec(html)) !== null) {
+    const url = m[2];
+    // Skip anchors, mailto, tel, and tracking pixels
+    if (url.startsWith("#") || url.startsWith("mailto:") || url.startsWith("tel:") || url.includes("/email/track/")) continue;
+    matches.push({ full: m[0], pre: m[1], url: m[2], post: m[3] });
+  }
+  if (matches.length === 0) return html;
+
+  // Deduplicate URLs — one click record per unique URL per send
+  const urlToId = new Map<string, string>();
+  for (const match of matches) {
+    if (urlToId.has(match.url)) continue;
+    const { data } = await supabase
+      .from("email_link_clicks")
+      .insert({ send_id: sendId, user_id: userId, original_url: match.url })
+      .select("id")
+      .single();
+    if (data) urlToId.set(match.url, data.id);
+  }
+
+  let result = html;
+  for (const match of matches) {
+    const clickId = urlToId.get(match.url);
+    if (!clickId) continue;
+    const trackingUrl = `${baseUrl}/api/email/click/${clickId}`;
+    const replacement = `<a ${match.pre}href="${trackingUrl}"${match.post}>`;
+    result = result.replace(match.full, replacement);
+  }
+  return result;
+}
+
+
 // ─── POST /api/email/send — single email ────────────────────────────────────
 
 router.post("/send", async (req: Request, res: Response) => {
