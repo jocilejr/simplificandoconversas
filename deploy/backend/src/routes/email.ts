@@ -834,26 +834,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
                     status: "pending",
                   });
 
-                  // Schedule follow-ups
-                  const { data: followUps } = await supabase
-                    .from("email_follow_ups")
-                    .select("*")
-                    .eq("campaign_id", camp.id)
-                    .order("step_order", { ascending: true });
-
-                  if (followUps && followUps.length > 0) {
-                    for (const fu of followUps) {
-                      const scheduledAt = new Date();
-                      scheduledAt.setDate(scheduledAt.getDate() + fu.delay_days);
-                      await supabase.from("email_follow_up_sends").insert({
-                        follow_up_id: fu.id,
-                        user_id: userId,
-                        recipient_email: normalized.email,
-                        status: "pending",
-                        scheduled_at: scheduledAt.toISOString(),
-                      });
-                    }
-                  }
+                  // (follow-ups are now handled inside the queue block above)
 
                   console.log(`[email/auto-send] Campanha "${camp.name}" enfileirada para ${normalized.email}`);
                 } catch (queueErr: any) {
