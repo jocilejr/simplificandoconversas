@@ -74,20 +74,20 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
     const totalAmount = txs.reduce((s, t) => s + Number(t.amount), 0);
     const approved = txs.filter((t) => t.status === "aprovado");
     const approvedAmount = approved.reduce((s, t) => s + Number(t.amount), 0);
-    const pending = txs.filter((t) => t.status === "pendente");
-    const pendingAmount = pending.reduce((s, t) => s + Number(t.amount), 0);
-    const rejected = txs.filter((t) => ["rejeitado", "cancelado", "estornado"].includes(t.status));
-    const rejectedAmount = rejected.reduce((s, t) => s + Number(t.amount), 0);
+    const boletos = txs.filter((t) => t.type === "boleto");
+    const boletosAmount = boletos.reduce((s, t) => s + Number(t.amount), 0);
+    const pixCartaoPendente = txs.filter((t) => t.type !== "boleto" && t.status === "pendente");
+    const pixCartaoPendenteAmount = pixCartaoPendente.reduce((s, t) => s + Number(t.amount), 0);
 
     return {
       total,
       totalAmount,
       approvedCount: approved.length,
       approvedAmount,
-      pendingCount: pending.length,
-      pendingAmount,
-      rejectedCount: rejected.length,
-      rejectedAmount,
+      boletosCount: boletos.length,
+      boletosAmount,
+      pixCartaoPendenteCount: pixCartaoPendente.length,
+      pixCartaoPendenteAmount,
     };
   }, [query.data]);
 

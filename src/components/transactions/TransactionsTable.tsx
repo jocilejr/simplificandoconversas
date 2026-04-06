@@ -82,14 +82,14 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="todos">Todos ({transactions.length})</TabsTrigger>
+            <TabsTrigger value="boletos">
+              Boletos ({transactions.filter((t) => t.type === "boleto").length})
+            </TabsTrigger>
+            <TabsTrigger value="pix-cartao-pendente">
+              PIX/Cartão Pendente ({transactions.filter((t) => t.type !== "boleto" && t.status === "pendente").length})
+            </TabsTrigger>
             <TabsTrigger value="aprovados">
               Aprovados ({transactions.filter((t) => t.status === "aprovado").length})
-            </TabsTrigger>
-            <TabsTrigger value="pendentes">
-              Pendentes ({transactions.filter((t) => t.status === "pendente").length})
-            </TabsTrigger>
-            <TabsTrigger value="rejeitados">
-              Rejeitados ({transactions.filter((t) => ["rejeitado", "cancelado", "estornado"].includes(t.status)).length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
