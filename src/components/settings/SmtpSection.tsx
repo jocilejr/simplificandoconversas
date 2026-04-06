@@ -65,10 +65,24 @@ export function SmtpSection() {
     });
   };
 
+  const buildSmtpParams = (idx: number) => {
+    const f = forms[idx];
+    if (f.id) return { smtpConfigId: f.id };
+    // Not saved yet — send inline credentials
+    return {
+      host: f.host,
+      port: parseInt(f.port) || 465,
+      username: f.username,
+      password: f.password,
+      from_email: f.fromEmail,
+      from_name: f.fromName,
+    };
+  };
+
   const handleVerify = async (idx: number) => {
     setVerifyStatus({ ...verifyStatus, [idx]: "idle" });
     try {
-      await verifySmtp.mutateAsync(forms[idx].id);
+      await verifySmtp.mutateAsync(buildSmtpParams(idx));
       setVerifyStatus({ ...verifyStatus, [idx]: "ok" });
     } catch {
       setVerifyStatus({ ...verifyStatus, [idx]: "error" });
