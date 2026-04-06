@@ -30,7 +30,7 @@ export default function EmailPage() {
 
       {/* Stats */}
       {!statsLoading && stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <Card className="border-border bg-card hover:shadow-md transition-shadow">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-muted">
@@ -83,6 +83,28 @@ export default function EmailPage() {
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Taxa Abertura</p>
                 <p className="text-xl font-bold text-foreground">{stats.openRate}%</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border bg-card hover:shadow-md transition-shadow">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <MousePointerClick className="h-4 w-4 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Cliques</p>
+                <p className="text-xl font-bold text-foreground">{stats.clicked || 0}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border bg-card hover:shadow-md transition-shadow">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <TrendingUp className="h-4 w-4 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Taxa Cliques</p>
+                <p className="text-xl font-bold text-foreground">{stats.clickRate || "0"}%</p>
               </div>
             </CardContent>
           </Card>
