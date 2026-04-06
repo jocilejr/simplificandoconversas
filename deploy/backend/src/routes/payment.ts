@@ -88,7 +88,7 @@ router.post("/create", async (req: Request, res: Response) => {
       body: JSON.stringify(paymentBody),
     });
 
-    const mpData = await mpResp.json();
+    const mpData: any = await mpResp.json();
 
     if (!mpResp.ok) {
       console.error("[payment] MP error:", JSON.stringify(mpData));
@@ -198,7 +198,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
         return res.sendStatus(200);
       }
 
-      const mpData = await mpResp.json();
+      const mpData: any = await mpResp.json();
       const newStatus = STATUS_MAP[mpData.status] || mpData.status;
       const supabase = getServiceClient();
 
@@ -254,7 +254,7 @@ router.get("/status/:transactionId", async (req: Request, res: Response) => {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (mpResp.ok) {
-          const mpData = await mpResp.json();
+          const mpData: any = await mpResp.json();
           const newStatus = STATUS_MAP[mpData.status] || mpData.status;
           if (newStatus !== data.status) {
             await supabase
