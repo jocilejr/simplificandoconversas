@@ -57,8 +57,8 @@ export function SendTemplateDialog({ template, onClose }: Props) {
         "{{telefone}}": "",
       };
       for (const [key, val] of Object.entries(vars)) {
-        html = html.replaceAll(key, val);
-        subj = subj.replaceAll(key, val);
+      html = html.split(key).join(val);
+        subj = subj.split(key).join(val);
       }
 
       const { apiUrl, safeJsonResponse } = await import("@/lib/api");
