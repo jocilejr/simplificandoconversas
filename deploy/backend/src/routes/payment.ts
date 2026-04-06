@@ -38,6 +38,7 @@ const STATUS_MAP: Record<string, string> = {
 // ─── POST /create ───
 router.post("/create", async (req: Request, res: Response) => {
   try {
+    console.log("[payment] Starting payment creation...");
     const authHeader = req.headers.authorization || "";
     const supabase = getServiceClient();
 
@@ -166,6 +167,7 @@ router.post("/create", async (req: Request, res: Response) => {
       mpData.point_of_interaction?.transaction_data?.qr_code_base64 || "";
 
     // Save transaction
+    console.log("[payment] MP success, saving transaction...");
     const { data: tx, error: txError } = await supabase
       .from("transactions")
       .insert({
@@ -177,7 +179,7 @@ router.post("/create", async (req: Request, res: Response) => {
         external_id: String(mpData.id),
         customer_name,
         customer_phone: customer_phone || null,
-        customer_email: customer_email || null,
+        customer_email: resolvedEmail || null,
         customer_document: customer_document || null,
         description: description || null,
         payment_url: paymentUrl,
@@ -193,8 +195,14 @@ router.post("/create", async (req: Request, res: Response) => {
       .single();
 
     if (txError) {
-      console.error("[payment] DB error:", txError);
+      console.error("[payment] DB insert FAILED:", JSON.stringify(txError));
+      return res.status(500).json({
+        error: "Cobrança criada no Mercado Pago mas falhou ao salvar no banco de dados",
+        mp_id: mpData.id,
+        db_error: txError.message,
+      });
     }
+    console.log("[payment] Transaction saved:", tx?.id);
 
     // Upsert conversation if phone provided
     if (customer_phone) {
@@ -207,9 +215,10 @@ router.post("/create", async (req: Request, res: Response) => {
           remote_jid: remoteJid,
           contact_name: customer_name,
           phone_number: phone,
-          email: customer_email || null,
+          email: resolvedEmail || null,
+          instance_name: null,
         },
-        { onConflict: "user_id,remote_jid" }
+        { onConflict: "user_id,remote_jid,instance_name" }
       );
     }
 

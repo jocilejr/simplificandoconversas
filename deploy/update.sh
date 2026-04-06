@@ -389,6 +389,35 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_email_contacts_user_email ON public.email_contacts(user_id, email);
 
+-- Transactions
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  amount numeric NOT NULL DEFAULT 0,
+  type text NOT NULL DEFAULT 'pix',
+  status text NOT NULL DEFAULT 'pendente',
+  source text NOT NULL DEFAULT 'manual',
+  external_id text,
+  customer_name text,
+  customer_email text,
+  customer_phone text,
+  customer_document text,
+  description text,
+  payment_url text,
+  metadata jsonb,
+  paid_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can manage own transactions') THEN
+    CREATE POLICY "Users can manage own transactions" ON public.transactions FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_transactions_user_created ON public.transactions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_external ON public.transactions(external_id, source);
+GRANT ALL ON public.transactions TO anon, authenticated, service_role;
+
 -- Force PostgREST schema cache reload
 NOTIFY pgrst, 'reload schema';
 EOSQL
