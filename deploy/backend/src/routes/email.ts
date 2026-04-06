@@ -1081,9 +1081,10 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
           .single();
 
         const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
-        const finalHtml = sendLog
+        let finalHtml = sendLog
           ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
           : personalizedHtml;
+        if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, item.user_id, appUrl);
 
         const fromAddress = smtpConfig.from_name
           ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
