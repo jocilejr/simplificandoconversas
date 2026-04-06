@@ -148,7 +148,7 @@ export function EmailContactsTab() {
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="font-medium">Nenhum contato cadastrado</p>
-              <p className="text-sm">Adicione manualmente, importe um CSV ou use o webhook.</p>
+              <p className="text-sm">Adicione manualmente, importe um arquivo ou use o webhook.</p>
             </div>
           ) : (
             <div className="rounded-md border border-border overflow-hidden">
