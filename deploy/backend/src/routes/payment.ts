@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { getRandomCep } from "../lib/random-ceps";
+import { lookupCep } from "../lib/cep-lookup";
 
 const router = Router();
 
@@ -88,7 +90,26 @@ router.post("/create", async (req: Request, res: Response) => {
           ? { type: "CPF", number: customer_document.replace(/\D/g, "") }
           : undefined,
       },
-    };
+    // Inject random address for boleto
+    if (type === "boleto") {
+      try {
+        const cep = getRandomCep();
+        const addr = await lookupCep(cep);
+        paymentBody.payer.address = addr;
+        console.log(`[payment] Boleto address: CEP ${addr.zip_code} - ${addr.street_name}, ${addr.city}/${addr.federal_unit}`);
+      } catch (addrErr: any) {
+        console.warn("[payment] Failed to lookup CEP, using fallback:", addrErr.message);
+        paymentBody.payer.address = {
+          zip_code: "01001000",
+          street_name: "Praça da Sé",
+          street_number: "s/n",
+          neighborhood: "Sé",
+          city: "São Paulo",
+          federal_unit: "SP",
+        };
+      }
+    }
+
 
     const mpResp = await fetch(`${MP_API}/v1/payments`, {
       method: "POST",
