@@ -218,6 +218,43 @@ function injectTrackingPixel(html: string, sendId: string, baseUrl: string): str
   return html + pixel;
 }
 
+/** Rewrite all <a href="..."> links in HTML to tracking URLs, creating email_link_clicks records */
+async function rewriteLinks(html: string, sendId: string, userId: string, baseUrl: string): Promise<string> {
+  const linkRegex = /<a\s([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>/gi;
+  const matches: { full: string; pre: string; url: string; post: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = linkRegex.exec(html)) !== null) {
+    const url = m[2];
+    // Skip anchors, mailto, tel, and tracking pixels
+    if (url.startsWith("#") || url.startsWith("mailto:") || url.startsWith("tel:") || url.includes("/email/track/")) continue;
+    matches.push({ full: m[0], pre: m[1], url: m[2], post: m[3] });
+  }
+  if (matches.length === 0) return html;
+
+  // Deduplicate URLs — one click record per unique URL per send
+  const urlToId = new Map<string, string>();
+  for (const match of matches) {
+    if (urlToId.has(match.url)) continue;
+    const { data } = await supabase
+      .from("email_link_clicks")
+      .insert({ send_id: sendId, user_id: userId, original_url: match.url })
+      .select("id")
+      .single();
+    if (data) urlToId.set(match.url, data.id);
+  }
+
+  let result = html;
+  for (const match of matches) {
+    const clickId = urlToId.get(match.url);
+    if (!clickId) continue;
+    const trackingUrl = `${baseUrl}/api/email/click/${clickId}`;
+    const replacement = `<a ${match.pre}href="${trackingUrl}"${match.post}>`;
+    result = result.replace(match.full, replacement);
+  }
+  return result;
+}
+
+
 // ─── POST /api/email/send — single email ────────────────────────────────────
 
 router.post("/send", async (req: Request, res: Response) => {
@@ -247,7 +284,8 @@ router.post("/send", async (req: Request, res: Response) => {
       .single();
 
     const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
-    const finalHtml = sendLog ? injectTrackingPixel(html, sendLog.id, appUrl) : html;
+    let finalHtml = sendLog ? injectTrackingPixel(html, sendLog.id, appUrl) : html;
+    if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
 
     try {
       await transporter.sendMail({
@@ -412,9 +450,10 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .select()
         .single();
 
-      const finalHtml = sendLog
+      let finalHtml = sendLog
         ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
         : personalizedHtml;
+      if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
 
       try {
         await transporter.sendMail({ from: fromAddress, to: recipient.email, subject: personalizedSubject, html: finalHtml });
@@ -621,6 +660,43 @@ router.get("/track/:sendId", async (req: Request, res: Response) => {
   res.end(pixel);
 });
 
+// ─── GET /api/email/click/:clickId — link click tracking ────────────────────
+
+router.get("/click/:clickId", async (req: Request, res: Response) => {
+  try {
+    const { clickId } = req.params;
+
+    const { data: click, error } = await supabase
+      .from("email_link_clicks")
+      .select("*, email_sends(user_id, campaign_id)")
+      .eq("id", clickId)
+      .single();
+
+    if (error || !click) return res.status(404).send("Link not found");
+
+    // Mark as clicked (only first time)
+    if (!click.clicked) {
+      await supabase
+        .from("email_link_clicks")
+        .update({ clicked: true, clicked_at: new Date().toISOString() })
+        .eq("id", clickId);
+
+      const send = click.email_sends as any;
+      if (send) {
+        await logEvent(click.send_id, send.user_id, "link_clicked", {
+          url: click.original_url,
+          click_id: clickId,
+        });
+      }
+    }
+
+    return res.redirect(302, click.original_url);
+  } catch (err: any) {
+    console.error("[email/click]", err);
+    return res.status(500).send("Error");
+  }
+});
+
 // ─── GET /api/email/stats — aggregated metrics ──────────────────────────────
 
 router.get("/stats", async (req: Request, res: Response) => {
@@ -639,7 +715,21 @@ router.get("/stats", async (req: Request, res: Response) => {
     const opened = sends?.filter((s: any) => s.opened_at).length || 0;
     const pending = sends?.filter((s: any) => s.status === "pending").length || 0;
 
-    res.json({ total, sent, failed, opened, pending, openRate: sent > 0 ? ((opened / sent) * 100).toFixed(1) : "0" });
+    // Click stats
+    const { data: clicks } = await supabase
+      .from("email_link_clicks")
+      .select("send_id, clicked")
+      .eq("user_id", userId)
+      .eq("clicked", true);
+
+    const clickedSendIds = new Set((clicks || []).map((c: any) => c.send_id));
+    const clicked = clickedSendIds.size;
+
+    res.json({
+      total, sent, failed, opened, pending, clicked,
+      openRate: sent > 0 ? ((opened / sent) * 100).toFixed(1) : "0",
+      clickRate: sent > 0 ? ((clicked / sent) * 100).toFixed(1) : "0",
+    });
   } catch (err: any) {
     console.error("[email/stats]", err.message);
     res.status(500).json({ error: err.message });
@@ -1042,9 +1132,10 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
           .single();
 
         const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
-        const finalHtml = sendLog
+        let finalHtml = sendLog
           ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
           : personalizedHtml;
+        if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, item.user_id, appUrl);
 
         const fromAddress = smtpConfig.from_name
           ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`

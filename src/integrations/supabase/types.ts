@@ -566,6 +566,44 @@ export type Database = {
           },
         ]
       }
+      email_link_clicks: {
+        Row: {
+          clicked: boolean | null
+          clicked_at: string | null
+          created_at: string | null
+          id: string
+          original_url: string
+          send_id: string
+          user_id: string
+        }
+        Insert: {
+          clicked?: boolean | null
+          clicked_at?: string | null
+          created_at?: string | null
+          id?: string
+          original_url: string
+          send_id: string
+          user_id: string
+        }
+        Update: {
+          clicked?: boolean | null
+          clicked_at?: string | null
+          created_at?: string | null
+          id?: string
+          original_url?: string
+          send_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_link_clicks_send_id_fkey"
+            columns: ["send_id"]
+            isOneToOne: false
+            referencedRelation: "email_sends"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_queue: {
         Row: {
           campaign_id: string | null
