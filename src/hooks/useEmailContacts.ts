@@ -100,11 +100,15 @@ export function useEmailContacts() {
       return;
     }
 
+    let correctedCount = 0;
     const rows = lines.slice(1).map((line) => {
       const parts = line.split(sep).map((v) => v.trim().replace(/^"|"$/g, ""));
+      const rawEmail = parts[emailIdx]?.trim() || "";
+      const result = normalizeEmail(rawEmail);
+      if (result.corrected) correctedCount++;
       return {
         user_id: user.id,
-        email: parts[emailIdx]?.toLowerCase().trim(),
+        email: result.email,
         name: nameIdx >= 0 ? parts[nameIdx] || null : null,
         tags: [] as string[],
         source: "import" as const,
