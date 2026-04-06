@@ -1,65 +1,53 @@
 
 
-# Sistema de rastreamento de cliques em links de e-mail
+# Métricas individuais por template + envio manual de teste
 
 ## O que será feito
 
-Reescrever todos os links (`<a href="...">`) no HTML dos e-mails antes do envio, redirecionando-os através de um endpoint de tracking. Quando o destinatário clica, o sistema registra quem clicou, qual link, e quando — depois redireciona para o destino original.
+1. **Taxa de abertura por template** — cada card de template exibirá métricas: total de envios, aberturas e taxa de abertura (%). Os dados vêm de uma query em `email_sends` agrupada por `template_id`, cruzando com `opened_at IS NOT NULL`.
 
-## Arquitetura
+2. **Envio manual de teste** — botão em cada template card para enviar o template a um contato específico. Um dialog permite digitar o e-mail do destinatário (com autocomplete dos contatos existentes) e enviar via `/api/email/send`.
 
-```text
-E-mail enviado:
-  <a href="https://seusite.com/oferta">  
-  →  
-  <a href="https://API_DOMAIN/api/email/click/CLICK_ID">
+## Arquivos alterados
 
-Destinatário clica → Backend registra → Redireciona 302 → seusite.com/oferta
-```
+### 1. `src/hooks/useEmailTemplates.ts`
 
-## Alterações
+- Adicionar query separada para buscar métricas por template:
+  ```sql
+  SELECT template_id, 
+    COUNT(*) as total_sent, 
+    COUNT(opened_at) as total_opened
+  FROM email_sends 
+  WHERE user_id = ? AND template_id IS NOT NULL
+  GROUP BY template_id
+  ```
+- Retornar `templateStats` como `Record<templateId, { sent, opened, openRate }>`
 
-### 1. Nova tabela `email_link_clicks` (migration)
+### 2. `src/components/email/EmailTemplatesTab.tsx`
 
-```sql
-CREATE TABLE email_link_clicks (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  send_id uuid NOT NULL,
-  user_id uuid NOT NULL,
-  original_url text NOT NULL,
-  clicked boolean DEFAULT false,
-  clicked_at timestamptz,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE email_link_clicks ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view own link clicks" ON email_link_clicks
-  FOR SELECT TO authenticated USING (user_id = auth.uid());
-```
+**Métricas no card:**
+- Abaixo do nome/assunto, exibir uma linha com: `Enviados: X | Aberturas: Y (Z%)`
+- Usar badges ou texto pequeno estilizado
 
-### 2. Backend — `deploy/backend/src/routes/email.ts`
+**Botão de envio manual:**
+- Adicionar ícone `Send` nos botões de ação do card (junto com preview, duplicar, editar, excluir)
+- Ao clicar, abrir dialog com:
+  - Input de e-mail do destinatário (com sugestões dos contatos existentes via `email_contacts`)
+  - Input opcional de nome do destinatário
+  - Botão "Enviar"
+- O envio chama `/api/email/send` com `{ to, subject: t.subject, html: t.html_body, userId, templateId: t.id, recipientName }`
+- As variáveis `{{nome}}`, `{{email}}` são substituídas pelos dados informados antes do envio
 
-- **Nova função `rewriteLinks(html, sendId, userId, baseUrl)`**: Usa regex para encontrar todos os `href="..."` no HTML, cria um registro em `email_link_clicks` para cada URL única, e substitui o href pelo URL de tracking
-- **Novo endpoint `GET /api/email/click/:clickId`**: Busca o registro, marca como clicado (`clicked=true`, `clicked_at`), registra evento em `email_events`, e redireciona 302 para a URL original
-- **Integrar `rewriteLinks`** nas funções de envio (`/send`, `/campaign`, webhook `send_email`) — chamado junto com `injectTrackingPixel`
+## Fluxo do envio manual
 
-### 3. Frontend — Visualização de cliques
+1. Clica no ícone Send no card do template
+2. Dialog abre com campo de e-mail e nome
+3. Ao enviar, as variáveis do HTML são substituídas
+4. POST para `/api/email/send` com o HTML processado
+5. Toast de sucesso/erro
+6. Métricas do template atualizam automaticamente (refetch)
 
-- **`src/components/email/EmailHistoryTab.tsx`**: Adicionar coluna "Cliques" na tabela de histórico, mostrando a contagem de links clicados por envio
-- **Dialog de detalhes**: Ao clicar na contagem, abrir um dialog mostrando cada link clicado (URL, data/hora do clique)
-- **`src/hooks/useEmailSends.ts`**: Incluir contagem de cliques na query (subquery ou join com `email_link_clicks`)
+## Sem mudanças de backend ou banco
 
-### 4. Stats — Atualizar métricas
-
-- **`GET /api/email/stats`**: Adicionar campo `clicked` (contagem de sends com pelo menos 1 clique) e `clickRate`
-- **`src/pages/EmailPage.tsx`**: Adicionar card "Cliques" e "Taxa de Cliques" nos stats do dashboard
-
-## Fluxo completo
-
-1. E-mail é montado com HTML do template
-2. `rewriteLinks()` encontra todos os `<a href>`, cria registros em `email_link_clicks`, reescreve URLs
-3. `injectTrackingPixel()` adiciona pixel de abertura (já existente)
-4. E-mail é enviado via SMTP
-5. Destinatário abre → pixel registra abertura
-6. Destinatário clica link → `/api/email/click/:id` registra clique → redireciona
-7. Dashboard mostra aberturas e cliques por destinatário
+Todas as queries usam tabelas existentes (`email_sends`, `email_contacts`). O endpoint `/api/email/send` já suporta `templateId`. Nenhuma migration necessária.
 
