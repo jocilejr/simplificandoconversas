@@ -192,6 +192,23 @@ router.post("/campaign", async (req: Request, res: Response) => {
       recipients = await getConversations();
     }
 
+    // Merge email_contacts table
+    const { data: emailContacts } = await supabase
+      .from("email_contacts")
+      .select("email, name")
+      .eq("user_id", userId)
+      .eq("status", "active");
+
+    if (emailContacts && emailContacts.length > 0) {
+      const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
+      for (const ec of emailContacts) {
+        if (!existingEmails.has(ec.email.toLowerCase())) {
+          recipients.push({ email: ec.email, name: ec.name, phone: null });
+          existingEmails.add(ec.email.toLowerCase());
+        }
+      }
+    }
+
     // Filter suppressed
     const validRecipients: typeof recipients = [];
     for (const r of recipients) {
