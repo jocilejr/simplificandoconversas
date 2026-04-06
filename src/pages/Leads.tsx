@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users,
-  Phone, Mail, ShoppingCart, DollarSign, Bell, ChevronRight as Arrow,
 } from "lucide-react";
+import {
+  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+} from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
