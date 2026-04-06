@@ -14,6 +14,7 @@ import platformApiRouter from "./routes/platform-api";
 import externalWebhookRouter from "./routes/external-webhook";
 import emailRouter from "./routes/email";
 import analyzeCsvRouter from "./routes/analyze-csv-contacts";
+import paymentRouter from "./routes/payment";
 
 const app = express();
 app.use(cors());
