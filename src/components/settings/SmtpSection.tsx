@@ -169,7 +169,7 @@ export function SmtpSection() {
                 {verifySmtp.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wifi className="h-4 w-4 mr-2" />}
                 Verificar Conexão
               </Button>
-              <Button variant="outline" onClick={() => testSmtp.mutate(f.id)} disabled={testSmtp.isPending}>
+              <Button variant="outline" onClick={() => testSmtp.mutate(buildSmtpParams(idx))} disabled={testSmtp.isPending}>
                 {testSmtp.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                 Enviar Teste
               </Button>
