@@ -90,6 +90,8 @@ router.post("/create", async (req: Request, res: Response) => {
           ? { type: "CPF", number: customer_document.replace(/\D/g, "") }
           : undefined,
       },
+    };
+
     // Inject random address for boleto
     if (type === "boleto") {
       try {
