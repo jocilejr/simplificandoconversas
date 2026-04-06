@@ -181,6 +181,7 @@ services:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CSV_ANALYZER_MODE: heuristic
+      APP_PUBLIC_URL: ${APP_URL}
 
   # ─── Nginx (roteamento interno) ───
   nginx:

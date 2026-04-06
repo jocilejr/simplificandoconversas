@@ -211,7 +211,7 @@ async function logEvent(
 
 /** Inject tracking pixel into HTML */
 function injectTrackingPixel(html: string, sendId: string, baseUrl: string): string {
-  const pixel = `<img src="${baseUrl}/functions/v1/email/track/${sendId}" width="1" height="1" style="display:none" alt="" />`;
+  const pixel = `<img src="${baseUrl}/api/email/track/${sendId}" width="1" height="1" style="display:none" alt="" />`;
   if (html.includes("</body>")) {
     return html.replace("</body>", `${pixel}</body>`);
   }

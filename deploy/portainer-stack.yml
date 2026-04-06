@@ -180,6 +180,7 @@ services:
       API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      APP_PUBLIC_URL: ${APP_URL}
 
   # ─── Nginx (roteamento interno) ───
   nginx:
