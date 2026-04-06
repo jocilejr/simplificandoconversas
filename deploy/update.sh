@@ -394,7 +394,7 @@ EOSQL
 echo "✓ Migrations aplicadas"
 
 # Validate tables exist
-for tbl in meta_pixels api_request_logs; do
+for tbl in meta_pixels api_request_logs platform_connections email_contacts; do
   TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.$tbl');")
   if [ "$TABLE_EXISTS" = "" ] || [ "$TABLE_EXISTS" = " " ]; then
     echo "❌ Tabela $tbl não encontrada após migração! Abortando."
