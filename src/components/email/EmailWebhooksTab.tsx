@@ -24,6 +24,11 @@ const EVENTS_DOC = [
     desc: "Adiciona contato aos follow-ups de uma campanha",
     fields: "campaignId, email, name?",
   },
+  {
+    event: "register_email",
+    desc: "Cadastra e-mail na lista de contatos",
+    fields: "email, name?, tags?",
+  },
 ];
 
 export function EmailWebhooksTab() {
