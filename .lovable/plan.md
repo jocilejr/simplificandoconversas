@@ -1,155 +1,47 @@
 
-Objetivo
 
-Criar uma solução específica para o padrão real do seu arquivo, em vez de continuar tentando “adivinhar” colunas genericamente.
+# Substituir importação por campo de texto simples
 
-Problema real
+## O que muda
 
-O TXT enviado tem um formato consistente e simples:
+Remover toda a lógica de importação de CSV/TXT via IA e substituir por um campo de texto onde você cola e-mails separados por vírgula. O sistema usa o normalizador local (`emailNormalizer.ts`) para corrigir domínios, verifica duplicatas no banco, e insere os novos.
 
-```text
-email,tag,timestamp
-rosefujita2019@gmail.com,etapa4,2025-09-09 02:35:32.632
-```
+## Arquivos a alterar
 
-O importador atual ainda tenta fazer detecção genérica de colunas. Isso falha porque:
-- o arquivo não tem cabeçalho
-- a 1ª coluna contém e-mails com alguns erros de digitação
-- a 2ª coluna é uma tag curta (`etapa4`, `etapa8`, etc.)
-- a 3ª coluna é sempre timestamp e deve ser ignorada
+### 1. `src/components/email/EmailContactsTab.tsx`
+- Remover: botão "Importar arquivo", input de file, dialog de preview CSV, estados de analyzing/analyzedContacts
+- Adicionar: botão "Importar e-mails" que abre um dialog com um `<Textarea>` onde o usuário cola e-mails separados por vírgula
+- O dialog mostra preview dos e-mails processados (válidos, corrigidos, inválidos) usando o normalizador local
+- Botão "Confirmar importação" insere os válidos/corrigidos
 
-Resultado: o sistema às vezes não elege nenhuma coluna de e-mail e retorna vazio.
+### 2. `src/hooks/useEmailContacts.ts`
+- Remover: função `analyzeCSV` (que chama a edge function)
+- Remover: interface `AnalyzedContact` (mover para o componente ou simplificar)
+- Adicionar: função `bulkImportEmails(emailsText: string)` que:
+  1. Faz split por vírgula, ponto-e-vírgula, ou nova linha
+  2. Aplica `normalizeEmail()` em cada um
+  3. Verifica quais já existem no banco (query simples)
+  4. Retorna lista classificada: válido, corrigido, inválido, duplicado
+- Adicionar: função `confirmBulkImport(emails)` que faz upsert dos válidos/corrigidos
 
-Solução que vou implementar
+### 3. Arquivos que NÃO serão alterados
+- `src/lib/emailNormalizer.ts` — já funciona bem, será reutilizado
+- `deploy/backend/src/routes/analyze-csv-contacts.ts` — pode ficar como está (não será mais chamado pelo frontend)
+- `supabase/functions/analyze-csv-contacts/index.ts` — idem
 
-1. Criar um parser dedicado para esse padrão
-- Detectar automaticamente quando o arquivo seguir o padrão:
-  - 3 colunas
-  - coluna 1 = e-mail
-  - coluna 2 = tag
-  - coluna 3 = timestamp
-- Quando esse padrão for reconhecido, parar de usar heurística genérica para esse caso
+## Fluxo do usuário
 
-2. Separar os campos de forma fixa
-- `coluna 1` → `email`
-- `coluna 2` → `tags = [valor]`
-- `coluna 3` → ignorar completamente
-- `name = null`
+1. Clica "Importar e-mails"
+2. Cola lista de e-mails no textarea (separados por vírgula, ponto-e-vírgula ou linha)
+3. Clica "Processar"
+4. Vê preview: ✅ válidos, ✏️ corrigidos, ❌ inválidos, ⚠️ já existentes
+5. Clica "Confirmar importação (N)"
+6. Contatos inseridos
 
-3. Usar normalização de e-mail apenas na 1ª coluna
-- Corrigir domínios com erro de digitação
-- Manter a parte local intacta
-- Se a linha tiver e-mail inválido, marcar como inválida com motivo, sem quebrar a importação inteira
+## Detalhes técnicos
 
-4. Aceitar TXT além de CSV
-- Atualizar o seletor de arquivo para aceitar `.txt` e `.csv`
-- Ajustar os textos da interface para refletir isso
+- O processamento é 100% local no frontend usando `normalizeEmail()`
+- Verificação de duplicatas: query `SELECT email FROM email_contacts WHERE user_id = ? AND email IN (...)`
+- Inserção via `supabase.from("email_contacts").upsert(rows, { onConflict: "user_id,email" })`
+- Sem dependência de IA, edge function, ou backend da VPS para esta funcionalidade
 
-5. Melhorar o diagnóstico
-- O backend vai retornar modo de análise e amostras do parse
-- Se o formato fixo não for reconhecido, aí sim cai para o modo heurístico
-- O frontend passa a exibir erro mais claro quando o arquivo não seguir nenhum formato reconhecido
-
-Arquivos a ajustar
-
-- `deploy/backend/src/routes/analyze-csv-contacts.ts`
-  - adicionar detector de “formato fixo email/tag/timestamp”
-  - adicionar parser dedicado para esse formato
-  - usar esse parser antes da heurística genérica
-  - manter timestamp fora de tags e fora de nome
-
-- `src/hooks/useEmailContacts.ts`
-  - melhorar o tratamento de erro/debug retornado pelo backend
-
-- `src/components/email/EmailContactsTab.tsx`
-  - aceitar `.txt,.csv`
-  - ajustar textos de importação para não falar só “CSV”
-
-Resultado esperado
-
-Para uma linha como:
-
-```text
-rosefujita2019@gmail.com,etapa4,2025-09-09 02:35:32.632
-```
-
-o sistema deverá gerar:
-
-```text
-email = rosefujita2019@gmail.com
-name = null
-tags = ["etapa4"]
-timestamp = ignorado
-status = valid
-```
-
-Para linhas com erro:
-
-```text
-socorrolopes8460@gmailcom.br,etapa4,2025-09-09 02:48:12.304
-```
-
-o sistema deverá:
-- tentar corrigir o e-mail
-- importar se a correção for confiável
-- ou marcar como inválido com motivo
-
-Detalhes técnicos
-
-```text
-Fluxo novo:
-1. Ler linhas não vazias
-2. Detectar se >= grande maioria das linhas tem:
-   - 3 colunas
-   - 3ª coluna timestamp
-   - 2ª coluna tag curta
-   - 1ª coluna parecendo campo de e-mail
-3. Se sim:
-   - parser fixo
-4. Se não:
-   - heurística genérica existente como fallback
-```
-
-Sem mudanças de banco
-- Não precisa migration
-- Não precisa alterar autenticação
-- Não precisa alterar tabelas
-
-Validação dentro da VPS
-
-Depois da implementação, a conferência deve ser feita aí dentro:
-
-```bash
-cd /root/simplificandoconversas/deploy && ./update.sh
-```
-
-```bash
-cd /root/simplificandoconversas/deploy
-docker compose logs backend --tail=200 | grep analyze-csv
-```
-
-Para confirmar que a VPS está com a versão certa do parser:
-
-```bash
-cd /root/simplificandoconversas/deploy
-docker compose exec -T backend sh -lc 'grep -n "fixed-format" dist/routes/analyze-csv-contacts.js'
-```
-
-Se ainda falhar, o próximo passo de investigação na VPS será:
-
-```bash
-cd /root/simplificandoconversas/deploy
-docker compose logs backend --tail=300
-```
-
-e conferir se o log mostra:
-- `mode=fixed-format`
-- quantidade de linhas reconhecidas
-- motivo de fallback, se houver
-
-Resumo
-
-A solução certa aqui não é insistir em IA nem em heurística ampla. É criar um caminho dedicado para o padrão real do seu arquivo TXT:
-- 1ª coluna = e-mail
-- 2ª coluna = tag
-- 3ª coluna = timestamp ignorado
