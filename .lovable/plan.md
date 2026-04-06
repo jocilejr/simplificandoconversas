@@ -1,50 +1,102 @@
 
+Objetivo
 
-# Fix: Parser CSV não separa colunas corretamente
+Corrigir a importação para separar corretamente:
+- e-mail
+- tags
+- timestamp
 
-## Diagnóstico
+sem deixar a IA transformar a linha inteira ou colunas erradas em e-mail.
 
-Olhando a screenshot, o campo "E-mail" mostra a linha inteira do CSV (ex: `denicedonda65@gmail.com,etapa8,2025-09-08 23:53:06.622`) ao invés de apenas o email. Isso significa que `parseCSVLine` está retornando a linha toda como uma única coluna.
+Diagnóstico do código atual
 
-**Causa raiz**: o CSV provavelmente usa **tab (`\t`)** como delimitador, mas o parser só reconhece `,` e `;`. Além disso, o CSV pode não ter linha de cabeçalho, o que faz o parser descartar a primeira linha de dados.
+O problema está no backend da VPS em `deploy/backend/src/routes/analyze-csv-contacts.ts`:
+- hoje ele ainda tenta `analyzeWithAI(csvText)` antes da heurística
+- se a IA devolver qualquer estrutura válida, o resultado é aceito sem validar a qualidade
+- a heurística atual detecta “nome” de forma muito fraca e pode confundir tag/timestamp
+- qualquer coluna que não seja e-mail ou nome vira tag, então o timestamp acaba indo junto
 
-## Solução
+Plano de correção
 
-Modificar `deploy/backend/src/routes/analyze-csv-contacts.ts`:
+1. Tornar o parser determinístico como caminho principal
+- inverter a ordem do fluxo
+- rodar primeiro `analyzeCSVHeuristic`
+- só usar IA como fallback opcional quando o CSV realmente estiver ambíguo
+- para seu caso na VPS, a estratégia recomendada é deixar o importador confiando no parser, não na IA
 
-### 1. Auto-detectar delimitador
-Antes de parsear, analisar as primeiras linhas para identificar o delimitador real (tab, vírgula, ponto-e-vírgula, pipe). Conta qual caractere aparece com mais consistência entre linhas.
+2. Melhorar a identificação de colunas
+- criar regras explícitas para:
+  - `isEmailLike`
+  - `isTimestampLike`
+  - `isTagLike`
+  - `isHumanNameLike`
+- escolher a coluna de e-mail apenas se ela tiver alta taxa de valores com exatamente um `@` e sem delimitadores extras
+- impedir timestamp de ser escolhido como nome ou tag útil
+- tratar valores como `etapa4`, `lead`, `grupo_x`, `campanha_y` como tag
+- só aceitar nome quando parecer nome humano de verdade
 
-### 2. Usar delimitador detectado no parseCSVLine
-Passar o delimitador como parâmetro para `parseCSVLine` ao invés de hardcodar `,` e `;`.
+3. Parar de importar lixo como e-mail
+- validar cada valor de e-mail antes de normalizar
+- rejeitar campo que:
+  - contenha vírgula, `;`, `|` ou tab
+  - contenha data/hora
+  - tenha mais de um `@`
+  - pareça a linha inteira do CSV
+- isso evita casos como `email,tag,timestamp` indo para o campo de e-mail
 
-### 3. Auto-detectar presença de header
-Verificar se a primeira linha contém um `@` (indicando dados, não cabeçalho). Se sim, tratar como dados — sem pular a primeira linha.
+4. Não jogar timestamp nas tags
+- ao montar `tags`, ignorar colunas detectadas como timestamp/data
+- usar apenas colunas realmente classificadas como tag
+- se não houver nome real, salvar `name = null`
 
-### 4. Melhorar log para debug
-Adicionar log do delimitador detectado, número de colunas, e se header foi encontrado.
+5. Endurecer o fallback com IA
+- se a IA continuar habilitada, validar o retorno antes de aceitar
+- rejeitar automaticamente respostas da IA onde o “email” pareça uma linha inteira ou contenha timestamp/tag misturado
+- se rejeitar, cair para o resultado heurístico
+- também posso adicionar um modo forçado como `CSV_ANALYZER_MODE=heuristic` para estabilizar a VPS
 
-## Arquivo a modificar
+Arquivos a ajustar
 
-**`deploy/backend/src/routes/analyze-csv-contacts.ts`**:
-- Nova função `detectDelimiter(lines)` que testa `\t`, `,`, `;`, `|` e retorna o que produz a contagem de colunas mais consistente
-- Nova função `hasHeaderRow(firstLine, delimiter)` que verifica se a primeira linha contém `@` em alguma coluna
-- Alterar `parseCSVLine` para receber o delimitador como parâmetro
-- Alterar `analyzeCSVHeuristic` para usar as novas funções
+- `deploy/backend/src/routes/analyze-csv-contacts.ts`
+  - refatorar o fluxo para heurística primeiro
+  - criar validadores de coluna/valor
+  - separar melhor email/tag/timestamp
+  - ignorar timestamp ao montar tags
+  - validar/rejeitar retorno ruim da IA
+  - melhorar logs
 
-## Detalhes técnicos
+- opcionalmente `deploy/docker-compose.yml`
+  - adicionar variável para forçar modo heurístico na VPS
 
+Resultado esperado
+
+Para linhas como:
 ```text
-detectDelimiter:
-  Para cada delimitador candidato (\t , ; |):
-    Conta colunas em cada uma das primeiras 5 linhas
-    Se todas têm o mesmo nº de colunas > 1 → candidato válido
-  Prioriza tab > vírgula > ponto-e-vírgula > pipe
-  Fallback: vírgula
-
-hasHeaderRow:
-  Parseia linha[0] com o delimitador detectado
-  Se alguma coluna contém "@" → provavelmente dados, não header
-  Retorna false → não pular primeira linha
+rosefujita2019@gmail.com,etapa4,2025-09-09 02:35:32.632
 ```
 
+o sistema deve gerar:
+```text
+email = rosefujita2019@gmail.com
+name = null
+tags = ["etapa4"]
+timestamp = ignorado
+status = valid
+```
+
+Validação na VPS depois da implementação
+
+Como você usa só a VPS, a conferência deve ser feita aí dentro. Depois da correção, vou te passar comandos para verificar:
+```bash
+cd /root/simplificandoconversas/deploy && ./update.sh
+docker compose logs backend --tail=200 | grep analyze-csv
+docker compose exec -T backend sh -lc 'echo ${CSV_ANALYZER_MODE:-auto}'
+```
+
+Resumo técnico
+
+A correção não é “melhorar o prompt da IA”. A correção certa é:
+- tirar a IA da decisão principal
+- validar rigorosamente o que pode ser e-mail
+- classificar timestamp separadamente
+- usar tags apenas nas colunas corretas
