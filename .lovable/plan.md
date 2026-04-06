@@ -1,28 +1,31 @@
 
 
-# Reorganizar abas de Transações
+# Modal de detalhes da transação com download de PDF
 
-## Alteração em `src/components/transactions/TransactionsTable.tsx`
+## Resumo
+Ao clicar em uma linha da tabela de transações, abre um Dialog mostrando todas as informações do cliente (nome, CPF, telefone, email) + detalhes da transação. Inclui botão para baixar PDF do boleto (abre o `payment_url` em nova aba, que é o link do Mercado Pago com opção de download).
 
-Substituir as abas atuais (Todos / Aprovados / Pendentes / Rejeitados) por:
+## Alterações
 
-1. **Todos** — todas as transações
-2. **Boletos** — filtra por `type === "boleto"` (qualquer status)
-3. **PIX/Cartão Pendente** — filtra por `type !== "boleto"` E `status === "pendente"`
-4. **Aprovados** — filtra por `status === "aprovado"` (qualquer tipo)
+### 1. `src/components/transactions/TransactionDetailDialog.tsx` (novo)
+- Componente Dialog que recebe uma `Transaction | null` e `open/onClose`
+- Exibe:
+  - Tipo + Status (badges)
+  - Nome completo
+  - CPF (customer_document)
+  - Telefone
+  - Email (se existir, senão mostra "Não informado")
+  - Valor formatado
+  - Data de criação
+  - Descrição (se existir)
+- Botão "Baixar PDF" visível quando `payment_url` existe — abre o link do Mercado Pago em nova aba (o MP já fornece o PDF do boleto nesse link)
+- Botão "Copiar Link" para copiar o `payment_url`
 
-Cada aba mostra a contagem entre parênteses, igual ao formato atual.
+### 2. `src/components/transactions/TransactionsTable.tsx`
+- Adicionar estado `selectedTx` para a transação selecionada
+- Tornar cada `TableRow` clicável (`onClick` + `cursor-pointer`)
+- Renderizar o `TransactionDetailDialog` no final do componente
 
-## Alteração em `src/pages/Transacoes.tsx`
-
-Atualizar os StatCards para manter coerência com as novas categorias:
-- **Total** (sem mudança)
-- **Aprovados** (sem mudança)
-- **Boletos** — total de boletos e valor
-- **PIX/Cartão Pendente** — contagem e valor
-
-## Arquivos modificados
-- `src/components/transactions/TransactionsTable.tsx` — trocar filtros das tabs
-- `src/pages/Transacoes.tsx` — ajustar StatCards
-- `src/hooks/useTransactions.ts` — ajustar stats para incluir boletos e pix/cartão pendente
+## Resultado
+Ao clicar em qualquer linha da tabela, o modal abre com os dados completos. O botão "Baixar PDF" redireciona para o link do Mercado Pago onde o PDF do boleto está disponível.
 
