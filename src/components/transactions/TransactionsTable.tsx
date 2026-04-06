@@ -136,7 +136,7 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
               </TableRow>
             ) : (
               filtered.map((tx) => (
-                <TableRow key={tx.id}>
+                <TableRow key={tx.id} className="cursor-pointer" onClick={() => setSelectedTx(tx)}>
                   <TableCell>
                     <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
                   </TableCell>
