@@ -192,7 +192,7 @@ export function IntegrationsSection() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{integration.name}</span>
                     {connected && (
-                      <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-green-500/10 text-green-600 border-green-500/20">
+                      <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-primary/10 text-primary border-primary/20">
                         <Check className="h-3 w-3" /> Conectado
                       </Badge>
                     )}
