@@ -1,73 +1,75 @@
 
 
-# Unificar Contatos + Clientes em "Leads"
+# Redesign completo de Leads + Limpeza de @lid
 
-## Conceito
+## 1. Corrigir erro de runtime (Contacts is not defined)
+O erro parece ser de cache/stale build — o App.tsx atual está correto. Vou garantir que não há referências residuais.
 
-Criar uma página única **Leads** que cruza dados de `conversations` (contatos WhatsApp) com `transactions` (pagamentos) usando os **últimos 8 dígitos do telefone** como chave de correspondência. Isso elimina duplicidades e centraliza tudo num lugar só.
-
-## Estrutura da página
-
-```text
-┌─────────────────────────────────────────────┐
-│  Leads                          [Importar CSV] [+ Novo Lead]  │
-│  125 leads                                                      │
-├─────────────────────────────────────────────┤
-│  [Busca por nome/telefone...]    [Tag ▼]                        │
-├─────────────────────────────────────────────┤
-│  [ Todos (125) | Pagaram (34) | Não Pagaram (91) ]              │
-├─────────────────────────────────────────────┤
-│  Nome  | Telefone | Tags | Status Pgto | Total Pago | Última msg│
-│  João  | +55...   | VIP  | ✅ Pagou    | R$ 500     | Olá...    │
-│  Maria | +55...   |      | ❌ Não pgou | —          | Oi...     │
-└─────────────────────────────────────────────┘
+## 2. Limpar contatos @lid do banco
+Fornecer instruções para rodar na VPS:
+```bash
+docker compose exec postgres psql -U postgres -d postgres -c "DELETE FROM conversations WHERE remote_jid LIKE '%@lid';"
 ```
 
-Ao clicar numa linha, abre modal com **todos os dados unificados**: nome, telefone, CPF, email, tags, lista de transações daquele lead.
-
-## Lógica de correspondência (últimos 8 dígitos)
-
+## 3. Filtrar @lid no hook `useLeads`
+Adicionar filtro no query para excluir `remote_jid` que contenha `@lid`:
 ```typescript
-const normalizePhone = (phone: string) => phone.replace(/\D/g, "").slice(-8);
+.not("remote_jid", "like", "%@lid")
 ```
 
-Para cada contato de `conversations`, busca transações cujo `customer_phone` termine com os mesmos 8 dígitos. Isso resolve variações de DDI/DDD.
+## 4. Mover "Leads" para seção Financeiro na sidebar
+- **`src/components/AppSidebar.tsx`**: Remover "Leads" do `mainItems`, adicionar no início de `financeItems`
 
-## Alterações
+## 5. Redesign da página Leads — layout com cards
+Substituir a tabela atual por um grid de cards informativos. Cada card mostra:
+- **Nome** e **Número** (formatado)
+- **Pagos**: quantidade de transações aprovadas
+- **Valor**: montante total pago (formatado em BRL)
+- **Email** (se houver, senão omite)
+- **Agendamentos**: quantidade de reminders vinculados ao lead
 
-### 1. Remover rotas e sidebar entries
-- **`src/components/AppSidebar.tsx`**: Remover "Contatos" do `mainItems` e "Clientes" do `financeItems`. Adicionar "Leads" no `mainItems` com ícone `Users` e rota `/leads`.
-- **`src/App.tsx`**: Remover import/rota de `Contacts` e `ClientesFinanceiro`. Adicionar rota `/leads`. Manter redirect de `/contacts` e `/clientes-financeiro` para `/leads`.
+Para isso, o hook `useLeads` precisa também buscar `reminders` e cruzar por `remote_jid`.
 
-### 2. Criar hook `useLeads` (substituir `useContacts`)
-- **`src/hooks/useLeads.ts`** (novo): 
-  - Busca `conversations` + `contact_tags` (como hoje)
-  - Busca `transactions` (todas)
-  - Cruza por últimos 8 dígitos do telefone
-  - Cada lead tem: dados do contato + `hasPaid` (boolean) + `totalPaid` (soma dos aprovados) + `transactions[]`
-  - Filtros: busca textual, tag, e aba de pagamento (todos/pagaram/não pagaram)
+### Alterações no `useLeads`:
+- Adicionar query de `reminders` (select `remote_jid`)
+- Adicionar campo `remindersCount` e `paidOrdersCount` ao tipo `Lead`
+- Filtrar `remote_jid` que contenha `@lid` no query de conversations
 
-### 3. Criar página `Leads.tsx` (substituir `Contacts.tsx`)
-- **`src/pages/Leads.tsx`** (novo):
-  - Tabs: **Todos** | **Pagaram** | **Não Pagaram**
-  - Tabela com colunas: Nome, Telefone, Tags, Status Pagamento, Total Pago, Última Mensagem
-  - Badge verde "Pagou" ou cinza "Não pagou"
-  - Mantém funcionalidades existentes: criar contato, importar CSV, filtro por tag
-  - Click na linha abre modal de detalhes do lead
+### Alterações na página `Leads.tsx`:
+- Substituir `<Table>` por grid de `<Card>` responsivo (grid-cols-1 sm:2 lg:3)
+- Cada card com layout compacto mostrando as métricas
 
-### 4. Criar modal `LeadDetailDialog.tsx`
-- **`src/components/leads/LeadDetailDialog.tsx`** (novo):
-  - Dados pessoais: Nome, Telefone, CPF (do transaction), Email, Tags
-  - Seção "Transações": lista todas as transações vinculadas a esse lead
-  - Cada transação mostra: tipo, status, valor, data, botão "Baixar PDF" se boleto
+## 6. Redesign do modal `LeadDetailDialog` — visão completa
+O modal expandido mostra **tudo** sobre a pessoa, organizado em seções:
 
-### 5. Limpar arquivos antigos
-- Remover `src/pages/Contacts.tsx` e `src/pages/ClientesFinanceiro.tsx`
-- Remover `src/hooks/useContacts.ts`
+### Seção 1: Dados pessoais
+- Nome completo, Telefone, CPF, Email, Tags
+
+### Seção 2: Resumo financeiro
+- Total pago, Quantidade de pedidos pagos, Quantidade de pedidos não pagos
+
+### Seção 3: Transações (separadas em Pagas e Pendentes)
+- Lista de transações aprovadas com valor, data, tipo
+- Lista de transações pendentes/rejeitadas
+- Botão "Baixar PDF" para boletos
+
+### Seção 4: Agendamentos/Lembretes
+- Lista de reminders vinculados ao lead (por `remote_jid`)
+- Mostra título, data, status (pendente/concluído)
+
+### Seção 5: Histórico de conversa (últimas mensagens)
+- Buscar últimas N mensagens da tabela `messages` pelo `remote_jid`
+- Mostrar um resumo compacto das últimas 10 mensagens
+
+## Arquivos modificados
+1. **`src/components/AppSidebar.tsx`** — mover Leads para Financeiro
+2. **`src/hooks/useLeads.ts`** — adicionar reminders, filtrar @lid, novos campos
+3. **`src/pages/Leads.tsx`** — redesign com grid de cards
+4. **`src/components/leads/LeadDetailDialog.tsx`** — modal completo com todas as seções
 
 ## Resultado
-- Sidebar: "Leads" substitui "Contatos" e "Clientes"
-- Uma única página com visão completa de cada pessoa
-- Filtragem fácil: quem pagou vs quem não pagou
-- Sem risco de dados cruzados errados graças à correspondência por 8 dígitos
+- Leads na seção Financeiro da sidebar
+- Sem contatos @lid no sistema
+- Cards visuais com métricas úteis na listagem
+- Modal com visão 360° do lead: dados, finanças, mensagens, agendamentos
 
