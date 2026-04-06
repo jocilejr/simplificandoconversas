@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Receipt, CheckCircle, Clock, XCircle, DollarSign } from "lucide-react";
+import { Receipt, CheckCircle, Clock, DollarSign } from "lucide-react";
 import { useTransactions } from "@/hooks/useTransactions";
 import { StatCard } from "@/components/transactions/StatCard";
 import { DateFilter } from "@/components/transactions/DateFilter";
