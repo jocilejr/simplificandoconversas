@@ -57,7 +57,6 @@ router.post("/create", async (req: Request, res: Response) => {
     if (!token) {
       return res.status(500).json({ error: "MERCADOPAGO_ACCESS_TOKEN não configurado. Configure na aba Integrações." });
     }
-    }
 
     const {
       customer_name,
