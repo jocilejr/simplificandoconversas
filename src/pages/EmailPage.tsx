@@ -7,7 +7,7 @@ import { EmailContactsTab } from "@/components/email/EmailContactsTab";
 import { EmailTagsTab } from "@/components/email/EmailTagsTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEmailSends } from "@/hooks/useEmailSends";
-import { Mail, MailCheck, MailX, Eye, TrendingUp, FileText, Megaphone, Clock, Users, Tag } from "lucide-react";
+import { Mail, MailCheck, MailX, Eye, TrendingUp, FileText, Megaphone, Clock, Users, Tag, MousePointerClick } from "lucide-react";
 
 export default function EmailPage() {
   const [activeTab, setActiveTab] = useState("templates");
