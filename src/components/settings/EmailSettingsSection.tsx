@@ -138,12 +138,11 @@ export function EmailSettingsSection() {
               <div className="p-3 rounded-lg bg-muted/30 border border-border">
                 <p className="text-xs font-medium mb-2">Exemplo de payload:</p>
                 <pre className="text-xs text-muted-foreground overflow-x-auto whitespace-pre-wrap">{JSON.stringify({
-                  event: "send_email",
+                  event: "register_email",
                   data: {
-                    to: "cliente@exemplo.com",
-                    subject: "Confirmação de pedido",
-                    html: "<h1>Pedido confirmado!</h1>",
-                    recipientName: "João",
+                    email: "contato@exemplo.com",
+                    name: "João Silva",
+                    tags: ["lead", "site"],
                   },
                 }, null, 2)}</pre>
               </div>
