@@ -387,7 +387,7 @@ router.post("/", async (req, res) => {
                 // Chat is @lid: check if we already have a conversation with this lid in this instance
                 const { data: byLid } = await serviceClient.from("conversations")
                   .select("id, remote_jid")
-                  .eq("user_id", userId)
+                  .eq("workspace_id", workspaceId!)
                   .eq("lid", rawJid)
                   .eq("instance_name", instName)
                   .limit(1)
