@@ -1,54 +1,92 @@
 
+## Diagnóstico
 
-## Mover Recuperação Automática para a Página de Transações
+O comportamento faz sentido com o código atual: a configuração “por tipo” ainda está misturada com o campo legado `instance_name`.
 
-### Problema
-A recuperação automática está numa página separada. O usuário quer que tudo fique dentro da página de Transações, sem aba/página específica de recuperação.
+### Causa raiz
+1. Em `src/components/transactions/AutoRecoveryConfig.tsx`, ao abrir o modal:
+   - `instance_boleto` cai em `instance_name`
+   - `instance_pix` cai em `instance_name`
+   - `instance_yampi` cai em `instance_name`
 
-### Mudanças
+   Hoje está assim:
+   ```ts
+   setInstanceBoleto(s.instance_boleto || s.instance_name || "");
+   setInstancePix(s.instance_pix || s.instance_name || "");
+   setInstanceYampi(s.instance_yampi || s.instance_name || "");
+   ```
 
-#### 1. Remover página "Recuperação" da sidebar
-- Remover o item `{ title: "Recuperação", url: "/recuperacao", ... }` do `AppSidebar.tsx`
-- Remover a rota `/recuperacao` do `App.tsx`
+2. Ao salvar, o modal grava também:
+   ```ts
+   instance_name: instanceBoleto || instancePix || instanceYampi || null
+   ```
+   Então, se você escolhe só o número de boletos, esse valor vira o `instance_name` geral.
 
-#### 2. Adicionar painel de configuração de recuperação automática na `TransactionsTable.tsx`
-- Adicionar um **toggle** compacto no topo da página (próximo aos filtros de data) para ativar/desativar a recuperação automática
-- Ao clicar num ícone de engrenagem ao lado do toggle, abrir um **Dialog** com:
-  - Seletor de instância WhatsApp (para cada tipo: boleto, pix/cartão, yampi)
-  - Delay entre mensagens (mínimo 20s)
-  - Tempo de espera antes de enviar (minutos)
-- A mensagem enviada automaticamente será **exatamente** a que está configurada no `RecoverySettingsDialog` (modal de ⚙️ de cada aba) — sem duplicar templates
+3. Na próxima leitura, como PIX e Yampi estão vazios, eles recebem fallback de `instance_name`, parecendo que “foi para todos”.
 
-#### 3. Atualizar `recovery_settings` para suportar instância por tipo
-- A tabela atual tem um único `instance_name`. Vamos adicionar colunas:
-  - `instance_boleto` (text) — instância para boletos
-  - `instance_pix` (text) — instância para PIX/cartão
-  - `instance_yampi` (text) — instância para carrinhos Yampi
-- O campo `instance_name` existente continua como fallback
+4. Existe ainda uma segunda tela em `src/pages/RecuperacaoBoletos.tsx` que continua usando apenas `instance_name`, então há dois modelos diferentes escrevendo na mesma tabela.
 
-#### 4. Atualizar backend `auto-recovery.ts`
-- Usar a instância correta por tipo de transação (`instance_boleto`, `instance_pix`, `instance_yampi`)
-- Fallback para `instance_name` se não houver instância específica
+## Plano de correção
 
-#### 5. Adicionar visualização da fila na TransactionsTable
-- Botão "Ver fila" que abre um Dialog mostrando os itens da `recovery_queue` (pendentes, enviados, falhos)
-- Possibilidade de cancelar itens pendentes
+### 1) Separar de verdade os 3 selects
+Em `AutoRecoveryConfig.tsx`:
+- carregar cada campo apenas da sua coluna própria
+- remover o fallback automático para `instance_name`
 
-### Arquivos modificados
-
-| Arquivo | Ação |
-|---------|------|
-| `src/components/AppSidebar.tsx` | Remover item "Recuperação" |
-| `src/App.tsx` | Remover rota `/recuperacao` |
-| `src/components/transactions/TransactionsTable.tsx` | Adicionar toggle + dialog de config + dialog de fila |
-| `src/hooks/useRecoverySettings.ts` | Adaptar para novos campos de instância por tipo |
-| `deploy/backend/src/routes/auto-recovery.ts` | Usar instância por tipo |
-
-### Migração SQL (VPS)
-```sql
-ALTER TABLE recovery_settings 
-  ADD COLUMN IF NOT EXISTS instance_boleto text,
-  ADD COLUMN IF NOT EXISTS instance_pix text,
-  ADD COLUMN IF NOT EXISTS instance_yampi text;
+Novo comportamento esperado:
+```ts
+setInstanceBoleto(s.instance_boleto || "");
+setInstancePix(s.instance_pix || "");
+setInstanceYampi(s.instance_yampi || "");
 ```
 
+### 2) Parar de espelhar um campo no outro ao salvar
+Ainda em `AutoRecoveryConfig.tsx`:
+- salvar `instance_boleto`, `instance_pix` e `instance_yampi` separadamente
+- não popular `instance_name` com base em um dos três campos
+
+Isso impede que escolher “Boletos” contamine PIX e Yampi.
+
+### 3) Alinhar a tela antiga com a nova estrutura
+Em `src/pages/RecuperacaoBoletos.tsx`:
+- revisar o uso de `instance_name`
+- decidir entre:
+  - migrar essa tela para usar também os 3 campos separados, ou
+  - deixá-la explicitamente como configuração legada sem sobrescrever a nova configuração
+
+Minha recomendação: migrar essa tela para o mesmo modelo dos 3 campos, para evitar conflito futuro.
+
+### 4) Manter compatibilidade no backend sem reintroduzir o bug
+No backend (`deploy/backend/src/routes/auto-recovery.ts`):
+- o fallback para `instance_name` pode continuar só como compatibilidade para registros antigos
+- mas a UI não deve mais reutilizar esse fallback para preencher visualmente os 3 selects
+
+## O que isso vai resolver
+- selecionar um número em “Boletos” não preencherá PIX/Yampi
+- cada tipo ficará independente
+- o workspace continua isolado normalmente, porque a leitura já usa `workspace_id`
+
+## Verificação na VPS
+
+Antes e depois da correção, confirme o que está sendo salvo no banco:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT workspace_id, instance_name, instance_boleto, instance_pix, instance_yampi, enabled, updated_at FROM public.recovery_settings ORDER BY updated_at DESC;"
+```
+
+### Resultado esperado após a correção
+Se você salvar apenas:
+- Boletos = `Recuperação de Boletos`
+
+O registro deve ficar parecido com:
+```text
+instance_boleto = Recuperação de Boletos
+instance_pix = null
+instance_yampi = null
+instance_name = null   -- ou preservado apenas se houver estratégia legada consciente
+```
+
+## Arquivos a ajustar
+- `src/components/transactions/AutoRecoveryConfig.tsx`
+- `src/pages/RecuperacaoBoletos.tsx`
+- `deploy/backend/src/routes/auto-recovery.ts` (somente revisão de compatibilidade)
