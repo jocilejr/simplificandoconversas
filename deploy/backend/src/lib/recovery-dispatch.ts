@@ -181,10 +181,9 @@ async function sendBlock(
     }
 
     const imgBuffer = await fsModule.readFile(jpgPath);
-    const imgBase64 = imgBuffer.toString("base64");
-    const mediaData = `data:image/jpeg;base64,${imgBase64}`;
+    const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
 
-    console.log(`[recovery-dispatch] Sending IMAGE block (local base64) from ${jpgPath}`);
+    console.log(`[recovery-dispatch] Sending IMAGE block from ${jpgPath} (${imgBase64.length} chars base64)`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
