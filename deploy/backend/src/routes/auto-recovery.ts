@@ -97,13 +97,16 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
 export async function processRecoveryQueue() {
   const sb = getServiceClient();
 
-  // Get all enabled recovery settings
+  // Get all recovery settings that have at least one type enabled
   const { data: allSettings } = await sb
     .from("recovery_settings")
-    .select("*")
-    .eq("enabled", true);
+    .select("*");
 
   if (!allSettings || allSettings.length === 0) return;
+
+  // Filter to only settings with at least one type enabled
+  const enabledSettings = allSettings.filter((s: any) => s.enabled_boleto || s.enabled_pix || s.enabled_yampi);
+  if (enabledSettings.length === 0) return;
 
   for (const settings of allSettings) {
     try {
