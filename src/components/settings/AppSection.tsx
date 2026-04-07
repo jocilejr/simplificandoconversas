@@ -160,6 +160,38 @@ export function AppSection() {
 
       <Card className="bg-card border-border">
         <CardHeader>
+          <CardTitle className="text-lg">URL da API (Backend)</CardTitle>
+          <CardDescription>
+            URL do backend/API. Usada para gerar URLs de webhook nas integrações (Yampi, Mercado Pago, etc).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>URL da API</Label>
+            <Input
+              placeholder="https://api.seudominio.com"
+              value={apiPublicUrl}
+              onChange={(e) => setApiPublicUrl(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Ex: https://api.chatbotsimplificado.com
+            </p>
+          </div>
+          <Button
+            onClick={async () => {
+              if (!workspaceId) return;
+              const { error } = await supabase.from("workspaces").update({ api_public_url: apiPublicUrl }).eq("id", workspaceId);
+              if (error) toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+              else toast({ title: "URL da API salva!" });
+            }}
+          >
+            Salvar
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
           <CardTitle className="text-lg">Meta Pixels (Conversions API)</CardTitle>
           <CardDescription>
             Gerencie múltiplos pixels. Cada pixel poderá ser selecionado individualmente nos nós "Pixel Meta" dos fluxos.
