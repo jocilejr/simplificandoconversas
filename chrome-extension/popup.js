@@ -53,26 +53,67 @@ loginBtn.addEventListener("click", async () => {
   loginBtn.textContent = "Entrando...";
 
   try {
-    const res = await fetch(`${apiUrl}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: "anon",
-      },
-      body: JSON.stringify({ email, password }),
-    });
+    // Try the entered URL first, then auto-correct common mistakes
+    const urlsToTry = [apiUrl];
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error_description || err.msg || `HTTP ${res.status}`);
+    // If user entered app.domain, also try api.domain
+    if (apiUrl.includes("://app.")) {
+      urlsToTry.push(apiUrl.replace("://app.", "://api."));
+    }
+    // If user entered just the domain without app/api prefix, try api.
+    if (!apiUrl.includes("://app.") && !apiUrl.includes("://api.")) {
+      const urlObj = new URL(apiUrl);
+      urlsToTry.push(`${urlObj.protocol}//api.${urlObj.host}${urlObj.pathname}`);
     }
 
-    const data = await res.json();
-    const token = data.access_token;
+    let lastError = null;
+    let data = null;
+    let workingUrl = null;
 
-    if (!token) throw new Error("Token não recebido");
+    for (const tryUrl of urlsToTry) {
+      try {
+        const res = await fetch(`${tryUrl}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: "anon",
+          },
+          body: JSON.stringify({ email, password }),
+        });
 
-    await chrome.storage.local.set({ apiUrl, authToken: token, refreshToken: data.refresh_token });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          const msg = err.error_description || err.msg || `HTTP ${res.status}`;
+          // 405 means wrong URL entirely, keep trying
+          if (res.status === 405 && urlsToTry.indexOf(tryUrl) < urlsToTry.length - 1) {
+            lastError = new Error(msg);
+            continue;
+          }
+          throw new Error(msg);
+        }
+
+        data = await res.json();
+        workingUrl = tryUrl;
+        break;
+      } catch (err) {
+        lastError = err;
+        // Network errors or 405: try next URL
+        if (urlsToTry.indexOf(tryUrl) < urlsToTry.length - 1) continue;
+        throw err;
+      }
+    }
+
+    if (!data || !data.access_token) {
+      throw lastError || new Error("Token não recebido");
+    }
+
+    // Update the input to show the correct working URL
+    if (workingUrl && workingUrl !== apiUrl) {
+      apiUrlInput.value = workingUrl;
+    }
+    const finalUrl = workingUrl || apiUrl;
+
+    await chrome.storage.local.set({ apiUrl: finalUrl, authToken: data.access_token, refreshToken: data.refresh_token });
     showStatus("Conectado com sucesso!", "success");
     loginSection.classList.remove("show");
     loggedSection.classList.add("show");
