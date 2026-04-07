@@ -1,49 +1,61 @@
 
 
-# Correção: Migração de Workspaces nunca executou na VPS
+# Correção: Aplicar migração de workspace diretamente na VPS
 
-## Diagnóstico confirmado
+## Diagnóstico final confirmado
 
-- **profiles = 1** — seu perfil existe
-- **workspace_members = 0** — nenhum workspace vinculado
-- **workspaces = 0** — nenhum workspace criado  
-- **`workspace_id` column does not exist** nas tabelas de dados — a migração SQL NUNCA rodou
+| Dado | Valor |
+|------|-------|
+| `workspace_id` nas tabelas | **NÃO EXISTE** |
+| Workspaces criados | **0** |
+| Workspace members | **0** |
+| Dados intactos | **SIM** (4 flows, 5 instances, 1 ai_config, 1 smtp, 3 transactions) |
 
-**Causa raiz:** O `update.sh` tem `set -e` (para no primeiro erro). O frontend build ou o `docker compose build backend` falhou (erros TS que corrigimos), e o script abortou **antes** de chegar no bloco SQL de migração. Porém, o bloco SQL roda na etapa `[2.5/4]` que fica DEPOIS do build do frontend (etapa `[2/4]`). Se o `bun run build` falhou, parou ali.
+**Causa raiz:** O `update.sh` usa `set -e` + `ON_ERROR_STOP=1`. Alguma instrução SQL anterior ao bloco de workspace falha (provavelmente um conflito de FK ou constraint em tabelas já existentes), abortando o script inteiro antes de chegar na migração de workspace.
 
-**Boa notícia:** Seus dados estão 100% intactos. Nada foi deletado.
+## Solução
 
-## Plano de correção
+Em vez de depender do `update.sh` monolítico, vou criar um script SQL **separado** (`deploy/migrate-workspace.sql`) contendo APENAS a migração de workspace. Isso permite rodar isoladamente na VPS sem depender do resto do script.
 
-### 1. Reorganizar `deploy/update.sh`
+Além disso, vou modificar o `update.sh` para:
+1. **Remover `ON_ERROR_STOP=1`** do bloco SQL principal de tabelas pré-existentes (que só faz `IF NOT EXISTS` e `ADD COLUMN IF NOT EXISTS`)
+2. **Manter `ON_ERROR_STOP=1`** apenas no bloco de workspace migration
+3. Separar em dois blocos `psql`: um para tabelas base (tolerante a erros) e outro para workspace (strict)
 
-Mover a migração SQL para **antes** do build do frontend, para que falhas de build não bloqueiem a migração do banco. Ordem nova:
+### Arquivo novo: `deploy/migrate-workspace.sql`
 
-```text
-[1/5] git pull
-[2/5] SQL migrations (banco primeiro!)
-[3/5] Build frontend
-[4/5] Build backend container
-[5/5] Restart + health check
+Conteúdo: apenas o bloco de workspace do `update.sh` (linhas 397-689), isolado para execução manual.
+
+### Arquivo modificado: `deploy/update.sh`
+
+Separar o heredoc SQL em dois blocos `psql`:
+- Bloco 1 (sem `ON_ERROR_STOP`): criação de tabelas base com `IF NOT EXISTS` — erros em constraints duplicadas são ignorados
+- Bloco 2 (com `ON_ERROR_STOP`): migração de workspace — precisa funcionar por completo
+
+### Instruções para rodar na VPS
+
+Após o deploy:
+```bash
+cd ~/simplificandoconversas && git pull origin main
+
+# Rodar APENAS a migração de workspace
+cd deploy
+docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 < migrate-workspace.sql
+
+# Verificar resultado
+docker compose exec -T postgres psql -U postgres -d postgres -c "
+SELECT * FROM public.workspaces;
+SELECT * FROM public.workspace_members;
+"
+
+# Rebuild e restart
+bash update.sh
 ```
 
-Remover o bloco destrutivo `DELETE FROM ... WHERE workspace_id IS NULL` (linhas 551-568) e substituir por uma verificação que apenas avisa se houver registros órfãos.
+## Resultado esperado
 
-### 2. Instruções imediatas para VPS
-
-Após o deploy, fornecer comando manual para rodar a migração SQL diretamente no postgres, caso o `update.sh` já tenha sido executado parcialmente. Isso garante que:
-- O workspace é criado para o usuário `46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6`
-- `workspace_id` é preenchido em todos os registros existentes
-- RLS policies são atualizadas
-
-### Arquivos modificados
-
-- `deploy/update.sh` — reordenar etapas, remover DELETE destrutivo
-
-### Resultado esperado
-
-Após rodar `bash update.sh` na VPS:
-- Workspace criado automaticamente
-- Todos os dados existentes vinculados ao workspace
-- Frontend exibe tudo normalmente (fluxos, instâncias, configurações)
+- Workspace "Workspace Principal" criado para o usuário
+- Membership admin criada automaticamente
+- `workspace_id` preenchido em todos os 4 flows, 5 instances, etc.
+- Frontend passa a exibir tudo normalmente
 
