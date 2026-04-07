@@ -213,6 +213,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     "pix-cartao-pendentes": transactions.filter(
       (t) => (t.type === "pix" || t.type === "cartao" || t.type === "card") && t.status === "pendente"
     ),
+    "yampi-abandonados": transactions.filter((t) => t.type === "yampi_cart" && t.status === "abandonado"),
   }), [transactions]);
 
   // Tab stats
