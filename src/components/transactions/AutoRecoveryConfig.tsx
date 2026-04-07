@@ -101,8 +101,8 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   useEffect(() => {
     if (open && settings) {
       const s = settings as any;
-      setDelaySeconds(s.delay_seconds || 20);
       setSendAfterMinutes(s.send_after_minutes || 5);
+      setInstanceBoleto(s.instance_boleto || "");
       setInstanceBoleto(s.instance_boleto || "");
       setInstancePix(s.instance_pix || "");
       setInstanceYampi(s.instance_yampi || "");
