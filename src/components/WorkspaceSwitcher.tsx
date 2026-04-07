@@ -92,11 +92,15 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               {ws.id === workspace.id && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
             </DropdownMenuItem>
           ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setShowCreate(true)} className="text-xs gap-2">
-            <Plus className="h-3.5 w-3.5" />
-            Novo Workspace
-          </DropdownMenuItem>
+          {isSuperAdmin && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowCreate(true)} className="text-xs gap-2">
+                <Plus className="h-3.5 w-3.5" />
+                Novo Workspace
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
