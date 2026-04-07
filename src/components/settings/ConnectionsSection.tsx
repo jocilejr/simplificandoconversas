@@ -39,8 +39,10 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function ConnectionsSection() {
+  const { workspaceId } = useWorkspace();
   const {
     instances,
     remoteInstances,
