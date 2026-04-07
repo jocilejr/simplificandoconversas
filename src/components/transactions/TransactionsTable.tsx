@@ -492,7 +492,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                         <span className="text-sm font-medium truncate max-w-[200px]">
                           {tx.customer_name || "-"}
                         </span>
-                        {tx.customer_email && (
+                        {isRealEmail(tx.customer_email) && (
                           <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                             {tx.customer_email}
                           </span>
