@@ -150,6 +150,11 @@ router.post("/create", async (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /webhook ─── Validação da OpenPix (retorna 200)
+router.get("/webhook", (_req: Request, res: Response) => {
+  return res.json({ ok: true });
+});
+
 // ─── POST /webhook ─── Recebe webhooks da OpenPix (sem JWT)
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
