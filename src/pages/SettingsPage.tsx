@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { Loader2, User, Plug, Brain, Code, Mail, AppWindow, Puzzle } from "lucide-react";
+import { Loader2, User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
@@ -9,15 +9,18 @@ import { AppSection } from "@/components/settings/AppSection";
 import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
 import { EmailSettingsSection } from "@/components/settings/EmailSettingsSection";
 import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
+import { TeamSection } from "@/components/settings/TeamSection";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
-const sections = [
-  { key: "profile", label: "Perfil", icon: User },
-  { key: "connections", label: "Conexões", icon: Plug },
-  { key: "integrations", label: "Integrações", icon: Puzzle },
-  { key: "ai", label: "IA", icon: Brain },
-  { key: "api", label: "API", icon: Code },
-  { key: "email", label: "E-mail", icon: Mail },
-  { key: "app", label: "Aplicação", icon: AppWindow },
+const allSections = [
+  { key: "profile", label: "Perfil", icon: User, minRole: "viewer" },
+  { key: "team", label: "Equipe", icon: Users, minRole: "admin" },
+  { key: "connections", label: "Conexões", icon: Plug, minRole: "admin" },
+  { key: "integrations", label: "Integrações", icon: Puzzle, minRole: "admin" },
+  { key: "ai", label: "IA", icon: Brain, minRole: "admin" },
+  { key: "api", label: "API", icon: Code, minRole: "admin" },
+  { key: "email", label: "E-mail", icon: Mail, minRole: "operator" },
+  { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
 ];
 
 const SettingsPage = () => {
