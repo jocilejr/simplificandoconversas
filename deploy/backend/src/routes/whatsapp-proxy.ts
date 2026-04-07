@@ -797,7 +797,7 @@ router.post("/", async (req, res) => {
         if (lidJids.length > 0) {
           const { data: lidConvs } = await serviceClient.from("conversations")
             .select("remote_jid, phone_number")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .in("remote_jid", lidJids);
           (lidConvs || []).forEach((c: any) => {
             if (c.phone_number) phoneMap[c.remote_jid] = c.phone_number;
