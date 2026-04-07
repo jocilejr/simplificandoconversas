@@ -361,7 +361,7 @@ export function TeamSection() {
             )}
           </div>
           <DialogFooter>
-            <Button size="sm" className="text-xs" onClick={handleAddByUserId} disabled={saving || !inviteEmail.trim()}>
+            <Button size="sm" className="text-xs" onClick={handleAddByEmail} disabled={saving || !inviteEmail.trim()}>
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
               Adicionar
             </Button>
