@@ -62,9 +62,11 @@ router.post("/", async (req, res) => {
     const resource = body?.resource;
     const merchant = body?.merchant;
 
-    console.log(`[yampi-webhook] Received event: ${event}, merchant: ${merchant?.alias || "unknown"}`);
+    const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+    console.log(`[yampi-webhook] Incoming request — event: ${event || "none"}, merchant: ${merchant?.alias || "unknown"}, ip: ${clientIp}`);
 
     if (!event || !resource) {
+      console.log("[yampi-webhook] Missing event or resource, returning 400");
       return res.status(400).json({ error: "Missing event or resource" });
     }
 
@@ -94,15 +96,22 @@ router.post("/", async (req, res) => {
     // Validate HMAC signature if secret_key is configured
     const hmacHeader = req.headers["x-yampi-hmac-sha256"] as string | undefined;
     if (secretKey && hmacHeader) {
-      const rawBody = JSON.stringify(req.body);
-      const computed = crypto
-        .createHmac("sha256", secretKey)
-        .update(rawBody)
-        .digest("hex");
-      if (computed !== hmacHeader) {
-        console.log("[yampi-webhook] HMAC mismatch");
-        return res.status(401).json({ error: "Invalid signature" });
+      const rawBody = (req as any).rawBody as Buffer | undefined;
+      if (!rawBody) {
+        console.log("[yampi-webhook] No raw body available for HMAC validation, skipping HMAC check");
+      } else {
+        const computed = crypto
+          .createHmac("sha256", secretKey)
+          .update(rawBody)
+          .digest("hex");
+        if (computed !== hmacHeader) {
+          console.log(`[yampi-webhook] HMAC mismatch — event: ${event}, computed: ${computed}, received: ${hmacHeader}`);
+          return res.status(401).json({ error: "Invalid signature" });
+        }
+        console.log("[yampi-webhook] HMAC validated OK");
       }
+    } else if (secretKey && !hmacHeader) {
+      console.log(`[yampi-webhook] Secret key configured but no HMAC header received — event: ${event}`);
     }
 
     const userId = connection.user_id;
