@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Settings2, Loader2, Zap, Clock, ListOrdered } from "lucide-react";
+import { Settings2, Loader2, Zap, ListOrdered } from "lucide-react";
 import { toast } from "sonner";
 import { useRecoverySettings, useRecoveryQueue } from "@/hooks/useRecoverySettings";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
@@ -91,7 +90,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   const { settings, upsert } = useRecoverySettings();
   const { instances } = useWhatsAppInstances();
 
-  const [sendAfterMinutes, setSendAfterMinutes] = useState(5);
   const [instanceBoleto, setInstanceBoleto] = useState("");
   const [instancePix, setInstancePix] = useState("");
   const [instanceYampi, setInstanceYampi] = useState("");
@@ -102,7 +100,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   useEffect(() => {
     if (open && settings) {
       const s = settings as any;
-      setSendAfterMinutes(s.send_after_minutes || 5);
       setInstanceBoleto(s.instance_boleto || "");
       setInstancePix(s.instance_pix || "");
       setInstanceYampi(s.instance_yampi || "");
@@ -116,7 +113,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   const handleSave = () => {
     upsert.mutate({
-      send_after_minutes: sendAfterMinutes,
       instance_boleto: instanceBoleto || null,
       instance_pix: instancePix || null,
       instance_yampi: instanceYampi || null,
@@ -176,22 +172,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
                 </Select>
               </div>
             ))}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Espera antes de enviar
-            </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                value={sendAfterMinutes}
-                onChange={(e) => setSendAfterMinutes(Number(e.target.value))}
-                className="h-8 text-sm"
-              />
-              <span className="text-xs text-muted-foreground whitespace-nowrap">min</span>
-            </div>
           </div>
 
           <p className="text-xs text-muted-foreground">
