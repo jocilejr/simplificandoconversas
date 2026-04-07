@@ -96,7 +96,6 @@ const RecuperacaoBoletos = () => {
     try {
       await upsert.mutateAsync({
         enabled,
-        instance_name: instanceName || undefined,
         delay_seconds: Math.max(delaySeconds, 20),
         send_after_minutes: Math.max(sendAfterMinutes, 1),
       });
