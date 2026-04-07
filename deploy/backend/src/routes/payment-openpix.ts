@@ -155,6 +155,22 @@ router.get("/webhook", (_req: Request, res: Response) => {
   return res.json({ ok: true });
 });
 
+// ─── Helper: extract customer data from various payload shapes ───
+function extractCustomer(body: any, tx: any, charge: any) {
+  const raw = tx?.customer || charge?.customer || body?.customer || tx?.payer || body?.payer || {};
+  
+  const name = raw.name || tx?.payer?.name || charge?.additionalInfo?.[0]?.value || null;
+  
+  // taxID can be string or object { taxID, type }
+  const taxField = raw.taxID || raw.cpf || raw.document || null;
+  const document = typeof taxField === "object" && taxField !== null ? taxField.taxID || null : taxField || null;
+  
+  const phone = raw.phone || tx?.payer?.phone || null;
+  const email = raw.email || tx?.payer?.email || null;
+
+  return { name, document, phone, email };
+}
+
 // ─── Helper: resolve user_id from correlationID or platform_connections ───
 async function resolveUserId(correlationID: string, supabase: any): Promise<string | null> {
   // Try extracting from correlationID format: {userId}-{timestamp}-{random}
