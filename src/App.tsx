@@ -23,6 +23,7 @@ import GruposPage from "./pages/GruposPage";
 import AreaMembros from "./pages/AreaMembros";
 import EntregaDigital from "./pages/EntregaDigital";
 import LinksUteis from "./pages/LinksUteis";
+import FollowUp from "./pages/FollowUp";
 
 const queryClient = new QueryClient({
   defaultOptions: {
