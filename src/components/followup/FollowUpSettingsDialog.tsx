@@ -21,13 +21,13 @@ export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
 
   const [enabled, setEnabled] = useState(false);
   const [instanceName, setInstanceName] = useState("");
-  const [sendAfterMinutes, setSendAfterMinutes] = useState(5);
+  const [sendAtHour, setSendAtHour] = useState("09:00");
 
   useEffect(() => {
     if (open && settings) {
       setEnabled(settings.enabled ?? false);
       setInstanceName(settings.instance_name || "");
-      setSendAfterMinutes(settings.send_after_minutes || 5);
+      setSendAtHour((settings as any).send_at_hour || "09:00");
     }
   }, [open, settings]);
 
@@ -37,8 +37,8 @@ export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
     upsert.mutate({
       enabled,
       instance_name: instanceName || null,
-      send_after_minutes: sendAfterMinutes,
-    }, {
+      send_at_hour: sendAtHour,
+    } as any, {
       onSuccess: () => {
         toast.success("Configurações salvas!");
         onOpenChange(false);
@@ -82,20 +82,16 @@ export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
 
           <div className="space-y-2">
             <Label className="text-xs flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Espera antes de enviar
+              <Clock className="h-3 w-3" /> Horário de disparo diário
             </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                value={sendAfterMinutes}
-                onChange={(e) => setSendAfterMinutes(Number(e.target.value))}
-                className="h-8 text-sm w-24"
-              />
-              <span className="text-xs text-muted-foreground">minutos</span>
-            </div>
+            <Input
+              type="time"
+              value={sendAtHour}
+              onChange={(e) => setSendAtHour(e.target.value)}
+              className="h-8 text-sm w-32"
+            />
             <p className="text-[11px] text-muted-foreground">
-              Tempo de espera após gerar o boleto antes de enviar a primeira mensagem
+              O follow up será enviado uma vez por dia neste horário (horário de Brasília)
             </p>
           </div>
 

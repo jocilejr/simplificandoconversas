@@ -27,6 +27,7 @@ export function useFollowUpSettings() {
       enabled?: boolean;
       instance_name?: string | null;
       send_after_minutes?: number;
+      send_at_hour?: string;
     }) => {
       if (!workspaceId || !user?.id) throw new Error("No workspace");
 
