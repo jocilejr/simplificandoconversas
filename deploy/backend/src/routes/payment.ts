@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { enqueueRecovery } from "../lib/recovery-enqueue";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
@@ -433,6 +434,127 @@ router.post("/webhook", async (req: Request, res: Response) => {
     return res.sendStatus(200);
   } catch (err: any) {
     console.error("[payment webhook] error:", err.message);
+    return res.sendStatus(200);
+  }
+});
+
+// ─── POST /webhook/boleto ─── Dedicated Mercado Pago IPN for boletos (per-user token)
+router.post("/webhook/boleto", async (req: Request, res: Response) => {
+  try {
+    // Extract payment ID from body.resource or query.id
+    const paymentId = req.body?.resource || req.body?.data?.id || req.query?.id;
+    const topic = req.body?.topic || req.query?.topic;
+
+    console.log(`[boleto-webhook] Received: topic=${topic}, paymentId=${paymentId}`);
+
+    if (topic !== "payment" || !paymentId) {
+      console.log(`[boleto-webhook] Ignoring non-payment topic or missing ID`);
+      return res.sendStatus(200);
+    }
+
+    const supabase = getServiceClient();
+
+    // Find the transaction by external_id to discover user_id
+    const { data: tx } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("external_id", String(paymentId))
+      .eq("source", "mercadopago")
+      .single();
+
+    if (!tx) {
+      console.warn(`[boleto-webhook] No transaction found for external_id=${paymentId}`);
+      return res.sendStatus(200);
+    }
+
+    // Resolve MP token for this specific user
+    const token = await getMPTokenForUser(tx.user_id);
+    if (!token) {
+      console.error(`[boleto-webhook] No MP token for user ${tx.user_id}`);
+      return res.sendStatus(200);
+    }
+
+    // Fetch full payment details from MP API
+    const mpResp = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!mpResp.ok) {
+      console.error(`[boleto-webhook] MP API error: ${mpResp.status}`);
+      return res.sendStatus(200);
+    }
+
+    const mpData: any = await mpResp.json();
+    const newStatus = STATUS_MAP[mpData.status] || mpData.status;
+    const oldStatus = tx.status;
+
+    console.log(`[boleto-webhook] Payment ${paymentId}: ${oldStatus} → ${newStatus} (mp: ${mpData.status})`);
+
+    // If status hasn't changed, skip update
+    if (newStatus === oldStatus) {
+      console.log(`[boleto-webhook] Status unchanged, skipping`);
+      return res.sendStatus(200);
+    }
+
+    // Merge metadata
+    const existingMeta = (tx.metadata as any) || {};
+    const updateData: any = {
+      status: newStatus,
+      metadata: {
+        ...existingMeta,
+        mp_status: mpData.status,
+        mp_status_detail: mpData.status_detail,
+        payment_method: mpData.payment_method_id,
+        barcode: mpData.barcode?.content || existingMeta.barcode,
+        digitable_line: mpData.transaction_details?.digitable_line || existingMeta.digitable_line,
+      },
+    };
+
+    if (mpData.status === "approved") {
+      updateData.paid_at = mpData.date_approved || new Date().toISOString();
+    }
+
+    await supabase
+      .from("transactions")
+      .update(updateData)
+      .eq("id", tx.id);
+
+    console.log(`[boleto-webhook] Updated transaction ${tx.id} → ${newStatus}`);
+
+    // Recovery queue management
+    if (mpData.status === "approved") {
+      // Remove from recovery queue if paid
+      const { data: deleted } = await supabase
+        .from("recovery_queue")
+        .delete()
+        .eq("transaction_id", tx.id)
+        .eq("status", "pending")
+        .select("id");
+
+      if (deleted?.length) {
+        console.log(`[boleto-webhook] Removed ${deleted.length} items from recovery_queue for tx ${tx.id}`);
+      }
+    } else if (mpData.status === "pending" && tx.customer_phone) {
+      // Enqueue for recovery if pending
+      try {
+        const workspaceId = tx.workspace_id || (await resolveWorkspaceId(tx.user_id));
+        await enqueueRecovery({
+          workspaceId,
+          userId: tx.user_id,
+          transactionId: tx.id,
+          customerPhone: tx.customer_phone,
+          customerName: tx.customer_name,
+          amount: tx.amount,
+          transactionType: tx.type || "boleto",
+        });
+      } catch (enqErr: any) {
+        console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
+      }
+    }
+
+    return res.sendStatus(200);
+  } catch (err: any) {
+    console.error(`[boleto-webhook] Error:`, err.message);
     return res.sendStatus(200);
   }
 });
