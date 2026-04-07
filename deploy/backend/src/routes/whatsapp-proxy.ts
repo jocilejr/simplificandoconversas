@@ -216,6 +216,7 @@ router.post("/", async (req, res) => {
         const { data: deleted, error: deleteErr } = await serviceClient
           .from("whatsapp_instances").delete()
           .eq("instance_name", delInstName)
+          .eq("workspace_id", workspaceId!)
           .select("id");
         if (deleteErr) console.error(`[delete-instance] DB delete error:`, deleteErr);
         else console.log(`[delete-instance] DB rows deleted: ${deleted?.length || 0}`);
