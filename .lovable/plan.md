@@ -1,61 +1,69 @@
+RESOLVA PROBLEMA DE NÃO ESTAR CONSEGUINDO CRIAR NOVOS WORKSPACE POR LOW LEVEL SECURITY
 
+&nbsp;
 
-# Correção: Aplicar migração de workspace diretamente na VPS
+# Otimização de Performance pós-Workspace
 
-## Diagnóstico final confirmado
+## Diagnóstico
 
-| Dado | Valor |
-|------|-------|
-| `workspace_id` nas tabelas | **NÃO EXISTE** |
-| Workspaces criados | **0** |
-| Workspace members | **0** |
-| Dados intactos | **SIM** (4 flows, 5 instances, 1 ai_config, 1 smtp, 3 transactions) |
+A lentidão tem **3 causas principais**:
 
-**Causa raiz:** O `update.sh` usa `set -e` + `ON_ERROR_STOP=1`. Alguma instrução SQL anterior ao bloco de workspace falha (provavelmente um conflito de FK ou constraint em tabelas já existentes), abortando o script inteiro antes de chegar na migração de workspace.
+### 1. RLS com funções SECURITY DEFINER em TODAS as queries
 
-## Solução
+Cada query agora passa por `is_workspace_member()`, `can_write_workspace()`, etc. Essas funções fazem sub-queries na tabela `workspace_members` a cada chamada. Sem índice adequado em `workspace_members(user_id, workspace_id)`, isso é lento.
 
-Em vez de depender do `update.sh` monolítico, vou criar um script SQL **separado** (`deploy/migrate-workspace.sql`) contendo APENAS a migração de workspace. Isso permite rodar isoladamente na VPS sem depender do resto do script.
+### 2. QueryClient sem `staleTime` — refetch excessivo
 
-Além disso, vou modificar o `update.sh` para:
-1. **Remover `ON_ERROR_STOP=1`** do bloco SQL principal de tabelas pré-existentes (que só faz `IF NOT EXISTS` e `ADD COLUMN IF NOT EXISTS`)
-2. **Manter `ON_ERROR_STOP=1`** apenas no bloco de workspace migration
-3. Separar em dois blocos `psql`: um para tabelas base (tolerante a erros) e outro para workspace (strict)
+O `QueryClient` é criado sem configuração: `new QueryClient()`. Isso significa `staleTime: 0` — cada vez que um componente monta, TODAS as queries são refetched. Navegação entre páginas causa dezenas de requests simultâneos.
 
-### Arquivo novo: `deploy/migrate-workspace.sql`
+### 3. Dashboard busca TODAS as mensagens do período
 
-Conteúdo: apenas o bloco de workspace do `update.sh` (linhas 397-689), isolado para execução manual.
+`useDashboardStats` linha 112-123 faz `select("direction")` sem `head: true` — baixa TODOS os registros de mensagens para contar sent/received no cliente. Com milhares de mensagens, isso é muito pesado.
 
-### Arquivo modificado: `deploy/update.sh`
+---
 
-Separar o heredoc SQL em dois blocos `psql`:
-- Bloco 1 (sem `ON_ERROR_STOP`): criação de tabelas base com `IF NOT EXISTS` — erros em constraints duplicadas são ignorados
-- Bloco 2 (com `ON_ERROR_STOP`): migração de workspace — precisa funcionar por completo
+## Plano de Correção
 
-### Instruções para rodar na VPS
+### Arquivo 1: `src/App.tsx`
 
-Após o deploy:
-```bash
-cd ~/simplificandoconversas && git pull origin main
+Configurar o `QueryClient` com `staleTime` e `gcTime` para reduzir refetches:
 
-# Rodar APENAS a migração de workspace
-cd deploy
-docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 < migrate-workspace.sql
-
-# Verificar resultado
-docker compose exec -T postgres psql -U postgres -d postgres -c "
-SELECT * FROM public.workspaces;
-SELECT * FROM public.workspace_members;
-"
-
-# Rebuild e restart
-bash update.sh
+```ts
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,      // 30s antes de considerar dados "stale"
+      gcTime: 5 * 60 * 1000,  // 5 min no cache
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 ```
 
-## Resultado esperado
+### Arquivo 2: `src/hooks/useDashboardStats.ts`
 
-- Workspace "Workspace Principal" criado para o usuário
-- Membership admin criada automaticamente
-- `workspace_id` preenchido em todos os 4 flows, 5 instances, etc.
-- Frontend passa a exibir tudo normalmente
+Substituir a query de mensagens (que baixa todos os registros) por duas queries `count` separadas (sent/received), usando `head: true`:
 
+```ts
+// Em vez de baixar todas as mensagens:
+// select("direction") → filtrar no cliente
+// Usar duas queries count:
+// select("*", { count: "exact", head: true }).eq("direction", "outbound")
+// select("*", { count: "exact", head: true }).eq("direction", "inbound")
+```
+
+### Arquivo 3: `deploy/migrate-workspace.sql`
+
+Adicionar índice composto na tabela `workspace_members` para acelerar as funções RLS:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_workspace_members_user_workspace 
+ON public.workspace_members(user_id, workspace_id);
+```
+
+### Resultado esperado
+
+- Menos requests ao navegar entre páginas (staleTime 30s)
+- Dashboard não baixa mais milhares de linhas de mensagens
+- Queries RLS executam mais rápido com o índice composto
+- Instruções para rodar na VPS: apenas o índice SQL precisa ser aplicado manualmente
