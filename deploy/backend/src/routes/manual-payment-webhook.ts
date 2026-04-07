@@ -128,7 +128,7 @@ router.post("/webhook", async (req, res) => {
       .insert({
         user_id: userId,
         workspace_id: workspaceId,
-        external_id: externalKey,
+        external_id: external_id ? `manual_${paymentType}_${external_id}` : null,
         amount: amount !== undefined ? Number(amount) : 0,
         type: paymentType,
         status: txStatus,
