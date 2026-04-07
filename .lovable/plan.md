@@ -1,101 +1,78 @@
 
 
-# Correção: Webhook de boleto aprovado + validação de pendente
+# Fix: Envio de JPG do boleto via Evolution API
 
-## Regra
+## Problema raiz
 
-**Evento approved**:
-1. Buscar no banco por `external_id`
-2. Se existir → atualizar status para `"aprovado"`, preencher `paid_at`, remover da `recovery_queue`
-3. Se NÃO existir → criar transação com `status = "aprovado"` e `paid_at`, mesmo sem dados completos (aparece na aba "Aprovados")
+O `recovery-dispatch.ts` monta a URL da imagem usando `APP_PUBLIC_URL` (APP_DOMAIN), mas a rota `/api/payment/boleto-image/` só existe no API_DOMAIN no Nginx. A Evolution API recebe o HTML do SPA em vez da imagem JPG.
 
-**Evento pending (criação de novo)**:
-1. Só criar se tiver os 5 campos obrigatórios (barcode, CPF, nome, telefone, PDF URL)
-2. Se faltar algum → ignorar (return 200)
+## Solução
 
-## Alteração em `deploy/backend/src/routes/payment.ts`
+Alterar o `recovery-dispatch.ts` para converter o PDF→JPG **localmente** no backend e enviar o base64 direto para a Evolution, eliminando a dependência de URLs externas.
 
-### Step 4 (linhas 640-738) — Bloco de criação de nova transação
+### Alteração em `deploy/backend/src/lib/recovery-dispatch.ts`
 
-Substituir a lógica atual por:
+No bloco `image` (linhas 125-161), substituir a lógica de URL por:
 
-```text
-Se mpData.status === "approved":
-  → Criar transação com status "aprovado" + paid_at
-  → Sem exigir 5 campos (pagamento já feito, dados que tiver salva)
-  → NÃO enfileirar recovery
-
-Se mpData.status === "pending":
-  → Validar 5 campos:
-    - barcode (barcode.content OU digitable_line)
-    - CPF (payer.identification.number)
-    - Nome (payer.first_name)
-    - Telefone (payer.phone.number)
-    - PDF URL (external_resource_url OU ticket_url)
-  → Se faltar qualquer um → log + return 200
-  → Se tiver todos → criar + enfileirar recovery
-
-Qualquer outro status → ignorar
-```
-
-A lógica do Step 3 (transação já existe, linhas 604-638) já funciona corretamente — atualiza status e remove da recovery_queue quando approved.
-
-### Código concreto no Step 4
+1. Ler o caminho do PDF do metadata (`boleto_file`)
+2. Converter para path no filesystem (`/media-files/...`)
+3. Verificar se já existe o JPG em cache no disco
+4. Se não, rodar `pdftoppm -jpeg -singlefile -r 200` (mesma lógica do endpoint)
+5. Ler o JPG e converter para base64
+6. Enviar para Evolution como `media: "data:image/jpeg;base64,..."` em vez de URL
 
 ```typescript
-// Step 4: Create new transaction
-if (mpData.status === "approved") {
-  // Boleto pago — criar registro direto como aprovado
-  await supabase.from("transactions").insert({
-    user_id: userId,
-    workspace_id: workspaceId,
-    amount: mpData.transaction_amount || 0,
-    type: resolveTransactionType(mpData.payment_method_id),
-    status: "aprovado",
-    source: "mercadopago",
-    external_id: String(mpData.id),
-    customer_name: mpData.payer?.first_name
-      ? `${mpData.payer.first_name} ${mpData.payer.last_name || ""}`.trim()
-      : null,
-    customer_email: mpData.payer?.email || null,
-    customer_phone: cleanPhone,
-    customer_document: mpData.payer?.identification?.number || null,
-    description: mpData.description || null,
-    payment_url: paymentUrl,
-    metadata: { ...metadataObj, created_by_webhook: true },
-    paid_at: mpData.date_approved || new Date().toISOString(),
-  });
-  return res.sendStatus(200);
+// Bloco image — conversão local + base64
+const boletoFile = meta.boleto_file as string;
+const fsPath = boletoFile.replace("/media/", "/media-files/");
+const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
+
+// Check cache or convert
+const fsModule = await import("fs/promises");
+try {
+  await fsModule.access(jpgPath);
+} catch {
+  // Convert
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execPromise = promisify(exec);
+  const prefix = jpgPath.replace(/\.jpg$/i, "");
+  await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
 }
 
-if (mpData.status !== "pending") {
-  console.log(`[boleto-webhook] Ignoring status ${mpData.status}`);
-  return res.sendStatus(200);
-}
+const buffer = await fsModule.readFile(jpgPath);
+const base64 = buffer.toString("base64");
+const mediaData = `data:image/jpeg;base64,${base64}`;
 
-// Status pending — exigir 5 campos obrigatórios
-const hasBarcode = !!(mpData.barcode?.content || mpData.transaction_details?.digitable_line);
-const hasCpf = !!mpData.payer?.identification?.number;
-const hasName = !!mpData.payer?.first_name;
-const hasPhone = !!(mpData.payer?.phone?.number);
-const hasPdf = !!(mpData.transaction_details?.external_resource_url ||
-                   mpData.point_of_interaction?.transaction_data?.ticket_url);
-
-if (!hasBarcode || !hasCpf || !hasName || !hasPhone || !hasPdf) {
-  console.log(`[boleto-webhook] Skipping pending — missing: barcode=${hasBarcode} cpf=${hasCpf} name=${hasName} phone=${hasPhone} pdf=${hasPdf}`);
-  return res.sendStatus(200);
-}
-
-// Criar transação pendente + enfileirar recovery (código existente)
+// Send via Evolution
+await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", apikey: evoApiKey },
+  body: JSON.stringify({
+    number: phone,
+    mediatype: "image",
+    media: mediaData,
+    caption: "",
+  }),
+});
 ```
 
-## Resultado
+Mesma correção para o bloco `pdf` (linhas 82-124): trocar a URL `APP_PUBLIC_URL` por leitura local do arquivo + base64.
 
-```text
-Webhook approved + existe no banco → atualiza para "aprovado" (já funciona)
-Webhook approved + NÃO existe → cria como "aprovado" (aparece em Aprovados)
-Webhook pending + 5 campos OK → cria como "pendente" (aparece no Follow Up)
-Webhook pending + falta campo → ignora
-Webhook outro status → ignora
+### Blocos afetados
+
+| Bloco | Antes | Depois |
+|-------|-------|--------|
+| `pdf` | URL `APP_PUBLIC_URL/api/payment/boleto-pdf/` | Leitura local do PDF + base64 `data:application/pdf;base64,...` |
+| `image` | URL `APP_PUBLIC_URL/api/payment/boleto-image/` | Conversão local pdftoppm + base64 `data:image/jpeg;base64,...` |
+
+### Arquivo alterado
+
+`deploy/backend/src/lib/recovery-dispatch.ts` — blocos pdf e image
+
+### Após deploy
+
+```bash
+cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
 ```
 
