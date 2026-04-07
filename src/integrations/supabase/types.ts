@@ -1298,6 +1298,7 @@ export type Database = {
           id: string
           instance_name: string | null
           send_after_minutes: number
+          send_at_hour: string
           updated_at: string
           user_id: string
           workspace_id: string
@@ -1308,6 +1309,7 @@ export type Database = {
           id?: string
           instance_name?: string | null
           send_after_minutes?: number
+          send_at_hour?: string
           updated_at?: string
           user_id: string
           workspace_id: string
@@ -1318,6 +1320,7 @@ export type Database = {
           id?: string
           instance_name?: string | null
           send_after_minutes?: number
+          send_at_hour?: string
           updated_at?: string
           user_id?: string
           workspace_id?: string
