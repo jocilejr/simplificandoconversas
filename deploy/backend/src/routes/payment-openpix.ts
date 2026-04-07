@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { normalizePhone } from "../lib/normalize-phone";
 
 const router = Router();
 
@@ -113,7 +114,7 @@ router.post("/create", async (req: Request, res: Response) => {
         source: "openpix",
         external_id: correlationID,
         customer_name,
-        customer_phone: customer_phone || null,
+        customer_phone: normalizePhone(customer_phone),
         customer_email: customer_email || null,
         customer_document: customer_document || null,
         description: description || null,
@@ -170,7 +171,7 @@ function extractCustomer(body: any, tx: any, charge: any) {
   const taxField = raw.taxID || holder.taxID || raw.cpf || raw.document || null;
   const document = typeof taxField === "object" && taxField !== null ? taxField.taxID || null : taxField || null;
   
-  const phone = raw.phone || tx?.payer?.phone || null;
+  const phone = normalizePhone(raw.phone || tx?.payer?.phone || null);
   const email = raw.email || tx?.payer?.email || null;
 
   return { name, document, phone, email };

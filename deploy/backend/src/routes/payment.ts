@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
 import { dispatchRecovery } from "../lib/recovery-dispatch";
+import { normalizePhone } from "../lib/normalize-phone";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
@@ -257,15 +258,15 @@ router.post("/create", async (req: Request, res: Response) => {
           source: "mercadopago",
           external_id: null,
           customer_name,
-          customer_phone: customer_phone || null,
-          customer_email: resolvedEmail || null,
-          customer_document: customer_document || null,
-          description: description || null,
-          payment_url: null,
-          metadata: {
-            error_reason: errorReason,
-            mp_error: mpData,
-          },
+        customer_phone: normalizePhone(customer_phone),
+        customer_email: resolvedEmail || null,
+        customer_document: customer_document || null,
+        description: description || null,
+        payment_url: null,
+        metadata: {
+          error_reason: errorReason,
+          mp_error: mpData,
+        },
         });
         console.log(`[payment] Saved rejected transaction: ${errorReason}`);
       } catch (saveErr: any) {
@@ -319,7 +320,7 @@ router.post("/create", async (req: Request, res: Response) => {
         source: "mercadopago",
         external_id: String(mpData.id),
         customer_name,
-        customer_phone: customer_phone || null,
+        customer_phone: normalizePhone(customer_phone),
         customer_email: resolvedEmail || null,
         customer_document: customer_document || null,
         description: description || null,
@@ -673,7 +674,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       const payerPhone = mpData.payer?.phone?.number
         ? String(mpData.payer.phone.area_code || "") + String(mpData.payer.phone.number)
         : null;
-      const cleanPhone = payerPhone ? payerPhone.replace(/\D/g, "") : null;
+      const cleanPhone = normalizePhone(payerPhone);
 
       const paymentUrl =
         mpData.point_of_interaction?.transaction_data?.ticket_url ||

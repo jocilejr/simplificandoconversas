@@ -57,13 +57,8 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
     .replace(/\{valor\}/gi, formattedAmount);
 }
 
-function normalizePhone(raw: string): string {
-  let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
-  if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55")) {
-    phone = "55" + phone;
-  }
-  return phone;
-}
+// Re-export from shared utility (kept as local alias for backward compat)
+import { normalizePhone } from "./normalize-phone";
 
 /**
  * Send a single block via Evolution API.
