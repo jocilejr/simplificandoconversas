@@ -1,61 +1,104 @@
 
-Objetivo: corrigir a recuperação para respeitar exatamente o tipo do bloco escolhido.
 
-Diagnóstico confirmado:
-- O erro atual está no bloco `pdf` de `deploy/backend/src/lib/recovery-dispatch.ts`.
-- Hoje ele envia `media: "data:application/pdf;base64,..."`.
-- A Evolution está respondendo: `Owned media must be a url or base64`.
-- Ou seja: para PDF ela quer o arquivo em URL ou em base64 puro, não em data URI com prefixo.
+# Fix: Yampi webhook HMAC validation quebrando silenciosamente
 
-O que ajustar:
-1. Manter a regra simples e fixa por tipo:
-   - `text` → envia texto
-   - `pdf` → envia o PDF original como documento
-   - `image` → converte o PDF para JPG e envia a imagem
-2. No bloco `pdf`:
-   - ler o arquivo PDF do disco usando `boleto_file`
-   - converter para base64 puro
-   - enviar `mediatype: "document"`
-   - enviar `media` sem prefixo `data:application/pdf;base64,`
-   - manter `fileName` e `mimetype: "application/pdf"`
-3. No bloco `image`:
-   - manter a conversão PDF → JPG
-   - depois enviar o JPG em base64 puro também, para padronizar com o que a Evolution aceita melhor
-   - não mexer na lógica de conversão, apenas no formato final do `media`
-4. Adicionar um helper local no arquivo, algo como `cleanBase64()`, para remover prefixo `data:*;base64,` e espaços/quebras de linha antes do envio.
-5. Melhorar os logs:
-   - logar claramente `Sending PDF block` e `Sending IMAGE block`
-   - logar o caminho do arquivo usado
-   - logar o erro bruto da Evolution por tipo, sem ambiguidade
+## Problema
 
-Arquivo afetado:
-- `deploy/backend/src/lib/recovery-dispatch.ts`
+O webhook da Yampi está configurado corretamente na URL `https://api.chatbotsimplificado.com/functions/v1/yampi-webhook` e a rota funciona (teste interno retornou `{"ok":true}`). Porém nenhum evento real da Yampi chegou nas últimas 24h.
 
-Resultado esperado:
-- Se o template tiver bloco `pdf`, o WhatsApp recebe somente o PDF
-- Se o template tiver bloco `image`, o sistema converte o boleto e envia somente o JPG
-- Não haverá mais dependência de URL pública para mídia
-- O erro 400 da Evolution no bloco PDF deixa de ocorrer
+Há dois problemas:
 
-Validação na VPS após a correção:
-```bash
-cd ~/simplificandoconversas/deploy
-docker compose up -d --build backend
+### 1. HMAC calculado sobre JSON re-serializado (bug crítico)
+Na linha 97, o código faz `JSON.stringify(req.body)` para calcular o HMAC. Mas o Express já fez o parse do JSON — ao re-serializar, a ordem das chaves, espaçamentos e formatação podem diferir do body original que a Yampi usou para gerar a assinatura. Resultado: **HMAC mismatch silencioso → 401 retornado para a Yampi → ela para de enviar**.
 
-docker logs -f deploy-backend-1 2>&1 | grep -E "recovery-dispatch|Evolution sendMedia|Failed"
+### 2. Sem log de chegada antes da validação HMAC
+O primeiro log só aparece se tudo passar. Se o HMAC falhar, o único log é "HMAC mismatch" — sem detalhes do evento ou IP.
+
+## Solução
+
+### Arquivo: `deploy/backend/src/routes/yampi-webhook.ts`
+
+1. **Capturar o raw body** antes do JSON parse para usar no HMAC. Como o Express global já faz `express.json()`, precisamos de um middleware que salve o buffer original antes do parse.
+
+### Arquivo: `deploy/backend/src/index.ts`
+
+2. **Adicionar `verify` callback** no `express.json()` para salvar o raw body em `req.rawBody` — mas isso afeta todas as rotas. Alternativa mais limpa: usar um middleware específico na rota yampi.
+
+### Abordagem escolhida (mais simples e sem impacto em outras rotas)
+
+No `index.ts`, antes do `express.json()` global, adicionar um middleware que intercepta apenas `/api/yampi-webhook` e salva o raw body:
+
+```typescript
+// Save raw body for HMAC validation (yampi webhook)
+app.use("/api/yampi-webhook", (req, res, next) => {
+  let chunks: Buffer[] = [];
+  req.on("data", (chunk) => chunks.push(chunk));
+  req.on("end", () => {
+    (req as any).rawBody = Buffer.concat(chunks);
+    next();
+  });
+});
 ```
 
-Checklist de teste dentro da VPS:
-1. Testar um template com bloco `pdf` apenas
-   - confirmar no WhatsApp que chegou um documento PDF
-   - confirmar no log que não houve conversão para JPG
-2. Testar um template com bloco `image` apenas
-   - confirmar no WhatsApp que chegou uma imagem JPG
-   - confirmar no log que houve `pdftoppm`
-3. Testar um template misto (`text` + `pdf` ou `text` + `image`)
-   - confirmar que cada bloco saiu no formato certo e na ordem certa
+**Problema**: isso não funciona se `express.json()` já consumiu o stream. A solução correta é usar o parâmetro `verify` do `express.json`:
 
-Detalhe técnico importante:
-- Não precisa mudar banco, webhook, Nginx ou rota pública
-- O problema está no payload enviado para a Evolution dentro do `recovery-dispatch.ts`
-- A correção é pequena e focada: parar de mandar data URI no `pdf` e padronizar base64 puro nos blocos de mídia
+```typescript
+app.use(express.json({
+  limit: "50mb",
+  verify: (req: any, _res, buf) => {
+    // Save raw body for routes that need HMAC verification
+    if (req.url?.startsWith("/api/yampi-webhook")) {
+      req.rawBody = buf;
+    }
+  },
+}));
+```
+
+No `yampi-webhook.ts`, usar `(req as any).rawBody` em vez de `JSON.stringify(req.body)`:
+
+```typescript
+const hmacHeader = req.headers["x-yampi-hmac-sha256"] as string | undefined;
+if (secretKey && hmacHeader) {
+  const rawBody = (req as any).rawBody;
+  if (!rawBody) {
+    console.log("[yampi-webhook] No raw body available for HMAC validation, skipping");
+  } else {
+    const computed = crypto
+      .createHmac("sha256", secretKey)
+      .update(rawBody)
+      .digest("hex");
+    if (computed !== hmacHeader) {
+      console.log("[yampi-webhook] HMAC mismatch — computed:", computed, "received:", hmacHeader);
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+    console.log("[yampi-webhook] HMAC validated OK");
+  }
+}
+```
+
+3. **Melhorar logs**: adicionar log no início com IP e evento antes de qualquer validação.
+
+## Arquivos alterados
+
+- `deploy/backend/src/index.ts` — adicionar `verify` no `express.json()`
+- `deploy/backend/src/routes/yampi-webhook.ts` — usar `rawBody` no HMAC + melhorar logs
+
+## Deploy
+
+```bash
+cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
+```
+
+## Diagnóstico adicional na VPS
+
+Após o deploy, testar externamente para confirmar que o endpoint está acessível:
+
+```bash
+curl -s -w "\n%{http_code}" -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"event":"test.ping","resource":{}}' \
+  https://api.chatbotsimplificado.com/functions/v1/yampi-webhook
+```
+
+Se retornar 200, o problema era HMAC. Monitorar os logs para ver os próximos eventos reais da Yampi.
+
