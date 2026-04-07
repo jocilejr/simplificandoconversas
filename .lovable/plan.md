@@ -1,83 +1,49 @@
 
 
-## Redesign Follow Up — Layout sidebar + content
+## Refinamento visual do Follow Up — estilo profissional alinhado com Transações
 
-### Conceito
-Em vez do layout vertical atual (hero card -> tabs -> lista de cards), o novo layout usa um design **split-panel horizontal**: uma sidebar esquerda fixa com stats e filtros, e um painel de conteudo principal a direita com a tabela de boletos.
+### Problema
+O layout atual tem cores chamativas (botão verde neon, ícones coloridos em backgrounds circulares, badges com cores fortes) que destoam do padrão profissional e sóbrio usado na página de Transações. A sidebar usa `bg-secondary/20` com ícones coloridos que parecem amadores.
 
-### Estrutura visual
+### Referência de estilo (TransactionsTable)
+A página de Transações usa:
+- Container: `bg-card border border-border/30 rounded-xl p-4 sm:p-6`
+- Stats bar: `bg-secondary/20 rounded-lg border border-border/30` com ícones em `bg-primary/10`, `bg-green-500/10` etc (sutil, não chamativo)
+- Tabela: `overflow-hidden rounded-lg border border-border/30` com `thead bg-secondary/30`, headers `uppercase tracking-wider text-xs font-semibold`
+- Badges: `variant="outline"` com classes suaves como `bg-green-500/20 text-green-600 border-green-500/30`
+- Botões: `variant="ghost"` ou `variant="outline"`, nunca verde sólido
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│  Follow Up                                                          │
-├────────────────────┬─────────────────────────────────────────────────┤
-│                    │                                                 │
-│  PAINEL LATERAL    │  PAINEL PRINCIPAL                               │
-│  (w-72, fixo)      │                                                 │
-│                    │  [Hoje] [Pendentes] [Vencidos] [Todos]          │
-│  ┌──────────────┐  │  ┌─ search ──────────────────────────────┐     │
-│  │ Valor Total  │  │  └───────────────────────────────────────┘     │
-│  │ R$ 4.500     │  │                                                 │
-│  └──────────────┘  │  ┌─────────────────────────────────────────┐   │
-│  ┌──────────────┐  │  │ Cliente   │ Valor │ Vence  │ Regra │ ⋮ │   │
-│  │ Pendentes    │  │  │ Joao      │ R$150 │ 04/04  │ D+1   │ ⋮ │   │
-│  │ 12           │  │  │ Maria     │ R$200 │ 05/04  │ D-1   │ ⋮ │   │
-│  └──────────────┘  │  │ ...       │       │        │       │   │   │
-│  ┌──────────────┐  │  └─────────────────────────────────────────┘   │
-│  │ Enviados     │  │                                                 │
-│  │ 5 / 12       │  │  [Mostrar mais]                                │
-│  └──────────────┘  │                                                 │
-│  ┌──────────────┐  │                                                 │
-│  │ Vencidos     │  │                                                 │
-│  │ 3            │  │                                                 │
-│  └──────────────┘  │                                                 │
-│                    │                                                 │
-│  ──── Progresso ── │                                                 │
-│  [████████░░] 67%  │                                                 │
-│                    │                                                 │
-│  [▶ Recuperar]     │                                                 │
-│  [⚙ Regua]         │                                                 │
-│                    │                                                 │
-└────────────────────┴─────────────────────────────────────────────────┘
-```
+### Mudanças no `FollowUpDashboard.tsx`
 
-Em mobile (< sm), o sidebar vira uma barra horizontal compacta colapsavel no topo.
+**Sidebar:**
+- Remover backgrounds coloridos dos ícones (`bg-primary/10`, `bg-amber-500/10`, `bg-emerald-500/10`, `bg-destructive/10`)
+- Usar ícones monocromáticos `text-muted-foreground` sem background circular, igual ao padrão da TransactionsTable stats bar
+- Stats: usar `p-2 rounded-lg bg-primary/10` para o ícone (mesmo padrão da stats bar de Transações)
+- Botão "Iniciar Recuperação": trocar de `className` padrão (verde) para `variant="default"` sem cor customizada — usa a `primary` do tema
+- Botão "Configurar Régua": manter `variant="outline"` (já está ok)
+- Remover `bg-secondary/20` individual de cada stat, usar separadores `divide-y divide-border/30` entre stats
 
-### Mudancas
+**Tabela (painel principal):**
+- Envolver tabela em `overflow-hidden rounded-lg border border-border/30` (igual Transações)
+- Header da tabela: `bg-secondary/30` com `text-xs font-semibold text-muted-foreground uppercase tracking-wider`
+- Padding das cells: `py-3 px-4` (igual Transações, atualmente usa `py-2.5 px-3`)
+- Badges de status: usar exatamente o mesmo padrão `variant="outline"` com classes de cor suaves:
+  - Enviado: `bg-green-500/20 text-green-600 border-green-500/30`
+  - Vencido: `bg-destructive/20 text-destructive border-destructive/30`
+  - Pendente: `bg-yellow-500/20 text-yellow-600 border-yellow-500/30`
+  - Com regra: `bg-blue-500/20 text-blue-600 border-blue-500/30`
 
-#### 1. `FollowUpDashboard.tsx` — reescrita completa
-- Layout `flex gap-6` com sidebar esquerda (`w-72 shrink-0`) e conteudo flex-1
-- **Sidebar**: fundo `bg-card border rounded-xl p-5`
-  - Stats empilhados verticalmente: Valor Total, Pendentes, Enviados/Total, Vencidos — cada um com icone + numero grande
-  - Progress bar circular ou linear do dia
-  - Botoes "Iniciar Recuperacao" e "Configurar Regua" empilhados no final
-- **Conteudo principal**: `bg-card border rounded-xl p-5`
-  - Tabs horizontais compactas (mesma estetica de TransactionsTable: `grid-cols-4 text-xs`)
-  - Search input
-  - **Tabela HTML real** com `<table>` (nao cards empilhados):
-    - Colunas: Cliente, Telefone, Valor, Vencimento, Status/Regra, Acoes
-    - Linhas com `hover:bg-secondary/40 cursor-pointer`
-    - Badges coloridos para status (Pendente=amarelo, Vencido=vermelho, Enviado=verde)
-    - Acoes inline: icones WhatsApp, Copy, FileText
-  - "Mostrar mais" no final
-- **Mobile**: sidebar se torna `grid grid-cols-4 gap-2` horizontal com stats compactos, sem separacao lateral
+**Tabs:**
+- Manter grid-cols-4 mas sem ícones dentro das tabs (remover `Clock`, `CalendarClock`, `AlertTriangle`, `TrendingUp` das tabs — mais limpo)
 
-#### 2. `FollowUpHeroCard.tsx` — deletar
-Funcionalidade absorvida pela sidebar do dashboard.
+**Header:**
+- Adicionar botão RefreshCw ghost igual ao de Transações
 
-#### 3. `FollowUp.tsx` — simplificar
-Remover h1/p; titulo fica dentro do dashboard.
+### Arquivo modificado
 
-#### 4. Intactos
-- `FollowUpQueue.tsx` — modal tinder mantido
-- `FollowUpRulesConfig.tsx` — dialog de regras mantido
-- `useBoletoRecovery.ts` — hook sem alteracao
-
-### Arquivos
-
-| Arquivo | Acao |
+| Arquivo | Ação |
 |---------|------|
-| `src/components/followup/FollowUpDashboard.tsx` | Reescrita completa (sidebar + tabela) |
-| `src/components/followup/FollowUpHeroCard.tsx` | Deletar |
-| `src/pages/FollowUp.tsx` | Simplificar para wrapper minimo |
+| `src/components/followup/FollowUpDashboard.tsx` | Refinamento visual: cores, badges, tabela, sidebar — alinhado com TransactionsTable |
+
+Nenhum arquivo criado ou deletado. Apenas ajustes de classes CSS e pequenas mudanças de markup para alinhar com o padrão profissional existente.
 
