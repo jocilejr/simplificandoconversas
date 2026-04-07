@@ -121,7 +121,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="p-3">
+      <SidebarHeader className="p-3 space-y-2">
         <div className="flex items-center gap-2">
           <img src="/images/logo-ov.png" alt="Origem Viva" className="h-7 w-7 shrink-0 rounded-lg" />
           {!collapsed && (
@@ -130,6 +130,7 @@ export function AppSidebar() {
             </span>
           )}
         </div>
+        <WorkspaceSwitcher collapsed={collapsed} />
       </SidebarHeader>
 
       <SidebarContent className="px-2">

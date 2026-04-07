@@ -43,6 +43,7 @@ const SettingsPage = () => {
   const renderContent = () => {
     switch (active) {
       case "profile": return <ProfileSection />;
+      case "team": return <TeamSection />;
       case "connections": return <ConnectionsSection />;
       case "integrations": return <IntegrationsSection />;
       case "ai": return <AISection />;
