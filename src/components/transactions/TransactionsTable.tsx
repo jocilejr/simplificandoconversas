@@ -76,6 +76,9 @@ const typeStyles: Record<string, string> = {
   card: "bg-purple-500/20 text-purple-600 border-purple-500/30",
 };
 
+const DEFAULT_EMAIL = "businessvivaorigem@gmail.com";
+const isRealEmail = (email: string | null) => email && email.toLowerCase() !== DEFAULT_EMAIL.toLowerCase();
+
 function getBrazilNow(): Date {
   const brazilDateStr = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
   return new Date(brazilDateStr);
@@ -489,7 +492,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                         <span className="text-sm font-medium truncate max-w-[200px]">
                           {tx.customer_name || "-"}
                         </span>
-                        {tx.customer_email && (
+                        {isRealEmail(tx.customer_email) && (
                           <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                             {tx.customer_email}
                           </span>
