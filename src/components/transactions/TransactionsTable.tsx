@@ -28,6 +28,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Transaction } from "@/hooks/useTransactions";
 import { TransactionDetailDialog } from "./TransactionDetailDialog";
+import { RecoveryPopover } from "./RecoveryPopover";
+import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
+import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
+import { useProfile } from "@/hooks/useProfile";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -95,6 +99,29 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
+
+  // Recovery hooks
+  const { profile } = useProfile();
+  const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
+
+  // Get pending transaction IDs for recovery clicks
+  const pendingTxIds = useMemo(() =>
+    transactions.filter((t) => t.status === "pendente").map((t) => t.id),
+    [transactions]
+  );
+  const { addClick, getClickCount } = useRecoveryClicks(pendingTxIds);
+
+  const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
+  const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+
+  const getRecoveryMessage = (tab: TabKey) => {
+    if (tab === "boletos-gerados") {
+      return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
+    }
+    return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+  };
+
+  // Reset visible count when tab changes
 
   // Reset visible count when tab changes
   useEffect(() => {
@@ -413,6 +440,19 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{formatDate(tx.paid_at || tx.created_at)}</span>
+              {activeTab !== "aprovados" && tx.customer_phone && (
+                <RecoveryPopover
+                  transaction={tx}
+                  recoveryMessage={getRecoveryMessage(activeTab)}
+                  clickCount={getClickCount(tx.id)}
+                  onSendWhatsApp={sendText}
+                  onRecoveryClick={() => addClick.mutate({
+                    transactionId: tx.id,
+                    recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,
+                  })}
+                  isExtensionConnected={isExtensionConnected}
+                />
+              )}
             </div>
           </div>
         ))}
@@ -547,6 +587,20 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        {/* Recovery button for pending tabs */}
+                        {activeTab !== "aprovados" && tx.customer_phone && (
+                          <RecoveryPopover
+                            transaction={tx}
+                            recoveryMessage={getRecoveryMessage(activeTab)}
+                            clickCount={getClickCount(tx.id)}
+                            onSendWhatsApp={sendText}
+                            onRecoveryClick={() => addClick.mutate({
+                              transactionId: tx.id,
+                              recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,
+                            })}
+                            isExtensionConnected={isExtensionConnected}
+                          />
+                        )}
                         {tx.payment_url && (
                           <>
                             <TooltipProvider>

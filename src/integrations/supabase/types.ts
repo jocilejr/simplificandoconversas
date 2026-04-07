@@ -1299,6 +1299,8 @@ export type Database = {
           full_name: string | null
           id: string
           openai_api_key: string | null
+          recovery_message_boleto: string | null
+          recovery_message_pix: string | null
           updated_at: string
           user_id: string
         }
@@ -1309,6 +1311,8 @@ export type Database = {
           full_name?: string | null
           id?: string
           openai_api_key?: string | null
+          recovery_message_boleto?: string | null
+          recovery_message_pix?: string | null
           updated_at?: string
           user_id: string
         }
@@ -1319,6 +1323,8 @@ export type Database = {
           full_name?: string | null
           id?: string
           openai_api_key?: string | null
+          recovery_message_boleto?: string | null
+          recovery_message_pix?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -1358,6 +1364,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      recovery_clicks: {
+        Row: {
+          created_at: string
+          id: string
+          recovery_type: string
+          transaction_id: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          recovery_type?: string
+          transaction_id: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          recovery_type?: string
+          transaction_id?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: []
       }
       reminders: {
         Row: {
