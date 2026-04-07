@@ -337,6 +337,23 @@ router.post("/create", async (req: Request, res: Response) => {
     }
     console.log("[payment] Transaction saved:", tx?.id);
 
+    // Auto-recovery: enqueue immediately upon transaction creation
+    if (tx?.id && customer_phone) {
+      try {
+        await enqueueRecovery({
+          workspaceId,
+          userId,
+          transactionId: tx.id,
+          customerPhone: customer_phone,
+          customerName: customer_name || null,
+          amount: amount,
+          transactionType: isBoleto ? "boleto" : "pix",
+        });
+      } catch (enqErr: any) {
+        console.error("[payment] Recovery enqueue error:", enqErr.message);
+      }
+    }
+
     // Upsert conversation if phone provided
     if (customer_phone) {
       const phone = customer_phone.replace(/\D/g, "");
