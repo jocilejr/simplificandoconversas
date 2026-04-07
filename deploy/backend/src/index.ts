@@ -67,14 +67,8 @@ cron.schedule("*/5 * * * *", async () => {
   }
 });
 
-// Process recovery queue every 10 seconds
-cron.schedule("*/10 * * * * *", async () => {
-  try {
-    await processRecoveryQueue();
-  } catch (err: any) {
-    console.error("[cron] auto-recovery error:", err.message);
-  }
-});
+// Auto-recovery cron DISABLED — system is event-driven.
+// Use POST /api/auto-recovery/process for manual retries.
 
 // Process email queue every 30 seconds
 cron.schedule("*/30 * * * * *", async () => {
