@@ -478,6 +478,9 @@ export function ConnectionsSection() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Message Queue Config */}
+      <MessageQueueSection instances={mergedInstances} />
+
       {/* Delete all conversations section */}
       <div className="border-t border-border pt-6 mt-6">
         <div className="flex items-center justify-between">
