@@ -21,8 +21,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   Sidebar,
   SidebarContent,
