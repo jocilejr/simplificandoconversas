@@ -114,7 +114,7 @@ export function RecoveryPopover({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {transaction.customer_name || "Cliente"} • {transaction.customer_phone || "Sem telefone"}
+            {transaction.customer_name || "Cliente"} • {transaction.customer_phone?.replace(/\D/g, "") || "Sem telefone"}
           </p>
         </div>
 
