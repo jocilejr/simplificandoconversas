@@ -25,7 +25,12 @@ const allSections = [
 
 const SettingsPage = () => {
   const { isLoading } = useProfile();
+  const { role, isAdmin, canWrite } = useWorkspace();
   const [active, setActive] = useState("connections");
+
+  const roleLevel = (r: string) => r === "admin" ? 3 : r === "operator" ? 2 : 1;
+  const userLevel = roleLevel(role || "viewer");
+  const sections = allSections.filter((s) => userLevel >= roleLevel(s.minRole));
 
   if (isLoading) {
     return (
