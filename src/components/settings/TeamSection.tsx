@@ -356,17 +356,38 @@ export function TeamSection() {
           <DialogHeader>
             <DialogTitle>Adicionar Membro</DialogTitle>
             <DialogDescription>
-              Informe o email do usuário para adicionar ao workspace.
+              Defina o email, senha e permissões do novo membro. Se o usuário já existir, ele será adicionado diretamente.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">Email do Usuário</label>
+              <label className="text-xs font-medium">Nome</label>
               <Input
+                placeholder="Nome do usuário"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Email</label>
+              <Input
+                type="email"
                 placeholder="usuario@exemplo.com"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Senha</label>
+              <Input
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={invitePassword}
+                onChange={(e) => setInvitePassword(e.target.value)}
+                className="text-xs"
+                minLength={6}
               />
             </div>
             <div className="space-y-1.5">
@@ -387,9 +408,9 @@ export function TeamSection() {
             )}
           </div>
           <DialogFooter>
-            <Button size="sm" className="text-xs" onClick={handleAddByEmail} disabled={saving || !inviteEmail.trim()}>
+            <Button size="sm" className="text-xs" onClick={handleAddMember} disabled={saving || !inviteEmail.trim() || !invitePassword.trim()}>
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
-              Adicionar
+              Criar e Adicionar
             </Button>
           </DialogFooter>
         </DialogContent>
