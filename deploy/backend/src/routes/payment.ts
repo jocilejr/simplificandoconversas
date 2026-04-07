@@ -441,11 +441,21 @@ router.post("/webhook", async (req: Request, res: Response) => {
 // ─── POST /webhook/boleto ─── Dedicated Mercado Pago IPN for boletos (per-user token)
 router.post("/webhook/boleto", async (req: Request, res: Response) => {
   try {
-    // Extract payment ID from body.resource or query.id
-    const paymentId = req.body?.resource || req.body?.data?.id || req.query?.id;
+    console.log(`[boleto-webhook] Full body:`, JSON.stringify(req.body));
+
+    // Extract payment ID — MP IPN can send as plain ID or full URL
+    let rawResource = req.body?.resource || req.body?.data?.id || req.query?.id;
     const topic = req.body?.topic || req.query?.topic;
 
-    console.log(`[boleto-webhook] Received: topic=${topic}, paymentId=${paymentId}`);
+    // MP IPN may send resource as URL: https://api.mercadopago.com/v1/payments/12345
+    const paymentId =
+      typeof rawResource === "string" && rawResource.includes("/")
+        ? rawResource.split("/").pop()
+        : rawResource
+          ? String(rawResource)
+          : null;
+
+    console.log(`[boleto-webhook] Received: topic=${topic}, rawResource=${rawResource}, paymentId=${paymentId}`);
 
     if (topic !== "payment" || !paymentId) {
       console.log(`[boleto-webhook] Ignoring non-payment topic or missing ID`);
@@ -454,7 +464,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
 
     const supabase = getServiceClient();
 
-    // Find the transaction by external_id to discover user_id
+    // ── Step 1: Try to find existing transaction by external_id (fast path)
     const { data: tx } = await supabase
       .from("transactions")
       .select("*")
@@ -462,93 +472,242 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       .eq("source", "mercadopago")
       .single();
 
-    if (!tx) {
-      console.warn(`[boleto-webhook] No transaction found for external_id=${paymentId}`);
-      return res.sendStatus(200);
-    }
+    let token: string | null = null;
+    let mpData: any = null;
 
-    // Resolve MP token for this specific user
-    const token = await getMPTokenForUser(tx.user_id);
-    if (!token) {
-      console.error(`[boleto-webhook] No MP token for user ${tx.user_id}`);
-      return res.sendStatus(200);
-    }
-
-    // Fetch full payment details from MP API
-    const mpResp = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!mpResp.ok) {
-      console.error(`[boleto-webhook] MP API error: ${mpResp.status}`);
-      return res.sendStatus(200);
-    }
-
-    const mpData: any = await mpResp.json();
-    const newStatus = STATUS_MAP[mpData.status] || mpData.status;
-    const oldStatus = tx.status;
-
-    console.log(`[boleto-webhook] Payment ${paymentId}: ${oldStatus} → ${newStatus} (mp: ${mpData.status})`);
-
-    // If status hasn't changed, skip update
-    if (newStatus === oldStatus) {
-      console.log(`[boleto-webhook] Status unchanged, skipping`);
-      return res.sendStatus(200);
-    }
-
-    // Merge metadata
-    const existingMeta = (tx.metadata as any) || {};
-    const updateData: any = {
-      status: newStatus,
-      metadata: {
-        ...existingMeta,
-        mp_status: mpData.status,
-        mp_status_detail: mpData.status_detail,
-        payment_method: mpData.payment_method_id,
-        barcode: mpData.barcode?.content || existingMeta.barcode,
-        digitable_line: mpData.transaction_details?.digitable_line || existingMeta.digitable_line,
-      },
-    };
-
-    if (mpData.status === "approved") {
-      updateData.paid_at = mpData.date_approved || new Date().toISOString();
-    }
-
-    await supabase
-      .from("transactions")
-      .update(updateData)
-      .eq("id", tx.id);
-
-    console.log(`[boleto-webhook] Updated transaction ${tx.id} → ${newStatus}`);
-
-    // Recovery queue management
-    if (mpData.status === "approved") {
-      // Remove from recovery queue if paid
-      const { data: deleted } = await supabase
-        .from("recovery_queue")
-        .delete()
-        .eq("transaction_id", tx.id)
-        .eq("status", "pending")
-        .select("id");
-
-      if (deleted?.length) {
-        console.log(`[boleto-webhook] Removed ${deleted.length} items from recovery_queue for tx ${tx.id}`);
+    if (tx) {
+      // Fast path: we know the user, get their token
+      token = await getMPTokenForUser(tx.user_id);
+      if (!token) {
+        console.error(`[boleto-webhook] No MP token for user ${tx.user_id}`);
+        return res.sendStatus(200);
       }
-    } else if (mpData.status === "pending" && tx.customer_phone) {
-      // Enqueue for recovery if pending
-      try {
-        const workspaceId = tx.workspace_id || (await resolveWorkspaceId(tx.user_id));
-        await enqueueRecovery({
-          workspaceId,
-          userId: tx.user_id,
-          transactionId: tx.id,
-          customerPhone: tx.customer_phone,
-          customerName: tx.customer_name,
-          amount: tx.amount,
-          transactionType: tx.type || "boleto",
-        });
-      } catch (enqErr: any) {
-        console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
+
+      const mpResp = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!mpResp.ok) {
+        console.error(`[boleto-webhook] MP API error: ${mpResp.status}`);
+        return res.sendStatus(200);
+      }
+
+      mpData = await mpResp.json();
+    } else {
+      // ── Step 2: Transaction not found — iterate all MP tokens to find the payment
+      console.log(`[boleto-webhook] No transaction found for external_id=${paymentId}, trying all MP tokens...`);
+
+      const { data: allConnections } = await supabase
+        .from("platform_connections")
+        .select("user_id, workspace_id, credentials")
+        .eq("platform", "mercadopago")
+        .eq("enabled", true);
+
+      if (!allConnections || allConnections.length === 0) {
+        // Last resort: try env var token
+        const envToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
+        if (envToken) {
+          const mpResp = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+            headers: { Authorization: `Bearer ${envToken}` },
+          });
+          if (mpResp.ok) {
+            mpData = await mpResp.json();
+            token = envToken;
+          }
+        }
+        if (!mpData) {
+          console.error(`[boleto-webhook] No MP connections found and env token failed`);
+          return res.sendStatus(200);
+        }
+      } else {
+        for (const conn of allConnections) {
+          const connToken = (conn.credentials as any)?.access_token;
+          if (!connToken) continue;
+
+          try {
+            const mpResp = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+              headers: { Authorization: `Bearer ${connToken}` },
+            });
+            if (mpResp.ok) {
+              mpData = await mpResp.json();
+              token = connToken;
+              console.log(`[boleto-webhook] Found payment via user ${conn.user_id}`);
+              break;
+            } else {
+              console.log(`[boleto-webhook] Token for user ${conn.user_id} returned ${mpResp.status}`);
+            }
+          } catch (fetchErr: any) {
+            console.warn(`[boleto-webhook] Fetch error for user ${conn.user_id}: ${fetchErr.message}`);
+          }
+        }
+      }
+
+      if (!mpData) {
+        console.error(`[boleto-webhook] Could not fetch payment ${paymentId} with any available token`);
+        return res.sendStatus(200);
+      }
+    }
+
+    // ── Step 3: We have mpData — update or create transaction
+    const newStatus = STATUS_MAP[mpData.status] || mpData.status;
+
+    if (tx) {
+      // Update existing transaction
+      const oldStatus = tx.status;
+      console.log(`[boleto-webhook] Payment ${paymentId}: ${oldStatus} → ${newStatus} (mp: ${mpData.status})`);
+
+      if (newStatus === oldStatus) {
+        console.log(`[boleto-webhook] Status unchanged, skipping`);
+        return res.sendStatus(200);
+      }
+
+      const existingMeta = (tx.metadata as any) || {};
+      const updateData: any = {
+        status: newStatus,
+        metadata: {
+          ...existingMeta,
+          mp_status: mpData.status,
+          mp_status_detail: mpData.status_detail,
+          payment_method: mpData.payment_method_id,
+          barcode: mpData.barcode?.content || existingMeta.barcode,
+          digitable_line: mpData.transaction_details?.digitable_line || existingMeta.digitable_line,
+        },
+      };
+
+      if (mpData.status === "approved") {
+        updateData.paid_at = mpData.date_approved || new Date().toISOString();
+      }
+
+      await supabase.from("transactions").update(updateData).eq("id", tx.id);
+      console.log(`[boleto-webhook] Updated transaction ${tx.id} → ${newStatus}`);
+
+      // Recovery queue management
+      if (mpData.status === "approved") {
+        const { data: deleted } = await supabase
+          .from("recovery_queue")
+          .delete()
+          .eq("transaction_id", tx.id)
+          .eq("status", "pending")
+          .select("id");
+
+        if (deleted?.length) {
+          console.log(`[boleto-webhook] Removed ${deleted.length} items from recovery_queue for tx ${tx.id}`);
+        }
+      } else if (mpData.status === "pending" && tx.customer_phone) {
+        try {
+          const workspaceId = tx.workspace_id || (await resolveWorkspaceId(tx.user_id));
+          await enqueueRecovery({
+            workspaceId,
+            userId: tx.user_id,
+            transactionId: tx.id,
+            customerPhone: tx.customer_phone,
+            customerName: tx.customer_name,
+            amount: tx.amount,
+            transactionType: tx.type || "boleto",
+          });
+        } catch (enqErr: any) {
+          console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
+        }
+      }
+    } else {
+      // ── Step 4: Create new transaction from MP data
+      console.log(`[boleto-webhook] Creating new transaction for MP payment ${paymentId}`);
+
+      // Determine user_id and workspace_id from the connection that worked
+      let userId: string | null = null;
+      let workspaceId: string | null = null;
+
+      const { data: matchedConn } = await supabase
+        .from("platform_connections")
+        .select("user_id, workspace_id")
+        .eq("platform", "mercadopago")
+        .eq("enabled", true)
+        .limit(10);
+
+      if (matchedConn) {
+        for (const conn of matchedConn) {
+          const connToken = await getMPTokenForUser(conn.user_id);
+          if (connToken === token) {
+            userId = conn.user_id;
+            workspaceId = conn.workspace_id;
+            break;
+          }
+        }
+        // Fallback: use first connection
+        if (!userId && matchedConn.length > 0) {
+          userId = matchedConn[0].user_id;
+          workspaceId = matchedConn[0].workspace_id;
+        }
+      }
+
+      if (!userId || !workspaceId) {
+        console.error(`[boleto-webhook] Cannot determine user/workspace for new transaction`);
+        return res.sendStatus(200);
+      }
+
+      const payerPhone = mpData.payer?.phone?.number
+        ? String(mpData.payer.phone.area_code || "") + String(mpData.payer.phone.number)
+        : null;
+      const cleanPhone = payerPhone ? payerPhone.replace(/\D/g, "") : null;
+
+      const paymentUrl =
+        mpData.point_of_interaction?.transaction_data?.ticket_url ||
+        mpData.transaction_details?.external_resource_url ||
+        "";
+
+      const { data: newTx, error: insertErr } = await supabase
+        .from("transactions")
+        .insert({
+          user_id: userId,
+          workspace_id: workspaceId,
+          amount: mpData.transaction_amount || 0,
+          type: mpData.payment_method_id === "pix" ? "pix" : "boleto",
+          status: newStatus,
+          source: "mercadopago",
+          external_id: String(mpData.id),
+          customer_name: mpData.payer?.first_name
+            ? `${mpData.payer.first_name} ${mpData.payer.last_name || ""}`.trim()
+            : null,
+          customer_email: mpData.payer?.email || null,
+          customer_phone: cleanPhone,
+          customer_document: mpData.payer?.identification?.number || null,
+          description: mpData.description || null,
+          payment_url: paymentUrl,
+          metadata: {
+            mp_status: mpData.status,
+            mp_status_detail: mpData.status_detail,
+            payment_method: mpData.payment_method_id,
+            barcode: mpData.barcode?.content || null,
+            digitable_line: mpData.transaction_details?.digitable_line || null,
+            created_by_webhook: true,
+          },
+          paid_at: mpData.status === "approved" ? (mpData.date_approved || new Date().toISOString()) : null,
+        })
+        .select("id")
+        .single();
+
+      if (insertErr) {
+        console.error(`[boleto-webhook] Insert error:`, insertErr.message);
+        return res.sendStatus(200);
+      }
+
+      console.log(`[boleto-webhook] Created transaction ${newTx?.id} for MP payment ${paymentId}`);
+
+      // Enqueue recovery if pending
+      if (newTx?.id && mpData.status === "pending" && cleanPhone) {
+        try {
+          await enqueueRecovery({
+            workspaceId,
+            userId,
+            transactionId: newTx.id,
+            customerPhone: cleanPhone,
+            customerName: mpData.payer?.first_name || null,
+            amount: mpData.transaction_amount || 0,
+            transactionType: mpData.payment_method_id === "pix" ? "pix" : "boleto",
+          });
+        } catch (enqErr: any) {
+          console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
+        }
       }
     }
 
