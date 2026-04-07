@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Trash2, Download, Search, ChevronDown, ChevronUp,
   Users, Clock, CheckCircle2, AlertCircle, RefreshCw,
-  CalendarIcon, Copy, ExternalLink,
+  CalendarIcon, Copy, ExternalLink, Settings2,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -33,6 +33,7 @@ import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
 import { useProfile } from "@/hooks/useProfile";
 import { RecoverySettingsDialog } from "./RecoverySettingsDialog";
+import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -99,6 +100,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // Recovery hooks
@@ -374,7 +376,23 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
           </TabsList>
         </Tabs>
         {activeTab === "boletos-gerados" && (
-          <RecoverySettingsDialog type="boleto" />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => setBoletoTemplateOpen(true)}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Configurar templates de recuperação</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         {activeTab === "pix-cartao-pendentes" && (
           <RecoverySettingsDialog type="pix" />
@@ -729,6 +747,11 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
         transaction={selectedTx}
         open={!!selectedTx}
         onClose={() => setSelectedTx(null)}
+      />
+
+      <BoletoRecoveryModal
+        open={boletoTemplateOpen}
+        onOpenChange={setBoletoTemplateOpen}
       />
     </div>
   );
