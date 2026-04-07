@@ -60,7 +60,7 @@ setInterval(() => {
 }, 300_000);
 
 // ── API Key auth middleware ──
-async function resolveUserByApiKey(req: Request, res: Response): Promise<string | null> {
+async function resolveUserByApiKey(req: Request, res: Response): Promise<{ userId: string; workspaceId: string } | null> {
   const apiKey = req.headers["x-api-key"] as string;
   if (!apiKey || apiKey.length < 32) {
     res.status(401).json({ error: "Missing or invalid X-API-Key header" });
@@ -70,7 +70,7 @@ async function resolveUserByApiKey(req: Request, res: Response): Promise<string 
   const sb = getServiceClient();
   const { data, error } = await sb
     .from("platform_connections")
-    .select("user_id, enabled")
+    .select("user_id, enabled, workspace_id")
     .eq("platform", "custom_api")
     .eq("credentials->>api_key", apiKey)
     .maybeSingle();
@@ -85,7 +85,13 @@ async function resolveUserByApiKey(req: Request, res: Response): Promise<string 
     return null;
   }
 
-  return data.user_id;
+  const workspaceId = data.workspace_id || (await resolveWorkspaceId(data.user_id));
+  if (!workspaceId) {
+    res.status(500).json({ error: "No workspace" });
+    return null;
+  }
+
+  return { userId: data.user_id, workspaceId };
 }
 
 // Apply rate limiting to all routes
