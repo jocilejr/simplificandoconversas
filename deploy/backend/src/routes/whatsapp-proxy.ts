@@ -713,7 +713,7 @@ router.post("/", async (req, res) => {
           // Get active instance for photo fetching
           const { data: activeInst } = await serviceClient.from("whatsapp_instances")
             .select("instance_name")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .eq("is_active", true)
             .limit(1)
             .maybeSingle();
