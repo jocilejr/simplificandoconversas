@@ -126,6 +126,14 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
   };
 
+  const handleRowClick = (tx: Transaction) => {
+    if (activeTab === "boletos-gerados") {
+      setQuickRecoveryTx(tx);
+    } else {
+      setSelectedTx(tx);
+    }
+  };
+
   // Reset visible count when tab changes
 
   // Reset visible count when tab changes
