@@ -305,6 +305,8 @@ export function FollowUpDashboard() {
         </DialogContent>
       </Dialog>
 
+      <FollowUpSettingsDialog open={autoSettingsOpen} onOpenChange={setAutoSettingsOpen} />
+
       <FollowUpQueue open={queueOpen} onOpenChange={setQueueOpen} boletos={pendingTodayBoletos} onMarkContacted={handleMarkContacted} />
 
       {selectedBoleto && <BoletoDetailDialog boleto={selectedBoleto} onClose={() => setSelectedBoleto(null)} onMarkContacted={handleMarkContacted} />}
