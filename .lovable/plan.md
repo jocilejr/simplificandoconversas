@@ -1,92 +1,62 @@
 
-## Diagnóstico
 
-O comportamento faz sentido com o código atual: a configuração “por tipo” ainda está misturada com o campo legado `instance_name`.
+## Expandir aba "Carrinhos" para incluir boletos com falha + mostrar erro correto
 
-### Causa raiz
-1. Em `src/components/transactions/AutoRecoveryConfig.tsx`, ao abrir o modal:
-   - `instance_boleto` cai em `instance_name`
-   - `instance_pix` cai em `instance_name`
-   - `instance_yampi` cai em `instance_name`
+### Problema atual
+1. A aba "Carrinhos" filtra apenas `type === "yampi_cart"` e `status === "abandonado"`, ignorando boletos que falharam
+2. Quando o Mercado Pago rejeita um boleto (CPF inválido, etc.), o backend retorna erro HTTP sem salvar nada no banco — a transação simplesmente desaparece
+3. Não há exibição do motivo do erro nas transações com falha
 
-   Hoje está assim:
-   ```ts
-   setInstanceBoleto(s.instance_boleto || s.instance_name || "");
-   setInstancePix(s.instance_pix || s.instance_name || "");
-   setInstanceYampi(s.instance_yampi || s.instance_name || "");
-   ```
+### Plano de correção
 
-2. Ao salvar, o modal grava também:
-   ```ts
-   instance_name: instanceBoleto || instancePix || instanceYampi || null
-   ```
-   Então, se você escolhe só o número de boletos, esse valor vira o `instance_name` geral.
+#### 1) Backend: salvar transações com falha no banco (`deploy/backend/src/routes/payment.ts`)
+Quando o Mercado Pago retorna erro (ex: CPF inválido), em vez de apenas retornar o erro ao frontend, **também salvar a transação** no banco com:
+- `status: "rejeitado"`
+- `metadata.error_reason`: mensagem de erro do MP (ex: `"cc_rejected_bad_filled_card_number"`, `"2067 - invalid cpf"`)
+- `metadata.mp_error`: detalhes completos do erro
 
-3. Na próxima leitura, como PIX e Yampi estão vazios, eles recebem fallback de `instance_name`, parecendo que “foi para todos”.
+Isso permitirá que boletos com falha apareçam na listagem.
 
-4. Existe ainda uma segunda tela em `src/pages/RecuperacaoBoletos.tsx` que continua usando apenas `instance_name`, então há dois modelos diferentes escrevendo na mesma tabela.
+#### 2) Frontend: renomear e expandir o filtro da aba "Carrinhos" (`src/components/transactions/TransactionsTable.tsx`)
+Alterar o filtro `yampi-abandonados` para incluir:
+- Transações `yampi_cart` com status `abandonado` (carrinho abandonado Yampi — mantém)
+- Transações `boleto` com status `rejeitado` (boleto com falha de CPF, etc.)
+- Transações com status `rejeitado` de qualquer tipo
 
-## Plano de correção
-
-### 1) Separar de verdade os 3 selects
-Em `AutoRecoveryConfig.tsx`:
-- carregar cada campo apenas da sua coluna própria
-- remover o fallback automático para `instance_name`
-
-Novo comportamento esperado:
-```ts
-setInstanceBoleto(s.instance_boleto || "");
-setInstancePix(s.instance_pix || "");
-setInstanceYampi(s.instance_yampi || "");
+O filtro ficará:
+```typescript
+"yampi-abandonados": transactions.filter(
+  (t) => (t.type === "yampi_cart" && t.status === "abandonado") ||
+         t.status === "rejeitado"
+),
 ```
 
-### 2) Parar de espelhar um campo no outro ao salvar
-Ainda em `AutoRecoveryConfig.tsx`:
-- salvar `instance_boleto`, `instance_pix` e `instance_yampi` separadamente
-- não popular `instance_name` com base em um dos três campos
+#### 3) Exibir o motivo do erro na tabela e no detalhe
+- Na coluna de **Status** da aba Carrinhos, quando a transação tiver `metadata.error_reason` ou `metadata.mp_error`, exibir um tooltip com o motivo do erro
+- No `TransactionDetailDialog.tsx`, adicionar uma seção de "Motivo do erro" que mostra `metadata.error_reason` ou `metadata.mp_status_detail` quando disponível
 
-Isso impede que escolher “Boletos” contamine PIX e Yampi.
+#### 4) Mapear mensagens de erro do MP para português
+Criar um mapa de tradução dos erros comuns do Mercado Pago:
+- `"2067"` / `"invalid_identification_number"` → "CPF inválido"
+- `"cc_rejected_bad_filled_card_number"` → "Número do cartão inválido"
+- `"cc_rejected_insufficient_amount"` → "Saldo insuficiente"
+- Outros → mostrar a mensagem original
 
-### 3) Alinhar a tela antiga com a nova estrutura
-Em `src/pages/RecuperacaoBoletos.tsx`:
-- revisar o uso de `instance_name`
-- decidir entre:
-  - migrar essa tela para usar também os 3 campos separados, ou
-  - deixá-la explicitamente como configuração legada sem sobrescrever a nova configuração
+### Arquivos modificados
 
-Minha recomendação: migrar essa tela para o mesmo modelo dos 3 campos, para evitar conflito futuro.
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/backend/src/routes/payment.ts` | Salvar transação com `status: "rejeitado"` quando MP retorna erro |
+| `src/components/transactions/TransactionsTable.tsx` | Expandir filtro da aba Carrinhos para incluir transações rejeitadas; exibir tooltip de erro |
+| `src/components/transactions/TransactionDetailDialog.tsx` | Mostrar motivo do erro quando disponível no metadata |
 
-### 4) Manter compatibilidade no backend sem reintroduzir o bug
-No backend (`deploy/backend/src/routes/auto-recovery.ts`):
-- o fallback para `instance_name` pode continuar só como compatibilidade para registros antigos
-- mas a UI não deve mais reutilizar esse fallback para preencher visualmente os 3 selects
+### Fluxo após a correção
 
-## O que isso vai resolver
-- selecionar um número em “Boletos” não preencherá PIX/Yampi
-- cada tipo ficará independente
-- o workspace continua isolado normalmente, porque a leitura já usa `workspace_id`
-
-## Verificação na VPS
-
-Antes e depois da correção, confirme o que está sendo salvo no banco:
-
-```bash
-docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT workspace_id, instance_name, instance_boleto, instance_pix, instance_yampi, enabled, updated_at FROM public.recovery_settings ORDER BY updated_at DESC;"
-```
-
-### Resultado esperado após a correção
-Se você salvar apenas:
-- Boletos = `Recuperação de Boletos`
-
-O registro deve ficar parecido com:
 ```text
-instance_boleto = Recuperação de Boletos
-instance_pix = null
-instance_yampi = null
-instance_name = null   -- ou preservado apenas se houver estratégia legada consciente
+Usuário gera boleto com CPF inválido
+  → MP retorna erro 400
+  → Backend salva transação com status="rejeitado" + metadata.error_reason
+  → Transação aparece na aba "Carrinhos" com badge "Rejeitado"
+  → Tooltip/detalhe mostra "CPF inválido"
 ```
 
-## Arquivos a ajustar
-- `src/components/transactions/AutoRecoveryConfig.tsx`
-- `src/pages/RecuperacaoBoletos.tsx`
-- `deploy/backend/src/routes/auto-recovery.ts` (somente revisão de compatibilidade)
