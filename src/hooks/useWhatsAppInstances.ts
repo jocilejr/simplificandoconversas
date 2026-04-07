@@ -204,10 +204,13 @@ export function useWhatsAppInstances() {
 
   const updateDelay = useMutation({
     mutationFn: async ({ instanceName, delayMs }: { instanceName: string; delayMs: number }) => {
+      if (!workspaceId) throw new Error("Workspace não selecionado");
+
       const { error } = await supabase
         .from("whatsapp_instances")
         .update({ message_delay_ms: delayMs } as any)
-        .eq("instance_name", instanceName);
+        .eq("instance_name", instanceName)
+        .eq("workspace_id", workspaceId);
       if (error) throw error;
     },
     onSuccess: () => {
