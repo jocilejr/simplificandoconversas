@@ -265,7 +265,7 @@ export function TeamSection() {
                       <Badge variant="outline" className="text-[10px] h-4">Você</Badge>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate">{member.user_id}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{member.email || member.user_id}</p>
                 </div>
 
                 {canManage && !isCurrentUser ? (
