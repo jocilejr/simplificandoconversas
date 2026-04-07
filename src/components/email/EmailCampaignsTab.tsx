@@ -13,6 +13,7 @@ import { useSmtpConfig } from "@/hooks/useSmtpConfig";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   Plus, Send, Trash2, Loader2, X, ChevronDown, ChevronUp, Clock,
   Megaphone, FileEdit, CheckCircle, AlertCircle, MailCheck, ArrowLeft, Zap,
