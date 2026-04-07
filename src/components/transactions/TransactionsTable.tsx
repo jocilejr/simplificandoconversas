@@ -72,6 +72,7 @@ const statusStyles: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   aprovado: "Pago",
   pendente: "Pendente",
+  abandonado: "Abandonado",
   rejeitado: "Rejeitado",
   cancelado: "Cancelado",
   processando: "Processando",
