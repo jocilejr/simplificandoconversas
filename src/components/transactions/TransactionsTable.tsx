@@ -122,7 +122,6 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   };
 
   // Reset visible count when tab changes
-  const queryClient = useQueryClient();
 
   // Reset visible count when tab changes
   useEffect(() => {
