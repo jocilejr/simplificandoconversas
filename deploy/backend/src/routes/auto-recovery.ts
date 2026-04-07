@@ -128,6 +128,18 @@ export async function processRecoveryQueue() {
 
       if (!item) continue;
 
+      // Check if this specific transaction type is enabled
+      const txType = item.transaction_type;
+      const typeEnabled =
+        (txType === "boleto" && settings.enabled_boleto) ||
+        ((txType === "yampi_cart" || txType === "yampi") && settings.enabled_yampi) ||
+        (txType !== "boleto" && txType !== "yampi_cart" && txType !== "yampi" && settings.enabled_pix);
+
+      if (!typeEnabled) {
+        // Skip this item — its type is not enabled
+        continue;
+      }
+
       // Determine the instance for this transaction type
       const txType = item.transaction_type;
       let instanceName: string | null = null;
