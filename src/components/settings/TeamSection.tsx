@@ -98,56 +98,42 @@ export function TeamSection() {
     setSaving(true);
     const email = inviteEmail.trim().toLowerCase();
 
-    // Look up user by email via profiles table (joined with auth concept)
-    // We need to find a profile whose user has this email
-    // Since we can't query auth.users, we search profiles and match
-    const { data: allProfiles } = await supabase
-      .from("profiles")
-      .select("user_id, full_name");
-
-    // We need to check auth.users email - use a workaround via workspace edge or direct lookup
-    // Alternative: search by checking if user_id matches via supabase auth admin
-    // For now, let's use the RPC or a simpler approach - lookup via the auth API isn't possible from client
-    // Best approach: try to find the user by checking their session email match
-    
-    // Use supabase edge function or backend to resolve email -> user_id
-    // For simplicity, let's use the backend API
-    const backendUrl = localStorage.getItem("app_public_url") || "";
-    
-    if (backendUrl) {
-      try {
-        const res = await fetch(`${backendUrl}/api/resolve-user-by-email`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
+    try {
+      const res = await fetch(apiUrl("resolve-user-by-email"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({
+          title: "Usuário não encontrado",
+          description: body.error || "Nenhum usuário com este email foi encontrado.",
+          variant: "destructive",
         });
-        if (res.ok) {
-          const { userId: foundUserId } = await res.json();
-          if (foundUserId) {
-            const { error } = await supabase.from("workspace_members").insert({
-              workspace_id: workspaceId,
-              user_id: foundUserId,
-              role: inviteRole as "admin" | "operator" | "viewer",
-              invited_by: user.id,
-              permissions: invitePerms,
-            });
-            if (error) {
-              toast({ title: "Erro ao adicionar membro", description: error.message, variant: "destructive" });
-            } else {
-              toast({ title: "Membro adicionado!" });
-              qc.invalidateQueries({ queryKey: ["workspace-members"] });
-              setShowInvite(false);
-              setInviteEmail("");
-              setInviteRole("operator");
-              setInvitePerms({});
-            }
-            setSaving(false);
-            return;
-          }
-        }
-      } catch {
-        // fallback below
+        setSaving(false);
+        return;
       }
+      const { userId: foundUserId } = await res.json();
+      const { error } = await supabase.from("workspace_members").insert({
+        workspace_id: workspaceId,
+        user_id: foundUserId,
+        role: inviteRole as "admin" | "operator" | "viewer",
+        invited_by: user.id,
+        permissions: invitePerms,
+      });
+      if (error) {
+        toast({ title: "Erro ao adicionar membro", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Membro adicionado!" });
+        qc.invalidateQueries({ queryKey: ["workspace-members"] });
+        setShowInvite(false);
+        setInviteEmail("");
+        setInviteRole("operator");
+        setInvitePerms({});
+      }
+    } catch {
+      toast({ title: "Erro de conexão", description: "Não foi possível conectar ao servidor.", variant: "destructive" });
     }
 
     toast({
