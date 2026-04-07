@@ -1,64 +1,34 @@
 
 
-# Plano: Salvar PDF do Boleto no Filesystem ao Criar e Limpar Após Vencimento
+# Fix: `boleto_recovery_templates` losing RLS policies on every `update.sh` run
 
-## Problema
-O link do PDF do boleto no Mercado Pago pode ficar indisponível após horas. Atualmente o frontend tenta buscar o PDF diretamente desse link, resultando em "PDF não disponível".
+## Root Cause
 
-## Solução
+The `migrate-workspace.sql` script has two key sections:
+1. **Drop all non-workspace RLS policies** on every public table (except `workspaces`, `workspace_members`, `user_roles`, `profiles`)
+2. **Re-create `ws_*` policies** only for tables listed in the `_tables` array
 
-Salvar o PDF do boleto no volume `/media-files` (já montado no backend e servido pelo Nginx via `/media/`) no momento da criação da cobrança, e referenciar o caminho local no `metadata` da transação. Adicionar limpeza automática de boletos vencidos.
+`boleto_recovery_templates` is affected by step 1 (its policies get dropped) but is NOT in the `_tables` array in step 2, so it ends up with **zero RLS policies** after every update. This blocks all authenticated operations (insert, update, select, delete).
 
-### 1. Backend: Baixar e salvar PDF ao criar boleto (`deploy/backend/src/routes/payment.ts`)
+## Solution
 
-Após criar o pagamento no Mercado Pago e obter o `paymentUrl` (ticket_url), se o tipo for `boleto`:
-- Fazer `fetch(paymentUrl)` server-side para obter o PDF
-- Salvar em `/media-files/{userId}/boletos/{externalId}.pdf`
-- Incluir no `metadata` da transação: `boleto_file: "/media/{userId}/boletos/{externalId}.pdf"`
+Two changes needed:
 
-```text
-[Após linha ~168, antes de salvar a transação]
-if (type === "boleto" && paymentUrl) {
-  fetch PDF → salvar em /media-files/{userId}/boletos/{mpData.id}.pdf
-  metadata.boleto_file = `/media/${userId}/boletos/${mpData.id}.pdf`
-}
-```
+### 1. Add `boleto_recovery_templates` to `migrate-workspace.sql`
 
-### 2. Frontend: Usar arquivo local no `BoletoQuickRecovery.tsx`
+Add `'boleto_recovery_templates'` to all three `_tables` arrays in the migration script (the column addition array, the backfill array, and the RLS policy creation array). This ensures:
+- `workspace_id` column exists
+- Existing data gets backfilled
+- `ws_select`, `ws_insert`, `ws_update`, `ws_delete` policies are re-created
 
-Alterar `loadPdf()` para buscar o PDF do caminho local (`metadata.boleto_file`) via a URL pública do app (`/media/...`), em vez do link do Mercado Pago:
+### 2. Add `boleto_recovery_templates` creation to `update.sh`
 
-```text
-const boletoFile = metadata?.boleto_file;
-if (boletoFile) {
-  const apiUrl = profile?.app_public_url || window.location.origin;
-  fetch(`${apiUrl}${boletoFile}`) → blob → setPdfBlobUrl
-}
-```
+Add a `CREATE TABLE IF NOT EXISTS` block for `boleto_recovery_templates` in the base schema section of `update.sh` (before the workspace migration runs), similar to how `transactions`, `email_templates`, etc. are defined. This ensures the table exists on fresh installs.
 
-### 3. Backend: Limpeza automática de boletos vencidos
+## Files Modified
 
-Adicionar um cron job (já existe infra de cron no `index.ts`) que roda diariamente:
-- Busca transações de boleto com status `pendente` criadas há mais de 5 dias (boletos vencem em ~3 dias úteis)
-- Deleta os arquivos PDF do filesystem
-- Limpa o campo `boleto_file` do metadata
-
-### 4. Configuração Nginx
-
-A rota `/media/` já está configurada para servir arquivos estáticos do volume `chatbot_media`. Nenhuma alteração necessária.
-
-## Arquivos Modificados
-
-| Arquivo | Alteração |
-|---------|-----------|
-| `deploy/backend/src/routes/payment.ts` | Baixar PDF após criação do boleto, salvar no filesystem |
-| `deploy/backend/src/index.ts` | Adicionar cron de limpeza diária |
-| `src/components/transactions/BoletoQuickRecovery.tsx` | Usar `metadata.boleto_file` em vez do link MP |
-
-## Instruções VPS
-
-Após deploy, apenas rebuild do backend:
-```bash
-cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
-```
+| File | Change |
+|------|--------|
+| `deploy/migrate-workspace.sql` | Add `'boleto_recovery_templates'` to all 3 `_tables` arrays |
+| `deploy/update.sh` | Add `CREATE TABLE IF NOT EXISTS public.boleto_recovery_templates` block before workspace migration |
 
