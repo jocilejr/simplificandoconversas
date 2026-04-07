@@ -112,43 +112,14 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   );
   const { addClick, getClickCount } = useRecoveryClicks(pendingTxIds);
 
-  // Recovery message state
-  const [boletoMsg, setBoletoMsg] = useState("");
-  const [pixMsg, setPixMsg] = useState("");
-  const [savingMsgs, setSavingMsgs] = useState(false);
-
   const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
   const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
 
-  useEffect(() => {
-    if (profile) {
-      setBoletoMsg((profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG);
-      setPixMsg((profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG);
-    }
-  }, [profile]);
-
-  
-
-  const handleSaveMessages = async () => {
-    setSavingMsgs(true);
-    try {
-      await updateProfile.mutateAsync({
-        recovery_message_boleto: boletoMsg,
-        recovery_message_pix: pixMsg,
-      });
-      toast.success("Mensagens salvas com sucesso!");
-    } catch {
-      toast.error("Erro ao salvar mensagens");
-    } finally {
-      setSavingMsgs(false);
-    }
-  };
-
   const getRecoveryMessage = (tab: TabKey) => {
     if (tab === "boletos-gerados") {
-      return boletoMsg || DEFAULT_BOLETO_MSG;
+      return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
     }
-    return pixMsg || DEFAULT_PIX_MSG;
+    return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
   };
 
   // Reset visible count when tab changes
