@@ -481,6 +481,7 @@ router.post("/reminders", async (req, res) => {
     .from("reminders")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       title,
       description: description || null,
       phone_number: phone_number || null,
@@ -581,6 +582,7 @@ router.post("/ai-reply-toggle", async (req, res) => {
       .from("ai_auto_reply_contacts")
       .upsert({
         user_id: userId,
+        workspace_id: workspaceId,
         remote_jid: remoteJid,
         instance_name: instanceName,
         enabled: true,
@@ -621,6 +623,7 @@ router.post("/ai-listen-toggle", async (req, res) => {
       .from("ai_listen_contacts")
       .upsert({
         user_id: userId,
+        workspace_id: workspaceId,
         remote_jid: remoteJid,
         instance_name: instanceName,
         enabled: false,
@@ -731,6 +734,7 @@ router.post("/generate-platform-key", async (req, res) => {
       .from("platform_connections")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         platform: "custom_api",
         credentials: { api_key: newKey },
         enabled: true,

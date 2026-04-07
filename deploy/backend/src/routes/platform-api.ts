@@ -15,6 +15,7 @@ async function logApiRequest(
     const sb = getServiceClient();
     await sb.from("api_request_logs").insert({
       user_id: userId,
+      workspace_id: workspaceId,
       method: req.method,
       path: req.originalUrl || req.path,
       status_code: statusCode,
@@ -263,6 +264,7 @@ router.post("/contacts", async (req, res) => {
     .from("conversations")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       remote_jid: remoteJid,
       phone_number: cleaned,
       contact_name: name || null,
@@ -329,6 +331,7 @@ router.post("/transactions", async (req, res) => {
     .from("transactions")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       amount: Number(amount),
       type: type || "pix",
       status: status || "pendente",
@@ -482,7 +485,7 @@ router.post("/tags", async (req, res) => {
 
   const { data, error } = await sb
     .from("contact_tags")
-    .insert({ user_id: userId, remote_jid: remoteJid, tag_name: tag_name.trim() })
+    .insert({ user_id: userId, workspace_id: workspaceId, remote_jid: remoteJid, tag_name: tag_name.trim() })
     .select()
     .single();
 
@@ -585,6 +588,7 @@ router.post("/reminders", async (req, res) => {
     .from("reminders")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       remote_jid: remoteJid,
       phone_number: cleaned,
       title: title.substring(0, 200),
@@ -736,6 +740,7 @@ router.post("/send-message", async (req, res) => {
         .from("conversations")
         .insert({
           user_id: userId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           phone_number: cleaned,
           contact_name: customer_name || null,
@@ -760,6 +765,7 @@ router.post("/send-message", async (req, res) => {
     if (conversationId) {
       await sb.from("messages").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         conversation_id: conversationId,
         remote_jid: remoteJid,
         content: message,
@@ -782,6 +788,7 @@ router.post("/send-message", async (req, res) => {
       if (!existingTx) {
         await sb.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           external_id: reference_id,
           amount: Number(amount),
           customer_phone: cleaned,
@@ -874,6 +881,7 @@ router.post("/send-media", async (req, res) => {
         .from("conversations")
         .insert({
           user_id: userId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           phone_number: cleaned,
           last_message: msgPreview,
@@ -892,6 +900,7 @@ router.post("/send-media", async (req, res) => {
     if (conversationId) {
       await sb.from("messages").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         conversation_id: conversationId,
         remote_jid: remoteJid,
         content: caption || null,

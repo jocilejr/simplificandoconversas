@@ -351,6 +351,7 @@ router.post("/*", async (req, res) => {
         const sendUpsert: Record<string, unknown> = {
           user_id: userId,
           workspace_id: workspaceId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           last_message: lastMessagePreview,
           last_message_at: new Date().toISOString(),
@@ -405,6 +406,7 @@ router.post("/*", async (req, res) => {
       // No existing conv found — upsert with remote_jid as-is
       const upsertData: Record<string, unknown> = {
         user_id: userId,
+        workspace_id: workspaceId,
           workspace_id: workspaceId,
         remote_jid: remoteJid,
         last_message: lastMessagePreview,
@@ -437,6 +439,7 @@ router.post("/*", async (req, res) => {
     const { error: insertError } = await supabase.from("messages").insert({
       conversation_id: conv.id,
       user_id: userId,
+      workspace_id: workspaceId,
           workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: finalContent,
@@ -786,6 +789,7 @@ async function checkAndAutoReply(
     await supabase.from("messages").insert({
       conversation_id: conversationId,
       user_id: userId,
+      workspace_id: workspaceId,
           workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: reply,
@@ -952,6 +956,7 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
 
     await supabase.from("reminders").insert({
       user_id: userId,
+      workspace_id: workspaceId,
           workspace_id: workspaceId,
       title: args.title,
       description: contextLines || null,

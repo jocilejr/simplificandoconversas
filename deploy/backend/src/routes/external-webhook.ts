@@ -101,6 +101,7 @@ router.post("/", async (req, res) => {
           .from("transactions")
           .insert({
             user_id: userId,
+            workspace_id: workspaceId,
             external_id: refId,
             amount: amount !== undefined ? Number(amount) : 0,
             status: status || "pendente",
@@ -157,6 +158,7 @@ router.post("/", async (req, res) => {
         if (!existing) {
           await sb.from("contact_tags").insert({
             user_id: userId,
+            workspace_id: workspaceId,
             remote_jid: remoteJid,
             tag_name: tagName,
           });
@@ -254,6 +256,7 @@ router.post("/", async (req, res) => {
     try {
       await sb.from("api_request_logs").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         method: req.method,
         path: req.originalUrl || req.path,
         status_code: 200,
@@ -271,6 +274,7 @@ router.post("/", async (req, res) => {
     try {
       await sb.from("api_request_logs").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         method: req.method,
         path: req.originalUrl || req.path,
         status_code: 500,

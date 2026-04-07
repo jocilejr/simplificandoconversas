@@ -105,6 +105,7 @@ router.post("/create", async (req: Request, res: Response) => {
       .from("transactions")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         amount: Number(amount),
         type: "pix",
         status: "pendente",
@@ -254,6 +255,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         await supabase.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           amount: valueCents / 100,
           type: "pix",
           status: "aprovado",
@@ -321,6 +323,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         await supabase.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           amount: valueCents / 100,
           type: "pix",
           status: "aprovado",
@@ -359,6 +362,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         await supabase.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           amount: valueCents / 100,
           type: "pix",
           status: "cancelado",
