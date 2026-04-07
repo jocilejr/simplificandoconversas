@@ -57,7 +57,10 @@ async function downloadAndSaveBoletoPdf(
     try {
       console.log(`[payment] Downloading boleto PDF attempt ${attempt}/${maxRetries}: ${paymentUrl}`);
       const pdfResp = await fetch(paymentUrl, {
-        headers: { "Accept": "application/pdf" },
+        headers: {
+          "Accept": "application/pdf,*/*",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
         redirect: "follow",
       });
 
@@ -72,6 +75,7 @@ async function downloadAndSaveBoletoPdf(
 
       const contentType = pdfResp.headers.get("content-type") || "";
       const buffer = Buffer.from(await pdfResp.arrayBuffer());
+      console.log(`[payment] PDF response: status=${pdfResp.status}, content-type=${contentType}, size=${buffer.length}`);
 
       // Validate it's actually a PDF (check magic bytes %PDF)
       if (buffer.length < 5) {
