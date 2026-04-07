@@ -19,14 +19,11 @@ export function AutoRecoveryToggle() {
   const [configOpen, setConfigOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
 
-  const enabled = (settings as any)?.enabled ?? false;
-
-  const handleToggle = (checked: boolean) => {
-    upsert.mutate({ enabled: checked }, {
-      onSuccess: () => toast.success(checked ? "Recuperação automática ativada" : "Recuperação automática desativada"),
-      onError: () => toast.error("Erro ao atualizar"),
-    });
-  };
+  const s = settings as any;
+  const enabledBoleto = s?.enabled_boleto ?? false;
+  const enabledPix = s?.enabled_pix ?? false;
+  const enabledYampi = s?.enabled_yampi ?? false;
+  const anyEnabled = enabledBoleto || enabledPix || enabledYampi;
 
   if (isLoading) return null;
 
@@ -35,18 +32,19 @@ export function AutoRecoveryToggle() {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex items-center gap-2">
-              <Zap className={`h-3.5 w-3.5 ${enabled ? "text-green-500" : "text-muted-foreground"}`} />
-              <Switch
-                checked={enabled}
-                onCheckedChange={handleToggle}
-                disabled={upsert.isPending}
-                className="scale-90"
-              />
+            <div className="flex items-center gap-1">
+              <Zap className={`h-3.5 w-3.5 ${anyEnabled ? "text-green-500" : "text-muted-foreground"}`} />
+              <span className="text-[10px] text-muted-foreground">
+                {anyEnabled ? "Auto" : "Off"}
+              </span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Recuperação automática {enabled ? "ativa" : "desativada"}</p>
+            <p>Recuperação automática: {[
+              enabledBoleto && "Boleto",
+              enabledPix && "PIX/Cartão",
+              enabledYampi && "Yampi",
+            ].filter(Boolean).join(", ") || "desativada"}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -97,15 +95,20 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   const [instanceBoleto, setInstanceBoleto] = useState("");
   const [instancePix, setInstancePix] = useState("");
   const [instanceYampi, setInstanceYampi] = useState("");
+  const [enabledBoleto, setEnabledBoleto] = useState(false);
+  const [enabledPix, setEnabledPix] = useState(false);
+  const [enabledYampi, setEnabledYampi] = useState(false);
 
   useEffect(() => {
     if (open && settings) {
       const s = settings as any;
       setSendAfterMinutes(s.send_after_minutes || 5);
       setInstanceBoleto(s.instance_boleto || "");
-      setInstanceBoleto(s.instance_boleto || "");
       setInstancePix(s.instance_pix || "");
       setInstanceYampi(s.instance_yampi || "");
+      setEnabledBoleto(s.enabled_boleto ?? false);
+      setEnabledPix(s.enabled_pix ?? false);
+      setEnabledYampi(s.enabled_yampi ?? false);
     }
   }, [open, settings]);
 
@@ -117,6 +120,10 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
       instance_boleto: instanceBoleto || null,
       instance_pix: instancePix || null,
       instance_yampi: instanceYampi || null,
+      enabled_boleto: enabledBoleto,
+      enabled_pix: enabledPix,
+      enabled_yampi: enabledYampi,
+      enabled: enabledBoleto || enabledPix || enabledYampi,
     } as any, {
       onSuccess: () => {
         toast.success("Configurações salvas!");
@@ -125,6 +132,12 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
       onError: () => toast.error("Erro ao salvar"),
     });
   };
+
+  const typeRows = [
+    { label: "Boletos", value: instanceBoleto, setter: setInstanceBoleto, enabled: enabledBoleto, setEnabled: setEnabledBoleto },
+    { label: "PIX / Cartão", value: instancePix, setter: setInstancePix, enabled: enabledPix, setEnabled: setEnabledPix },
+    { label: "Carrinhos Yampi", value: instanceYampi, setter: setInstanceYampi, enabled: enabledYampi, setEnabled: setEnabledYampi },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -138,19 +151,20 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
         <div className="space-y-5">
           <div className="space-y-3">
             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Instância por tipo de transação
+              Ativar e configurar por tipo
             </Label>
 
-            {[
-              { label: "Boletos", value: instanceBoleto, setter: setInstanceBoleto },
-              { label: "PIX / Cartão", value: instancePix, setter: setInstancePix },
-              { label: "Carrinhos Yampi", value: instanceYampi, setter: setInstanceYampi },
-            ].map((item) => (
+            {typeRows.map((item) => (
               <div key={item.label} className="flex items-center gap-3">
+                <Switch
+                  checked={item.enabled}
+                  onCheckedChange={item.setEnabled}
+                  className="scale-75"
+                />
                 <span className="text-sm min-w-[110px]">{item.label}</span>
                 <Select value={item.value} onValueChange={item.setter}>
                   <SelectTrigger className="flex-1 h-8 text-sm">
-                    <SelectValue placeholder="Selecionar..." />
+                    <SelectValue placeholder="Instância..." />
                   </SelectTrigger>
                   <SelectContent>
                     {activeInstances.map((inst: any) => (
