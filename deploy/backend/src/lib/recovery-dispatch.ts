@@ -173,6 +173,7 @@ export async function dispatchRecovery(opts: {
   customerName: string | null;
   amount: number;
   transactionType: string;
+  skipDuplicateCheck?: boolean;
 }) {
   console.log(`[recovery-dispatch] START tx=${opts.transactionId} type=${opts.transactionType} phone=${opts.customerPhone}`);
 
