@@ -6,65 +6,37 @@ const router = Router();
 /**
  * POST /api/manual-payment/webhook
  *
- * Generic webhook for receiving PIX and Card payment notifications.
- * Authenticated via X-Webhook-Secret header matched against
- * platform_connections where platform = 'manual_payment'.
+ * Open webhook for receiving PIX/Card payment notifications.
+ * No authentication required — designed for internal system-to-system calls.
  *
- * Payload:
- * {
- *   event: "payment_pending" | "payment_approved" | "payment_refused" | "payment_refunded",
- *   type: "pix" | "cartao",
- *   external_id: string,          // unique ID from the external system
- *   amount: number,               // in BRL (e.g. 99.90)
- *   customer_name?: string,
- *   customer_email?: string,
- *   customer_phone?: string,
- *   customer_document?: string,
- *   description?: string,
- *   payment_url?: string,
- *   paid_at?: string,             // ISO date, for approved events
- *   metadata?: object,
- * }
+ * Required fields:
+ *   workspace_id: string           — workspace UUID
+ *   event: string                  — see events below
+ *   external_id: string            — unique ID from the external system
+ *
+ * Events:
+ *   "payment_pending"    → status "pendente"
+ *   "payment_approved"   → status "aprovado"
+ *   "payment_refused"    → status "rejeitado"
+ *   "payment_refunded"   → status "reembolsado"
+ *   "payment_chargeback" → status "chargeback"
+ *
+ * Optional fields:
+ *   type: "pix" | "cartao" | "boleto"   (default: "pix")
+ *   amount: number                       (in BRL, e.g. 99.90)
+ *   customer_name: string
+ *   customer_email: string
+ *   customer_phone: string               (will be normalized to digits only)
+ *   customer_document: string
+ *   description: string
+ *   payment_url: string
+ *   paid_at: string                      (ISO date)
+ *   metadata: object                     (any extra data)
  */
 router.post("/webhook", async (req, res) => {
-  const secret = (req.headers["x-webhook-secret"] as string) || "";
-  if (!secret || secret.length < 8) {
-    return res.status(401).json({ error: "Missing or invalid X-Webhook-Secret header" });
-  }
-
   const sb = getServiceClient();
-
-  // Resolve connection by secret
-  const { data: connections } = await sb
-    .from("platform_connections")
-    .select("user_id, workspace_id, enabled")
-    .eq("platform", "manual_payment")
-    .eq("enabled", true);
-
-  let matched: { user_id: string; workspace_id: string } | null = null;
-  for (const conn of connections || []) {
-    const creds = conn as any;
-    // credentials is JSONB; we need to fetch it
-    const { data: full } = await sb
-      .from("platform_connections")
-      .select("credentials")
-      .eq("user_id", conn.user_id)
-      .eq("platform", "manual_payment")
-      .single();
-
-    const storedSecret = (full?.credentials as any)?.webhook_secret;
-    if (storedSecret && storedSecret === secret) {
-      matched = { user_id: conn.user_id, workspace_id: conn.workspace_id };
-      break;
-    }
-  }
-
-  if (!matched) {
-    return res.status(401).json({ error: "Invalid webhook secret" });
-  }
-
-  const { user_id: userId, workspace_id: workspaceId } = matched;
   const {
+    workspace_id: workspaceId,
     event,
     type,
     external_id,
@@ -79,10 +51,32 @@ router.post("/webhook", async (req, res) => {
     metadata,
   } = req.body;
 
+  if (!workspaceId) return res.status(400).json({ error: "workspace_id is required" });
   if (!event) return res.status(400).json({ error: "event is required" });
   if (!external_id) return res.status(400).json({ error: "external_id is required" });
 
-  const paymentType = type === "cartao" || type === "credit_card" || type === "card" ? "cartao" : "pix";
+  // Validate workspace exists and get owner
+  const { data: ws } = await sb
+    .from("workspaces")
+    .select("id, created_by")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (!ws) return res.status(404).json({ error: "Workspace not found" });
+
+  const userId = ws.created_by;
+
+  // Normalize type
+  const typeMap: Record<string, string> = {
+    pix: "pix",
+    cartao: "cartao",
+    card: "cartao",
+    credit_card: "cartao",
+    debit_card: "cartao",
+    boleto: "boleto",
+    billet: "boleto",
+  };
+  const paymentType = typeMap[(type || "pix").toLowerCase()] || "pix";
   const cleanPhone = customer_phone ? customer_phone.replace(/\D/g, "") : null;
 
   // Map event to status
@@ -91,8 +85,15 @@ router.post("/webhook", async (req, res) => {
     payment_approved: "aprovado",
     payment_refused: "rejeitado",
     payment_refunded: "reembolsado",
+    payment_chargeback: "chargeback",
   };
-  const txStatus = statusMap[event] || "pendente";
+  const txStatus = statusMap[event];
+  if (!txStatus) {
+    return res.status(400).json({
+      error: `Invalid event "${event}". Valid events: ${Object.keys(statusMap).join(", ")}`,
+    });
+  }
+
   const externalKey = `manual_${paymentType}_${external_id}`;
 
   try {
@@ -116,11 +117,11 @@ router.post("/webhook", async (req, res) => {
       if (payment_url) updates.payment_url = payment_url;
 
       await sb.from("transactions").update(updates).eq("id", existing.id);
-      console.log(`[manual-payment] Updated transaction ${existing.id} → ${txStatus}`);
+      console.log(`[manual-payment] Updated ${existing.id} → ${txStatus}`);
       return res.json({ ok: true, action: "updated", id: existing.id });
     }
 
-    // Create new
+    // Create new transaction
     const { data: newTx, error: insertErr } = await sb
       .from("transactions")
       .insert({
@@ -148,7 +149,7 @@ router.post("/webhook", async (req, res) => {
       return res.status(500).json({ error: insertErr.message });
     }
 
-    console.log(`[manual-payment] Created transaction ${newTx?.id} (${paymentType} ${txStatus})`);
+    console.log(`[manual-payment] Created ${newTx?.id} (${paymentType} ${txStatus})`);
     return res.json({ ok: true, action: "created", id: newTx?.id });
   } catch (err: any) {
     console.error("[manual-payment] error:", err.message);
@@ -156,9 +157,33 @@ router.post("/webhook", async (req, res) => {
   }
 });
 
-// GET for health/validation
+// GET for health check
 router.get("/webhook", (_req, res) => {
-  res.json({ ok: true, service: "manual-payment-webhook" });
+  res.json({
+    ok: true,
+    service: "manual-payment-webhook",
+    events: [
+      "payment_pending",
+      "payment_approved",
+      "payment_refused",
+      "payment_refunded",
+      "payment_chargeback",
+    ],
+    types: ["pix", "cartao", "boleto"],
+    required_fields: ["workspace_id", "event", "external_id"],
+    optional_fields: [
+      "type",
+      "amount",
+      "customer_name",
+      "customer_email",
+      "customer_phone",
+      "customer_document",
+      "description",
+      "payment_url",
+      "paid_at",
+      "metadata",
+    ],
+  });
 });
 
 export default router;

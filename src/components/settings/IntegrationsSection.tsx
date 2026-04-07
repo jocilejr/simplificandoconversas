@@ -70,13 +70,11 @@ const INTEGRATIONS: Integration[] = [
   {
     id: "manual_payment",
     name: "Webhook PIX/Cartão",
-    description: "Receba pagamentos via webhook genérico",
+    description: "Receba pagamentos via webhook genérico (sem autenticação)",
     platform: "manual_payment",
     icon: "🔗",
     available: true,
-    fields: [
-      { key: "webhook_secret", label: "Webhook Secret", placeholder: "minha-chave-secreta", type: "password" },
-    ],
+    fields: [],
     webhookPath: "/functions/v1/manual-payment/webhook",
   },
   {
@@ -296,7 +294,7 @@ export function IntegrationsSection() {
               </div>
             ))}
 
-            {configDialog?.webhookPath && connections[configDialog.platform] && (() => {
+            {configDialog?.webhookPath && (connections[configDialog.platform] || configDialog.fields.length === 0) && (() => {
               const baseUrl = (workspaceUrl || profile?.app_public_url || "").replace(/\/+$/, "") || "https://SEU-API-DOMAIN";
               const webhookUrl = `${baseUrl}${configDialog.webhookPath}`;
               return (
