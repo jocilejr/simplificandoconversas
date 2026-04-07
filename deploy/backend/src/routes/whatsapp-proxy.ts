@@ -96,7 +96,7 @@ router.post("/", async (req, res) => {
       const { data: activeInst, error: activeInstErr } = await supabase
         .from("whatsapp_instances")
         .select("instance_name")
-        .eq("workspace_id", workspaceId!)
+        .eq("workspace_id", workspaceId)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle();
@@ -106,6 +106,29 @@ router.post("/", async (req, res) => {
     }
 
     const serviceClient = getServiceClient();
+    const actionsRequiringWorkspaceInstance = new Set([
+      "get-qrcode",
+      "logout-instance",
+      "connect-instance",
+      "delete-instance",
+      "test-connection",
+      "send-message",
+      "fetch-chats",
+    ]);
+
+    if (instanceName && actionsRequiringWorkspaceInstance.has(action)) {
+      const { data: ownedInstance } = await serviceClient
+        .from("whatsapp_instances")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+
+      if (!ownedInstance) {
+        return res.status(403).json({ error: "Instância não pertence ao workspace atual" });
+      }
+    }
+
     let result: any;
 
     switch (action) {
