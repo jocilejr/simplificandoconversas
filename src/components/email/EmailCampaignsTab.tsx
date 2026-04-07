@@ -33,6 +33,7 @@ export function EmailCampaignsTab() {
   const { templates } = useEmailTemplates();
   const { configs } = useSmtpConfig();
   const { toast } = useToast();
+  const { workspaceId } = useWorkspace();
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
