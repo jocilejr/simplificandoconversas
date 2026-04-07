@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl, safeJsonResponse } from "@/lib/api";
 
 interface Filters {
@@ -12,17 +13,16 @@ interface Filters {
 export function useEmailSends(filters?: Filters) {
   const page = filters?.page || 0;
   const pageSize = filters?.pageSize || 50;
+  const { workspaceId } = useWorkspace();
 
   const { data: sends = [], isLoading, refetch } = useQuery({
-    queryKey: ["email-sends", filters],
+    queryKey: ["email-sends", workspaceId, filters],
+    enabled: !!workspaceId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
       let q = supabase
         .from("email_sends")
         .select("*, email_templates(name), email_campaigns(name)")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -36,9 +36,9 @@ export function useEmailSends(filters?: Filters) {
     refetchInterval: 30000,
   });
 
-  // Stats query
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["email-stats"],
+    queryKey: ["email-stats", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { toast } from "sonner";
 import { normalizeEmail } from "@/lib/emailNormalizer";
 
@@ -24,6 +25,7 @@ export interface ProcessedEmail {
 
 export function useEmailContacts() {
   const { user } = useAuth();
+  const { workspaceId } = useWorkspace();
   const [contacts, setContacts] = useState<EmailContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -35,23 +37,20 @@ export function useEmailContacts() {
   const totalPages = perPage === 0 ? 1 : Math.max(1, Math.ceil(totalContacts / perPage));
 
   const fetchContacts = useCallback(async () => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
     setLoading(true);
 
-    // Build query
     let query = supabase
       .from("email_contacts")
       .select("*", { count: "exact" })
-      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false });
 
-    // Search filter (server-side)
     if (search.trim()) {
       const q = `%${search.trim()}%`;
       query = query.or(`email.ilike.${q},name.ilike.${q}`);
     }
 
-    // Pagination (perPage === 0 means "all")
     if (perPage > 0) {
       const from = (page - 1) * perPage;
       const to = from + perPage - 1;
@@ -67,18 +66,17 @@ export function useEmailContacts() {
     setContacts((data as EmailContact[]) || []);
     setTotalContacts(count ?? 0);
     setLoading(false);
-  }, [user, search, page, perPage]);
+  }, [user, workspaceId, search, page, perPage]);
 
-  // Fetch active count separately (lightweight)
   const fetchActiveCount = useCallback(async () => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
     const { count } = await supabase
       .from("email_contacts")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
+      .eq("workspace_id", workspaceId)
       .eq("status", "active");
     setActiveCount(count ?? 0);
-  }, [user]);
+  }, [user, workspaceId]);
 
   useEffect(() => {
     fetchContacts();
@@ -88,13 +86,12 @@ export function useEmailContacts() {
     fetchActiveCount();
   }, [fetchActiveCount]);
 
-  // Reset page when search or perPage changes
   useEffect(() => {
     setPage(1);
   }, [search, perPage]);
 
   const addContact = async (email: string, name?: string, tags?: string[]) => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
     const result = normalizeEmail(email);
 
     if (result.status === "invalid") {
@@ -112,6 +109,7 @@ export function useEmailContacts() {
     const { error } = await supabase.from("email_contacts").upsert(
       {
         user_id: user.id,
+        workspace_id: workspaceId,
         email: result.email,
         name: name || null,
         tags: tags || [],
@@ -134,8 +132,7 @@ export function useEmailContacts() {
     const { error } = await supabase
       .from("email_contacts")
       .delete()
-      .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("id", id);
     if (error) {
       toast.error("Erro ao excluir contato");
       return;
@@ -147,7 +144,7 @@ export function useEmailContacts() {
   };
 
   const processEmails = async (text: string): Promise<ProcessedEmail[]> => {
-    if (!user) return [];
+    if (!user || !workspaceId) return [];
 
     const raw = text
       .split(/[,;\n\r]+/)
@@ -170,7 +167,6 @@ export function useEmailContacts() {
       return { email: result.email, original, status: "valid" as const };
     });
 
-    // Check duplicates against DB in batches of 500
     const validEmails = processed
       .filter((p) => p.status === "valid" || p.status === "corrected")
       .map((p) => p.email);
@@ -182,7 +178,7 @@ export function useEmailContacts() {
         const { data: existing } = await supabase
           .from("email_contacts")
           .select("email")
-          .eq("user_id", user.id)
+          .eq("workspace_id", workspaceId)
           .in("email", batch);
         (existing || []).forEach((e) => existingSet.add(e.email));
       }
@@ -199,7 +195,7 @@ export function useEmailContacts() {
   };
 
   const confirmBulkImport = async (emails: ProcessedEmail[]) => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
 
     const toInsert = emails.filter((e) => e.status === "valid" || e.status === "corrected");
     if (toInsert.length === 0) {
@@ -209,6 +205,7 @@ export function useEmailContacts() {
 
     const rows = toInsert.map((e) => ({
       user_id: user.id,
+      workspace_id: workspaceId,
       email: e.email.toLowerCase().trim(),
       name: null,
       tags: [],
@@ -216,7 +213,6 @@ export function useEmailContacts() {
       status: "active" as const,
     }));
 
-    // Deduplicate by email before upsert
     const seen = new Set<string>();
     const uniqueRows = rows.filter((r) => {
       if (seen.has(r.email)) return false;
@@ -224,7 +220,6 @@ export function useEmailContacts() {
       return true;
     });
 
-    // Insert in batches of 500
     for (let i = 0; i < uniqueRows.length; i += 500) {
       const batch = uniqueRows.slice(i, i + 500);
       const { error } = await supabase
@@ -244,14 +239,13 @@ export function useEmailContacts() {
   const [fixing, setFixing] = useState(false);
 
   const fixEmails = async () => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
     setFixing(true);
     try {
-      // Fetch all contacts for fixing (need full list)
       const { data: allContacts } = await supabase
         .from("email_contacts")
         .select("*")
-        .eq("user_id", user.id);
+        .eq("workspace_id", workspaceId);
 
       const all = (allContacts as EmailContact[]) || [];
       const toFix = all
@@ -273,14 +267,12 @@ export function useEmailContacts() {
           await supabase
             .from("email_contacts")
             .delete()
-            .eq("id", item.id)
-            .eq("user_id", user.id);
+            .eq("id", item.id);
         } else {
           await supabase
             .from("email_contacts")
             .update({ email: correctedEmail })
-            .eq("id", item.id)
-            .eq("user_id", user.id);
+            .eq("id", item.id);
         }
         fixedCount++;
       }

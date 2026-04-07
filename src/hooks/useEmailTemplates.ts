@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export interface TemplateStats {
   sent: number;
@@ -11,16 +12,16 @@ export interface TemplateStats {
 export function useEmailTemplates() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
   const { data: templates = [], isLoading } = useQuery({
-    queryKey: ["email-templates"],
+    queryKey: ["email-templates", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase
         .from("email_templates")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -28,14 +29,13 @@ export function useEmailTemplates() {
   });
 
   const { data: templateStats = {} } = useQuery<Record<string, TemplateStats>>({
-    queryKey: ["email-template-stats"],
+    queryKey: ["email-template-stats", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase
         .from("email_sends")
         .select("template_id, opened_at")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId!)
         .not("template_id", "is", null);
       if (error) throw error;
 
@@ -59,7 +59,8 @@ export function useEmailTemplates() {
     mutationFn: async (t: { name: string; subject: string; html_body: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase.from("email_templates").insert({ ...t, user_id: user.id });
+      if (!workspaceId) throw new Error("Workspace não selecionado");
+      const { error } = await supabase.from("email_templates").insert({ ...t, user_id: user.id, workspace_id: workspaceId });
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["email-templates"] }); toast({ title: "Template salvo!" }); },

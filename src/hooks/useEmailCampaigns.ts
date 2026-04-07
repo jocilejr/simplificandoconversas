@@ -1,21 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl, safeJsonResponse } from "@/lib/api";
 
 export function useEmailCampaigns() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
   const { data: campaigns = [], isLoading } = useQuery({
-    queryKey: ["email-campaigns"],
+    queryKey: ["email-campaigns", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase
         .from("email_campaigns")
         .select("*, email_templates(name)")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -26,9 +27,10 @@ export function useEmailCampaigns() {
     mutationFn: async (c: { name: string; template_id: string; tag_filter?: string; smtp_config_id?: string; auto_send?: boolean }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
       const { data, error } = await supabase
         .from("email_campaigns")
-        .insert({ ...c, user_id: user.id })
+        .insert({ ...c, user_id: user.id, workspace_id: workspaceId })
         .select()
         .single();
       if (error) throw error;

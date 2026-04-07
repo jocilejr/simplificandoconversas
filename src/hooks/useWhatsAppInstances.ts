@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export interface WhatsAppInstance {
   id: string;
@@ -31,13 +32,16 @@ function parseRemoteInstance(ri: any): RemoteInstance {
 export function useWhatsAppInstances() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
   const { data: instances = [], isLoading } = useQuery({
-    queryKey: ["whatsapp-instances"],
+    queryKey: ["whatsapp-instances", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_instances")
         .select("*")
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data as WhatsAppInstance[];
@@ -55,7 +59,6 @@ export function useWhatsAppInstances() {
         body: { action: "fetch-instances" },
       });
       if (error) throw error;
-      // Detect stub response from non-VPS environment
       if (data?.error?.includes?.("self-hosted") || data?.info?.includes?.("VPS")) {
         return "stub" as const;
       }
@@ -63,7 +66,6 @@ export function useWhatsAppInstances() {
       return list.map(parseRemoteInstance) as RemoteInstance[];
     },
     refetchInterval: (query) => {
-      // Stop polling if we got a stub response
       if (query.state.data === "stub") return false;
       return 10000;
     },
@@ -149,7 +151,6 @@ export function useWhatsAppInstances() {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "delete-instance", instanceName },
       });
-      // Fallback: also delete directly from DB
       await supabase.from("whatsapp_instances").delete().eq("instance_name", instanceName);
       if (error) throw error;
       return data;
@@ -168,11 +169,13 @@ export function useWhatsAppInstances() {
     mutationFn: async (instanceName: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
 
       await supabase
         .from("whatsapp_instances")
         .upsert({
           user_id: user.id,
+          workspace_id: workspaceId,
           instance_name: instanceName,
           is_active: true,
           status: "close",
