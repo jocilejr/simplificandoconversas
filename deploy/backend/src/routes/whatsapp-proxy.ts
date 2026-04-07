@@ -412,7 +412,7 @@ router.post("/", async (req, res) => {
                   // Fallback: search by contact_name + instance for @lid convs without phone_number yet
                   const { data: byName } = await serviceClient.from("conversations")
                     .select("id, remote_jid, lid")
-                    .eq("user_id", userId)
+                    .eq("workspace_id", workspaceId!)
                     .eq("contact_name", contactName)
                     .eq("instance_name", instName)
                     .not("lid", "is", null)
