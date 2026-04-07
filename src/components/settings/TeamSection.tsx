@@ -62,6 +62,8 @@ export function TeamSection() {
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("operator");
   const [invitePerms, setInvitePerms] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
