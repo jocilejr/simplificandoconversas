@@ -1,6 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { getRandomCep } from "../lib/random-ceps";
+import { lookupCep } from "../lib/cep-lookup";
+import fs from "fs/promises";
+import path from "path";
 
 const router = Router();
 
