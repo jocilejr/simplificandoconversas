@@ -61,6 +61,7 @@ const typeLabels: Record<string, string> = {
 const statusStyles: Record<string, string> = {
   aprovado: "bg-green-500/20 text-green-600 border-green-500/30",
   pendente: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
+  abandonado: "bg-orange-500/20 text-orange-600 border-orange-500/30",
   rejeitado: "bg-destructive/20 text-destructive border-destructive/30",
   cancelado: "bg-destructive/20 text-destructive border-destructive/30",
   processando: "bg-blue-500/20 text-blue-600 border-blue-500/30",
