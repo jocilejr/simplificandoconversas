@@ -287,9 +287,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='workspace_members' AND policyname='wm_select') THEN
     CREATE POLICY "wm_select" ON public.workspace_members FOR SELECT TO authenticated USING (workspace_id IN (SELECT public.get_user_workspace_ids(auth.uid())));
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='workspace_members' AND policyname='wm_insert') THEN
-    CREATE POLICY "wm_insert" ON public.workspace_members FOR INSERT TO authenticated WITH CHECK (public.has_workspace_role(auth.uid(), workspace_id, 'admin'));
-  END IF;
+  DROP POLICY IF EXISTS "wm_insert" ON public.workspace_members;
+  CREATE POLICY "wm_insert" ON public.workspace_members FOR INSERT TO authenticated
+    WITH CHECK (user_id = auth.uid() OR public.has_workspace_role(auth.uid(), workspace_id, 'admin'));
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='workspace_members' AND policyname='wm_update') THEN
     CREATE POLICY "wm_update" ON public.workspace_members FOR UPDATE TO authenticated USING (public.has_workspace_role(auth.uid(), workspace_id, 'admin'));
   END IF;
