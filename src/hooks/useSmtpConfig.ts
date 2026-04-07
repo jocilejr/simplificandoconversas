@@ -1,35 +1,35 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl, safeJsonResponse } from "@/lib/api";
 
 export function useSmtpConfig() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
-  // Load ALL smtp configs for the user (multiple accounts)
   const { data: configs = [], isLoading } = useQuery({
-    queryKey: ["smtp-configs"],
+    queryKey: ["smtp-configs", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase
         .from("smtp_config")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data || [];
     },
   });
 
-  // Backward compat: first config
   const config = configs.length > 0 ? configs[0] : null;
 
   const saveConfig = useMutation({
     mutationFn: async (c: { id?: string; host: string; port: number; username: string; password: string; from_email: string; from_name: string; label?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
 
       if (c.id) {
         const { error } = await supabase.from("smtp_config").update({
@@ -39,7 +39,7 @@ export function useSmtpConfig() {
         if (error) throw error;
       } else {
         const { error } = await supabase.from("smtp_config").insert({
-          ...c, user_id: user.id, label: c.label || "Principal",
+          ...c, user_id: user.id, workspace_id: workspaceId, label: c.label || "Principal",
         });
         if (error) throw error;
       }

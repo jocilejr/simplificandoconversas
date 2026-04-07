@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export type PeriodFilter = "today" | "yesterday" | "7days" | "30days" | "custom";
 
@@ -36,74 +37,82 @@ function getDateRange(period: PeriodFilter, custom?: DateRange): { from: string;
 
 export function useDashboardStats(period: PeriodFilter, customRange?: DateRange) {
   const { user } = useAuth();
+  const { workspaceId } = useWorkspace();
   const range = getDateRange(period, customRange);
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
 
+  const enabled = !!user && !!workspaceId;
+
   const overdueReminders = useQuery({
-    queryKey: ["dashboard", "overdue-reminders"],
+    queryKey: ["dashboard", "overdue-reminders", workspaceId],
     queryFn: async () => {
       const { count, error } = await (supabase as any)
         .from("reminders")
         .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
         .eq("completed", false)
         .lt("due_date", todayStart);
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!user,
+    enabled,
   });
 
   const todayReminders = useQuery({
-    queryKey: ["dashboard", "today-reminders"],
+    queryKey: ["dashboard", "today-reminders", workspaceId],
     queryFn: async () => {
       const { count, error } = await (supabase as any)
         .from("reminders")
         .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
         .eq("completed", false)
         .gte("due_date", todayStart)
         .lt("due_date", todayEnd);
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!user,
+    enabled,
   });
 
   const conversationsInPeriod = useQuery({
-    queryKey: ["dashboard", "conversations", period, customRange?.from?.toISOString()],
+    queryKey: ["dashboard", "conversations", workspaceId, period, customRange?.from?.toISOString()],
     queryFn: async () => {
       const { count, error } = await (supabase as any)
         .from("conversations")
         .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
         .gte("last_message_at", range.from)
         .lt("last_message_at", range.to);
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!user,
+    enabled,
   });
 
   const activeFlows = useQuery({
-    queryKey: ["dashboard", "active-flows"],
+    queryKey: ["dashboard", "active-flows", workspaceId],
     queryFn: async () => {
       const { count, error } = await (supabase as any)
         .from("chatbot_flows")
         .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
         .eq("active", true);
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!user,
+    enabled,
   });
 
   const messagesInPeriod = useQuery({
-    queryKey: ["dashboard", "messages", period, customRange?.from?.toISOString()],
+    queryKey: ["dashboard", "messages", workspaceId, period, customRange?.from?.toISOString()],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("messages")
         .select("direction")
+        .eq("workspace_id", workspaceId)
         .gte("created_at", range.from)
         .lt("created_at", range.to);
       if (error) throw error;
@@ -111,50 +120,53 @@ export function useDashboardStats(period: PeriodFilter, customRange?: DateRange)
       const received = (data || []).filter((m: any) => m.direction === "inbound").length;
       return { sent, received, total: sent + received };
     },
-    enabled: !!user,
+    enabled,
   });
 
   const executionsInPeriod = useQuery({
-    queryKey: ["dashboard", "executions", period, customRange?.from?.toISOString()],
+    queryKey: ["dashboard", "executions", workspaceId, period, customRange?.from?.toISOString()],
     queryFn: async () => {
       const { count, error } = await (supabase as any)
         .from("flow_executions")
         .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
         .gte("created_at", range.from)
         .lt("created_at", range.to);
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!user,
+    enabled,
   });
 
   const upcomingReminders = useQuery({
-    queryKey: ["dashboard", "upcoming-reminders"],
+    queryKey: ["dashboard", "upcoming-reminders", workspaceId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("reminders")
         .select("*")
+        .eq("workspace_id", workspaceId)
         .eq("completed", false)
         .order("due_date", { ascending: true })
         .limit(5);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled,
   });
 
   const recentConversations = useQuery({
-    queryKey: ["dashboard", "recent-conversations"],
+    queryKey: ["dashboard", "recent-conversations", workspaceId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("conversations")
         .select("*")
+        .eq("workspace_id", workspaceId)
         .order("last_message_at", { ascending: false })
         .limit(5);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    enabled,
   });
 
   const isLoading =

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { WorkspaceProvider } from "@/hooks/useWorkspace";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Leads from "./pages/Leads";
@@ -28,38 +29,40 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/r/:code" element={<LinkRedirect />} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route element={<ProtectedRoute />}>
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/leads" element={<Leads />} />
-              <Route path="/contacts" element={<Navigate to="/leads" replace />} />
-              <Route path="/clientes-financeiro" element={<Navigate to="/leads" replace />} />
-              <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
-              <Route path="/chatbot" element={<ChatbotBuilder />} />
-              <Route path="/email" element={<EmailPage />} />
-              <Route path="/reminders" element={<Reminders />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/transacoes" element={<Transacoes />} />
-              <Route path="/recuperacao" element={<RecuperacaoBoletos />} />
-              <Route path="/gerar-boleto" element={<GerarBoleto />} />
-              <Route path="/grupos" element={<GruposPage />} />
-              <Route path="/area-membros" element={<AreaMembros />} />
-              <Route path="/entrega" element={<EntregaDigital />} />
-              <Route path="/links-uteis" element={<LinksUteis />} />
+    <WorkspaceProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/r/:code" element={<LinkRedirect />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/leads" element={<Leads />} />
+                <Route path="/contacts" element={<Navigate to="/leads" replace />} />
+                <Route path="/clientes-financeiro" element={<Navigate to="/leads" replace />} />
+                <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
+                <Route path="/chatbot" element={<ChatbotBuilder />} />
+                <Route path="/email" element={<EmailPage />} />
+                <Route path="/reminders" element={<Reminders />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/transacoes" element={<Transacoes />} />
+                <Route path="/recuperacao" element={<RecuperacaoBoletos />} />
+                <Route path="/gerar-boleto" element={<GerarBoleto />} />
+                <Route path="/grupos" element={<GruposPage />} />
+                <Route path="/area-membros" element={<AreaMembros />} />
+                <Route path="/entrega" element={<EntregaDigital />} />
+                <Route path="/links-uteis" element={<LinksUteis />} />
+              </Route>
             </Route>
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </WorkspaceProvider>
   </QueryClientProvider>
 );
 

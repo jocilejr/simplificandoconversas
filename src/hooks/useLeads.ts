@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useMemo, useState } from "react";
 import type { Transaction } from "@/hooks/useTransactions";
 
@@ -27,6 +28,7 @@ const normalizePhone = (phone: string | null | undefined) =>
 export function useLeads() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { workspaceId } = useWorkspace();
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">("all");
@@ -34,11 +36,13 @@ export function useLeads() {
   const perPage = 50;
 
   const { data: rawConversations = [], isLoading: isLoadingConvos } = useQuery({
-    queryKey: ["leads-conversations"],
+    queryKey: ["leads-conversations", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
         .select("remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at")
+        .eq("workspace_id", workspaceId!)
         .not("remote_jid", "like", "%@lid")
         .order("last_message_at", { ascending: false });
       if (error) throw error;
@@ -47,22 +51,26 @@ export function useLeads() {
   });
 
   const { data: allTags = [], isLoading: isLoadingTags } = useQuery({
-    queryKey: ["leads-tags"],
+    queryKey: ["leads-tags", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("contact_tags")
-        .select("remote_jid, tag_name");
+        .select("remote_jid, tag_name")
+        .eq("workspace_id", workspaceId!);
       if (error) throw error;
       return data;
     },
   });
 
   const { data: allTransactions = [], isLoading: isLoadingTx } = useQuery({
-    queryKey: ["leads-transactions"],
+    queryKey: ["leads-transactions", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
         .select("*")
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as Transaction[];
@@ -70,11 +78,13 @@ export function useLeads() {
   });
 
   const { data: allReminders = [] } = useQuery({
-    queryKey: ["leads-reminders"],
+    queryKey: ["leads-reminders", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("reminders")
-        .select("remote_jid");
+        .select("remote_jid")
+        .eq("workspace_id", workspaceId!);
       if (error) throw error;
       return data || [];
     },
@@ -103,7 +113,6 @@ export function useLeads() {
     const map = new Map<string, Lead>();
     for (const c of rawConversations) {
       if (!map.has(c.remote_jid)) {
-        // Validate phone: extract digits from remote_jid, must be 12-13 digits (BR standard)
         const jidDigits = c.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
         if (jidDigits.length < 12 || jidDigits.length > 13) continue;
 
@@ -180,9 +189,11 @@ export function useLeads() {
     mutationFn: async (input: { name: string; phone: string; instance_name: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
       const remote_jid = input.phone.replace(/\D/g, "") + "@s.whatsapp.net";
       const { error } = await supabase.from("conversations").insert({
         user_id: user.id,
+        workspace_id: workspaceId,
         remote_jid,
         contact_name: input.name || null,
         phone_number: input.phone,
@@ -203,8 +214,10 @@ export function useLeads() {
     mutationFn: async (rows: { name: string; phone: string }[]) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
       const records = rows.map((r) => ({
         user_id: user.id,
+        workspace_id: workspaceId,
         remote_jid: r.phone.replace(/\D/g, "") + "@s.whatsapp.net",
         contact_name: r.name || null,
         phone_number: r.phone,

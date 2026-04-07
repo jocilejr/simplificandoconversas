@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export interface MetaPixel {
   id: string;
@@ -42,17 +43,16 @@ function friendlyErrorMessage(parsed: { message: string; status?: number }): str
 export function useMetaPixels() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
   const { data: pixels = [], isLoading } = useQuery({
-    queryKey: ["meta-pixels"],
+    queryKey: ["meta-pixels", workspaceId],
+    enabled: !!workspaceId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
       const { data, error } = await supabase
         .from("meta_pixels")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -63,19 +63,16 @@ export function useMetaPixels() {
   const addPixel = useMutation({
     mutationFn: async (pixel: { name: string; pixel_id: string; access_token: string }) => {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) {
-        console.error("[addPixel] Auth error:", JSON.stringify(authError));
-        throw new Error("Sessão expirada. Faça login novamente.");
-      }
+      if (authError) throw new Error("Sessão expirada. Faça login novamente.");
       if (!user) throw new Error("Not authenticated");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
 
       const res = await supabase
         .from("meta_pixels")
-        .insert({ ...pixel, user_id: user.id })
+        .insert({ ...pixel, user_id: user.id, workspace_id: workspaceId })
         .select();
 
       if (res.error) {
-        console.error("[addPixel] Insert error:", JSON.stringify(res.error), "status:", res.status);
         const err: any = res.error;
         err._httpStatus = res.status;
         throw err;
@@ -87,21 +84,14 @@ export function useMetaPixels() {
     },
     onError: (err: unknown) => {
       const parsed = parseSupabaseError(err);
-      console.error("[addPixel] Mutation error:", parsed);
       toast({ title: "Erro ao adicionar pixel", description: friendlyErrorMessage(parsed), variant: "destructive" });
     },
   });
 
   const updatePixel = useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; name?: string; pixel_id?: string; access_token?: string }) => {
-      const res = await supabase
-        .from("meta_pixels")
-        .update(updates)
-        .eq("id", id)
-        .select();
-
+      const res = await supabase.from("meta_pixels").update(updates).eq("id", id).select();
       if (res.error) {
-        console.error("[updatePixel] Error:", JSON.stringify(res.error), "status:", res.status);
         const err: any = res.error;
         err._httpStatus = res.status;
         throw err;
@@ -113,20 +103,14 @@ export function useMetaPixels() {
     },
     onError: (err: unknown) => {
       const parsed = parseSupabaseError(err);
-      console.error("[updatePixel] Error:", parsed);
       toast({ title: "Erro ao atualizar", description: friendlyErrorMessage(parsed), variant: "destructive" });
     },
   });
 
   const deletePixel = useMutation({
     mutationFn: async (id: string) => {
-      const res = await supabase
-        .from("meta_pixels")
-        .delete()
-        .eq("id", id);
-
+      const res = await supabase.from("meta_pixels").delete().eq("id", id);
       if (res.error) {
-        console.error("[deletePixel] Error:", JSON.stringify(res.error), "status:", res.status);
         const err: any = res.error;
         err._httpStatus = res.status;
         throw err;
@@ -138,7 +122,6 @@ export function useMetaPixels() {
     },
     onError: (err: unknown) => {
       const parsed = parseSupabaseError(err);
-      console.error("[deletePixel] Error:", parsed);
       toast({ title: "Erro ao remover", description: friendlyErrorMessage(parsed), variant: "destructive" });
     },
   });

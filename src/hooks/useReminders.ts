@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { toast } from "@/hooks/use-toast";
 
 export interface Reminder {
@@ -21,9 +22,10 @@ export type ReminderFilter = "all" | "pending" | "overdue" | "today" | "complete
 
 export function useReminders(filter: ReminderFilter = "all") {
   const { user } = useAuth();
+  const { workspaceId } = useWorkspace();
 
   return useQuery({
-    queryKey: ["reminders", filter],
+    queryKey: ["reminders", filter, workspaceId],
     queryFn: async () => {
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
@@ -32,6 +34,7 @@ export function useReminders(filter: ReminderFilter = "all") {
       let query = (supabase as any)
         .from("reminders")
         .select("*")
+        .eq("workspace_id", workspaceId)
         .order("due_date", { ascending: true });
 
       if (filter === "pending") {
@@ -48,12 +51,13 @@ export function useReminders(filter: ReminderFilter = "all") {
       if (error) throw error;
       return (data || []) as Reminder[];
     },
-    enabled: !!user,
+    enabled: !!user && !!workspaceId,
   });
 }
 
 export function useCreateReminder() {
   const qc = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
   return useMutation({
     mutationFn: async (reminder: {
@@ -67,17 +71,18 @@ export function useCreateReminder() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+      if (!workspaceId) throw new Error("Workspace não selecionado");
 
       const { data, error } = await (supabase as any)
         .from("reminders")
-        .insert({ ...reminder, user_id: user.id })
+        .insert({ ...reminder, user_id: user.id, workspace_id: workspaceId })
         .select()
         .single();
 
       if (error) throw error;
       return data as Reminder;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
     },
@@ -99,7 +104,7 @@ export function useToggleReminder() {
       if (error) throw error;
       return { id, completed };
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
     },
   });
@@ -113,7 +118,7 @@ export function useDeleteReminder() {
       const { error } = await (supabase as any).from("reminders").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: (_data, id) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
       toast({ title: "Lembrete removido" });
     },

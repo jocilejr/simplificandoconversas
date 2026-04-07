@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { useEffect, useMemo, useState } from "react";
+import { useWorkspace } from "./useWorkspace";
+import { useEffect, useMemo } from "react";
 
 export interface Transaction {
   id: string;
@@ -24,14 +25,16 @@ export interface Transaction {
 
 export function useTransactions(startDate?: Date, endDate?: Date) {
   const { user } = useAuth();
+  const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["transactions", user?.id, startDate?.toISOString(), endDate?.toISOString()],
+    queryKey: ["transactions", workspaceId, startDate?.toISOString(), endDate?.toISOString()],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
         .select("*")
+        .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false });
 
       if (startDate) {
@@ -45,7 +48,7 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
       if (error) throw error;
       return (data || []) as Transaction[];
     },
-    enabled: !!user,
+    enabled: !!user && !!workspaceId,
   });
 
   // Realtime
