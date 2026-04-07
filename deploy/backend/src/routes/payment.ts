@@ -236,6 +236,11 @@ router.post("/create", async (req: Request, res: Response) => {
       mpData.point_of_interaction?.transaction_data?.ticket_url ||
       mpData.transaction_details?.external_resource_url ||
       "";
+    // URL direta do PDF (external_resource_url retorna o arquivo real)
+    const pdfDownloadUrl =
+      mpData.transaction_details?.external_resource_url ||
+      mpData.point_of_interaction?.transaction_data?.ticket_url ||
+      "";
     const barcode =
       mpData.barcode?.content ||
       mpData.transaction_details?.digitable_line ||
@@ -245,10 +250,10 @@ router.post("/create", async (req: Request, res: Response) => {
     const qrCodeBase64 =
       mpData.point_of_interaction?.transaction_data?.qr_code_base64 || "";
 
-    // Download and save boleto PDF
+    // Download and save boleto PDF using direct URL
     let boletoFilePath: string | null = null;
-    if (type === "boleto" && paymentUrl) {
-      boletoFilePath = await downloadAndSaveBoletoPdf(paymentUrl, userId, mpData.id);
+    if (type === "boleto" && pdfDownloadUrl) {
+      boletoFilePath = await downloadAndSaveBoletoPdf(pdfDownloadUrl, userId, mpData.id);
       if (!boletoFilePath) {
         console.error(`[payment] FAILED to save boleto PDF for MP payment ${mpData.id}. Will save transaction without file.`);
       }
