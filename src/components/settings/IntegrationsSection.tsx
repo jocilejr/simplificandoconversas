@@ -399,7 +399,7 @@ export function IntegrationsSection() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-foreground">Exemplo de payload</p>
                   <pre className="bg-muted rounded p-2 text-[10px] font-mono whitespace-pre overflow-x-auto">{`{
-  "workspace_id": "seu-uuid",
+  "workspace_id": "${workspaceId || "seu-uuid"}",
   "event": "payment_approved",
   "type": "pix",
   "external_id": "PAG-12345",
