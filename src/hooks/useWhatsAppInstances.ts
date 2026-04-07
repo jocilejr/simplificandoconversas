@@ -58,18 +58,23 @@ export function useWhatsAppInstances() {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { action: "fetch-instances" },
       });
-      if (error) throw error;
+      // Detect stub response from edge function error or data content
+      if (error) {
+        // Edge function 503 = self-hosted backend not available
+        return "stub" as const;
+      }
       if (data?.error?.includes?.("self-hosted") || data?.info?.includes?.("VPS")) {
         return "stub" as const;
       }
       const list = Array.isArray(data) ? data : data?.instances || [];
       return list.map(parseRemoteInstance) as RemoteInstance[];
     },
+    staleTime: 30_000,
     refetchInterval: (query) => {
       if (query.state.data === "stub") return false;
       return 10000;
     },
-    retry: 1,
+    retry: 0,
   });
 
   const remoteInstances = (remoteData && remoteData !== "stub") ? remoteData : [];
