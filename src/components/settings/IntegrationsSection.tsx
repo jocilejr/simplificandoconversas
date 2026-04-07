@@ -328,6 +328,33 @@ export function IntegrationsSection() {
               );
             })()}
 
+            {/* Mini documentação para Mercado Pago */}
+            {configDialog?.id === "mercadopago" && connections[configDialog.platform] && (
+              <div className="space-y-3 pt-3 border-t">
+                <label className="text-xs font-semibold">📄 Como configurar</label>
+
+                <div className="space-y-1">
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-foreground">
+                    <li>Acesse o painel do <strong>Mercado Pago</strong></li>
+                    <li>Vá em <strong>Configurações → IPN (Notificações)</strong></li>
+                    <li>Cole a URL acima no campo <strong>"URL de notificação"</strong></li>
+                    <li>Selecione o evento <strong>"Pagamentos"</strong></li>
+                  </ol>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">JSON enviado automaticamente pelo MP</p>
+                  <pre className="bg-muted rounded p-2 text-[10px] font-mono whitespace-pre overflow-x-auto">{`{
+  "resource": "PAYMENT_ID",
+  "topic": "payment"
+}`}</pre>
+                  <p className="text-[10px] text-muted-foreground">
+                    Não é necessário configurar nenhum body manualmente. O Mercado Pago envia a notificação e o sistema busca os detalhes via API.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Mini documentação para webhook manual */}
             {configDialog?.id === "manual_payment" && (
               <div className="space-y-3 pt-3 border-t">
