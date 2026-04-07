@@ -8,12 +8,14 @@ const logoutBtn = document.getElementById("logoutBtn");
 const statusEl = document.getElementById("status");
 const loginSection = document.getElementById("loginSection");
 const loggedSection = document.getElementById("loggedSection");
+const workspaceSelect = document.getElementById("workspaceSelect");
+const workspaceStatus = document.getElementById("workspaceStatus");
 const instanceSelect = document.getElementById("instanceSelect");
 const instanceStatus = document.getElementById("instanceStatus");
 const refreshInstancesBtn = document.getElementById("refreshInstancesBtn");
 
 // Load saved config and validate session
-chrome.storage.local.get(["apiUrl", "authToken", "selectedInstance"], async (result) => {
+chrome.storage.local.get(["apiUrl", "authToken", "selectedInstance", "selectedWorkspace"], async (result) => {
   if (result.apiUrl) apiUrlInput.value = result.apiUrl;
   if (result.authToken) {
     // Validate session before showing logged state
@@ -28,7 +30,7 @@ chrome.storage.local.get(["apiUrl", "authToken", "selectedInstance"], async (res
       // Session valid
       loginSection.classList.remove("show");
       loggedSection.classList.add("show");
-      loadInstances(result.selectedInstance);
+      loadWorkspaces(result.selectedWorkspace, result.selectedInstance);
     } catch (err) {
       // Session invalid — force login
       showStatus("Sessão expirada. Faça login novamente.", "error");
@@ -55,18 +57,10 @@ loginBtn.addEventListener("click", async () => {
   try {
     // Try the entered URL first, then auto-correct common mistakes
     const urlsToTry = [apiUrl];
-
-    // If user entered app.domain, also try api.domain
     if (apiUrl.includes("://app.")) {
       urlsToTry.push(apiUrl.replace("://app.", "://api."));
     }
-    // If user entered just the domain without app/api prefix, try api.
-    if (!apiUrl.includes("://app.") && !apiUrl.includes("://api.")) {
-      const urlObj = new URL(apiUrl);
-      urlsToTry.push(`${urlObj.protocol}//api.${urlObj.host}${urlObj.pathname}`);
-    }
 
-    let lastError = null;
     let data = null;
     let workingUrl = null;
 
@@ -74,21 +68,14 @@ loginBtn.addEventListener("click", async () => {
       try {
         const res = await fetch(`${tryUrl}/auth/v1/token?grant_type=password`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: "anon",
-          },
+          headers: { "Content-Type": "application/json", apikey: "anon" },
           body: JSON.stringify({ email, password }),
         });
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           const msg = err.error_description || err.msg || `HTTP ${res.status}`;
-          // 405 means wrong URL entirely, keep trying
-          if (res.status === 405 && urlsToTry.indexOf(tryUrl) < urlsToTry.length - 1) {
-            lastError = new Error(msg);
-            continue;
-          }
+          if (res.status === 405 && urlsToTry.indexOf(tryUrl) < urlsToTry.length - 1) continue;
           throw new Error(msg);
         }
 
@@ -96,28 +83,26 @@ loginBtn.addEventListener("click", async () => {
         workingUrl = tryUrl;
         break;
       } catch (err) {
-        lastError = err;
-        // Network errors or 405: try next URL
         if (urlsToTry.indexOf(tryUrl) < urlsToTry.length - 1) continue;
         throw err;
       }
     }
 
-    if (!data || !data.access_token) {
-      throw lastError || new Error("Token não recebido");
-    }
+    if (!data || !data.access_token) throw new Error("Token não recebido");
 
-    // Update the input to show the correct working URL
-    if (workingUrl && workingUrl !== apiUrl) {
-      apiUrlInput.value = workingUrl;
-    }
+    if (workingUrl && workingUrl !== apiUrl) apiUrlInput.value = workingUrl;
     const finalUrl = workingUrl || apiUrl;
 
-    await chrome.storage.local.set({ apiUrl: finalUrl, authToken: data.access_token, refreshToken: data.refresh_token });
+    await chrome.storage.local.set({
+      apiUrl: finalUrl,
+      authToken: data.access_token,
+      refreshToken: data.refresh_token,
+    });
+
     showStatus("Conectado com sucesso!", "success");
     loginSection.classList.remove("show");
     loggedSection.classList.add("show");
-    loadInstances();
+    loadWorkspaces();
   } catch (err) {
     showStatus(err.message, "error");
   } finally {
@@ -128,7 +113,7 @@ loginBtn.addEventListener("click", async () => {
 
 // Logout
 logoutBtn.addEventListener("click", async () => {
-  await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+  await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance", "selectedWorkspace"]);
   loginSection.classList.add("show");
   loggedSection.classList.remove("show");
   showStatus("Desconectado", "success");
@@ -137,6 +122,25 @@ logoutBtn.addEventListener("click", async () => {
 // Save API URL on change
 apiUrlInput.addEventListener("change", () => {
   chrome.storage.local.set({ apiUrl: apiUrlInput.value.trim().replace(/\/+$/, "") });
+});
+
+// Workspace selection
+workspaceSelect.addEventListener("change", () => {
+  const val = workspaceSelect.value;
+  if (val) {
+    const name = workspaceSelect.options[workspaceSelect.selectedIndex].textContent;
+    const workspace = { id: val, name };
+    chrome.storage.local.set({ selectedWorkspace: workspace });
+    workspaceStatus.innerHTML = `<div class="workspace-badge">🏢 ${name}</div>`;
+    // Reload instances for this workspace
+    loadInstances();
+  } else {
+    chrome.storage.local.remove(["selectedWorkspace"]);
+    workspaceStatus.innerHTML = "";
+    instanceSelect.innerHTML = '<option value="">Selecione um workspace primeiro</option>';
+    instanceSelect.disabled = true;
+    instanceStatus.innerHTML = "";
+  }
 });
 
 // Instance selection
@@ -152,20 +156,90 @@ instanceSelect.addEventListener("change", () => {
   }
 });
 
-// Refresh instances button
+// Refresh button
 refreshInstancesBtn.addEventListener("click", () => {
-  loadInstances();
+  loadWorkspaces();
 });
 
-// Load instances from API via background
+// Load workspaces from API via background
+async function loadWorkspaces(savedWorkspace, savedInstance) {
+  workspaceSelect.disabled = true;
+  workspaceSelect.innerHTML = '<option value="">Carregando...</option>';
+  workspaceStatus.innerHTML = '<div class="instance-loading">Buscando workspaces...</div>';
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: "list-workspaces" }, (response) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else if (response && response.error) reject(new Error(response.error));
+        else resolve(response);
+      });
+    });
+
+    const workspaces = result.workspaces || [];
+
+    if (workspaces.length === 0) {
+      workspaceSelect.innerHTML = '<option value="">Nenhum workspace encontrado</option>';
+      workspaceStatus.innerHTML = '<div class="instance-loading">Crie um workspace na aplicação primeiro</div>';
+      return;
+    }
+
+    workspaceSelect.innerHTML = '<option value="">Selecione um workspace</option>';
+    workspaces.forEach((ws) => {
+      const opt = document.createElement("option");
+      opt.value = ws.id;
+      opt.textContent = ws.name;
+      workspaceSelect.appendChild(opt);
+    });
+
+    workspaceSelect.disabled = false;
+
+    // Auto-select if only one workspace
+    if (workspaces.length === 1 && !savedWorkspace) {
+      workspaceSelect.value = workspaces[0].id;
+      const workspace = { id: workspaces[0].id, name: workspaces[0].name };
+      chrome.storage.local.set({ selectedWorkspace: workspace });
+      workspaceStatus.innerHTML = `<div class="workspace-badge">🏢 ${workspaces[0].name}</div>`;
+      loadInstances(savedInstance);
+    } else if (savedWorkspace && savedWorkspace.id) {
+      const exists = workspaces.find((w) => w.id === savedWorkspace.id);
+      if (exists) {
+        workspaceSelect.value = savedWorkspace.id;
+        workspaceStatus.innerHTML = `<div class="workspace-badge">🏢 ${exists.name}</div>`;
+        loadInstances(savedInstance);
+      } else {
+        workspaceStatus.innerHTML = '<div class="instance-loading">Workspace anterior não encontrado. Selecione outro.</div>';
+        chrome.storage.local.remove(["selectedWorkspace"]);
+      }
+    } else {
+      workspaceStatus.innerHTML = "";
+    }
+  } catch (err) {
+    if (err.message.includes("expirada") || err.message.includes("login")) {
+      loginSection.classList.add("show");
+      loggedSection.classList.remove("show");
+    }
+    workspaceSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+    workspaceStatus.innerHTML = `<div class="instance-loading" style="color:#dc2626;">${err.message}</div>`;
+  }
+}
+
+// Load instances for selected workspace
 async function loadInstances(savedInstance) {
   instanceSelect.disabled = true;
   instanceSelect.innerHTML = '<option value="">Carregando...</option>';
   instanceStatus.innerHTML = '<div class="instance-loading">Buscando instâncias...</div>';
 
+  const workspaceId = workspaceSelect.value;
+  if (!workspaceId) {
+    instanceSelect.innerHTML = '<option value="">Selecione um workspace primeiro</option>';
+    instanceStatus.innerHTML = "";
+    return;
+  }
+
   try {
     const result = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: "list-instances" }, (response) => {
+      chrome.runtime.sendMessage({ action: "list-instances", workspaceId }, (response) => {
         if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
         else if (response && response.error) reject(new Error(response.error));
         else resolve(response);
@@ -205,7 +279,6 @@ async function loadInstances(savedInstance) {
       instanceStatus.innerHTML = "";
     }
   } catch (err) {
-    // If session expired, show login
     if (err.message.includes("expirada") || err.message.includes("login")) {
       loginSection.classList.add("show");
       loggedSection.classList.remove("show");

@@ -11,7 +11,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "WHATSAPP_READY") {
     whatsappTabId = sender.tab?.id || null;
     console.log("[BG] WhatsApp tab registered:", whatsappTabId);
-    // Notify dashboard if connected
     if (dashboardTabId) {
       try {
         chrome.tabs.sendMessage(dashboardTabId, {
@@ -49,7 +48,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
       }
     );
-    return true; // async
+    return true;
   }
 
   // ── Route DOM commands to WhatsApp tab ──
@@ -61,10 +60,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     routeToWhatsApp(message)
       .then(sendResponse)
       .catch((err) => sendResponse({ success: false, error: err.message }));
-    return true; // async
+    return true;
   }
 
-  // ── Existing API-based actions ──
+  // ── API-based actions ──
   handleMessage(message)
     .then(sendResponse)
     .catch((err) => sendResponse({ error: err.message }));
@@ -93,7 +92,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // ── Find or open WhatsApp Web tab ──
 async function findOrOpenWhatsApp() {
-  // Check if tracked tab is still valid
   if (whatsappTabId) {
     try {
       const tab = await chrome.tabs.get(whatsappTabId);
@@ -105,7 +103,6 @@ async function findOrOpenWhatsApp() {
     whatsappTabId = null;
   }
 
-  // Search existing tabs
   const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
   if (tabs.length > 0) {
     whatsappTabId = tabs[0].id;
@@ -113,11 +110,8 @@ async function findOrOpenWhatsApp() {
     return whatsappTabId;
   }
 
-  // Open new tab
   const newTab = await chrome.tabs.create({ url: "https://web.whatsapp.com", active: true });
   whatsappTabId = newTab.id;
-
-  // Wait for content script to load
   await new Promise((r) => setTimeout(r, 3000));
   return whatsappTabId;
 }
@@ -144,10 +138,9 @@ async function routeToWhatsApp(message) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ── EXISTING API LOGIC (preserved) ──
+// ── API LOGIC ──
 // ═══════════════════════════════════════════════════════════════
 
-// ── JWT decode (no verification, just read payload) ──
 function decodeJwtPayload(token) {
   try {
     const parts = token.split(".");
@@ -159,7 +152,6 @@ function decodeJwtPayload(token) {
   }
 }
 
-// ── Ensure fresh token before API calls ──
 async function ensureFreshToken() {
   const result = await chrome.storage.local.get(["apiUrl", "authToken", "refreshToken"]);
   if (!result.apiUrl || !result.authToken) {
@@ -169,12 +161,11 @@ async function ensureFreshToken() {
   const apiUrl = result.apiUrl.replace(/\/+$/, "");
   const payload = decodeJwtPayload(result.authToken);
 
-  // If token expires within 60 seconds, refresh it
   if (payload && payload.exp) {
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp - now < 60) {
       if (!result.refreshToken) {
-        await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+        await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance", "selectedWorkspace"]);
         throw new Error("Sessao expirada. Faca login novamente no popup.");
       }
       const refreshed = await doRefreshToken(apiUrl, result.refreshToken);
@@ -185,7 +176,6 @@ async function ensureFreshToken() {
   return { apiUrl, token: result.authToken };
 }
 
-// ── Refresh token via GoTrue ──
 async function doRefreshToken(apiUrl, refreshToken) {
   const res = await fetch(`${apiUrl}/auth/v1/token?grant_type=refresh_token`, {
     method: "POST",
@@ -194,13 +184,13 @@ async function doRefreshToken(apiUrl, refreshToken) {
   });
 
   if (!res.ok) {
-    await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+    await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance", "selectedWorkspace"]);
     throw new Error("Sessao expirada. Faca login novamente no popup.");
   }
 
   const data = await res.json();
   if (!data.access_token) {
-    await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+    await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance", "selectedWorkspace"]);
     throw new Error("Sessao expirada. Faca login novamente no popup.");
   }
 
@@ -212,7 +202,6 @@ async function doRefreshToken(apiUrl, refreshToken) {
   return data;
 }
 
-// ── API fetch with automatic 401 retry ──
 async function apiFetch(path, options = {}) {
   const { apiUrl, token } = await ensureFreshToken();
   const url = `${apiUrl}${path}`;
@@ -226,7 +215,6 @@ async function apiFetch(path, options = {}) {
     },
   });
 
-  // On 401, try refresh once and retry
   if (res.status === 401) {
     const stored = await chrome.storage.local.get(["refreshToken"]);
     if (stored.refreshToken) {
@@ -241,19 +229,18 @@ async function apiFetch(path, options = {}) {
           },
         });
       } catch {
-        // refresh failed, will fall through to error below
+        // refresh failed
       }
     }
 
     if (res.status === 401) {
-      await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance"]);
+      await chrome.storage.local.remove(["authToken", "refreshToken", "selectedInstance", "selectedWorkspace"]);
       throw new Error("Sessao expirada. Faca login novamente no popup.");
     }
   }
 
   if (!res.ok) {
     const text = await res.text();
-    // Detect HTML error pages (502/504 from Nginx) and return friendly message
     if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("502 Bad Gateway") || text.includes("504 Gateway")) {
       throw new Error(`Servidor temporariamente indisponivel (${res.status}). Tente novamente em instantes.`);
     }
@@ -262,24 +249,43 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
+// ── Get selected workspace ID from storage ──
+async function getSelectedWorkspaceId(msgWorkspaceId) {
+  if (msgWorkspaceId) return msgWorkspaceId;
+  const stored = await chrome.storage.local.get(["selectedWorkspace"]);
+  return stored.selectedWorkspace?.id || null;
+}
+
 async function handleMessage(msg) {
   switch (msg.action) {
+    case "list-workspaces": {
+      return apiFetch("/api/ext/list-workspaces");
+    }
+
     case "contact-status": {
       let url = `/api/ext/contact-status?`;
       if (msg.phone) url += `phone=${encodeURIComponent(msg.phone)}`;
       else if (msg.name) url += `name=${encodeURIComponent(msg.name)}`;
       if (msg.instance) url += `&instance=${encodeURIComponent(msg.instance)}`;
+      const wsId = await getSelectedWorkspaceId(msg.workspaceId);
+      if (wsId) url += `&workspaceId=${encodeURIComponent(wsId)}`;
       return apiFetch(url);
     }
 
-    case "flows":
-      return apiFetch("/api/ext/flows");
+    case "flows": {
+      const wsId = await getSelectedWorkspaceId(msg.workspaceId);
+      let url = "/api/ext/flows";
+      if (wsId) url += `?workspaceId=${encodeURIComponent(wsId)}`;
+      return apiFetch(url);
+    }
 
     case "trigger-flow": {
+      const wsId = await getSelectedWorkspaceId(msg.workspaceId);
       const triggerBody = { flowId: msg.flowId, instanceName: msg.instanceName };
       if (msg.phone) triggerBody.phone = msg.phone;
       if (msg.remoteJid) triggerBody.remoteJid = msg.remoteJid;
       if (msg.name) triggerBody.name = msg.name;
+      if (wsId) triggerBody.workspaceId = wsId;
       return apiFetch("/api/ext/trigger-flow", {
         method: "POST",
         body: JSON.stringify(triggerBody),
@@ -292,8 +298,12 @@ async function handleMessage(msg) {
         body: JSON.stringify({ executionId: msg.executionId }),
       });
 
-    case "dashboard-stats":
-      return apiFetch("/api/ext/dashboard");
+    case "dashboard-stats": {
+      const wsId = await getSelectedWorkspaceId(msg.workspaceId);
+      let url = "/api/ext/dashboard";
+      if (wsId) url += `?workspaceId=${encodeURIComponent(wsId)}`;
+      return apiFetch(url);
+    }
 
     case "contact-cross": {
       let url = `/api/ext/contact-cross?`;
@@ -302,6 +312,8 @@ async function handleMessage(msg) {
       if (msg.excludeInstance) {
         url += `&excludeInstance=${encodeURIComponent(msg.excludeInstance)}`;
       }
+      const wsId = await getSelectedWorkspaceId(msg.workspaceId);
+      if (wsId) url += `&workspaceId=${encodeURIComponent(wsId)}`;
       return apiFetch(url);
     }
 
@@ -311,8 +323,12 @@ async function handleMessage(msg) {
         body: JSON.stringify({ remoteJid: msg.remoteJid, tagName: msg.tagName }),
       });
 
-    case "list-instances":
-      return apiFetch("/api/ext/list-instances");
+    case "list-instances": {
+      const wsId = await getSelectedWorkspaceId(msg.workspaceId);
+      let url = "/api/ext/list-instances";
+      if (wsId) url += `?workspaceId=${encodeURIComponent(wsId)}`;
+      return apiFetch(url);
+    }
 
     case "validate-session":
       return apiFetch("/api/ext/list-instances");

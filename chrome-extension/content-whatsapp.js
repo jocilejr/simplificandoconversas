@@ -1,205 +1,286 @@
 // ── Simplificando Conversas — WhatsApp Web DOM Manipulation ──
 // Receives commands from background.js and manipulates WhatsApp Web DOM
-// Runs on https://web.whatsapp.com/*
+// Single-path approach: New Chat button → type number → click result
+// Based on Finance Hub v7.4
 
 (function () {
   const TAG = "[SC-WhatsApp-DOM]";
 
-  console.log(TAG, "WhatsApp DOM controller loaded");
+  console.log(TAG, "Content script carregado (v1.0 - DOM manipulation)");
 
   // ── Tell background we're ready ──
-  function announceReady() {
-    chrome.runtime.sendMessage({ action: "WHATSAPP_READY" });
-  }
-  announceReady();
-  setInterval(announceReady, 5000);
+  chrome.runtime.sendMessage({ action: "WHATSAPP_READY" });
 
-  // ── Helpers ──
-  function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ── DOM helpers ──
+  function isVisible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
 
-  async function waitForElement(selector, parent = document, timeout = 8000) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      const el = parent.querySelector(selector);
-      if (el) return el;
-      await sleep(200);
+  function cleanPhone(phone) {
+    return String(phone || "").replace(/\D/g, "");
+  }
+
+  // ── Step 1: Find and click "New Chat" button ──
+  function findNewChatButton() {
+    const selectors = [
+      '[data-testid="chatlist-header-new-chat-button"]',
+      'button[aria-label*="Nova conversa"]',
+      'button[aria-label*="New chat"]',
+      'span[data-icon="new-chat-outline"]',
+      'span[data-icon="new-chat"]',
+      'button[aria-label*="Novo chat"]',
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el && isVisible(el)) return el.closest("button") || el;
     }
     return null;
   }
 
-  function simulateInput(input, value) {
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value"
-    )?.set;
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(input, value);
-    } else {
-      input.value = value;
+  // ── Step 2: Find search input ──
+  function findSearchInput() {
+    const ariaLabels = [
+      'div[contenteditable="true"][aria-label*="Pesquisar"]',
+      'div[contenteditable="true"][aria-label*="Search"]',
+      'div[contenteditable="true"][aria-label*="Buscar"]',
+      'input[aria-label*="Pesquisar"]',
+      'input[aria-label*="Search"]',
+    ];
+    for (const sel of ariaLabels) {
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        if (!isVisible(el)) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.left > window.innerWidth * 0.65) continue;
+        if (rect.top > window.innerHeight * 0.4) continue;
+        return el;
+      }
     }
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return null;
   }
 
-  // ── Open a chat by phone number ──
-  async function openChat(phone) {
-    console.log(TAG, "Opening chat for:", phone);
+  function waitForElement(finder, timeout = 3000) {
+    return new Promise((resolve) => {
+      const existing = finder();
+      if (existing) { resolve(existing); return; }
+      let done = false;
+      const observer = new MutationObserver(() => {
+        if (done) return;
+        const el = finder();
+        if (!el) return;
+        done = true;
+        observer.disconnect();
+        resolve(el);
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      setTimeout(() => { if (done) return; done = true; observer.disconnect(); resolve(null); }, timeout);
+    });
+  }
 
-    // Method 1: Use wa.me link (most reliable)
+  // ── Insert text into search field ──
+  async function typeInSearchField(el, text) {
+    if (!el) return false;
+
+    console.log(TAG, "Attempting to type:", text);
+
+    await sleep(500);
+    el.focus();
+    await sleep(500);
+
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
-      window.open(`https://wa.me/${cleanPhone}`, "_self");
-      await sleep(2000);
-      return { success: true, method: "wa.me" };
-    } catch (err) {
-      console.warn(TAG, "wa.me method failed:", err);
+      document.execCommand("selectAll", false, null);
+      document.execCommand("insertText", false, text);
+    } catch (e) {
+      console.error(TAG, "execCommand failed:", e);
     }
 
-    // Method 2: Use the "New Chat" button
-    try {
-      const newChatBtn = document.querySelector('[data-icon="new-chat-outline"]');
-      if (newChatBtn) {
-        newChatBtn.closest("button, div[role='button'], [tabindex]")?.click();
-        await sleep(800);
+    if ((el.textContent || "").trim() !== text) {
+      el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: text }));
+      while (el.firstChild) el.removeChild(el.firstChild);
+      const textNode = document.createTextNode(text);
+      el.appendChild(textNode);
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, cancelable: true, inputType: "insertText", data: text }));
+    }
 
-        const searchInput = await waitForElement(
-          'div[contenteditable="true"][data-tab="3"]'
-        );
-        if (searchInput) {
-          searchInput.focus();
-          searchInput.textContent = phone;
-          searchInput.dispatchEvent(new Event("input", { bubbles: true }));
-          await sleep(1500);
+    await sleep(500);
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, bubbles: true }));
 
-          // Click on the first result
-          const result = await waitForElement(
-            'div[data-testid="cell-frame-container"]'
-          );
-          if (result) {
-            result.click();
-            await sleep(500);
-            return { success: true, method: "search" };
-          }
+    await sleep(500);
+    const content = (el.textContent || "").trim();
+    return content.includes(text) || content.length > 0;
+  }
+
+  // ── Step 3: Find and click first result (strict match) ──
+  function findFirstResult(targetPhone) {
+    const searchInput = findSearchInput();
+    const searchRect = searchInput?.getBoundingClientRect();
+    const searchBottom = searchRect?.bottom || 0;
+
+    const blocked = [
+      "novo grupo", "novo contato", "nova comunidade",
+      "new group", "new contact", "new community",
+      "pesquisar nome ou número", "search name or number",
+      "não está na sua lista de contatos", "not in your contacts",
+    ];
+
+    const cleanTarget = cleanPhone(targetPhone);
+    const allDivs = document.querySelectorAll("div");
+
+    for (const div of allDivs) {
+      if (!isVisible(div)) continue;
+      const rect = div.getBoundingClientRect();
+      if (rect.top < searchBottom - 5 || rect.left > window.innerWidth * 0.65) continue;
+
+      const text = (div.textContent || "").trim();
+      const lowerText = text.toLowerCase();
+
+      // Skip blocked results
+      if (blocked.some((b) => lowerText.includes(b))) continue;
+
+      const cleanText = cleanPhone(text);
+
+      // Check if the element text contains our target phone number
+      if (cleanText.includes(cleanTarget) && cleanText.length >= 8) {
+        const clickable = div.closest('[role="button"]') || div.closest('[data-testid="cell-frame-container"]') || div;
+        if (clickable && clickable !== document.body) {
+          console.log(TAG, "Found result matching target phone:", text.substring(0, 20));
+          return clickable;
         }
       }
-    } catch (err) {
-      console.warn(TAG, "New chat method failed:", err);
     }
 
-    return { success: false, error: "Could not open chat" };
+    return null;
   }
 
-  // ── Prepare text in the input box (after opening chat) ──
+  function findMessageInput() {
+    const selectors = [
+      '[data-testid="conversation-compose-box-input"]',
+      'footer div[contenteditable="true"][role="textbox"]',
+      'footer div[contenteditable="true"]',
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (isVisible(el)) return el;
+    }
+    return null;
+  }
+
+  // ── Main: openChat ──
+  async function openChat(phoneRaw) {
+    const phone = cleanPhone(phoneRaw);
+    if (!phone) return { success: false, error: "invalid_phone" };
+
+    console.log(TAG, "openChat:", phone);
+
+    const btn = findNewChatButton();
+    if (!btn) {
+      const alreadyOpen = findSearchInput();
+      if (!alreadyOpen) return { success: false, error: "new_chat_button_not_found" };
+    } else {
+      btn.click();
+      console.log(TAG, "Step 1: New chat button clicked");
+    }
+
+    await sleep(800);
+
+    const searchInput = await waitForElement(findSearchInput, 4000);
+    if (!searchInput) return { success: false, error: "search_input_not_found" };
+
+    await typeInSearchField(searchInput, phone);
+    console.log(TAG, "Step 2: Number typed:", phone);
+
+    // Wait for results to load
+    await sleep(3000);
+
+    const result = findFirstResult(phone);
+    if (!result) {
+      console.log(TAG, "Step 3: No matching result found for", phone);
+      return { success: false, error: "no_matching_result_found" };
+    }
+
+    console.log(TAG, "Step 3: Clicking matching result");
+    await sleep(500);
+    result.click();
+
+    const inner = result.querySelector('div[role="button"]') || result.querySelector('[data-testid="cell-frame-container"]');
+    if (inner) {
+      await sleep(200);
+      inner.click();
+    }
+
+    const msgInput = await waitForElement(findMessageInput, 5000);
+    if (msgInput) {
+      console.log(TAG, "✓ Chat opened successfully");
+      return { success: true, method: "dom" };
+    }
+
+    return { success: false, error: "chat_did_not_open" };
+  }
+
+  // ── prepareText: open chat and insert text ──
   async function prepareText(phone, text) {
-    console.log(TAG, "Preparing text for:", phone);
-
-    // First open the chat
-    const chatResult = await openChat(phone);
-    if (!chatResult.success) {
-      return chatResult;
-    }
-
-    await sleep(1000);
-
-    // Find the message input
-    const msgInput = await waitForElement(
-      'div[contenteditable="true"][data-tab="10"], div[contenteditable="true"][data-tab="6"], footer div[contenteditable="true"]'
-    );
-
-    if (!msgInput) {
-      return { success: false, error: "Message input not found" };
-    }
-
-    // Insert text
-    msgInput.focus();
-    
-    // Handle multi-line text
-    const lines = text.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (i > 0) {
-        // Shift+Enter for new line
-        msgInput.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Enter",
-            code: "Enter",
-            shiftKey: true,
-            bubbles: true,
-          })
-        );
-        await sleep(50);
-      }
-      document.execCommand("insertText", false, lines[i]);
-      await sleep(50);
-    }
-
-    return { success: true, method: "text-prepared" };
+    const opened = await openChat(phone);
+    if (!opened.success) return opened;
+    await sleep(500);
+    const input = await waitForElement(findMessageInput, 3000);
+    if (!input) return { success: false, error: "message_input_not_found" };
+    input.focus();
+    await sleep(200);
+    document.execCommand("selectAll", false, null);
+    document.execCommand("insertText", false, text || "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return { success: true };
   }
 
-  // ── Prepare image (paste from data URL) ──
+  // ── prepareImage: open chat and attach image ──
   async function prepareImage(phone, imageDataUrl) {
-    console.log(TAG, "Preparing image for:", phone);
-
-    const chatResult = await openChat(phone);
-    if (!chatResult.success) {
-      return chatResult;
-    }
-
-    await sleep(1000);
-
-    try {
-      // Convert data URL to blob
-      const response = await fetch(imageDataUrl);
-      const blob = await response.blob();
-
-      // Create a File object
-      const file = new File([blob], "image.png", { type: blob.type });
-
-      // Find the attachment button or use paste
-      const msgInput = await waitForElement(
-        'div[contenteditable="true"][data-tab="10"], div[contenteditable="true"][data-tab="6"], footer div[contenteditable="true"]'
-      );
-
-      if (msgInput) {
-        msgInput.focus();
-        await sleep(300);
-
-        // Use clipboard API to paste
-        const clipboardData = new DataTransfer();
-        clipboardData.items.add(file);
-        const pasteEvent = new ClipboardEvent("paste", {
-          clipboardData: clipboardData,
-          bubbles: true,
-          cancelable: true,
-        });
-        msgInput.dispatchEvent(pasteEvent);
-
-        return { success: true, method: "image-pasted" };
-      }
-    } catch (err) {
-      console.warn(TAG, "Image paste failed:", err);
-    }
-
-    return { success: false, error: "Could not paste image" };
+    const opened = await openChat(phone);
+    if (!opened.success) return opened;
+    await sleep(500);
+    const attach =
+      document.querySelector('[data-testid="attach-menu"]') ||
+      document.querySelector('div[title="Anexar"]') ||
+      document.querySelector('span[data-icon="plus"]');
+    if (!attach) return { success: false, error: "attach_button_not_found" };
+    (attach.closest("button") || attach).click();
+    await sleep(500);
+    const input = document.querySelector('input[accept*="image"]');
+    if (!input) return { success: false, error: "image_input_not_found" };
+    const blob = await fetch(imageDataUrl).then((r) => r.blob());
+    const file = new File([blob], "image.jpg", { type: "image/jpeg" });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return { success: true };
   }
 
   // ── Listen for commands from background ──
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    const { action } = message;
+    console.log(TAG, "Comando recebido:", message.action || message.type);
+    const action = message.action || message.type;
 
     if (action === "OPEN_CHAT") {
-      openChat(message.phone).then(sendResponse);
-      return true; // async
+      const phone = message.phone || message.phoneNumber || message.number;
+      if (!phone) { sendResponse({ success: false, error: "phone_missing" }); return true; }
+      openChat(phone).then((r) => sendResponse(r)).catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
     }
 
     if (action === "SEND_TEXT") {
-      prepareText(message.phone, message.text).then(sendResponse);
+      prepareText(message.phone, message.text).then((r) => sendResponse(r)).catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
     }
 
     if (action === "SEND_IMAGE") {
-      prepareImage(message.phone, message.imageDataUrl).then(sendResponse);
+      prepareImage(message.phone, message.imageDataUrl || message.imageUrl).then((r) => sendResponse(r)).catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
     }
 
@@ -207,5 +288,14 @@
       sendResponse({ alive: true });
       return;
     }
+
+    return false;
   });
+
+  // ── Heartbeat: announce readiness every 5s ──
+  setInterval(() => {
+    if (document.visibilityState === "visible") {
+      chrome.runtime.sendMessage({ action: "WHATSAPP_READY" });
+    }
+  }, 5000);
 })();

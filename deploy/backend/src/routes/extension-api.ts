@@ -167,21 +167,59 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
-// ── GET /api/ext/list-instances ──
-router.get("/list-instances", async (req, res) => {
+// ── GET /api/ext/list-workspaces ──
+router.get("/list-workspaces", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
-  const workspaceId = await resolveWorkspaceId(userId);
 
   try {
     const sb = getServiceClient();
 
-    const { data: instances } = await sb
+    const { data: memberships } = await sb
+      .from("workspace_members")
+      .select("workspace_id, role, workspaces(id, name, slug, logo_url)")
+      .eq("user_id", userId)
+      .order("created_at");
+
+    const workspaces = (memberships || []).map((m: any) => ({
+      id: m.workspaces?.id || m.workspace_id,
+      name: m.workspaces?.name || "Workspace",
+      slug: m.workspaces?.slug || "",
+      logo_url: m.workspaces?.logo_url || null,
+      role: m.role,
+    }));
+
+    res.json({ workspaces });
+  } catch (err: any) {
+    console.error("List workspaces error:", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
+  }
+});
+
+// ── GET /api/ext/list-instances ──
+router.get("/list-instances", async (req, res) => {
+  const userId = await requireAuth(req, res);
+  if (!userId) return;
+
+  const requestedWorkspaceId = req.query.workspaceId as string || null;
+  const workspaceId = requestedWorkspaceId || await resolveWorkspaceId(userId);
+
+  try {
+    const sb = getServiceClient();
+
+    let query = sb
       .from("whatsapp_instances")
       .select("id, instance_name, status, is_active")
-      .eq("user_id", userId)
       .eq("is_active", true)
       .order("created_at");
+
+    if (workspaceId) {
+      query = query.eq("workspace_id", workspaceId);
+    } else {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data: instances } = await query;
 
     res.json({ instances: instances || [] });
   } catch (err: any) {

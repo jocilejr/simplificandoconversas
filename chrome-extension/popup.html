@@ -75,6 +75,18 @@
       border-radius: 50%;
       background: #16a34a;
     }
+    .workspace-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 12px;
+      font-size: 11px;
+      color: #15803d;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -99,13 +111,19 @@
   <div id="loggedSection" class="login-section">
     <div style="font-size:13px; color:#16a34a; font-weight:600;">✓ Conectado</div>
 
+    <label for="workspaceSelect">Workspace</label>
+    <select id="workspaceSelect" disabled>
+      <option value="">Carregando...</option>
+    </select>
+    <div id="workspaceStatus"></div>
+
     <label for="instanceSelect">Instância ativa</label>
     <select id="instanceSelect" disabled>
-      <option value="">Carregando...</option>
+      <option value="">Selecione um workspace primeiro</option>
     </select>
     <div id="instanceStatus"></div>
 
-    <button id="refreshInstancesBtn" style="background:#075e54; margin-top:8px; padding:6px; font-size:12px;">↻ Atualizar instâncias</button>
+    <button id="refreshInstancesBtn" style="background:#075e54; margin-top:8px; padding:6px; font-size:12px;">↻ Atualizar</button>
 
     <button id="logoutBtn" style="background:#ef4444;">Desconectar</button>
   </div>
