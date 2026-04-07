@@ -80,6 +80,7 @@ export function useBoletoRecovery() {
           .select("*")
           .eq("workspace_id", workspaceId!)
           .eq("type", "boleto")
+          .eq("source", "mercadopago")
           .not("status", "in", '("pago","cancelado","expirado")')
           .order("created_at", { ascending: false })
           .range(from, from + pageSize - 1);
@@ -92,7 +93,11 @@ export function useBoletoRecovery() {
           hasMore = false;
         }
       }
-      return all;
+      // Only show boletos that actually have a PDF generated (real boletos, not webhook-created card payments)
+      return all.filter((tx) => {
+        const meta = tx.metadata as any;
+        return meta?.boleto_file;
+      });
     },
   });
 

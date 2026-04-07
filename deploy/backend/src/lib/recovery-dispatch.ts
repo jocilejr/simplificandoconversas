@@ -173,6 +173,7 @@ export async function dispatchRecovery(opts: {
   customerName: string | null;
   amount: number;
   transactionType: string;
+  skipDuplicateCheck?: boolean;
 }) {
   console.log(`[recovery-dispatch] START tx=${opts.transactionId} type=${opts.transactionType} phone=${opts.customerPhone}`);
 
@@ -210,17 +211,19 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  // 3. Check duplicate
-  const { data: existing } = await sb
-    .from("recovery_queue")
-    .select("id")
-    .eq("transaction_id", opts.transactionId)
-    .eq("workspace_id", opts.workspaceId)
-    .maybeSingle();
+  // 3. Check duplicate (skip if retrying from manual process)
+  if (!opts.skipDuplicateCheck) {
+    const { data: existing } = await sb
+      .from("recovery_queue")
+      .select("id")
+      .eq("transaction_id", opts.transactionId)
+      .eq("workspace_id", opts.workspaceId)
+      .maybeSingle();
 
-  if (existing) {
-    console.log(`[recovery-dispatch] Already queued for tx ${opts.transactionId}`);
-    return;
+    if (existing) {
+      console.log(`[recovery-dispatch] Already queued for tx ${opts.transactionId}`);
+      return;
+    }
   }
 
   // 4. Resolve instance

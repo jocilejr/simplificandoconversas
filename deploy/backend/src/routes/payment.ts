@@ -11,6 +11,16 @@ const router = Router();
 
 const MP_API = "https://api.mercadopago.com";
 
+/** Map Mercado Pago payment_method_id to our internal transaction type */
+function resolveTransactionType(paymentMethodId: string | undefined): string {
+  if (!paymentMethodId) return "outro";
+  const id = paymentMethodId.toLowerCase();
+  if (id === "pix") return "pix";
+  if (id === "bolbradesco" || id === "pec") return "boleto";
+  if (["credit_card", "debit_card", "prepaid_card", "account_money"].includes(id)) return "cartao";
+  return id; // preserve original for unknown methods
+}
+
 async function getMPTokenForUser(userId: string): Promise<string> {
   const supabase = getServiceClient();
   const { data } = await supabase
@@ -620,7 +630,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
             customerPhone: tx.customer_phone,
             customerName: tx.customer_name,
             amount: tx.amount,
-            transactionType: tx.type || "boleto",
+            transactionType: tx.type || resolveTransactionType(mpData.payment_method_id),
           });
         } catch (enqErr: any) {
           console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
@@ -678,7 +688,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
           user_id: userId,
           workspace_id: workspaceId,
           amount: mpData.transaction_amount || 0,
-          type: mpData.payment_method_id === "pix" ? "pix" : "boleto",
+          type: resolveTransactionType(mpData.payment_method_id),
           status: newStatus,
           source: "mercadopago",
           external_id: String(mpData.id),
@@ -720,7 +730,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
             customerPhone: cleanPhone,
             customerName: mpData.payer?.first_name || null,
             amount: mpData.transaction_amount || 0,
-            transactionType: mpData.payment_method_id === "pix" ? "pix" : "boleto",
+            transactionType: resolveTransactionType(mpData.payment_method_id),
           });
         } catch (enqErr: any) {
           console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
