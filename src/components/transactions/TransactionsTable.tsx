@@ -49,7 +49,7 @@ const typeLabels: Record<string, string> = {
 
 export function TransactionsTable({ transactions, isLoading }: TransactionsTableProps) {
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState("todos");
+  const [tab, setTab] = useState("pagos");
   const [pendingSubFilter, setPendingSubFilter] = useState("todos");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
