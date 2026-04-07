@@ -389,8 +389,8 @@ export function IntegrationsSection() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-foreground">Campos opcionais</p>
                   <div className="bg-muted rounded p-2 space-y-0.5">
-                    <p className="text-[11px] font-mono">amount · customer_name · customer_email</p>
-                    <p className="text-[11px] font-mono">customer_phone · customer_document</p>
+                    <p className="text-[11px] font-mono">external_id · amount · customer_name</p>
+                    <p className="text-[11px] font-mono">customer_email · customer_phone · customer_document</p>
                     <p className="text-[11px] font-mono">description · payment_url · paid_at · metadata</p>
                   </div>
                 </div>
