@@ -557,7 +557,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                   <tr
                     key={tx.id}
                     className="group hover:bg-secondary/40 transition-all duration-200 cursor-pointer"
-                    onClick={() => setSelectedTx(tx)}
+                    onClick={() => handleRowClick(tx)}
                   >
                     <td className="py-3.5 px-4">
                       <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
