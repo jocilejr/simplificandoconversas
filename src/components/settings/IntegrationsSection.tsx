@@ -264,6 +264,38 @@ export function IntegrationsSection() {
                 </div>
               </div>
             ))}
+
+            {configDialog?.webhookPath && connections[configDialog.platform] && (() => {
+              const baseUrl = profile?.app_public_url?.replace(/\/+$/, "") || "https://SEU-API-DOMAIN";
+              const webhookUrl = `${baseUrl}${configDialog.webhookPath}`;
+              return (
+                <div className="space-y-1.5 pt-2 border-t">
+                  <label className="text-xs font-medium">URL do Webhook</label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Copie e cole esta URL na plataforma {configDialog.name} para receber notificações
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={webhookUrl}
+                      className="font-mono text-[11px] bg-muted"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(webhookUrl);
+                        toast({ title: "URL do webhook copiada!" });
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <DialogFooter className="flex-row gap-2">
