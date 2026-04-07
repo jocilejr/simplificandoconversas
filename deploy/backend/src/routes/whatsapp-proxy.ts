@@ -303,7 +303,7 @@ router.post("/", async (req, res) => {
         // Sync instances WITHOUT overwriting is_active
         for (const instName of instancesToSync) {
           const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("user_id", userId).eq("instance_name", instName).maybeSingle();
+            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", instName).maybeSingle();
           if (!existing) {
             const { error: insertErr } = await serviceClient.from("whatsapp_instances")
               .insert({ user_id: userId, workspace_id: workspaceId, instance_name: instName, status: "close", is_active: false });
