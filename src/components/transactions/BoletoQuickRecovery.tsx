@@ -120,13 +120,25 @@ export function BoletoQuickRecovery({ open, onOpenChange, transaction }: BoletoQ
 
   const loadPdf = async () => {
     const metadata = transaction?.metadata as Record<string, unknown> | null;
-    const boletoUrl = (metadata?.boleto_url as string) || transaction?.payment_url;
+    const boletoFile = metadata?.boleto_file as string | undefined;
 
-    if (!boletoUrl) return;
+    if (!boletoFile) {
+      console.warn("[BoletoQuickRecovery] No boleto_file in metadata");
+      return;
+    }
 
     setIsLoadingPdf(true);
     try {
-      const response = await fetch(boletoUrl);
+      // Fetch from local media volume via app public URL
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("app_public_url")
+        .single();
+      const baseUrl = (profileData as any)?.app_public_url || window.location.origin;
+      const fullUrl = `${baseUrl}${boletoFile}`;
+
+      const response = await fetch(fullUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const arrayBuffer = await response.arrayBuffer();
       const blob = new Blob([arrayBuffer], { type: "application/pdf" });
       const pdfUrl = URL.createObjectURL(blob);

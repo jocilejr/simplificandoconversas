@@ -70,6 +70,57 @@ cron.schedule("*/30 * * * * *", async () => {
   }
 });
 
+// Cleanup expired boleto PDFs daily at 3AM
+cron.schedule("0 3 * * *", async () => {
+  try {
+    console.log("[cron] Starting boleto cleanup...");
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    );
+
+    // Find pending boletos older than 5 days
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: expired } = await supabase
+      .from("transactions")
+      .select("id, metadata, user_id")
+      .eq("type", "boleto")
+      .eq("status", "pendente")
+      .lt("created_at", cutoff);
+
+    if (!expired || expired.length === 0) {
+      console.log("[cron] No expired boletos to clean.");
+      return;
+    }
+
+    let deleted = 0;
+    for (const tx of expired) {
+      const meta = tx.metadata as any;
+      const boletoFile = meta?.boleto_file as string | undefined;
+      if (boletoFile) {
+        // Convert /media/userId/boletos/xxx.pdf → /media-files/userId/boletos/xxx.pdf
+        const fsPath = boletoFile.replace("/media/", "/media-files/");
+        try {
+          await fs.unlink(fsPath);
+          deleted++;
+        } catch {}
+
+        // Clear boleto_file from metadata
+        const newMeta = { ...meta };
+        delete newMeta.boleto_file;
+        await supabase
+          .from("transactions")
+          .update({ metadata: newMeta })
+          .eq("id", tx.id);
+      }
+    }
+    console.log(`[cron] Boleto cleanup done: ${deleted} files deleted from ${expired.length} expired transactions.`);
+  } catch (err: any) {
+    console.error("[cron] boleto-cleanup error:", err.message);
+  }
+});
+
 const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
