@@ -85,7 +85,8 @@ DO $$
 DECLARE _t text;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts','api_request_logs',
-    'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
+    'boleto_recovery_templates','chatbot_flow_history','chatbot_flows',
+    'contact_photos','contact_tags',
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
@@ -108,7 +109,8 @@ DO $$
 DECLARE _rec RECORD; _ws_id uuid;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts','api_request_logs',
-    'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
+    'boleto_recovery_templates','chatbot_flow_history','chatbot_flows',
+    'contact_photos','contact_tags',
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
@@ -149,7 +151,8 @@ DO $$
 DECLARE _t text; _cnt bigint; _total bigint := 0;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts','api_request_logs',
-    'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
+    'boleto_recovery_templates','chatbot_flow_history','chatbot_flows',
+    'contact_photos','contact_tags',
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
@@ -180,7 +183,8 @@ DO $$
 DECLARE _t text; _cnt bigint;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts','api_request_logs',
-    'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
+    'boleto_recovery_templates','chatbot_flow_history','chatbot_flows',
+    'contact_photos','contact_tags',
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
@@ -226,7 +230,8 @@ DO $$
 DECLARE _t text;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts',
-    'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
+    'boleto_recovery_templates','chatbot_flow_history','chatbot_flows',
+    'contact_photos','contact_tags',
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups',
     'email_queue','email_sends','email_suppressions','email_templates',
