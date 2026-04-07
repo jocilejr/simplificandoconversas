@@ -42,7 +42,7 @@ interface TransactionsTableProps {
   dateEnd?: Date;
 }
 
-type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes";
+type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "mensagens";
 type SortField = "created_at" | "amount" | "customer_name";
 type SortDirection = "asc" | "desc";
 type DatePreset = "today" | "yesterday" | "7days" | "30days" | "custom";
