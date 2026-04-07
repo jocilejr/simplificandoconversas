@@ -24,7 +24,7 @@ export interface RemoteInstance {
 function parseRemoteInstance(ri: any): RemoteInstance {
   return {
     name: ri.name || ri.instanceName || ri.instance?.instanceName || "unknown",
-    status: ri.connectionStatus || ri.instance?.state || ri.state || "close",
+    status: ri.status || ri.connectionStatus || ri.instance?.state || ri.state || "close",
     profileName: ri.profileName || "",
   };
 }
