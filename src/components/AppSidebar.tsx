@@ -109,6 +109,7 @@ export function AppSidebar() {
   const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
   const { profile } = useProfile();
+  const { isAdmin, canWrite } = useWorkspace();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
