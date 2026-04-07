@@ -58,7 +58,6 @@ export function ConnectionsSection() {
     logoutInstance,
     deleteInstance,
     setActiveInstance,
-    updateDelay,
   } = useWhatsAppInstances();
 
   const [showNameDialog, setShowNameDialog] = useState(false);
