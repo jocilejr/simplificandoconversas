@@ -132,15 +132,42 @@ export async function processRecoveryQueue() {
         continue;
       }
 
-      // Get delay from message_queue_config for this instance
+      // Get delay and pause config from message_queue_config for this instance
       const { data: queueConfig } = await sb
         .from("message_queue_config")
-        .select("delay_seconds")
+        .select("delay_seconds, pause_after_sends, pause_minutes")
         .eq("workspace_id", workspaceId)
         .eq("instance_name", instanceName)
         .maybeSingle();
 
       const delaySeconds = Math.max(queueConfig?.delay_seconds || 30, 5);
+      const pauseAfterSends = queueConfig?.pause_after_sends || null;
+      const pauseMinutes = queueConfig?.pause_minutes || null;
+
+      // Check pause: if pause is configured, count recent sends and check if we need to pause
+      if (pauseAfterSends && pauseMinutes) {
+        // Count how many messages were sent since last pause window
+        const pauseWindowStart = new Date(Date.now() - pauseMinutes * 60 * 1000).toISOString();
+
+        // Get the last pause_after_sends messages sent
+        const { data: recentSends } = await sb
+          .from("recovery_queue")
+          .select("sent_at")
+          .eq("workspace_id", workspaceId)
+          .eq("status", "sent")
+          .order("sent_at", { ascending: false })
+          .limit(pauseAfterSends);
+
+        if (recentSends && recentSends.length >= pauseAfterSends) {
+          // Check if the oldest of the recent batch is within the pause window
+          const oldestInBatch = recentSends[recentSends.length - 1]?.sent_at;
+          if (oldestInBatch && new Date(oldestInBatch).getTime() > new Date(pauseWindowStart).getTime()) {
+            // All N messages were sent within the pause window — we're in a pause period
+            console.log(`[auto-recovery] Pause active for ${instanceName} in workspace ${workspaceId}: ${pauseAfterSends} msgs sent within ${pauseMinutes}min`);
+            continue;
+          }
+        }
+      }
 
       // Check if enough time passed since last send for this instance
       const { data: lastSent } = await sb
