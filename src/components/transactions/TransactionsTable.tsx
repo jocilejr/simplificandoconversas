@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
@@ -10,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Trash2, Download, Search, ChevronDown, ChevronUp,
   Users, Clock, CheckCircle2, AlertCircle, RefreshCw,
-  CalendarIcon, Copy, ExternalLink,
+  CalendarIcon, Copy, ExternalLink, MessageSquare, Save, Info,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -41,7 +42,7 @@ interface TransactionsTableProps {
   dateEnd?: Date;
 }
 
-type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes";
+type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "mensagens";
 type SortField = "created_at" | "amount" | "customer_name";
 type SortDirection = "asc" | "desc";
 type DatePreset = "today" | "yesterday" | "7days" | "30days" | "custom";
@@ -101,7 +102,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const queryClient = useQueryClient();
 
   // Recovery hooks
-  const { profile } = useProfile();
+  const { profile, updateProfile } = useProfile();
   const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
 
   // Get pending transaction IDs for recovery clicks
@@ -111,14 +112,43 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   );
   const { addClick, getClickCount } = useRecoveryClicks(pendingTxIds);
 
+  // Recovery message state
+  const [boletoMsg, setBoletoMsg] = useState("");
+  const [pixMsg, setPixMsg] = useState("");
+  const [savingMsgs, setSavingMsgs] = useState(false);
+
   const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
   const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
 
+  useEffect(() => {
+    if (profile) {
+      setBoletoMsg((profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG);
+      setPixMsg((profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG);
+    }
+  }, [profile]);
+
+  
+
+  const handleSaveMessages = async () => {
+    setSavingMsgs(true);
+    try {
+      await updateProfile.mutateAsync({
+        recovery_message_boleto: boletoMsg,
+        recovery_message_pix: pixMsg,
+      });
+      toast.success("Mensagens salvas com sucesso!");
+    } catch {
+      toast.error("Erro ao salvar mensagens");
+    } finally {
+      setSavingMsgs(false);
+    }
+  };
+
   const getRecoveryMessage = (tab: TabKey) => {
     if (tab === "boletos-gerados") {
-      return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
+      return boletoMsg || DEFAULT_BOLETO_MSG;
     }
-    return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+    return pixMsg || DEFAULT_PIX_MSG;
   };
 
   // Reset visible count when tab changes
@@ -359,7 +389,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="mb-4">
-        <TabsList className="grid grid-cols-3 gap-1 h-auto p-1">
+        <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
           <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
             Aprovados ({tabTransactions.aprovados.length})
           </TabsTrigger>
@@ -369,8 +399,82 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
           <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
             PIX/Cartão Pend. ({tabTransactions["pix-cartao-pendentes"].length})
           </TabsTrigger>
+          <TabsTrigger value="mensagens" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3 gap-1">
+            <MessageSquare className="h-3 w-3" />
+            Mensagens
+          </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {/* Messages Config Tab */}
+      {activeTab === "mensagens" ? (
+        <div className="space-y-5">
+          {/* Variables Reference */}
+          <div className="bg-secondary/20 border border-border/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Info className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Variáveis disponíveis</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: "{saudação}", desc: "Bom dia / Boa tarde / Boa noite" },
+                { key: "{nome}", desc: "Nome completo do cliente" },
+                { key: "{primeiro_nome}", desc: "Primeiro nome do cliente" },
+                { key: "{valor}", desc: "Valor da transação (R$)" },
+              ].map((v) => (
+                <div key={v.key} className="flex items-center gap-1.5">
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {v.key}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{v.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Boleto Message */}
+          <div className="bg-secondary/10 border border-border/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-3 w-3 rounded-full bg-blue-500" />
+              <h3 className="text-sm font-semibold">Mensagem para Boletos</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Enviada ao recuperar transações de boletos não pagos
+            </p>
+            <Textarea
+              value={boletoMsg}
+              onChange={(e) => setBoletoMsg(e.target.value)}
+              rows={5}
+              className="font-mono text-sm"
+              placeholder="Digite a mensagem de recuperação para boletos..."
+            />
+          </div>
+
+          {/* PIX/Card Message */}
+          <div className="bg-secondary/10 border border-border/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-3 w-3 rounded-full bg-green-500" />
+              <h3 className="text-sm font-semibold">Mensagem para PIX / Cartão</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Enviada ao recuperar transações pendentes de PIX ou Cartão
+            </p>
+            <Textarea
+              value={pixMsg}
+              onChange={(e) => setPixMsg(e.target.value)}
+              rows={5}
+              className="font-mono text-sm"
+              placeholder="Digite a mensagem de recuperação para PIX/Cartão..."
+            />
+          </div>
+
+          <Button onClick={handleSaveMessages} disabled={savingMsgs} className="gap-2">
+            <Save className="h-4 w-4" />
+            {savingMsgs ? "Salvando..." : "Salvar Mensagens"}
+          </Button>
+        </div>
+      ) : (
+      <>
 
       {/* Quick Stats Bar */}
       <div className="grid grid-cols-3 gap-3 mb-5 p-4 bg-secondary/20 rounded-lg border border-border/30">
@@ -721,6 +825,8 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
         open={!!selectedTx}
         onClose={() => setSelectedTx(null)}
       />
+      </>
+      )}
     </div>
   );
 }
