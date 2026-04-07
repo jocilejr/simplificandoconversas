@@ -31,6 +31,21 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
 }
 
 /**
+ * Normalize phone number to Brazilian format for Evolution API.
+ * - Strips non-digits
+ * - Removes leading zero
+ * - Adds country code 55 if missing (10-11 digit numbers)
+ * - Returns plain number (no @s.whatsapp.net)
+ */
+function normalizePhone(raw: string): string {
+  let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55")) {
+    phone = "55" + phone;
+  }
+  return phone;
+}
+
+/**
  * Dispatch recovery for a single transaction immediately.
  * This is the main entry point — call after saving a pending transaction.
  */
@@ -43,7 +58,12 @@ export async function dispatchRecovery(opts: {
   amount: number;
   transactionType: string; // "boleto" | "pix" | "yampi" | "yampi_cart"
 }) {
-  if (!opts.customerPhone) return;
+  console.log(`[recovery-dispatch] START tx=${opts.transactionId} type=${opts.transactionType} phone=${opts.customerPhone}`);
+
+  if (!opts.customerPhone) {
+    console.log(`[recovery-dispatch] SKIP — no phone for tx ${opts.transactionId}`);
+    return;
+  }
 
   const sb = getServiceClient();
   const txType = opts.transactionType;
@@ -60,10 +80,19 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
+  console.log(`[recovery-dispatch] Settings found: enabled_boleto=${settings.enabled_boleto} enabled_pix=${settings.enabled_pix} enabled_yampi=${settings.enabled_yampi}`);
+
   // 2. Check per-type enablement
-  if (txType === "boleto" && !settings.enabled_boleto) return;
-  else if ((txType === "yampi_cart" || txType === "yampi") && !settings.enabled_yampi) return;
-  else if (txType !== "boleto" && txType !== "yampi_cart" && txType !== "yampi" && !settings.enabled_pix) return;
+  if (txType === "boleto" && !settings.enabled_boleto) {
+    console.log(`[recovery-dispatch] SKIP — boleto not enabled`);
+    return;
+  } else if ((txType === "yampi_cart" || txType === "yampi") && !settings.enabled_yampi) {
+    console.log(`[recovery-dispatch] SKIP — yampi not enabled`);
+    return;
+  } else if (txType !== "boleto" && txType !== "yampi_cart" && txType !== "yampi" && !settings.enabled_pix) {
+    console.log(`[recovery-dispatch] SKIP — pix not enabled`);
+    return;
+  }
 
   // 3. Check duplicate
   const { data: existing } = await sb
@@ -90,7 +119,31 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  // 5. Get message template
+  console.log(`[recovery-dispatch] Instance resolved: ${instanceName}`);
+
+  // 5. Normalize phone
+  const normalizedPhone = normalizePhone(opts.customerPhone);
+  console.log(`[recovery-dispatch] Phone: raw="${opts.customerPhone}" → normalized="${normalizedPhone}"`);
+
+  if (normalizedPhone.length < 12) {
+    console.log(`[recovery-dispatch] INVALID phone after normalization: "${normalizedPhone}" (too short)`);
+    // Insert as failed immediately
+    await sb.from("recovery_queue").insert({
+      workspace_id: opts.workspaceId,
+      user_id: opts.userId,
+      transaction_id: opts.transactionId,
+      customer_phone: normalizedPhone,
+      customer_name: opts.customerName || null,
+      amount: opts.amount,
+      transaction_type: txType,
+      status: "failed",
+      error_message: `Invalid phone after normalization: ${normalizedPhone}`,
+      scheduled_at: new Date().toISOString(),
+    });
+    return;
+  }
+
+  // 6. Get message template
   const { data: profile } = await sb
     .from("profiles")
     .select("recovery_message_boleto, recovery_message_pix")
@@ -111,12 +164,6 @@ export async function dispatchRecovery(opts: {
     amount: opts.amount,
   });
 
-  // 6. Format phone
-  let phone = opts.customerPhone.replace(/\D/g, "");
-  if (!phone.includes("@")) {
-    phone = phone + "@s.whatsapp.net";
-  }
-
   // 7. Insert audit record as pending
   const { data: queueItem } = await sb
     .from("recovery_queue")
@@ -124,7 +171,7 @@ export async function dispatchRecovery(opts: {
       workspace_id: opts.workspaceId,
       user_id: opts.userId,
       transaction_id: opts.transactionId,
-      customer_phone: opts.customerPhone.replace(/\D/g, ""),
+      customer_phone: normalizedPhone,
       customer_name: opts.customerName || null,
       amount: opts.amount,
       transaction_type: txType,
@@ -167,14 +214,17 @@ export async function dispatchRecovery(opts: {
       return;
     }
 
+    console.log(`[recovery-dispatch] Sending to ${normalizedPhone} via instance ${instanceName}`);
+
     const resp = await fetch(`${evoBaseUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
-      body: JSON.stringify({ number: phone, text: message }),
+      body: JSON.stringify({ number: normalizedPhone, text: message }),
     });
 
     if (!resp.ok) {
       const errText = await resp.text();
+      console.error(`[recovery-dispatch] Evolution error ${resp.status}: ${errText}`);
       throw new Error(`Evolution API ${resp.status}: ${errText}`);
     }
 
@@ -183,7 +233,7 @@ export async function dispatchRecovery(opts: {
       sent_at: new Date().toISOString(),
     }).eq("id", queueId);
 
-    console.log(`[recovery-dispatch] Sent recovery to ${opts.customerPhone} (tx: ${opts.transactionId})`);
+    console.log(`[recovery-dispatch] ✅ Sent recovery to ${normalizedPhone} (tx: ${opts.transactionId})`);
   }, `recovery:${opts.transactionId}`).catch(async (err: any) => {
     if (queueId) {
       try {
@@ -193,6 +243,6 @@ export async function dispatchRecovery(opts: {
         }).eq("id", queueId);
       } catch (_) {}
     }
-    console.error(`[recovery-dispatch] Failed for ${opts.customerPhone}:`, err.message);
+    console.error(`[recovery-dispatch] ❌ Failed for ${normalizedPhone}:`, err.message);
   });
 }
