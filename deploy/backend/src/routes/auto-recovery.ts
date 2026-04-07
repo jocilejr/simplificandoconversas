@@ -141,7 +141,6 @@ export async function processRecoveryQueue() {
       }
 
       // Determine the instance for this transaction type
-      const txType = item.transaction_type;
       let instanceName: string | null = null;
       if (txType === "boleto") instanceName = settings.instance_boleto || defaultInstance;
       else if (txType === "yampi_cart" || txType === "yampi") instanceName = settings.instance_yampi || defaultInstance;
