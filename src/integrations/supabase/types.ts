@@ -178,6 +178,104 @@ export type Database = {
           },
         ]
       }
+      boleto_recovery_contacts: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          rule_id: string | null
+          transaction_id: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          rule_id?: string | null
+          transaction_id: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          rule_id?: string | null
+          transaction_id?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boleto_recovery_contacts_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "boleto_recovery_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boleto_recovery_contacts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      boleto_recovery_rules: {
+        Row: {
+          created_at: string
+          days: number
+          id: string
+          is_active: boolean
+          media_blocks: Json
+          message: string
+          name: string
+          priority: number
+          rule_type: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          days?: number
+          id?: string
+          is_active?: boolean
+          media_blocks?: Json
+          message?: string
+          name: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          days?: number
+          id?: string
+          is_active?: boolean
+          media_blocks?: Json
+          message?: string
+          name?: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boleto_recovery_rules_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       boleto_recovery_templates: {
         Row: {
           blocks: Json
@@ -214,6 +312,41 @@ export type Database = {
             foreignKeyName: "boleto_recovery_templates_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      boleto_settings: {
+        Row: {
+          created_at: string
+          default_expiration_days: number
+          id: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_expiration_days?: number
+          id?: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          default_expiration_days?: number
+          id?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boleto_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
