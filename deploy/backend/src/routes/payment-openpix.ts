@@ -253,6 +253,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
           console.warn("[openpix webhook] Could not resolve user_id for TRANSACTION_RECEIVED, skipping");
           return res.sendStatus(200);
         }
+        const workspaceId = await resolveWorkspaceId(userId);
 
         await supabase.from("transactions").insert({
           user_id: userId,
