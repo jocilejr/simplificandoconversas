@@ -400,7 +400,7 @@ router.post("/", async (req, res) => {
                 // Chat is @s.whatsapp.net: check if there's an existing @lid conversation with this phone_number
                 const { data: byPhone } = await serviceClient.from("conversations")
                   .select("id, remote_jid, lid")
-                  .eq("user_id", userId)
+                  .eq("workspace_id", workspaceId!)
                   .eq("phone_number", phoneNumber)
                   .eq("instance_name", instName)
                   .limit(1)
