@@ -634,9 +634,24 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                       <span className="text-sm font-bold">{formatCurrency(tx.amount)}</span>
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <Badge variant="outline" className={cn("font-medium text-xs", statusStyles[tx.status])}>
-                        {statusLabels[tx.status] || tx.status}
-                      </Badge>
+                      {(tx.metadata as any)?.error_reason ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="outline" className={cn("font-medium text-xs cursor-help", statusStyles[tx.status])}>
+                                {statusLabels[tx.status] || tx.status}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="text-xs font-medium">Motivo: {(tx.metadata as any).error_reason}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <Badge variant="outline" className={cn("font-medium text-xs", statusStyles[tx.status])}>
+                          {statusLabels[tx.status] || tx.status}
+                        </Badge>
+                      )}
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">

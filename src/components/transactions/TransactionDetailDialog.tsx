@@ -81,6 +81,9 @@ export function TransactionDetailDialog({ transaction, open, onClose }: Transact
           {transaction.description && (
             <InfoRow icon={CreditCard} label="Descrição" value={transaction.description} />
           )}
+          {(transaction.metadata as any)?.error_reason && (
+            <InfoRow icon={AlertTriangle} label="Motivo do erro" value={(transaction.metadata as any).error_reason} />
+          )}
         </div>
 
         {transaction.payment_url && (
