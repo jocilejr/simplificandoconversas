@@ -235,7 +235,7 @@ router.post("/", async (req, res) => {
       // Enqueue for recovery
       const refusedTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
       if (refusedTxId) {
-        await enqueueRecovery({
+        await dispatchRecovery({
           workspaceId, userId, transactionId: refusedTxId,
           customerPhone: customer.phone, customerName: customer.name,
           amount, transactionType: type,
