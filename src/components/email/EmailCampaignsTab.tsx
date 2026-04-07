@@ -13,6 +13,7 @@ import { useSmtpConfig } from "@/hooks/useSmtpConfig";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   Plus, Send, Trash2, Loader2, X, ChevronDown, ChevronUp, Clock,
   Megaphone, FileEdit, CheckCircle, AlertCircle, MailCheck, ArrowLeft, Zap,
@@ -32,6 +33,7 @@ export function EmailCampaignsTab() {
   const { templates } = useEmailTemplates();
   const { configs } = useSmtpConfig();
   const { toast } = useToast();
+  const { workspaceId } = useWorkspace();
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -74,7 +76,7 @@ export function EmailCampaignsTab() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
       const { error } = await supabase.from("email_follow_ups").insert({
-        campaign_id: campaignId, user_id: user.id, template_id: tId, delay_days: delayDays, step_order: stepOrder,
+        campaign_id: campaignId, user_id: user.id, workspace_id: workspaceId!, template_id: tId, delay_days: delayDays, step_order: stepOrder,
       });
       if (error) throw error;
     },
@@ -102,7 +104,7 @@ export function EmailCampaignsTab() {
             if (user) {
               for (let i = 0; i < followUps.length; i++) {
                 await supabase.from("email_follow_ups").insert({
-                  campaign_id: data.id, user_id: user.id,
+                  campaign_id: data.id, user_id: user.id, workspace_id: workspaceId!,
                   template_id: followUps[i].templateId, delay_days: followUps[i].delayDays, step_order: i + 1,
                 });
               }

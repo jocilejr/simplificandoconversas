@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,7 @@ export function IntegrationsSection() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { profile } = useProfile();
+  const { workspaceId } = useWorkspace();
   const [connections, setConnections] = useState<Record<string, { id: string; credentials: any; enabled: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [configDialog, setConfigDialog] = useState<Integration | null>(null);
@@ -146,7 +148,7 @@ export function IntegrationsSection() {
     } else {
       ({ error } = await supabase
         .from("platform_connections")
-        .insert({ user_id: user.id, platform: configDialog.platform, credentials, enabled: true }));
+        .insert({ user_id: user.id, workspace_id: workspaceId!, platform: configDialog.platform, credentials, enabled: true }));
     }
 
     if (error) {
