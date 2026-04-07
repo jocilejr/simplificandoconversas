@@ -108,7 +108,7 @@ export async function processRecoveryQueue() {
   const enabledSettings = allSettings.filter((s: any) => s.enabled_boleto || s.enabled_pix || s.enabled_yampi);
   if (enabledSettings.length === 0) return;
 
-  for (const settings of allSettings) {
+  for (const settings of enabledSettings) {
     try {
       const workspaceId = settings.workspace_id;
 
