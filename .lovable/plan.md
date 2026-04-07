@@ -1,47 +1,47 @@
 
 
-# Fix: Endpoint `boleto-pdf` deve apenas servir arquivo existente, sem re-download
+# Fix: Download do PDF do boleto falha por falta de User-Agent
 
-## Problema
+## Diagnóstico
 
-O endpoint `GET /payment/boleto-pdf/:transactionId` atualmente tenta re-baixar o PDF do Mercado Pago quando o arquivo não existe no disco. Isso causa tentativas repetidas de download que sempre falham (MP retorna HTML, não PDF direto via `ticket_url`).
+O n8n baixa o PDF com sucesso da mesma URL (`external_resource_url`). A diferença é que o `fetch` do Node.js no backend não envia um `User-Agent` de navegador, e o Mercado Pago retorna HTML (página de redirect) em vez do PDF para requests sem User-Agent válido.
 
-O comportamento correto é:
-1. Na **criação** do boleto, usar `external_resource_url` (URL direta do PDF) para baixar e salvar
-2. No **acesso** ao boleto, apenas servir o arquivo que já está no banco/disco. Se não existir, retornar erro claro
+O código atual envia apenas `Accept: application/pdf`, o que não é suficiente.
 
-## Alterações
+## Correção
 
-### 1. Criação: usar `external_resource_url` para download (`payment.ts` linhas 234-255)
+Em `deploy/backend/src/routes/payment.ts`, na função `downloadAndSaveBoletoPdf`, adicionar headers que simulam um navegador real:
 
-Separar as URLs:
-- `paymentUrl` = `ticket_url` (página interativa, salva no banco para o usuário)
-- `pdfDownloadUrl` = `external_resource_url` (PDF direto, usado para download no servidor)
+```typescript
+const pdfResp = await fetch(paymentUrl, {
+  headers: {
+    "Accept": "application/pdf,*/*",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  },
+  redirect: "follow",
+});
+```
 
-Passar `pdfDownloadUrl` para `downloadAndSaveBoletoPdf` em vez de `paymentUrl`.
+Também adicionar log do content-type e tamanho para diagnóstico:
 
-### 2. Endpoint `boleto-pdf`: remover re-download (`payment.ts` linhas 398-458)
+```typescript
+console.log(`[payment] PDF response: status=${pdfResp.status}, content-type=${contentType}, size=${buffer.length}`);
+```
 
-Simplificar para:
-1. Buscar transação no banco
-2. Verificar se `metadata.boleto_file` existe
-3. Se sim, ler do disco e servir
-4. Se o arquivo não estiver no disco OU não tiver `boleto_file` no metadata, retornar `404` com mensagem: "O boleto não existe no banco de dados"
-5. **Nunca** tentar re-baixar
-
-### 3. Salvar `pdf_download_url` no metadata da criação
-
-Guardar a `external_resource_url` no metadata para referência futura, sem usá-la para re-download automático.
-
-## Arquivo Modificado
+## Arquivo
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `deploy/backend/src/routes/payment.ts` | Usar `external_resource_url` na criação; remover re-download do endpoint `boleto-pdf` |
+| `deploy/backend/src/routes/payment.ts` | Adicionar User-Agent de navegador na função `downloadAndSaveBoletoPdf` |
 
 ## VPS
 
 ```bash
 cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
+```
+
+Depois de criar um boleto de teste:
+```bash
+docker logs $(docker ps --format '{{.Names}}' | grep backend | head -n 1) 2>&1 | grep -i "boleto PDF" | tail -10
 ```
 
