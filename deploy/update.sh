@@ -10,42 +10,17 @@ echo "═══ Atualizando deploy ═══"
 source "$DEPLOY_DIR/.env"
 
 # Pull latest code
-echo "[1/4] Pulling latest code..."
+echo "[1/5] Pulling latest code..."
 cd "$REPO_ROOT"
 git checkout -- .
 git pull origin main
 
-# Rebuild frontend
-echo "[2/4] Rebuilding frontend..."
-cat > .env.production << EOF
-VITE_SUPABASE_URL=${API_URL}
-VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
-VITE_SUPABASE_PROJECT_ID=local
-EOF
-
-if command -v bun &> /dev/null; then
-  bun install && bun run build
-else
-  npm install && npm run build
-fi
-
-# Verify build succeeded
-if [ ! -f "$REPO_ROOT/dist/index.html" ]; then
-  echo "❌ Build falhou! dist/index.html não encontrado."
-  echo "   Frontend anterior mantido intacto."
-  exit 1
-fi
-
-# Replace frontend files (preserve directory inode for bind mount)
-mkdir -p "$DEPLOY_DIR/frontend"
-rm -rf "$DEPLOY_DIR/frontend/"*
-cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
-echo "✓ Frontend copiado com sucesso"
-
-# Run DB migrations for new tables
-echo "[2.5/4] Running database migrations..."
+# ============================================================
+# [2/5] Database migrations FIRST (before builds!)
+# ============================================================
+echo "[2/5] Running database migrations..."
 cd "$DEPLOY_DIR"
-docker compose exec -T postgres psql -U postgres -d postgres <<'EOSQL'
+docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'EOSQL'
 -- Meta Pixels
 CREATE TABLE IF NOT EXISTS public.meta_pixels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -516,6 +491,7 @@ BEGIN
 END $$;
 
 -- Migrate existing data: create default workspace per user
+-- Uses auth.users to find ALL users, not just those with profiles
 DO $$
 DECLARE _rec RECORD; _ws_id uuid;
   _tables text[] := ARRAY[
@@ -529,9 +505,13 @@ DECLARE _rec RECORD; _ws_id uuid;
     'tracked_links','transactions','whatsapp_instances'
   ]; _t text;
 BEGIN
-  FOR _rec IN SELECT DISTINCT user_id FROM public.profiles
-    WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.user_id = profiles.user_id)
+  FOR _rec IN
+    SELECT id AS user_id FROM auth.users
+    WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.user_id = auth.users.id)
   LOOP
+    -- Ensure profile exists
+    INSERT INTO public.profiles (user_id) VALUES (_rec.user_id) ON CONFLICT DO NOTHING;
+
     _ws_id := gen_random_uuid();
     INSERT INTO public.workspaces (id, name, slug, created_by, openai_api_key, app_public_url)
     VALUES (
@@ -541,6 +521,8 @@ BEGIN
       (SELECT openai_api_key FROM public.profiles WHERE user_id = _rec.user_id LIMIT 1),
       (SELECT app_public_url FROM public.profiles WHERE user_id = _rec.user_id LIMIT 1)
     );
+    -- Trigger auto_add_workspace_creator will add the member as admin
+
     FOREACH _t IN ARRAY _tables LOOP
       EXECUTE format('UPDATE public.%I SET workspace_id = $1 WHERE user_id = $2 AND workspace_id IS NULL', _t)
       USING _ws_id, _rec.user_id;
@@ -548,9 +530,9 @@ BEGIN
   END LOOP;
 END $$;
 
--- Delete orphaned rows
+-- SAFETY CHECK: Do NOT delete orphaned rows. Just warn.
 DO $$
-DECLARE _t text;
+DECLARE _t text; _cnt bigint; _total bigint := 0;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts','api_request_logs',
     'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
@@ -563,13 +545,22 @@ DECLARE _t text;
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
-    EXECUTE format('DELETE FROM public.%I WHERE workspace_id IS NULL', _t);
+    EXECUTE format('SELECT count(*) FROM public.%I WHERE workspace_id IS NULL', _t) INTO _cnt;
+    IF _cnt > 0 THEN
+      RAISE WARNING '⚠ Tabela % tem % registros sem workspace_id (NÃO deletados)', _t, _cnt;
+      _total := _total + _cnt;
+    END IF;
   END LOOP;
+  IF _total > 0 THEN
+    RAISE WARNING '⚠ Total de % registros órfãos encontrados. Revise manualmente.', _total;
+  ELSE
+    RAISE NOTICE '✓ Nenhum registro órfão encontrado.';
+  END IF;
 END $$;
 
--- Set NOT NULL + FK + index
+-- Set NOT NULL + FK + index (only if no orphans remain)
 DO $$
-DECLARE _t text;
+DECLARE _t text; _cnt bigint;
   _tables text[] := ARRAY[
     'ai_auto_reply_contacts','ai_config','ai_listen_contacts','api_request_logs',
     'chatbot_flow_history','chatbot_flows','contact_photos','contact_tags',
@@ -582,6 +573,11 @@ DECLARE _t text;
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
+    EXECUTE format('SELECT count(*) FROM public.%I WHERE workspace_id IS NULL', _t) INTO _cnt;
+    IF _cnt > 0 THEN
+      RAISE WARNING 'Pulando NOT NULL para % (% registros sem workspace)', _t, _cnt;
+      CONTINUE;
+    END IF;
     BEGIN
       EXECUTE format('ALTER TABLE public.%I ALTER COLUMN workspace_id SET NOT NULL', _t);
     EXCEPTION WHEN OTHERS THEN NULL;
@@ -639,6 +635,9 @@ BEGIN
   END LOOP;
 END $$;
 
+-- api_request_logs: read-only for authenticated (no insert/update/delete via RLS)
+-- email_link_clicks: read-only for authenticated (no insert/update/delete via RLS)
+
 -- Workspace RLS policies
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='workspaces' AND policyname='ws_select') THEN
@@ -692,7 +691,7 @@ EOSQL
 echo "✓ Migrations aplicadas"
 
 # Validate tables exist
-for tbl in meta_pixels api_request_logs platform_connections email_contacts; do
+for tbl in meta_pixels api_request_logs platform_connections email_contacts workspaces workspace_members; do
   TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.$tbl');")
   if [ "$TABLE_EXISTS" = "" ] || [ "$TABLE_EXISTS" = " " ]; then
     echo "❌ Tabela $tbl não encontrada após migração! Abortando."
@@ -701,16 +700,65 @@ for tbl in meta_pixels api_request_logs platform_connections email_contacts; do
   echo "✓ Tabela $tbl verificada"
 done
 
+# Validate workspace membership exists for all users
+ORPHAN_USERS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "
+  SELECT count(*) FROM auth.users u
+  WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.user_id = u.id);
+")
+ORPHAN_USERS=$(echo "$ORPHAN_USERS" | tr -d '[:space:]')
+if [ "$ORPHAN_USERS" != "0" ]; then
+  echo "⚠ AVISO: $ORPHAN_USERS usuários sem workspace. Verifique manualmente."
+else
+  echo "✓ Todos os usuários possuem workspace"
+fi
+
 # Restart PostgREST to guarantee schema reload
 docker compose restart postgrest 2>/dev/null || echo "⚠ PostgREST não encontrado (ok se não usar)"
 echo "✓ PostgREST schema recarregado"
 
-echo "[3/4] Rebuilding containers..."
+# ============================================================
+# [3/5] Rebuild frontend
+# ============================================================
+echo "[3/5] Rebuilding frontend..."
+cd "$REPO_ROOT"
+cat > .env.production << EOF
+VITE_SUPABASE_URL=${API_URL}
+VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
+VITE_SUPABASE_PROJECT_ID=local
+EOF
+
+if command -v bun &> /dev/null; then
+  bun install && bun run build
+else
+  npm install && npm run build
+fi
+
+# Verify build succeeded
+if [ ! -f "$REPO_ROOT/dist/index.html" ]; then
+  echo "❌ Build falhou! dist/index.html não encontrado."
+  echo "   Frontend anterior mantido intacto."
+  echo "   ⚠ Migrações SQL já foram aplicadas com sucesso."
+  exit 1
+fi
+
+# Replace frontend files (preserve directory inode for bind mount)
+mkdir -p "$DEPLOY_DIR/frontend"
+rm -rf "$DEPLOY_DIR/frontend/"*
+cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
+echo "✓ Frontend copiado com sucesso"
+
+# ============================================================
+# [4/5] Rebuild containers
+# ============================================================
+echo "[4/5] Rebuilding containers..."
 cd "$DEPLOY_DIR"
 docker compose build --no-cache backend
 docker compose build
 
-echo "[4/4] Restarting..."
+# ============================================================
+# [5/5] Restart + health check
+# ============================================================
+echo "[5/5] Restarting..."
 docker compose up -d
 
 # Force restart Nginx to guarantee bind mount refresh
@@ -718,7 +766,7 @@ docker compose restart nginx
 echo "✓ Nginx reiniciado"
 
 # Post-deploy health check
-echo "[5/5] Verificando backend..."
+echo "Verificando backend..."
 sleep 3
 HEALTH=$(docker compose exec -T backend wget -qO- http://localhost:3001/api/health/version 2>/dev/null || echo '{"ok":false}')
 echo "   Health: $HEALTH"
