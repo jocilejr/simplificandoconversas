@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Copy, ExternalLink, Search, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -30,6 +33,16 @@ const statusColors: Record<string, string> = {
   estornado: "bg-purple-500/10 text-purple-600 border-purple-500/30",
 };
 
+const statusLabels: Record<string, string> = {
+  aprovado: "Pago",
+  pendente: "Pendente",
+  rejeitado: "Rejeitado",
+  cancelado: "Cancelado",
+  processando: "Processando",
+  reembolsado: "Reembolsado",
+  estornado: "Estornado",
+};
+
 const typeLabels: Record<string, string> = {
   boleto: "Boleto",
   pix: "PIX",
@@ -40,15 +53,25 @@ const typeLabels: Record<string, string> = {
 export function TransactionsTable({ transactions, isLoading }: TransactionsTableProps) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("todos");
+  const [pendingSubFilter, setPendingSubFilter] = useState("todos");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
   const filtered = useMemo(() => {
     let txs = transactions;
 
-    if (tab === "boletos") txs = txs.filter((t) => t.type === "boleto");
-    else if (tab === "pix-cartao-pendente") txs = txs.filter((t) => t.type !== "boleto" && t.status === "pendente");
-    else if (tab === "aprovados") txs = txs.filter((t) => t.status === "aprovado");
+    if (tab === "pagos") {
+      txs = txs.filter((t) => t.status === "aprovado");
+    } else if (tab === "pendentes") {
+      txs = txs.filter((t) => t.status === "pendente");
+      if (pendingSubFilter === "boleto") {
+        txs = txs.filter((t) => t.type === "boleto");
+      } else if (pendingSubFilter === "pix") {
+        txs = txs.filter((t) => t.type === "pix");
+      } else if (pendingSubFilter === "cartao") {
+        txs = txs.filter((t) => t.type === "cartao" || t.type === "card");
+      }
+    }
 
     if (search) {
       const s = search.toLowerCase();
@@ -56,15 +79,21 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
         (t) =>
           t.customer_name?.toLowerCase().includes(s) ||
           t.customer_phone?.includes(s) ||
-          t.customer_document?.includes(s) ||
           t.customer_email?.toLowerCase().includes(s)
       );
     }
 
     return txs;
-  }, [transactions, tab, search]);
+  }, [transactions, tab, pendingSubFilter, search]);
 
-  const handleDelete = async (id: string) => {
+  const counts = useMemo(() => ({
+    todos: transactions.length,
+    pagos: transactions.filter((t) => t.status === "aprovado").length,
+    pendentes: transactions.filter((t) => t.status === "pendente").length,
+  }), [transactions]);
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!confirm("Deseja excluir esta transação?")) return;
     const { error } = await supabase.from("transactions").delete().eq("id", id);
     if (error) {
@@ -80,26 +109,35 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 justify-between">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="todos">Todos ({transactions.length})</TabsTrigger>
-            <TabsTrigger value="boletos">
-              Boletos ({transactions.filter((t) => t.type === "boleto").length})
-            </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendente">
-              PIX/Cartão Pendente ({transactions.filter((t) => t.type !== "boleto" && t.status === "pendente").length})
-            </TabsTrigger>
-            <TabsTrigger value="aprovados">
-              Aprovados ({transactions.filter((t) => t.status === "aprovado").length})
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "pendentes") setPendingSubFilter("todos"); }}>
+            <TabsList>
+              <TabsTrigger value="todos">Todos ({counts.todos})</TabsTrigger>
+              <TabsTrigger value="pagos">Pagos ({counts.pagos})</TabsTrigger>
+              <TabsTrigger value="pendentes">Pendentes ({counts.pendentes})</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {tab === "pendentes" && (
+            <Select value={pendingSubFilter} onValueChange={setPendingSubFilter}>
+              <SelectTrigger className="w-[180px] h-9">
+                <SelectValue placeholder="Filtrar por tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos pendentes</SelectItem>
+                <SelectItem value="boleto">Boleto (não pago)</SelectItem>
+                <SelectItem value="pix">PIX pendente</SelectItem>
+                <SelectItem value="cartao">Cartão pendente</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        </div>
 
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, telefone, CPF..."
+            placeholder="Buscar por nome, telefone, email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -114,7 +152,6 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
               <TableHead>Tipo</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead className="hidden md:table-cell">Telefone</TableHead>
-              <TableHead className="hidden lg:table-cell">CPF</TableHead>
               <TableHead>Data</TableHead>
               <TableHead className="text-right">Valor</TableHead>
               <TableHead>Status</TableHead>
@@ -124,34 +161,37 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   Carregando...
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   Nenhuma transação encontrada
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((tx) => (
-                <TableRow key={tx.id} className="cursor-pointer" onClick={() => setSelectedTx(tx)}>
+                <TableRow key={tx.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedTx(tx)}>
                   <TableCell>
-                    <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
+                    <Badge variant="outline" className="font-medium">
+                      {typeLabels[tx.type] || tx.type}
+                    </Badge>
                   </TableCell>
                   <TableCell className="font-medium">{tx.customer_name || "-"}</TableCell>
-                  <TableCell className="hidden md:table-cell">{tx.customer_phone || "-"}</TableCell>
-                  <TableCell className="hidden lg:table-cell">{tx.customer_document || "-"}</TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="hidden md:table-cell text-muted-foreground">
+                    {tx.customer_phone || "-"}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
                     {format(new Date(tx.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
                   </TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="text-right font-mono font-semibold">
                     {formatCurrency(tx.amount)}
                   </TableCell>
                   <TableCell>
                     <Badge className={statusColors[tx.status] || ""} variant="outline">
-                      {tx.status}
+                      {statusLabels[tx.status] || tx.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
@@ -162,14 +202,21 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               navigator.clipboard.writeText(tx.payment_url!);
                               toast.success("Link copiado!");
                             }}
                           >
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={(e) => e.stopPropagation()}
+                            asChild
+                          >
                             <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="h-3.5 w-3.5" />
                             </a>
@@ -180,7 +227,7 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7 text-destructive"
-                        onClick={() => handleDelete(tx.id)}
+                        onClick={(e) => handleDelete(tx.id, e)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
