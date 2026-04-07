@@ -699,11 +699,11 @@ router.post("/", async (req, res) => {
           // Get all conversations that DON'T have a photo yet
           const { data: allConvs } = await serviceClient.from("conversations")
             .select("remote_jid, phone_number")
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
 
           const { data: existingPhotos } = await serviceClient.from("contact_photos")
             .select("remote_jid")
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
 
           const existingSet = new Set((existingPhotos || []).map((p: any) => p.remote_jid));
           const convsNeedingPhoto = (allConvs || []).filter((c: any) => !existingSet.has(c.remote_jid));
