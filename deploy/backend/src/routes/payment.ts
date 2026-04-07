@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { enqueueRecovery } from "../lib/recovery-enqueue";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
