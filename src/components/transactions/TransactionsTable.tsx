@@ -376,7 +376,23 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
           </TabsList>
         </Tabs>
         {activeTab === "boletos-gerados" && (
-          <RecoverySettingsDialog type="boleto" />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => setBoletoTemplateOpen(true)}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Configurar templates de recuperação</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         {activeTab === "pix-cartao-pendentes" && (
           <RecoverySettingsDialog type="pix" />
