@@ -735,6 +735,74 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /boleto-image/:transactionId ─── Convert boleto PDF to JPG
+router.get("/boleto-image/:transactionId", async (req: Request, res: Response) => {
+  try {
+    const supabase = getServiceClient();
+    const { data: tx, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("id", req.params.transactionId)
+      .single();
+
+    if (error || !tx) {
+      return res.status(404).json({ error: "Transação não encontrada" });
+    }
+
+    const meta = (tx.metadata as any) || {};
+    if (!meta.boleto_file) {
+      return res.status(404).json({ error: "PDF do boleto não encontrado" });
+    }
+
+    const fsPath = (meta.boleto_file as string).replace("/media/", "/media-files/");
+    const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
+
+    // Check for cached JPG first
+    try {
+      await fs.access(jpgPath);
+      const buffer = await fs.readFile(jpgPath);
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.send(buffer);
+    } catch {
+      // No cached JPG, convert
+    }
+
+    // Check PDF exists
+    try {
+      await fs.access(fsPath);
+    } catch {
+      return res.status(404).json({ error: "PDF do boleto não encontrado no disco" });
+    }
+
+    // Convert PDF to JPG using pdftoppm
+    const { exec } = await import("child_process");
+    const { promisify } = await import("util");
+    const execPromise = promisify(exec);
+
+    const outputPrefix = jpgPath.replace(/\.jpg$/i, "");
+    try {
+      await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${outputPrefix}"`);
+    } catch (convErr: any) {
+      console.error(`[payment] pdftoppm conversion error:`, convErr.message);
+      return res.status(500).json({ error: "Falha ao converter PDF para imagem" });
+    }
+
+    try {
+      await fs.access(jpgPath);
+      const buffer = await fs.readFile(jpgPath);
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.send(buffer);
+    } catch {
+      return res.status(500).json({ error: "Imagem convertida não encontrada" });
+    }
+  } catch (err: any) {
+    console.error("[payment] boleto-image error:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /boleto-pdf/:transactionId ─── On-demand PDF fetch/serve
 router.get("/boleto-pdf/:transactionId", async (req: Request, res: Response) => {
   try {

@@ -4,7 +4,15 @@
  * Called immediately after a transaction is saved/updated to pending.
  * Uses the global MessageQueue for anti-ban serialization.
  * Writes audit trail to recovery_queue.
- * Supports block-based templates (text, PDF, image) from boleto_recovery_templates.
+ *
+ * RULES:
+ * - Template is ABSOLUTE. Only the default template (is_default=true) is used.
+ * - NO fallback to profiles, NO fallback to other templates.
+ * - Each block is sent exactly as its type defines:
+ *   - text: sends text with variable replacement
+ *   - pdf: sends the boleto PDF as a document
+ *   - image: converts the boleto PDF to JPG and sends as image
+ * - Delay between blocks uses the instance's configured delay_seconds.
  */
 
 import { getServiceClient } from "./supabase";
@@ -37,9 +45,6 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
     .replace(/\{valor\}/gi, formattedAmount);
 }
 
-/**
- * Normalize phone number to Brazilian format for Evolution API.
- */
 function normalizePhone(raw: string): string {
   let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
   if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55")) {
@@ -63,7 +68,7 @@ async function sendBlock(
 ): Promise<void> {
   if (block.type === "text") {
     const text = replaceVariables(block.content, vars);
-    console.log(`[recovery-dispatch] Sending text block to ${phone}`);
+    console.log(`[recovery-dispatch] Sending TEXT block to ${phone}`);
     const resp = await fetch(`${evoBaseUrl}/message/sendText/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
@@ -75,7 +80,7 @@ async function sendBlock(
       throw new Error(`Evolution API ${resp.status}: ${errText}`);
     }
   } else if (block.type === "pdf") {
-    // Get the PDF URL from the transaction metadata
+    // Send the actual PDF document
     const { data: tx } = await sb
       .from("transactions")
       .select("metadata, external_id")
@@ -90,7 +95,6 @@ async function sendBlock(
       return;
     }
 
-    // Build a public URL for the PDF via the backend endpoint
     const appPublicUrl = process.env.APP_PUBLIC_URL || "";
     if (!appPublicUrl) {
       console.log(`[recovery-dispatch] APP_PUBLIC_URL not set, skipping PDF block`);
@@ -101,7 +105,7 @@ async function sendBlock(
     const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
     const fileName = `boleto-${firstName}.pdf`;
 
-    console.log(`[recovery-dispatch] Sending PDF block: ${pdfUrl}`);
+    console.log(`[recovery-dispatch] Sending PDF block (document): ${pdfUrl}`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
@@ -119,26 +123,41 @@ async function sendBlock(
       throw new Error(`Evolution API PDF ${resp.status}: ${errText}`);
     }
   } else if (block.type === "image") {
-    // Image block — if it has content (URL), send it
-    if (block.content) {
-      console.log(`[recovery-dispatch] Sending image block: ${block.content}`);
-      const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: evoApiKey },
-        body: JSON.stringify({
-          number: phone,
-          mediatype: "image",
-          media: block.content,
-          caption: "",
-        }),
-      });
-      if (!resp.ok) {
-        const errText = await resp.text();
-        console.error(`[recovery-dispatch] Evolution sendMedia/image error ${resp.status}: ${errText}`);
-        throw new Error(`Evolution API Image ${resp.status}: ${errText}`);
-      }
-    } else {
-      console.log(`[recovery-dispatch] Image block has no content URL, skipping`);
+    // Convert boleto PDF to JPG and send as image
+    const appPublicUrl = process.env.APP_PUBLIC_URL || "";
+    if (!appPublicUrl) {
+      console.log(`[recovery-dispatch] APP_PUBLIC_URL not set, skipping IMAGE block`);
+      return;
+    }
+
+    const { data: tx } = await sb
+      .from("transactions")
+      .select("metadata")
+      .eq("id", transactionId)
+      .maybeSingle();
+
+    const meta = (tx?.metadata as any) || {};
+    if (!meta.boleto_file) {
+      console.log(`[recovery-dispatch] No PDF file for tx ${transactionId}, skipping IMAGE block`);
+      return;
+    }
+
+    const imageUrl = `${appPublicUrl}/api/payment/boleto-image/${transactionId}`;
+    console.log(`[recovery-dispatch] Sending IMAGE block (PDF→JPG): ${imageUrl}`);
+    const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoApiKey },
+      body: JSON.stringify({
+        number: phone,
+        mediatype: "image",
+        media: imageUrl,
+        caption: "",
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[recovery-dispatch] Evolution sendMedia/image error ${resp.status}: ${errText}`);
+      throw new Error(`Evolution API Image ${resp.status}: ${errText}`);
     }
   }
 }
@@ -165,7 +184,7 @@ export async function dispatchRecovery(opts: {
   const sb = getServiceClient();
   const txType = opts.transactionType;
 
-  // 1. Load recovery_settings for this workspace
+  // 1. Load recovery_settings
   const { data: settings } = await sb
     .from("recovery_settings")
     .select("*")
@@ -239,9 +258,7 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  // 6. Load template blocks from boleto_recovery_templates (default template)
-  let blocks: RecoveryBlock[] = [];
-
+  // 6. Load ONLY the default template — NO FALLBACK
   const { data: defaultTemplate } = await sb
     .from("boleto_recovery_templates")
     .select("blocks")
@@ -249,44 +266,29 @@ export async function dispatchRecovery(opts: {
     .eq("is_default", true)
     .maybeSingle();
 
-  if (defaultTemplate && Array.isArray(defaultTemplate.blocks) && defaultTemplate.blocks.length > 0) {
-    blocks = defaultTemplate.blocks as RecoveryBlock[];
-    console.log(`[recovery-dispatch] Using default template with ${blocks.length} blocks`);
-  } else {
-    // Fallback: try first template
-    const { data: anyTemplate } = await sb
-      .from("boleto_recovery_templates")
-      .select("blocks")
-      .eq("workspace_id", opts.workspaceId)
-      .limit(1)
-      .maybeSingle();
+  const blocks: RecoveryBlock[] =
+    defaultTemplate && Array.isArray(defaultTemplate.blocks) && defaultTemplate.blocks.length > 0
+      ? (defaultTemplate.blocks as RecoveryBlock[])
+      : [];
 
-    if (anyTemplate && Array.isArray(anyTemplate.blocks) && anyTemplate.blocks.length > 0) {
-      blocks = anyTemplate.blocks as RecoveryBlock[];
-      console.log(`[recovery-dispatch] Using first available template with ${blocks.length} blocks`);
-    }
-  }
-
-  // If no template blocks found, fall back to legacy profiles message
   if (blocks.length === 0) {
-    console.log(`[recovery-dispatch] No template blocks found, using legacy profiles message`);
-    const { data: profile } = await sb
-      .from("profiles")
-      .select("recovery_message_boleto, recovery_message_pix")
-      .eq("user_id", settings.user_id)
-      .maybeSingle();
-
-    const isBoleto = txType === "boleto";
-    const defaultMsg = isBoleto
-      ? `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`
-      : `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
-
-    const template = isBoleto
-      ? (profile?.recovery_message_boleto || defaultMsg)
-      : (profile?.recovery_message_pix || defaultMsg);
-
-    blocks = [{ id: "legacy", type: "text", content: template }];
+    console.log(`[recovery-dispatch] FAIL — No default template found for workspace ${opts.workspaceId}. Template is absolute, no fallback.`);
+    await sb.from("recovery_queue").insert({
+      workspace_id: opts.workspaceId,
+      user_id: opts.userId,
+      transaction_id: opts.transactionId,
+      customer_phone: normalizedPhone,
+      customer_name: opts.customerName || null,
+      amount: opts.amount,
+      transaction_type: txType,
+      status: "failed",
+      error_message: "Nenhum template padrão configurado. Configure um template com is_default=true.",
+      scheduled_at: new Date().toISOString(),
+    });
+    return;
   }
+
+  console.log(`[recovery-dispatch] Default template loaded: ${blocks.length} block(s) [${blocks.map(b => b.type).join(", ")}]`);
 
   // 7. Insert audit record as pending
   const { data: queueItem } = await sb
@@ -309,14 +311,26 @@ export async function dispatchRecovery(opts: {
   console.log(`[recovery-dispatch] Queued tx ${opts.transactionId} (${txType}), queue id: ${queueId}`);
 
   // 8. Load message_queue_config for delay
-  const { data: queueConfig } = await sb
-    .from("message_queue_config")
-    .select("delay_seconds")
-    .eq("workspace_id", opts.workspaceId)
-    .eq("instance_name", instanceName)
-    .maybeSingle();
+  let configDelaySeconds = 30;
+  try {
+    const { data: queueConfig, error: queueConfigError } = await sb
+      .from("message_queue_config")
+      .select("delay_seconds")
+      .eq("workspace_id", opts.workspaceId)
+      .eq("instance_name", instanceName)
+      .maybeSingle();
 
-  const delayMs = (Math.max(queueConfig?.delay_seconds || 30, 5)) * 1000;
+    if (queueConfigError) {
+      console.warn(`[recovery-dispatch] message_queue_config query error: ${queueConfigError.message} — using default 30s`);
+    } else if (queueConfig?.delay_seconds) {
+      configDelaySeconds = queueConfig.delay_seconds;
+    }
+  } catch (err: any) {
+    console.warn(`[recovery-dispatch] message_queue_config query failed: ${err.message} — using default 30s`);
+  }
+
+  const delayMs = Math.max(configDelaySeconds, 5) * 1000;
+  console.log(`[recovery-dispatch] Queue delay: ${delayMs}ms (config: ${configDelaySeconds}s) for instance: ${instanceName}`);
 
   // 9. Enqueue into the global message queue for this instance
   const queue = getMessageQueue(instanceName, delayMs);
@@ -327,7 +341,7 @@ export async function dispatchRecovery(opts: {
   const vars = { name: opts.customerName, amount: opts.amount };
 
   queue.enqueue(async () => {
-    // Re-check transaction status before sending (may have been paid)
+    // Re-check transaction status before sending
     const { data: tx } = await sb
       .from("transactions")
       .select("status")
@@ -340,17 +354,18 @@ export async function dispatchRecovery(opts: {
       return;
     }
 
-    console.log(`[recovery-dispatch] Sending ${blocks.length} block(s) to ${normalizedPhone} via ${instanceName}`);
+    console.log(`[recovery-dispatch] Sending ${blocks.length} block(s) to ${normalizedPhone} via ${instanceName} (delay between blocks: ${delayMs}ms)`);
 
-    // Send each block sequentially with a small delay between them
+    // Send each block sequentially with the CONFIGURED delay between them
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
       console.log(`[recovery-dispatch] Block ${i + 1}/${blocks.length}: type=${block.type}`);
       await sendBlock(block, vars, normalizedPhone, instanceName!, evoBaseUrl, evoApiKey, opts.transactionId, sb);
 
-      // Small delay between blocks (2s) to avoid rate limiting
+      // Use the configured delay between blocks (not a hardcoded 2s)
       if (i < blocks.length - 1) {
-        await new Promise((r) => setTimeout(r, 2000));
+        console.log(`[recovery-dispatch] Waiting ${delayMs}ms before next block...`);
+        await new Promise((r) => setTimeout(r, delayMs));
       }
     }
 
