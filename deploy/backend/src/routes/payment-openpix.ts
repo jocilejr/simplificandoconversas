@@ -114,7 +114,7 @@ router.post("/create", async (req: Request, res: Response) => {
         source: "openpix",
         external_id: correlationID,
         customer_name,
-        customer_phone: customer_phone || null,
+        customer_phone: normalizePhone(customer_phone),
         customer_email: customer_email || null,
         customer_document: customer_document || null,
         description: description || null,
