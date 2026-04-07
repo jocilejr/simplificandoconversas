@@ -38,132 +38,12 @@ import {
   RotateCcw,
   MessageSquareX,
   Settings,
-  Timer,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
-function MessageQueueSection({ instances }: { instances: any[] }) {
-  const { configs, upsertConfig } = useMessageQueueConfig();
-  const [localValues, setLocalValues] = useState<Record<string, { delay?: string; pauseSends?: string; pauseMin?: string }>>({});
 
-  const activeInstances = instances.filter((i: any) => i.is_active);
-  if (activeInstances.length === 0) return null;
-
-  const updateLocal = (name: string, field: string, value: string) => {
-    setLocalValues((prev) => ({ ...prev, [name]: { ...prev[name], [field]: value } }));
-  };
-
-  return (
-    <div className="border-t border-border pt-6 mt-6 space-y-4">
-      <div>
-        <h4 className="text-sm font-semibold flex items-center gap-2">
-          <Timer className="h-4 w-4 text-primary" />
-          Fila de Mensagens
-        </h4>
-        <p className="text-xs text-muted-foreground mt-1">
-          Define o intervalo entre mensagens e pausa automática por instância.
-        </p>
-      </div>
-      <div className="space-y-3">
-        {activeInstances.map((inst: any) => {
-          const cfg = configs.find((c: any) => c.instance_name === inst.instance_name);
-          const currentDelay = cfg?.delay_seconds || 30;
-          const currentPauseSends = cfg?.pause_after_sends ?? "";
-          const currentPauseMin = cfg?.pause_minutes ?? "";
-          const local = localValues[inst.instance_name] || {};
-
-          return (
-            <div key={inst.instance_name} className="p-3 rounded-lg border border-border/30 bg-secondary/10 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className={`h-2 w-2 rounded-full shrink-0 ${inst.status === "open" ? "bg-green-500" : "bg-red-500"}`} />
-                <span className="text-sm font-medium flex-1 truncate">{inst.instance_name}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">Intervalo</Label>
-                  <div className="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min={5}
-                      max={300}
-                      value={local.delay ?? String(currentDelay)}
-                      onChange={(e) => updateLocal(inst.instance_name, "delay", e.target.value)}
-                      className="h-8 text-sm text-center"
-                    />
-                    <span className="text-[10px] text-muted-foreground shrink-0">seg</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">Pausar após</Label>
-                  <div className="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min={1}
-                      placeholder="—"
-                      value={local.pauseSends ?? (currentPauseSends !== "" ? String(currentPauseSends) : "")}
-                      onChange={(e) => updateLocal(inst.instance_name, "pauseSends", e.target.value)}
-                      className="h-8 text-sm text-center"
-                    />
-                    <span className="text-[10px] text-muted-foreground shrink-0">msgs</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">Pausa de</Label>
-                  <div className="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min={1}
-                      placeholder="—"
-                      value={local.pauseMin ?? (currentPauseMin !== "" ? String(currentPauseMin) : "")}
-                      onChange={(e) => updateLocal(inst.instance_name, "pauseMin", e.target.value)}
-                      className="h-8 text-sm text-center"
-                    />
-                    <span className="text-[10px] text-muted-foreground shrink-0">min</span>
-                  </div>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full h-7 text-xs"
-                disabled={upsertConfig.isPending}
-                onClick={() => {
-                  const delay = Math.max(5, Math.min(300, parseInt(local.delay || String(currentDelay)) || 30));
-                  const pauseSends = local.pauseSends !== undefined
-                    ? (local.pauseSends === "" ? null : Math.max(1, parseInt(local.pauseSends) || 1))
-                    : (currentPauseSends !== "" ? currentPauseSends : null);
-                  const pauseMin = local.pauseMin !== undefined
-                    ? (local.pauseMin === "" ? null : Math.max(1, parseInt(local.pauseMin) || 1))
-                    : (currentPauseMin !== "" ? currentPauseMin : null);
-                  upsertConfig.mutate({
-                    instanceName: inst.instance_name,
-                    delaySeconds: delay,
-                    pauseAfterSends: pauseSends as number | null,
-                    pauseMinutes: pauseMin as number | null,
-                  }, {
-                    onSuccess: () => {
-                      toast({ title: "Configuração salva!" });
-                      setLocalValues((prev) => {
-                        const next = { ...prev };
-                        delete next[inst.instance_name];
-                        return next;
-                      });
-                    },
-                    onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
-                  });
-                }}
-              >
-                Salvar
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 export function ConnectionsSection() {
   const { workspaceId } = useWorkspace();
@@ -178,7 +58,6 @@ export function ConnectionsSection() {
     logoutInstance,
     deleteInstance,
     setActiveInstance,
-    updateDelay,
   } = useWhatsAppInstances();
 
   const [showNameDialog, setShowNameDialog] = useState(false);
@@ -189,7 +68,8 @@ export function ConnectionsSection() {
   const [syncing, setSyncing] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
-  const [delayInput, setDelayInput] = useState<Record<string, string>>({});
+  const { configs: queueConfigs, upsertConfig } = useMessageQueueConfig();
+  const [queueLocal, setQueueLocal] = useState<Record<string, { delay?: string; pauseSends?: string; pauseMin?: string }>>({});
 
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
@@ -466,46 +346,95 @@ export function ConnectionsSection() {
               )}
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => {
-                      const current = ((inst as any).message_delay_ms || 2000) / 1000;
-                      setDelayInput((prev) => ({ ...prev, [inst.instance_name]: String(current) }));
-                    }}
-                  >
+                  <Button variant="ghost" size="sm" className="text-xs">
                     <Settings className="h-3.5 w-3.5" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-56 p-3" align="end">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-foreground">Intervalo entre mensagens</label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={10}
-                        step={0.5}
-                        value={delayInput[inst.instance_name] ?? String(((inst as any).message_delay_ms || 2000) / 1000)}
-                        onChange={(e) => setDelayInput((prev) => ({ ...prev, [inst.instance_name]: e.target.value }))}
-                        className="h-8 text-sm"
-                      />
-                      <span className="text-xs text-muted-foreground shrink-0">seg</span>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="w-full h-7 text-xs"
-                      onClick={() => {
-                        const val = parseFloat(delayInput[inst.instance_name] || "2");
-                        const clamped = Math.min(10, Math.max(1, val));
-                        updateDelay.mutate({ instanceName: inst.instance_name, delayMs: clamped * 1000 });
-                      }}
-                      disabled={updateDelay.isPending}
-                    >
-                      Salvar
-                    </Button>
-                  </div>
+                <PopoverContent className="w-64 p-3" align="end">
+                  {(() => {
+                    const cfg = queueConfigs.find((c: any) => c.instance_name === inst.instance_name);
+                    const local = queueLocal[inst.instance_name] || {};
+                    const currentDelay = cfg?.delay_seconds || 30;
+                    const currentPauseSends = cfg?.pause_after_sends ?? "";
+                    const currentPauseMin = cfg?.pause_minutes ?? "";
+                    return (
+                      <div className="space-y-3">
+                        <p className="text-xs font-medium text-foreground">Fila de Mensagens</p>
+                        <div className="space-y-2">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Intervalo entre envios</Label>
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                type="number"
+                                min={5}
+                                max={300}
+                                value={local.delay ?? String(currentDelay)}
+                                onChange={(e) => setQueueLocal((prev) => ({ ...prev, [inst.instance_name]: { ...prev[inst.instance_name], delay: e.target.value } }))}
+                                className="h-8 text-sm text-center"
+                              />
+                              <span className="text-[10px] text-muted-foreground shrink-0">seg</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Pausar após</Label>
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                type="number"
+                                min={1}
+                                placeholder="—"
+                                value={local.pauseSends ?? (currentPauseSends !== "" ? String(currentPauseSends) : "")}
+                                onChange={(e) => setQueueLocal((prev) => ({ ...prev, [inst.instance_name]: { ...prev[inst.instance_name], pauseSends: e.target.value } }))}
+                                className="h-8 text-sm text-center"
+                              />
+                              <span className="text-[10px] text-muted-foreground shrink-0">msgs</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Pausa de</Label>
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                type="number"
+                                min={1}
+                                placeholder="—"
+                                value={local.pauseMin ?? (currentPauseMin !== "" ? String(currentPauseMin) : "")}
+                                onChange={(e) => setQueueLocal((prev) => ({ ...prev, [inst.instance_name]: { ...prev[inst.instance_name], pauseMin: e.target.value } }))}
+                                className="h-8 text-sm text-center"
+                              />
+                              <span className="text-[10px] text-muted-foreground shrink-0">min</span>
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full h-7 text-xs"
+                          disabled={upsertConfig.isPending}
+                          onClick={() => {
+                            const delay = Math.max(5, Math.min(300, parseInt(local.delay || String(currentDelay)) || 30));
+                            const pauseSends = local.pauseSends !== undefined
+                              ? (local.pauseSends === "" ? null : Math.max(1, parseInt(local.pauseSends) || 1))
+                              : (currentPauseSends !== "" ? Number(currentPauseSends) : null);
+                            const pauseMin = local.pauseMin !== undefined
+                              ? (local.pauseMin === "" ? null : Math.max(1, parseInt(local.pauseMin) || 1))
+                              : (currentPauseMin !== "" ? Number(currentPauseMin) : null);
+                            upsertConfig.mutate({
+                              instanceName: inst.instance_name,
+                              delaySeconds: delay,
+                              pauseAfterSends: pauseSends,
+                              pauseMinutes: pauseMin,
+                            }, {
+                              onSuccess: () => {
+                                toast({ title: "Configuração salva!" });
+                                setQueueLocal((prev) => { const n = { ...prev }; delete n[inst.instance_name]; return n; });
+                              },
+                              onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
+                            });
+                          }}
+                        >
+                          Salvar
+                        </Button>
+                      </div>
+                    );
+                  })()}
                 </PopoverContent>
               </Popover>
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(inst.instance_name)} disabled={deleteInstance.isPending} className="text-xs text-destructive hover:text-destructive">
@@ -602,8 +531,6 @@ export function ConnectionsSection() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Message Queue Config */}
-      <MessageQueueSection instances={instances} />
 
       {/* Delete all conversations section */}
       <div className="border-t border-border pt-6 mt-6">
