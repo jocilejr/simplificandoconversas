@@ -32,6 +32,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Manual payment webhook — proxy to backend
+    location /functions/v1/manual-payment/ {
+        proxy_pass http://backend:3001/api/manual-payment/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # OpenPix webhook — proxy to backend
     location /functions/v1/payment-openpix/ {
         proxy_pass http://backend:3001/api/payment-openpix/;
