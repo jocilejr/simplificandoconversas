@@ -17,6 +17,7 @@ export function useProfile() {
         .from("profiles")
         .select("*")
         .eq("user_id", user.id)
+        .limit(1)
         .maybeSingle();
 
       if (error) throw error;
