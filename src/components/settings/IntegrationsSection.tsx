@@ -348,11 +348,11 @@ export function IntegrationsSection() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-foreground">Eventos</p>
                   <div className="bg-muted rounded p-2 space-y-0.5">
-                    <p className="text-[11px] font-mono"><span className="text-yellow-400">payment_pending</span> → pendente</p>
-                    <p className="text-[11px] font-mono"><span className="text-green-400">payment_approved</span> → aprovado</p>
-                    <p className="text-[11px] font-mono"><span className="text-red-400">payment_refused</span> → rejeitado</p>
-                    <p className="text-[11px] font-mono"><span className="text-orange-400">payment_refunded</span> → reembolsado</p>
-                    <p className="text-[11px] font-mono"><span className="text-red-500">payment_chargeback</span> → chargeback</p>
+                    <p className="text-[11px] font-mono"><span className="text-muted-foreground">payment_pending</span> → pendente</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">payment_approved</span> → aprovado</p>
+                    <p className="text-[11px] font-mono"><span className="text-destructive">payment_refused</span> → rejeitado</p>
+                    <p className="text-[11px] font-mono"><span className="text-accent-foreground">payment_refunded</span> → reembolsado</p>
+                    <p className="text-[11px] font-mono"><span className="text-destructive">payment_chargeback</span> → chargeback</p>
                   </div>
                 </div>
 
