@@ -17,15 +17,15 @@ router.post("/", async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    const user = data.users.find(
-      (u) => u.email?.toLowerCase() === email.toLowerCase()
+    const user = (data?.users || []).find(
+      (u: any) => u.email?.toLowerCase() === email.toLowerCase()
     );
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json({ userId: user.id, email: user.email });
+    return res.json({ userId: user.id, email: (user as any).email });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -46,7 +46,7 @@ router.post("/batch", async (req, res) => {
     }
 
     const map: Record<string, string> = {};
-    for (const u of data.users) {
+    for (const u of (data?.users || []) as any[]) {
       if (userIds.includes(u.id) && u.email) {
         map[u.id] = u.email;
       }
