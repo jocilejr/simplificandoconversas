@@ -102,6 +102,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
+  const [quickRecoveryTx, setQuickRecoveryTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
   // Recovery hooks
