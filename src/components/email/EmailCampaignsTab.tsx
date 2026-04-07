@@ -102,7 +102,7 @@ export function EmailCampaignsTab() {
             if (user) {
               for (let i = 0; i < followUps.length; i++) {
                 await supabase.from("email_follow_ups").insert({
-                  campaign_id: data.id, user_id: user.id,
+                  campaign_id: data.id, user_id: user.id, workspace_id: workspaceId!,
                   template_id: followUps[i].templateId, delay_days: followUps[i].delayDays, step_order: i + 1,
                 });
               }

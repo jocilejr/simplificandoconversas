@@ -146,7 +146,7 @@ export function IntegrationsSection() {
     } else {
       ({ error } = await supabase
         .from("platform_connections")
-        .insert({ user_id: user.id, platform: configDialog.platform, credentials, enabled: true }));
+        .insert({ user_id: user.id, workspace_id: workspaceId!, platform: configDialog.platform, credentials, enabled: true }));
     }
 
     if (error) {
