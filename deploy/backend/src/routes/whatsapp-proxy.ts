@@ -93,7 +93,7 @@ router.post("/", async (req, res) => {
       const { data: activeInst, error: activeInstErr } = await supabase
         .from("whatsapp_instances")
         .select("instance_name")
-        .eq("user_id", userId)
+        .eq("workspace_id", workspaceId!)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle();
