@@ -176,6 +176,7 @@ router.post("/", async (req, res) => {
       console.log(`[yampi-webhook] Order #${orderNumber} saved as approved (${type})`);
 
     // ─── transaction.payment.refused ───
+    // Note: approved orders don't need recovery
     } else if (event === "transaction.payment.refused") {
       const tx = resource;
       const customer = extractCustomer(tx.customer);
