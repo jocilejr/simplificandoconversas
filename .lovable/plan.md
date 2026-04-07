@@ -1,80 +1,101 @@
 
 
-# Simplificação do Follow Up — Fonte de dados = Boletos Gerados
+# Correção: Webhook de boleto aprovado + validação de pendente
 
-## O que muda
+## Regra
 
-O Follow Up deixa de ter lógica própria de filtragem (source, metadata, boleto_file) e passa a usar **exatamente o mesmo filtro** da aba "Boletos Gerados" na página de Transações:
+**Evento approved**:
+1. Buscar no banco por `external_id`
+2. Se existir → atualizar status para `"aprovado"`, preencher `paid_at`, remover da `recovery_queue`
+3. Se NÃO existir → criar transação com `status = "aprovado"` e `paid_at`, mesmo sem dados completos (aparece na aba "Aprovados")
 
+**Evento pending (criação de novo)**:
+1. Só criar se tiver os 5 campos obrigatórios (barcode, CPF, nome, telefone, PDF URL)
+2. Se faltar algum → ignorar (return 200)
+
+## Alteração em `deploy/backend/src/routes/payment.ts`
+
+### Step 4 (linhas 640-738) — Bloco de criação de nova transação
+
+Substituir a lógica atual por:
+
+```text
+Se mpData.status === "approved":
+  → Criar transação com status "aprovado" + paid_at
+  → Sem exigir 5 campos (pagamento já feito, dados que tiver salva)
+  → NÃO enfileirar recovery
+
+Se mpData.status === "pending":
+  → Validar 5 campos:
+    - barcode (barcode.content OU digitable_line)
+    - CPF (payer.identification.number)
+    - Nome (payer.first_name)
+    - Telefone (payer.phone.number)
+    - PDF URL (external_resource_url OU ticket_url)
+  → Se faltar qualquer um → log + return 200
+  → Se tiver todos → criar + enfileirar recovery
+
+Qualquer outro status → ignorar
 ```
-type = "boleto" AND status = "pendente"
-```
 
-Quando um boleto muda de `pendente` para `aprovado`, ele simplesmente sai da query — remoção automática sem lógica extra.
+A lógica do Step 3 (transação já existe, linhas 604-638) já funciona corretamente — atualiza status e remove da recovery_queue quando approved.
 
-O Follow Up fica **desacoplado** do webhook e do dispatch. Ele apenas lê o que já existe no banco e aplica a régua.
+### Código concreto no Step 4
 
-## Alterações
-
-### 1. `src/hooks/useBoletoRecovery.ts` — Simplificar query
-
-**Antes**: Filtro complexo com `source = "mercadopago"`, paginação manual, filtro por `metadata.boleto_file`.
-
-**Depois**: Query simples e direta:
 ```typescript
-const { data, error } = await supabase
-  .from("transactions")
-  .select("*")
-  .eq("workspace_id", workspaceId)
-  .eq("type", "boleto")
-  .eq("status", "pendente")
-  .order("created_at", { ascending: false });
+// Step 4: Create new transaction
+if (mpData.status === "approved") {
+  // Boleto pago — criar registro direto como aprovado
+  await supabase.from("transactions").insert({
+    user_id: userId,
+    workspace_id: workspaceId,
+    amount: mpData.transaction_amount || 0,
+    type: resolveTransactionType(mpData.payment_method_id),
+    status: "aprovado",
+    source: "mercadopago",
+    external_id: String(mpData.id),
+    customer_name: mpData.payer?.first_name
+      ? `${mpData.payer.first_name} ${mpData.payer.last_name || ""}`.trim()
+      : null,
+    customer_email: mpData.payer?.email || null,
+    customer_phone: cleanPhone,
+    customer_document: mpData.payer?.identification?.number || null,
+    description: mpData.description || null,
+    payment_url: paymentUrl,
+    metadata: { ...metadataObj, created_by_webhook: true },
+    paid_at: mpData.date_approved || new Date().toISOString(),
+  });
+  return res.sendStatus(200);
+}
+
+if (mpData.status !== "pending") {
+  console.log(`[boleto-webhook] Ignoring status ${mpData.status}`);
+  return res.sendStatus(200);
+}
+
+// Status pending — exigir 5 campos obrigatórios
+const hasBarcode = !!(mpData.barcode?.content || mpData.transaction_details?.digitable_line);
+const hasCpf = !!mpData.payer?.identification?.number;
+const hasName = !!mpData.payer?.first_name;
+const hasPhone = !!(mpData.payer?.phone?.number);
+const hasPdf = !!(mpData.transaction_details?.external_resource_url ||
+                   mpData.point_of_interaction?.transaction_data?.ticket_url);
+
+if (!hasBarcode || !hasCpf || !hasName || !hasPhone || !hasPdf) {
+  console.log(`[boleto-webhook] Skipping pending — missing: barcode=${hasBarcode} cpf=${hasCpf} name=${hasName} phone=${hasPhone} pdf=${hasPdf}`);
+  return res.sendStatus(200);
+}
+
+// Criar transação pendente + enfileirar recovery (código existente)
 ```
 
-- Remove filtro de `source`
-- Remove filtro de `metadata.boleto_file`
-- Remove paginação manual (se houver mais de 1000, adicionar `.limit(2000)` ou paginar)
-- Mantém toda a lógica de régua (rules), contatos do dia, e cálculo de vencimento como está
+## Resultado
 
-### 2. `src/hooks/useBoletoRecovery.ts` — Adicionar realtime
-
-Para que boletos aprovados sumam automaticamente sem refresh manual:
-
-```typescript
-useEffect(() => {
-  const channel = supabase
-    .channel("followup-transactions")
-    .on("postgres_changes", {
-      event: "UPDATE",
-      schema: "public",
-      table: "transactions",
-    }, () => {
-      queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] });
-    })
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
-}, [queryClient]);
-```
-
-### 3. Backend — Sem alterações
-
-O `recovery-dispatch.ts` e `recovery-enqueue.ts` continuam existindo para o envio automático (quando habilitado). O Follow Up no frontend é apenas uma **visualização** dos boletos pendentes com a régua aplicada. São dois sistemas independentes:
-
-- **Follow Up (frontend)**: lê boletos pendentes + aplica régua + mostra na UI
-- **Recovery dispatch (backend)**: envia mensagens automaticamente quando um boleto é criado (se habilitado)
-
-O frontend não precisa saber nem se conectar com o dispatch.
-
-## Resultado esperado
-
-```
-Follow Up query:
-  transactions WHERE type = "boleto" AND status = "pendente"
-  → Aplica régua de cobrança (boleto_recovery_rules)
-  → Mostra no dashboard
-
-Boleto pago (status → aprovado):
-  → Sai automaticamente da query
-  → UI atualiza via realtime
+```text
+Webhook approved + existe no banco → atualiza para "aprovado" (já funciona)
+Webhook approved + NÃO existe → cria como "aprovado" (aparece em Aprovados)
+Webhook pending + 5 campos OK → cria como "pendente" (aparece no Follow Up)
+Webhook pending + falta campo → ignora
+Webhook outro status → ignora
 ```
 
