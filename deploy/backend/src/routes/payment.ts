@@ -347,7 +347,7 @@ router.post("/create", async (req: Request, res: Response) => {
           customerPhone: customer_phone,
           customerName: customer_name || null,
           amount: amount,
-          transactionType: isBoleto ? "boleto" : "pix",
+          transactionType: type === "boleto" ? "boleto" : "pix",
         });
       } catch (enqErr: any) {
         console.error("[payment] Recovery enqueue error:", enqErr.message);
