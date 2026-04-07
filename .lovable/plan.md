@@ -1,101 +1,40 @@
 
 
-# Super Admin + Permissões Granulares por Workspace
+## Redesign da Página de Transações
 
-## Visão Geral
+### Problema Atual
+- 4 stat cards com categorias confusas (Total, Aprovados, Boletos, PIX/Cartão Pendente)
+- Abas na tabela redundantes com os cards
+- Informações irrelevantes e layout pouco profissional
 
-Você (user_id `d2abc992...`) já tem `app_role = 'admin'` na tabela `user_roles`. Vamos usar isso como conceito de **Super Admin** — acesso total a TODOS os workspaces, sem precisar ser membro de cada um. Usuários comuns só veem os workspaces aos quais foram atribuídos, com permissões granulares por funcionalidade.
+### Nova Estrutura
 
-## Arquitetura
+**3 Stat Cards (resumo limpo):**
+1. **Total Geral** - soma de todas as transações + quantidade
+2. **Pagos** - status "aprovado" (verde)
+3. **Pendentes** - status "pendente" (amarelo)
 
-```text
-┌─────────────────────────────────────────┐
-│  user_roles.role = 'admin'              │  ← Super Admin (você)
-│  Vê TODOS os workspaces                 │
-│  Acesso total a TUDO                    │
-└─────────────────────────────────────────┘
+**3 Abas na tabela:**
+1. **Todos** - todas as transações
+2. **Pagos** - apenas aprovados
+3. **Pendentes** - apenas pendentes, com sub-filtro dropdown: "Todos pendentes", "Boleto (não pago)", "PIX pendente", "Cartão pendente"
 
-┌─────────────────────────────────────────┐
-│  workspace_members                      │  ← Usuários comuns
-│  + role (admin/operator/viewer)         │
-│  + permissions (jsonb) ← NOVO          │
-│  Só vê workspaces atribuídos            │
-│  Só vê abas/funcionalidades permitidas  │
-└─────────────────────────────────────────┘
-```
+**Melhorias na tabela:**
+- Remover coluna CPF (irrelevante na listagem, já aparece no detalhe)
+- Coluna de valor mais destacada
+- Status com badges mais profissionais
+- Layout mais limpo e espaçado
 
-## Mudanças
+### Arquivos Modificados
 
-### 1. Schema: Adicionar `permissions` em `workspace_members`
+1. **`src/pages/Transacoes.tsx`** - Reduzir de 4 para 3 stat cards (Total, Pagos, Pendentes), atualizar stats usados
+2. **`src/hooks/useTransactions.ts`** - Simplificar stats para: total, paid (aprovado), pending (pendente) com amounts
+3. **`src/components/transactions/TransactionsTable.tsx`** - Redesenhar abas (Todos/Pagos/Pendentes), adicionar dropdown de sub-filtro na aba Pendentes (Boleto/PIX/Cartão), remover coluna CPF da listagem, melhorar espaçamento e visual
+4. **`src/components/transactions/StatCard.tsx`** - Manter sem alterações (componente já está limpo)
 
-```sql
-ALTER TABLE workspace_members
-ADD COLUMN permissions jsonb NOT NULL DEFAULT '{}';
-```
+### Detalhes Técnicos
 
-O campo `permissions` armazena quais funcionalidades o membro pode acessar:
-```json
-{
-  "dashboard": true,
-  "chatbot": true,
-  "email": false,
-  "leads": true,
-  "transacoes": false,
-  "reminders": true,
-  "recuperacao": false,
-  "gerar_boleto": false,
-  "grupos": false,
-  "area_membros": false,
-  "entrega": false,
-  "links_uteis": false,
-  "settings": false,
-  "disparar_fluxo": false
-}
-```
-
-Super admins e workspace admins ignoram este campo (acesso total).
-
-### 2. Frontend: `useWorkspace.tsx`
-
-- Adicionar query para `user_roles` para detectar se o usuário é Super Admin
-- Se Super Admin: carregar TODOS os workspaces (não apenas os que tem membership), com role `"admin"` implícito
-- Expor `isSuperAdmin: boolean` e `permissions: Record<string, boolean>` no contexto
-
-### 3. Frontend: `AppSidebar.tsx`
-
-- Filtrar itens do menu baseado em `permissions` do workspace ativo
-- Super Admin e workspace admin veem tudo; outros veem apenas o permitido
-
-### 4. Frontend: `TeamSection.tsx` (Configurações > Equipe)
-
-- Ao adicionar/editar membro, exibir checkboxes para cada funcionalidade
-- Salvar no campo `permissions` do `workspace_members`
-- Super Admin pode gerenciar equipe de QUALQUER workspace
-
-### 5. Frontend: Proteção nas rotas/páginas
-
-- Cada página verifica se o usuário tem permissão via `useWorkspace().permissions`
-- Se não tem permissão, redireciona para dashboard ou mostra mensagem
-
-### 6. Frontend: `WorkspaceSwitcher.tsx`
-
-- Super Admin vê todos os workspaces no dropdown
-- Usuários comuns só veem os que são membros
-
-## Arquivos Modificados
-
-| Arquivo | Mudança |
-|---|---|
-| Migration SQL | Adicionar coluna `permissions` jsonb |
-| `src/hooks/useWorkspace.tsx` | Super Admin detection + permissions no contexto |
-| `src/components/AppSidebar.tsx` | Filtrar menu por permissions |
-| `src/components/settings/TeamSection.tsx` | UI de checkboxes para permissões granulares |
-| `src/components/WorkspaceSwitcher.tsx` | Super Admin vê todos workspaces |
-| `src/pages/*.tsx` (rotas protegidas) | Verificar permission antes de renderizar |
-
-## Resultado Final
-
-- **Você (Super Admin)**: vê TODOS os workspaces, acessa TUDO, gerencia equipe de qualquer workspace
-- **Usuários comuns**: só veem workspaces atribuídos, só acessam funcionalidades marcadas pelo admin
-- **Isolamento mantido**: dados continuam isolados por workspace_id via RLS
+- Sub-filtro de pendentes: `Select` dropdown que aparece ao lado das abas quando "Pendentes" está selecionado
+- Filtros: Boleto = `type === "boleto" && status === "pendente"`, PIX = `type === "pix" && status === "pendente"`, Cartão = `type === "cartao" || type === "card" && status === "pendente"`
+- Stats simplificados no hook: `paidCount`, `paidAmount`, `pendingCount`, `pendingAmount`
 
