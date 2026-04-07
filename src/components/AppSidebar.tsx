@@ -8,7 +8,6 @@ import {
   Bell,
   Mail,
   Receipt,
-  
   RefreshCw,
   FileText,
   UsersRound,
@@ -24,7 +23,7 @@ import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
-import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspace, PermissionKey } from "@/hooks/useWorkspace";
 import {
   Sidebar,
   SidebarContent,
@@ -42,28 +41,34 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
-const mainItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Fluxos", url: "/chatbot", icon: Workflow },
-  { title: "E-mail", url: "/email", icon: Mail },
-  { title: "Lembretes", url: "/reminders", icon: Bell },
+interface MenuItem {
+  title: string;
+  url: string;
+  icon: any;
+  permKey: PermissionKey;
+}
+
+const mainItems: MenuItem[] = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, permKey: "dashboard" },
+  { title: "Fluxos", url: "/chatbot", icon: Workflow, permKey: "chatbot" },
+  { title: "E-mail", url: "/email", icon: Mail, permKey: "email" },
+  { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
 ];
 
-const financeItems = [
-  { title: "Leads", url: "/leads", icon: Users },
-  { title: "Transações", url: "/transacoes", icon: Receipt },
-  
-  { title: "Recuperação", url: "/recuperacao", icon: RefreshCw },
-  { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText },
-  { title: "Grupos", url: "/grupos", icon: UsersRound },
-  { title: "Área de Membros", url: "/area-membros", icon: Crown },
-  { title: "Entrega Digital", url: "/entrega", icon: Package },
-  { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon },
+const financeItems: MenuItem[] = [
+  { title: "Leads", url: "/leads", icon: Users, permKey: "leads" },
+  { title: "Transações", url: "/transacoes", icon: Receipt, permKey: "transacoes" },
+  { title: "Recuperação", url: "/recuperacao", icon: RefreshCw, permKey: "recuperacao" },
+  { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
+  { title: "Grupos", url: "/grupos", icon: UsersRound, permKey: "grupos" },
+  { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
+  { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
+  { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon, permKey: "links_uteis" },
 ];
 
 function MenuGroup({ label, items, collapsed, isActive }: {
   label: string;
-  items: typeof mainItems;
+  items: MenuItem[];
   collapsed: boolean;
   isActive: (path: string) => boolean;
 }) {
@@ -109,7 +114,7 @@ export function AppSidebar() {
   const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
   const { profile } = useProfile();
-  const { isAdmin, canWrite } = useWorkspace();
+  const { hasPermission } = useWorkspace();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -118,6 +123,12 @@ export function AppSidebar() {
 
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "Usuário";
   const initials = displayName.slice(0, 2).toUpperCase();
+
+  // Filter menu items by permissions
+  const visibleMain = mainItems.filter((i) => hasPermission(i.permKey));
+  const visibleFinance = financeItems.filter((i) => hasPermission(i.permKey));
+  const canTriggerFlow = hasPermission("disparar_fluxo");
+  const canSettings = hasPermission("settings");
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -134,49 +145,61 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
-        <MenuGroup label="Menu" items={mainItems} collapsed={collapsed} isActive={isActive} />
+        {visibleMain.length > 0 && (
+          <MenuGroup label="Menu" items={visibleMain} collapsed={collapsed} isActive={isActive} />
+        )}
 
-        <Separator className="my-1 opacity-40" />
+        {visibleFinance.length > 0 && (
+          <>
+            <Separator className="my-1 opacity-40" />
+            <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} />
+          </>
+        )}
 
-        <MenuGroup label="Financeiro" items={financeItems} collapsed={collapsed} isActive={isActive} />
-
-        <Separator className="my-1 opacity-40" />
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-0.5 px-2">
-            Sistema
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="h-8 rounded-md transition-colors cursor-pointer hover:bg-sidebar-accent/80"
-                  onClick={() => setTriggerOpen(true)}
-                >
-                  <Send className="h-4 w-4" />
-                  {!collapsed && <span className="text-xs">Disparar Fluxo</span>}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive("/settings")}
-                  className="h-8 rounded-md transition-colors"
-                >
-                  <NavLink
-                    to="/settings"
-                    end
-                    className="hover:bg-sidebar-accent/80"
-                    activeClassName="bg-sidebar-accent text-primary font-medium"
-                  >
-                    <Settings className="h-4 w-4" />
-                    {!collapsed && <span className="text-xs">Configurações</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {(canTriggerFlow || canSettings) && (
+          <>
+            <Separator className="my-1 opacity-40" />
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-muted-foreground/60 font-semibold mb-0.5 px-2">
+                Sistema
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {canTriggerFlow && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        className="h-8 rounded-md transition-colors cursor-pointer hover:bg-sidebar-accent/80"
+                        onClick={() => setTriggerOpen(true)}
+                      >
+                        <Send className="h-4 w-4" />
+                        {!collapsed && <span className="text-xs">Disparar Fluxo</span>}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {canSettings && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive("/settings")}
+                        className="h-8 rounded-md transition-colors"
+                      >
+                        <NavLink
+                          to="/settings"
+                          end
+                          className="hover:bg-sidebar-accent/80"
+                          activeClassName="bg-sidebar-accent text-primary font-medium"
+                        >
+                          <Settings className="h-4 w-4" />
+                          {!collapsed && <span className="text-xs">Configurações</span>}
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-2">

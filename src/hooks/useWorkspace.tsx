@@ -1,7 +1,26 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+
+export const ALL_PERMISSIONS = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "chatbot", label: "Fluxos" },
+  { key: "email", label: "E-mail" },
+  { key: "reminders", label: "Lembretes" },
+  { key: "leads", label: "Leads" },
+  { key: "transacoes", label: "Transações" },
+  { key: "recuperacao", label: "Recuperação" },
+  { key: "gerar_boleto", label: "Gerar Boleto" },
+  { key: "grupos", label: "Grupos" },
+  { key: "area_membros", label: "Área de Membros" },
+  { key: "entrega", label: "Entrega Digital" },
+  { key: "links_uteis", label: "Links Úteis" },
+  { key: "settings", label: "Configurações" },
+  { key: "disparar_fluxo", label: "Disparar Fluxo" },
+] as const;
+
+export type PermissionKey = (typeof ALL_PERMISSIONS)[number]["key"];
 
 interface WorkspaceInfo {
   id: string;
@@ -9,6 +28,7 @@ interface WorkspaceInfo {
   slug: string;
   logo_url: string | null;
   role: string;
+  permissions: Record<string, boolean>;
 }
 
 interface WorkspaceContextType {
@@ -20,6 +40,9 @@ interface WorkspaceContextType {
   isOperator: boolean;
   isViewer: boolean;
   canWrite: boolean;
+  isSuperAdmin: boolean;
+  permissions: Record<string, boolean>;
+  hasPermission: (key: PermissionKey) => boolean;
   setActiveWorkspace: (id: string) => void;
   isLoading: boolean;
 }
@@ -33,6 +56,9 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
   isOperator: false,
   isViewer: false,
   canWrite: false,
+  isSuperAdmin: false,
+  permissions: {},
+  hasPermission: () => false,
   setActiveWorkspace: () => {},
   isLoading: true,
 });
@@ -43,13 +69,47 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     () => localStorage.getItem("active_workspace_id")
   );
 
+  // Check if user is Super Admin (app_role = 'admin')
+  const { data: isSuperAdmin = false } = useQuery({
+    queryKey: ["is-super-admin", user?.id],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user!.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      return !!data;
+    },
+  });
+
   const { data: workspaces = [], isLoading } = useQuery({
-    queryKey: ["workspaces", user?.id],
+    queryKey: ["workspaces", user?.id, isSuperAdmin],
     enabled: !!user,
     queryFn: async () => {
+      if (isSuperAdmin) {
+        // Super Admin: load ALL workspaces
+        const { data: ws, error } = await supabase
+          .from("workspaces")
+          .select("id, name, slug, logo_url")
+          .order("name");
+        if (error) throw error;
+        return (ws || []).map((w) => ({
+          id: w.id,
+          name: w.name,
+          slug: w.slug,
+          logo_url: w.logo_url,
+          role: "admin" as string,
+          permissions: {} as Record<string, boolean>, // super admin ignores permissions
+        }));
+      }
+
+      // Regular user: only workspaces they're members of
       const { data: members, error: mErr } = await supabase
         .from("workspace_members")
-        .select("workspace_id, role")
+        .select("workspace_id, role, permissions")
         .eq("user_id", user!.id);
       if (mErr) throw mErr;
       if (!members || members.length === 0) return [];
@@ -69,6 +129,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           slug: w.slug,
           logo_url: w.logo_url,
           role: member?.role || "viewer",
+          permissions: (member?.permissions as Record<string, boolean>) || {},
         };
       });
     },
@@ -92,6 +153,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const workspaceId = workspace?.id || null;
   const role = workspace?.role || null;
 
+  // Compute effective permissions
+  const fullAccess = isSuperAdmin || role === "admin";
+  const permissions = workspace?.permissions || {};
+
+  const hasPermission = (key: PermissionKey): boolean => {
+    if (fullAccess) return true;
+    // If permissions object is empty or key not set, default based on role
+    if (Object.keys(permissions).length === 0) {
+      // No granular permissions set — use role-based defaults
+      return role === "operator" || role === "admin";
+    }
+    return !!permissions[key];
+  };
+
   const setActiveWorkspace = (id: string) => {
     setActiveId(id);
     localStorage.setItem("active_workspace_id", id);
@@ -108,6 +183,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         isOperator: role === "operator",
         isViewer: role === "viewer",
         canWrite: role === "admin" || role === "operator",
+        isSuperAdmin,
+        permissions,
+        hasPermission,
         setActiveWorkspace,
         isLoading,
       }}

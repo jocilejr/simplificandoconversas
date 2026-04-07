@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspace, ALL_PERMISSIONS } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -35,15 +36,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, Loader2, Trash2, UserPlus, Shield, Eye, Pencil } from "lucide-react";
+import { Plus, Loader2, Trash2, UserPlus, Shield, Eye, Pencil, Settings2 } from "lucide-react";
 
 interface MemberRow {
   id: string;
   user_id: string;
   role: string;
+  permissions: Record<string, boolean>;
   created_at: string;
   profile?: { full_name: string | null; user_id: string } | null;
-  email?: string;
 }
 
 const roleLabels: Record<string, { label: string; icon: any; color: string }> = {
@@ -53,14 +54,19 @@ const roleLabels: Record<string, { label: string; icon: any; color: string }> = 
 };
 
 export function TeamSection() {
-  const { workspaceId, isAdmin } = useWorkspace();
+  const { workspaceId, isAdmin, isSuperAdmin } = useWorkspace();
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("operator");
+  const [invitePerms, setInvitePerms] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [editingMember, setEditingMember] = useState<MemberRow | null>(null);
+  const [editPerms, setEditPerms] = useState<Record<string, boolean>>({});
+
+  const canManage = isAdmin || isSuperAdmin;
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ["workspace-members", workspaceId],
@@ -68,11 +74,10 @@ export function TeamSection() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("workspace_members")
-        .select("id, user_id, role, created_at")
+        .select("id, user_id, role, permissions, created_at")
         .eq("workspace_id", workspaceId!);
       if (error) throw error;
 
-      // Fetch profiles for display names
       const userIds = (data || []).map((m) => m.user_id);
       const { data: profiles } = await supabase
         .from("profiles")
@@ -81,41 +86,15 @@ export function TeamSection() {
 
       return (data || []).map((m) => ({
         ...m,
+        permissions: (m.permissions as Record<string, boolean>) || {},
         profile: profiles?.find((p) => p.user_id === m.user_id) || null,
       })) as MemberRow[];
     },
   });
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim() || !workspaceId || !user) return;
-    setSaving(true);
-
-    // Look up user by email via profiles or auth - we need to find user_id by email
-    // Since we can't query auth.users, we'll try to find by looking at existing approach
-    // For now, lookup by checking if user exists via a workaround
-    const { data: existingProfiles } = await supabase
-      .from("profiles")
-      .select("user_id");
-    
-    // We need a different approach - let's use supabase admin to find users
-    // Since client can't query auth.users, we'll add member by user_id lookup
-    // For simplicity, let's check if there's a matching profile
-    // In a real scenario, this would use an edge function or backend endpoint
-    
-    toast({
-      title: "Convite por email",
-      description: "Para convidar usuários, compartilhe o email e peça para criar uma conta. Depois adicione pelo ID do usuário.",
-      variant: "destructive",
-    });
-    
-    setSaving(false);
-  };
-
   const handleAddByUserId = async () => {
     if (!inviteEmail.trim() || !workspaceId || !user) return;
     setSaving(true);
-
-    // Try to treat input as user_id (UUID) first
     const userId = inviteEmail.trim();
 
     const { error } = await supabase.from("workspace_members").insert({
@@ -123,6 +102,7 @@ export function TeamSection() {
       user_id: userId,
       role: inviteRole as "admin" | "operator" | "viewer",
       invited_by: user.id,
+      permissions: invitePerms,
     });
 
     if (error) {
@@ -133,6 +113,7 @@ export function TeamSection() {
       setShowInvite(false);
       setInviteEmail("");
       setInviteRole("operator");
+      setInvitePerms({});
     }
     setSaving(false);
   };
@@ -150,6 +131,23 @@ export function TeamSection() {
     }
   };
 
+  const handleSavePermissions = async () => {
+    if (!editingMember) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("workspace_members")
+      .update({ permissions: editPerms })
+      .eq("id", editingMember.id);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Permissões atualizadas!" });
+      qc.invalidateQueries({ queryKey: ["workspace-members"] });
+      setEditingMember(null);
+    }
+    setSaving(false);
+  };
+
   const handleRemove = async (memberId: string) => {
     const { error } = await supabase
       .from("workspace_members")
@@ -161,6 +159,17 @@ export function TeamSection() {
       toast({ title: "Membro removido!" });
       qc.invalidateQueries({ queryKey: ["workspace-members"] });
     }
+  };
+
+  const openEditPerms = (member: MemberRow) => {
+    setEditingMember(member);
+    setEditPerms({ ...member.permissions });
+  };
+
+  const toggleAll = (perms: Record<string, boolean>, set: (p: Record<string, boolean>) => void, val: boolean) => {
+    const updated: Record<string, boolean> = {};
+    ALL_PERMISSIONS.forEach((p) => { updated[p.key] = val; });
+    set(updated);
   };
 
   if (isLoading) {
@@ -180,7 +189,7 @@ export function TeamSection() {
             Gerencie os membros e permissões do workspace
           </p>
         </div>
-        {isAdmin && (
+        {canManage && (
           <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setShowInvite(true)}>
             <UserPlus className="h-3.5 w-3.5" />
             Adicionar Membro
@@ -195,6 +204,7 @@ export function TeamSection() {
           const isCurrentUser = member.user_id === user?.id;
           const roleInfo = roleLabels[member.role] || roleLabels.viewer;
           const RoleIcon = roleInfo.icon;
+          const isWsAdmin = member.role === "admin";
 
           return (
             <Card key={member.id}>
@@ -214,7 +224,7 @@ export function TeamSection() {
                   <p className="text-[11px] text-muted-foreground truncate">{member.user_id}</p>
                 </div>
 
-                {isAdmin && !isCurrentUser ? (
+                {canManage && !isCurrentUser ? (
                   <Select
                     value={member.role}
                     onValueChange={(val) => handleChangeRole(member.id, val)}
@@ -235,7 +245,20 @@ export function TeamSection() {
                   </Badge>
                 )}
 
-                {isAdmin && !isCurrentUser && (
+                {/* Permissions button - only for non-admins */}
+                {canManage && !isCurrentUser && !isWsAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                    onClick={() => openEditPerms(member)}
+                    title="Editar permissões"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+
+                {canManage && !isCurrentUser && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0">
@@ -262,8 +285,9 @@ export function TeamSection() {
         })}
       </div>
 
+      {/* Add Member Dialog */}
       <Dialog open={showInvite} onOpenChange={setShowInvite}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar Membro</DialogTitle>
             <DialogDescription>
@@ -288,11 +312,14 @@ export function TeamSection() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin" className="text-xs">Admin — Acesso total</SelectItem>
-                  <SelectItem value="operator" className="text-xs">Operador — Edita dados, sem configurações</SelectItem>
+                  <SelectItem value="operator" className="text-xs">Operador — Edita dados</SelectItem>
                   <SelectItem value="viewer" className="text-xs">Visualizador — Somente leitura</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {inviteRole !== "admin" && (
+              <PermissionsChecklist perms={invitePerms} setPerms={setInvitePerms} toggleAll={toggleAll} />
+            )}
           </div>
           <DialogFooter>
             <Button size="sm" className="text-xs" onClick={handleAddByUserId} disabled={saving || !inviteEmail.trim()}>
@@ -302,6 +329,66 @@ export function TeamSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Permissions Dialog */}
+      <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Permissões</DialogTitle>
+            <DialogDescription>
+              Defina quais funcionalidades este membro pode acessar.
+            </DialogDescription>
+          </DialogHeader>
+          <PermissionsChecklist perms={editPerms} setPerms={setEditPerms} toggleAll={toggleAll} />
+          <DialogFooter>
+            <Button size="sm" className="text-xs" onClick={handleSavePermissions} disabled={saving}>
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function PermissionsChecklist({
+  perms,
+  setPerms,
+  toggleAll,
+}: {
+  perms: Record<string, boolean>;
+  setPerms: (p: Record<string, boolean>) => void;
+  toggleAll: (p: Record<string, boolean>, set: (p: Record<string, boolean>) => void, val: boolean) => void;
+}) {
+  const allChecked = ALL_PERMISSIONS.every((p) => perms[p.key]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium">Funcionalidades permitidas</label>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-[10px] h-6 px-2"
+          onClick={() => toggleAll(perms, setPerms, !allChecked)}
+        >
+          {allChecked ? "Desmarcar tudo" : "Marcar tudo"}
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto">
+        {ALL_PERMISSIONS.map((p) => (
+          <label key={p.key} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/50 cursor-pointer">
+            <Checkbox
+              checked={!!perms[p.key]}
+              onCheckedChange={(checked) =>
+                setPerms({ ...perms, [p.key]: !!checked })
+              }
+            />
+            <span className="text-xs">{p.label}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

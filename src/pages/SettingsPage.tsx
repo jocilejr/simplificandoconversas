@@ -25,11 +25,11 @@ const allSections = [
 
 const SettingsPage = () => {
   useProfile(); // preload
-  const { role } = useWorkspace();
+  const { role, isSuperAdmin } = useWorkspace();
   const [active, setActive] = useState("profile");
 
   const roleLevel = (r: string) => r === "admin" ? 3 : r === "operator" ? 2 : 1;
-  const userLevel = roleLevel(role || "viewer");
+  const userLevel = isSuperAdmin ? 99 : roleLevel(role || "viewer");
   const sections = allSections.filter((s) => userLevel >= roleLevel(s.minRole));
 
 
