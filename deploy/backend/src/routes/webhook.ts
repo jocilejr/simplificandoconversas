@@ -953,7 +953,6 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
     await supabase.from("reminders").insert({
       user_id: userId,
       workspace_id: workspaceId,
-          workspace_id: workspaceId,
       title: args.title,
       description: contextLines || null,
       due_date: args.due_date,

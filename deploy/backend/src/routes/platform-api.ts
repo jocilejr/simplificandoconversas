@@ -7,6 +7,7 @@ const router = Router();
 // ── API Request Logger ──
 async function logApiRequest(
   userId: string,
+  wsId: string,
   req: Request,
   statusCode: number,
   responseSummary?: string
@@ -15,7 +16,7 @@ async function logApiRequest(
     const sb = getServiceClient();
     await sb.from("api_request_logs").insert({
       user_id: userId,
-      workspace_id: workspaceId,
+      workspace_id: wsId,
       method: req.method,
       path: req.originalUrl || req.path,
       status_code: statusCode,
