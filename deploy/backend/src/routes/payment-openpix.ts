@@ -157,12 +157,14 @@ router.get("/webhook", (_req: Request, res: Response) => {
 
 // ─── Helper: extract customer data from various payload shapes ───
 function extractCustomer(body: any, tx: any, charge: any) {
+  // Try multiple paths: customer, payer, debitParty.holder
+  const holder = tx?.debitParty?.holder || body?.pix?.debitParty?.holder || {};
   const raw = tx?.customer || charge?.customer || body?.customer || tx?.payer || body?.payer || {};
   
-  const name = raw.name || tx?.payer?.name || charge?.additionalInfo?.[0]?.value || null;
+  const name = raw.name || holder.name || tx?.payer?.name || charge?.additionalInfo?.[0]?.value || null;
   
   // taxID can be string or object { taxID, type }
-  const taxField = raw.taxID || raw.cpf || raw.document || null;
+  const taxField = raw.taxID || holder.taxID || raw.cpf || raw.document || null;
   const document = typeof taxField === "object" && taxField !== null ? taxField.taxID || null : taxField || null;
   
   const phone = raw.phone || tx?.payer?.phone || null;
