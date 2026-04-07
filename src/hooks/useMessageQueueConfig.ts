@@ -62,5 +62,5 @@ export function useMessageQueueConfig() {
     return config?.delay_seconds || 30;
   };
 
-  return { configs, isLoading, upsertDelay, getDelay };
+  return { configs, isLoading, upsertConfig, getDelay };
 }
