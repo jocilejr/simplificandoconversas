@@ -1,62 +1,86 @@
 
 
-## Expandir aba "Carrinhos" para incluir boletos com falha + mostrar erro correto
+## Nova Página de Follow Up (baseada no Finance Hub)
 
-### Problema atual
-1. A aba "Carrinhos" filtra apenas `type === "yampi_cart"` e `status === "abandonado"`, ignorando boletos que falharam
-2. Quando o Mercado Pago rejeita um boleto (CPF inválido, etc.), o backend retorna erro HTTP sem salvar nada no banco — a transação simplesmente desaparece
-3. Não há exibição do motivo do erro nas transações com falha
+A página /follow-up será uma réplica adaptada da seção de Recuperação do Finance Hub, com dashboard completo de boletos pendentes, régua de cobrança configurável, fila de recuperação em modo tinder, e hero card com progresso diário.
 
-### Plano de correção
+---
 
-#### 1) Backend: salvar transações com falha no banco (`deploy/backend/src/routes/payment.ts`)
-Quando o Mercado Pago retorna erro (ex: CPF inválido), em vez de apenas retornar o erro ao frontend, **também salvar a transação** no banco com:
-- `status: "rejeitado"`
-- `metadata.error_reason`: mensagem de erro do MP (ex: `"cc_rejected_bad_filled_card_number"`, `"2067 - invalid cpf"`)
-- `metadata.mp_error`: detalhes completos do erro
+### Novas tabelas no banco (migração)
 
-Isso permitirá que boletos com falha apareçam na listagem.
+Três tabelas precisam ser criadas na VPS:
 
-#### 2) Frontend: renomear e expandir o filtro da aba "Carrinhos" (`src/components/transactions/TransactionsTable.tsx`)
-Alterar o filtro `yampi-abandonados` para incluir:
-- Transações `yampi_cart` com status `abandonado` (carrinho abandonado Yampi — mantém)
-- Transações `boleto` com status `rejeitado` (boleto com falha de CPF, etc.)
-- Transações com status `rejeitado` de qualquer tipo
+1. **`boleto_settings`** — configuração de dias para vencimento
+   - `id`, `workspace_id`, `user_id`, `default_expiration_days` (default 3)
 
-O filtro ficará:
-```typescript
-"yampi-abandonados": transactions.filter(
-  (t) => (t.type === "yampi_cart" && t.status === "abandonado") ||
-         t.status === "rejeitado"
-),
-```
+2. **`boleto_recovery_rules`** — régua de cobrança com regras configuráveis
+   - `id`, `workspace_id`, `user_id`, `name`, `rule_type` (enum: days_after_generation, days_before_due, days_after_due), `days`, `message`, `is_active`, `priority`, `media_blocks` (jsonb)
 
-#### 3) Exibir o motivo do erro na tabela e no detalhe
-- Na coluna de **Status** da aba Carrinhos, quando a transação tiver `metadata.error_reason` ou `metadata.mp_error`, exibir um tooltip com o motivo do erro
-- No `TransactionDetailDialog.tsx`, adicionar uma seção de "Motivo do erro" que mostra `metadata.error_reason` ou `metadata.mp_status_detail` quando disponível
+3. **`boleto_recovery_contacts`** — rastreamento de contatos realizados por regra
+   - `id`, `workspace_id`, `user_id`, `transaction_id`, `rule_id`, `notes`, `created_at`
 
-#### 4) Mapear mensagens de erro do MP para português
-Criar um mapa de tradução dos erros comuns do Mercado Pago:
-- `"2067"` / `"invalid_identification_number"` → "CPF inválido"
-- `"cc_rejected_bad_filled_card_number"` → "Número do cartão inválido"
-- `"cc_rejected_insufficient_amount"` → "Saldo insuficiente"
-- Outros → mostrar a mensagem original
+Todas com RLS padrão do workspace (ws_select, ws_insert, ws_update, ws_delete).
+
+---
+
+### Novos arquivos
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `src/hooks/useBoletoRecovery.ts` | Hook que busca boletos pendentes, regras ativas, contatos do dia, e calcula vencimento/regra aplicável para cada boleto |
+| `src/components/followup/FollowUpHeroCard.tsx` | Card principal com stats do dia (valor a recuperar, enviados, resolvidos, progresso) |
+| `src/components/followup/FollowUpRulesConfig.tsx` | Dialog de configuração da régua de cobrança (criar/editar/remover regras com variáveis e mídia) |
+| `src/components/followup/FollowUpQueue.tsx` | Modal estilo tinder para percorrer boletos pendentes um a um (WhatsApp, copiar, marcar contactado, pular, deletar) |
+| `src/components/followup/FollowUpDashboard.tsx` | Dashboard principal com tabs Hoje/Pendentes/Vencidos/Todos, busca, lista de boletos |
+| `src/pages/FollowUp.tsx` | Página que monta BoletoAutoRecoveryToggle + FollowUpDashboard |
 
 ### Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `deploy/backend/src/routes/payment.ts` | Salvar transação com `status: "rejeitado"` quando MP retorna erro |
-| `src/components/transactions/TransactionsTable.tsx` | Expandir filtro da aba Carrinhos para incluir transações rejeitadas; exibir tooltip de erro |
-| `src/components/transactions/TransactionDetailDialog.tsx` | Mostrar motivo do erro quando disponível no metadata |
+| `src/components/AppSidebar.tsx` | Adicionar item "Follow Up" na seção Financeiro |
+| `src/App.tsx` | Adicionar rota `/follow-up` com PermissionGate |
+| `src/hooks/useWorkspace.tsx` | Adicionar permissão `follow_up` se necessário |
 
-### Fluxo após a correção
+---
 
-```text
-Usuário gera boleto com CPF inválido
-  → MP retorna erro 400
-  → Backend salva transação com status="rejeitado" + metadata.error_reason
-  → Transação aparece na aba "Carrinhos" com badge "Rejeitado"
-  → Tooltip/detalhe mostra "CPF inválido"
+### Funcionalidades principais
+
+1. **Hero Card** — mostra boletos do dia (baseados nas regras), valor total a recuperar, progresso (enviados/total), botão "Iniciar Recuperação" e "Configurar Régua"
+
+2. **Tabs de boletos**:
+   - **Hoje**: boletos que têm uma regra ativa aplicável para o dia
+   - **Pendentes**: boletos não vencidos
+   - **Vencidos**: boletos com vencimento passado
+   - **Todos**: todos os boletos não pagos
+
+3. **Régua de cobrança**: configuração de regras tipo "1 dia após geração", "1 dia antes do vencimento", "2 dias após vencimento" com mensagem personalizada usando variáveis ({saudação}, {nome}, {primeiro_nome}, {valor}, {vencimento}, {codigo_barras})
+
+4. **Modo Recuperação (Queue)**: modal que navega pelos boletos pendentes do dia um a um, com preview da mensagem formatada, botões de WhatsApp, copiar, marcar como contactado e pular
+
+5. **Busca**: filtro por nome, telefone, email ou código de barras
+
+---
+
+### Fluxo de dados
+
+O hook `useBoletoRecovery` busca:
+- Todos os boletos com `type = 'boleto'` e status diferente de pago/cancelado/expirado
+- Regras ativas da `boleto_recovery_rules`
+- Contatos já feitos hoje na `boleto_recovery_contacts`
+- Configuração de vencimento da `boleto_settings`
+
+Calcula para cada boleto: data de vencimento, dias até vencer, regra aplicável, se já foi contactado hoje, e formata a mensagem com as variáveis.
+
+---
+
+### VPS
+
+Após implementação, rodar na VPS:
+```bash
+docker compose exec -T postgres psql -U postgres -d postgres < migration.sql
+docker compose up -d --build backend
 ```
+
+O SQL da migração será fornecido junto com as instruções.
 
