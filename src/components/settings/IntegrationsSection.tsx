@@ -110,6 +110,7 @@ export function IntegrationsSection() {
   const { toast } = useToast();
   const { profile } = useProfile();
   const { workspaceId } = useWorkspace();
+  const [workspaceUrl, setWorkspaceUrl] = useState<string | null>(null);
   const [connections, setConnections] = useState<Record<string, { id: string; credentials: any; enabled: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [configDialog, setConfigDialog] = useState<Integration | null>(null);
