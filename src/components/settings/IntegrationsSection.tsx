@@ -25,6 +25,7 @@ interface Integration {
   icon: string;
   available: boolean;
   fields: { key: string; label: string; placeholder: string; type?: string }[];
+  webhookPath?: string;
 }
 
 const INTEGRATIONS: Integration[] = [
