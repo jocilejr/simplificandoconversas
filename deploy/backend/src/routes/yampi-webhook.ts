@@ -1,6 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { getServiceClient } from "../lib/supabase";
+import { enqueueRecovery } from "../lib/recovery-enqueue";
 
 const router = Router();
 
@@ -175,6 +176,7 @@ router.post("/", async (req, res) => {
       console.log(`[yampi-webhook] Order #${orderNumber} saved as approved (${type})`);
 
     // ─── transaction.payment.refused ───
+    // Note: approved orders don't need recovery
     } else if (event === "transaction.payment.refused") {
       const tx = resource;
       const customer = extractCustomer(tx.customer);
@@ -229,6 +231,16 @@ router.post("/", async (req, res) => {
       });
 
       console.log(`[yampi-webhook] Refused transaction ${txId} saved`);
+
+      // Enqueue for recovery
+      const refusedTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
+      if (refusedTxId) {
+        await enqueueRecovery({
+          workspaceId, userId, transactionId: refusedTxId,
+          customerPhone: customer.phone, customerName: customer.name,
+          amount, transactionType: type,
+        }).catch((e: any) => console.error("[yampi-webhook] enqueue error:", e.message));
+      }
 
     // ─── cart.reminder ───
     } else if (event === "cart.reminder") {
@@ -292,6 +304,16 @@ router.post("/", async (req, res) => {
       });
 
       console.log(`[yampi-webhook] Cart ${cartId} saved as abandoned (step: ${abandonedStep})`);
+
+      // Enqueue for recovery
+      const cartTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
+      if (cartTxId) {
+        await enqueueRecovery({
+          workspaceId, userId, transactionId: cartTxId,
+          customerPhone: customer.phone, customerName: customer.name,
+          amount, transactionType: "yampi_cart",
+        }).catch((e: any) => console.error("[yampi-webhook] enqueue error:", e.message));
+      }
 
     } else {
       console.log(`[yampi-webhook] Ignoring event: ${event}`);

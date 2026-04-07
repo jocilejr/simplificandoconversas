@@ -21,6 +21,8 @@ import paymentOpenpixRouter from "./routes/payment-openpix";
 import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
+import autoRecoveryRouter from "./routes/auto-recovery";
+import { processRecoveryQueue } from "./routes/auto-recovery";
 
 const app = express();
 app.use(cors());
@@ -41,6 +43,7 @@ app.use("/api/payment-openpix", paymentOpenpixRouter);
 app.use("/api/resolve-user-by-email", resolveUserRouter);
 app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
+app.use("/api/auto-recovery", autoRecoveryRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
@@ -61,6 +64,15 @@ cron.schedule("*/5 * * * *", async () => {
     await lightSync();
   } catch (err: any) {
     console.error("[cron] light-sync error:", err.message);
+  }
+});
+
+// Process recovery queue every 10 seconds
+cron.schedule("*/10 * * * * *", async () => {
+  try {
+    await processRecoveryQueue();
+  } catch (err: any) {
+    console.error("[cron] auto-recovery error:", err.message);
   }
 });
 

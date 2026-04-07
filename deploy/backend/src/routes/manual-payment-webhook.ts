@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { enqueueRecovery } from "../lib/recovery-enqueue";
 
 const router = Router();
 
@@ -151,6 +152,20 @@ router.post("/webhook", async (req, res) => {
     }
 
     console.log(`[manual-payment] Created ${newTx?.id} (${paymentType} ${txStatus})`);
+
+    // Enqueue for recovery if pending/rejected
+    if (newTx?.id && (txStatus === "pendente" || txStatus === "rejeitado")) {
+      await enqueueRecovery({
+        workspaceId,
+        userId,
+        transactionId: newTx.id,
+        customerPhone: cleanPhone,
+        customerName: customer_name || null,
+        amount: amount !== undefined ? Number(amount) : 0,
+        transactionType: paymentType,
+      }).catch((e: any) => console.error("[manual-payment] enqueue error:", e.message));
+    }
+
     return res.json({ ok: true, action: "created", id: newTx?.id });
   } catch (err: any) {
     console.error("[manual-payment] error:", err.message);
