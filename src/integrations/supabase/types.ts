@@ -1780,6 +1780,7 @@ export type Database = {
       }
       workspaces: {
         Row: {
+          api_public_url: string | null
           app_public_url: string | null
           created_at: string
           created_by: string
@@ -1790,6 +1791,7 @@ export type Database = {
           slug: string
         }
         Insert: {
+          api_public_url?: string | null
           app_public_url?: string | null
           created_at?: string
           created_by: string
@@ -1800,6 +1802,7 @@ export type Database = {
           slug: string
         }
         Update: {
+          api_public_url?: string | null
           app_public_url?: string | null
           created_at?: string
           created_by?: string

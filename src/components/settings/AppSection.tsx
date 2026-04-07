@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useProfile } from "@/hooks/useProfile";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { supabase } from "@/integrations/supabase/client";
 import { useMetaPixels, type MetaPixel } from "@/hooks/useMetaPixels";
 import { Loader2, Plus, Trash2, Pencil, Check, X, Eye, EyeOff, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -88,17 +90,27 @@ function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
 export function AppSection() {
   const { profile, updateProfile } = useProfile();
   const { pixels, isLoading: pixelsLoading, addPixel, updatePixel, deletePixel } = useMetaPixels();
+  const { workspaceId } = useWorkspace();
   const [appPublicUrl, setAppPublicUrl] = useState("");
+  const [apiPublicUrl, setApiPublicUrl] = useState("");
   const [showAddPixel, setShowAddPixel] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPixelId, setNewPixelId] = useState("");
   const [newAccessToken, setNewAccessToken] = useState("");
+  const { toast } = useToast();
 
   useEffect(() => {
     if (profile) {
       setAppPublicUrl(profile.app_public_url || "");
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    supabase.from("workspaces").select("api_public_url").eq("id", workspaceId).single().then(({ data }) => {
+      setApiPublicUrl(data?.api_public_url || "");
+    });
+  }, [workspaceId]);
 
   const handleAddPixel = () => {
     if (!newPixelId.trim() || !newAccessToken.trim()) return;
@@ -141,6 +153,38 @@ export function AppSection() {
             disabled={updateProfile.isPending}
           >
             {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            Salvar
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-lg">URL da API (Backend)</CardTitle>
+          <CardDescription>
+            URL do backend/API. Usada para gerar URLs de webhook nas integrações (Yampi, Mercado Pago, etc).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>URL da API</Label>
+            <Input
+              placeholder="https://api.seudominio.com"
+              value={apiPublicUrl}
+              onChange={(e) => setApiPublicUrl(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Ex: https://api.chatbotsimplificado.com
+            </p>
+          </div>
+          <Button
+            onClick={async () => {
+              if (!workspaceId) return;
+              const { error } = await supabase.from("workspaces").update({ api_public_url: apiPublicUrl }).eq("id", workspaceId);
+              if (error) toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+              else toast({ title: "URL da API salva!" });
+            }}
+          >
             Salvar
           </Button>
         </CardContent>
