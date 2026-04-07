@@ -229,6 +229,38 @@ router.post("/create", async (req: Request, res: Response) => {
 
     if (!mpResp.ok) {
       console.error("[payment] MP error:", JSON.stringify(mpData));
+
+      // Save failed transaction so it appears in "Carrinhos" tab
+      const errorCause = mpData?.cause?.[0];
+      const errorReason = errorCause
+        ? `${errorCause.code || ""} - ${errorCause.description || mpData.message || "Erro desconhecido"}`.trim()
+        : mpData?.message || "Erro desconhecido";
+
+      try {
+        await supabase.from("transactions").insert({
+          user_id: userId,
+          workspace_id: workspaceId,
+          amount: Number(amount),
+          type: type || "boleto",
+          status: "rejeitado",
+          source: "mercadopago",
+          external_id: null,
+          customer_name,
+          customer_phone: customer_phone || null,
+          customer_email: resolvedEmail || null,
+          customer_document: customer_document || null,
+          description: description || null,
+          payment_url: null,
+          metadata: {
+            error_reason: errorReason,
+            mp_error: mpData,
+          },
+        });
+        console.log(`[payment] Saved rejected transaction: ${errorReason}`);
+      } catch (saveErr: any) {
+        console.error("[payment] Failed to save rejected transaction:", saveErr.message);
+      }
+
       return res.status(mpResp.status).json({
         error: "Erro ao criar cobrança no Mercado Pago",
         details: mpData,

@@ -3,7 +3,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Download, User, Phone, Mail, FileText, Calendar, CreditCard } from "lucide-react";
+import { Copy, Download, User, Phone, Mail, FileText, Calendar, CreditCard, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -80,6 +80,9 @@ export function TransactionDetailDialog({ transaction, open, onClose }: Transact
           />
           {transaction.description && (
             <InfoRow icon={CreditCard} label="Descrição" value={transaction.description} />
+          )}
+          {(transaction.metadata as any)?.error_reason && (
+            <InfoRow icon={AlertTriangle} label="Motivo do erro" value={(transaction.metadata as any).error_reason} />
           )}
         </div>
 
