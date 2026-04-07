@@ -121,7 +121,7 @@ export function TeamSection() {
     const { error } = await supabase.from("workspace_members").insert({
       workspace_id: workspaceId,
       user_id: userId,
-      role: inviteRole as any,
+      role: inviteRole as "admin" | "operator" | "viewer",
       invited_by: user.id,
     });
 
