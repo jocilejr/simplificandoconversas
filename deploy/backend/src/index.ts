@@ -43,6 +43,7 @@ app.use("/api/payment-openpix", paymentOpenpixRouter);
 app.use("/api/resolve-user-by-email", resolveUserRouter);
 app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
+app.use("/api/auto-recovery", autoRecoveryRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);
