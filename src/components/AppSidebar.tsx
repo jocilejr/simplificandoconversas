@@ -14,6 +14,7 @@ import {
   Crown,
   Package,
   LinkIcon,
+  PhoneForwarded,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -63,6 +64,7 @@ const financeItems: MenuItem[] = [
   { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
   { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
   { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
+  { title: "Follow Up", url: "/follow-up", icon: PhoneForwarded, permKey: "recuperacao" },
 ];
 
 function MenuGroup({ label, items, collapsed, isActive }: {

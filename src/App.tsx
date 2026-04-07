@@ -23,6 +23,7 @@ import GruposPage from "./pages/GruposPage";
 import AreaMembros from "./pages/AreaMembros";
 import EntregaDigital from "./pages/EntregaDigital";
 import LinksUteis from "./pages/LinksUteis";
+import FollowUp from "./pages/FollowUp";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,6 +64,7 @@ const App = () => (
                 <Route path="/area-membros" element={<PermissionGate permission="area_membros" redirect><AreaMembros /></PermissionGate>} />
                 <Route path="/entrega" element={<PermissionGate permission="entrega" redirect><EntregaDigital /></PermissionGate>} />
                 <Route path="/links-uteis" element={<PermissionGate permission="links_uteis" redirect><LinksUteis /></PermissionGate>} />
+                <Route path="/follow-up" element={<PermissionGate permission="recuperacao" redirect><FollowUp /></PermissionGate>} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
