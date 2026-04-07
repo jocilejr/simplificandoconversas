@@ -201,7 +201,7 @@ export function useDashboardStats(period: PeriodFilter, customRange?: DateRange)
     todayReminders: todayReminders.data ?? 0,
     conversationsInPeriod: conversationsInPeriod.data ?? 0,
     activeFlows: activeFlows.data ?? 0,
-    messages: messagesInPeriod.data ?? { sent: 0, received: 0, total: 0 },
+    messages: { sent: messagesSent.data ?? 0, received: messagesReceived.data ?? 0, total: (messagesSent.data ?? 0) + (messagesReceived.data ?? 0) },
     executionsInPeriod: executionsInPeriod.data ?? 0,
     upcomingReminders: upcomingReminders.data ?? [],
     recentConversations: recentConversations.data ?? [],
