@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Check, Settings2, Loader2, Eye, EyeOff } from "lucide-react";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Integration {
@@ -24,6 +25,7 @@ interface Integration {
   icon: string;
   available: boolean;
   fields: { key: string; label: string; placeholder: string; type?: string }[];
+  webhookPath?: string;
 }
 
 const INTEGRATIONS: Integration[] = [
@@ -49,6 +51,7 @@ const INTEGRATIONS: Integration[] = [
     fields: [
       { key: "app_id", label: "App ID", placeholder: "Q2xpZW50ZV9JZC...", type: "password" },
     ],
+    webhookPath: "/functions/v1/payment-openpix/webhook",
   },
   {
     id: "stripe",
@@ -91,6 +94,7 @@ const INTEGRATIONS: Integration[] = [
 export function IntegrationsSection() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { profile } = useProfile();
   const [connections, setConnections] = useState<Record<string, { id: string; credentials: any; enabled: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [configDialog, setConfigDialog] = useState<Integration | null>(null);
@@ -260,6 +264,38 @@ export function IntegrationsSection() {
                 </div>
               </div>
             ))}
+
+            {configDialog?.webhookPath && connections[configDialog.platform] && (() => {
+              const baseUrl = profile?.app_public_url?.replace(/\/+$/, "") || "https://SEU-API-DOMAIN";
+              const webhookUrl = `${baseUrl}${configDialog.webhookPath}`;
+              return (
+                <div className="space-y-1.5 pt-2 border-t">
+                  <label className="text-xs font-medium">URL do Webhook</label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Copie e cole esta URL na plataforma {configDialog.name} para receber notificações
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={webhookUrl}
+                      className="font-mono text-[11px] bg-muted"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(webhookUrl);
+                        toast({ title: "URL do webhook copiada!" });
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <DialogFooter className="flex-row gap-2">
