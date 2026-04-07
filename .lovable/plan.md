@@ -1,30 +1,46 @@
 
 
-# Corrigir webhook OpenPix — Retornar 200 na validação
+# Corrigir webhook OpenPix — Criar transação quando não existe
 
 ## Problema
-1. A URL do webhook (`https://app.chatbotsimplificado.com/functions/v1/payment-openpix/webhook`) usa o **APP_DOMAIN**, mas o proxy `/functions/v1/` só existe no bloco **API_DOMAIN** do Nginx. O APP_DOMAIN retorna o `index.html` do SPA em vez de encaminhar para o backend.
-2. O endpoint só responde a `POST`. A OpenPix pode enviar um `GET` (ou `HEAD`) para validar que o endpoint retorna 200 antes de registrar.
+O webhook da OpenPix apenas faz `UPDATE` na tabela `transactions` buscando pelo `external_id` (correlationID). Se a cobrança foi criada diretamente no painel da OpenPix (e não pelo nosso sistema), não existe nenhuma transação correspondente no banco. O `UPDATE` afeta zero linhas e a transação nunca aparece.
 
-## Alterações
+## Solução
+Alterar o handler do webhook `OPENPIX:CHARGE_COMPLETED` para:
+1. Tentar o `UPDATE` normalmente
+2. Se nenhuma linha foi atualizada (`count === 0`), fazer `INSERT` de uma nova transação com os dados do payload do webhook
+3. Extrair dados do cliente (`charge.customer`) e valor (`charge.value` em centavos → reais) do payload
 
-### 1. Backend — Adicionar handler GET no webhook
-**`deploy/backend/src/routes/payment-openpix.ts`**
-- Adicionar `router.get("/webhook", ...)` que retorna `200 { ok: true }` para a validação da OpenPix
+## Alteração
 
-### 2. Nginx — Adicionar proxy no APP_DOMAIN para o webhook
-**`deploy/nginx/default.conf.template`**
-- Adicionar um bloco `location /functions/v1/payment-openpix/` no server do APP_DOMAIN que faz proxy para `http://backend:3001/api/payment-openpix/`
-- Sem CORS restritivo (webhook externo), sem exigir autenticação
+### `deploy/backend/src/routes/payment-openpix.ts` — webhook handler
 
-### 3. Frontend — Corrigir URL exibida (opcional)
-Se o `app_public_url` do perfil apontar para o API_DOMAIN, a URL já estaria correta. Mas como o usuário configurou o APP_DOMAIN, o fix no Nginx resolve o problema diretamente.
+No bloco `OPENPIX:CHARGE_COMPLETED`:
+- Capturar o resultado do `UPDATE` e verificar `count`
+- Se `count === 0`, identificar o `user_id` pela busca na `platform_connections` usando dados do webhook (ou buscar todas as conexões openpix ativas)
+- Inserir nova transação com:
+  - `source: 'openpix'`
+  - `type: 'pix'`
+  - `status: 'aprovado'`
+  - `paid_at` do payload
+  - `amount: charge.value / 100` (centavos → reais)
+  - `customer_name`, `customer_email`, `customer_phone`, `customer_document` do `charge.customer`
+  - `external_id: correlationID`
+  - `payment_url: charge.paymentLinkUrl`
 
-## Pós-deploy (VPS)
+Para o `OPENPIX:CHARGE_EXPIRED`, aplicar a mesma lógica (inserir com `status: 'cancelado'` se não existir).
+
+### Problema do `user_id`
+O webhook não carrega JWT. Para associar ao usuário correto:
+- Extrair o `user_id` do próprio `correlationID` (formato atual: `{userId}-{timestamp}-{random}`)
+- Se o correlationID não contiver o userId (cobrança criada fora do sistema), buscar na `platform_connections` qual usuário tem `platform = 'openpix'` com o `app_id` correspondente (usando header `Authorization` do webhook ou iterando conexões ativas)
+- Fallback: buscar o primeiro usuário com conexão openpix ativa
+
+### Arquivo modificado
+1. `deploy/backend/src/routes/payment-openpix.ts` — lógica de upsert no webhook
+
+### Pós-deploy (VPS)
 ```bash
 docker compose up -d --build backend
-docker compose restart nginx
 ```
-
-Depois, testar novamente o registro do webhook na OpenPix.
 
