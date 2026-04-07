@@ -438,7 +438,6 @@ router.post("/*", async (req, res) => {
       conversation_id: conv.id,
       user_id: userId,
       workspace_id: workspaceId,
-          workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: finalContent,
       message_type: messageType,
