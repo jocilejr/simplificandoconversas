@@ -406,7 +406,6 @@ router.post("/*", async (req, res) => {
       const upsertData: Record<string, unknown> = {
         user_id: userId,
         workspace_id: workspaceId,
-          workspace_id: workspaceId,
         remote_jid: remoteJid,
         last_message: lastMessagePreview,
         last_message_at: new Date().toISOString(),
