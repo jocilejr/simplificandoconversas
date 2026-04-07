@@ -25,9 +25,12 @@ export function useRecoverySettings() {
   const upsert = useMutation({
     mutationFn: async (values: {
       enabled?: boolean;
-      instance_name?: string;
+      instance_name?: string | null;
       delay_seconds?: number;
       send_after_minutes?: number;
+      instance_boleto?: string | null;
+      instance_pix?: string | null;
+      instance_yampi?: string | null;
     }) => {
       if (!workspaceId || !user?.id) throw new Error("No workspace");
 

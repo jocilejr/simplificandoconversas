@@ -104,11 +104,9 @@ export async function processRecoveryQueue() {
     try {
       const workspaceId = settings.workspace_id;
       const delaySeconds = Math.max(settings.delay_seconds || 20, 20);
-      const instanceName = settings.instance_name;
 
-      if (!instanceName) {
-        continue;
-      }
+      // Determine instance based on transaction type (will be checked per item)
+      const defaultInstance = settings.instance_name;
 
       // Check if enough time passed since last send
       const { data: lastSent } = await sb
@@ -140,6 +138,18 @@ export async function processRecoveryQueue() {
 
       if (!item) continue;
 
+      // Determine the instance for this transaction type
+      const txType = item.transaction_type;
+      let instanceName: string | null = null;
+      if (txType === "boleto") instanceName = settings.instance_boleto || defaultInstance;
+      else if (txType === "yampi_cart" || txType === "yampi") instanceName = settings.instance_yampi || defaultInstance;
+      else instanceName = settings.instance_pix || defaultInstance;
+
+      if (!instanceName) {
+        console.log(`[auto-recovery] No instance configured for type ${txType} in workspace ${workspaceId}`);
+        continue;
+      }
+
       // Check if transaction is still pending (may have been paid in the meantime)
       const { data: tx } = await sb
         .from("transactions")
@@ -169,7 +179,7 @@ export async function processRecoveryQueue() {
         .maybeSingle();
 
       // Choose message template based on type
-      const isBoleto = item.transaction_type === "boleto";
+      const isBoleto = txType === "boleto";
       const defaultMsg = isBoleto
         ? `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`
         : `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;

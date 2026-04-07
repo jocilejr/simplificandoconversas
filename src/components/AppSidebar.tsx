@@ -60,7 +60,6 @@ const mainItems: MenuItem[] = [
 const financeItems: MenuItem[] = [
   { title: "Leads", url: "/leads", icon: Users, permKey: "leads" },
   { title: "Transações", url: "/transacoes", icon: Receipt, permKey: "transacoes" },
-  { title: "Recuperação", url: "/recuperacao", icon: RefreshCw, permKey: "recuperacao" },
   { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
   { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
   { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
