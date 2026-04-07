@@ -32,13 +32,6 @@ const SettingsPage = () => {
   const userLevel = roleLevel(role || "viewer");
   const sections = allSections.filter((s) => userLevel >= roleLevel(s.minRole));
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   const renderContent = () => {
     switch (active) {

@@ -54,10 +54,14 @@ export function useWhatsAppInstances() {
     isLoading: isRemoteLoading,
   } = useQuery({
     queryKey: ["whatsapp-remote-instances"],
+    staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "fetch-instances" },
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+          body: { action: "fetch-instances", workspaceId },
+        });
       // Detect stub response from edge function error or data content
       if (error) {
         // Edge function 503 = self-hosted backend not available
