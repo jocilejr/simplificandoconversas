@@ -155,6 +155,22 @@ router.get("/webhook", (_req: Request, res: Response) => {
   return res.json({ ok: true });
 });
 
+// ─── Helper: extract customer data from various payload shapes ───
+function extractCustomer(body: any, tx: any, charge: any) {
+  const raw = tx?.customer || charge?.customer || body?.customer || tx?.payer || body?.payer || {};
+  
+  const name = raw.name || tx?.payer?.name || charge?.additionalInfo?.[0]?.value || null;
+  
+  // taxID can be string or object { taxID, type }
+  const taxField = raw.taxID || raw.cpf || raw.document || null;
+  const document = typeof taxField === "object" && taxField !== null ? taxField.taxID || null : taxField || null;
+  
+  const phone = raw.phone || tx?.payer?.phone || null;
+  const email = raw.email || tx?.payer?.email || null;
+
+  return { name, document, phone, email };
+}
+
 // ─── Helper: resolve user_id from correlationID or platform_connections ───
 async function resolveUserId(correlationID: string, supabase: any): Promise<string | null> {
   // Try extracting from correlationID format: {userId}-{timestamp}-{random}
@@ -185,7 +201,8 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const body = req.body;
     const event = body.event || "";
 
-    console.log(`[openpix webhook] Event: ${event}, body keys: ${Object.keys(body).join(",")}`);
+    console.log(`[openpix webhook] Event: ${event}`);
+    console.log(`[openpix webhook] FULL BODY:`, JSON.stringify(body, null, 2));
 
     const supabase = getServiceClient();
 
@@ -195,9 +212,9 @@ router.post("/webhook", async (req: Request, res: Response) => {
       const charge = tx.charge || body.charge || {};
       const corrId = charge.correlationID || tx.endToEndId || tx.globalID || `openpix-${Date.now()}`;
       const valueCents = tx.value || charge.value || 0;
-      const customer = tx.customer || charge.customer || {};
+      const customer = extractCustomer(body, tx, charge);
 
-      console.log(`[openpix webhook] TRANSACTION_RECEIVED corrId=${corrId} value=${valueCents}`);
+      console.log(`[openpix webhook] TRANSACTION_RECEIVED corrId=${corrId} value=${valueCents} customer=${JSON.stringify(customer)}`);
 
       // Check if already exists
       const { data: existing } = await supabase
@@ -208,12 +225,15 @@ router.post("/webhook", async (req: Request, res: Response) => {
         .maybeSingle();
 
       if (existing) {
-        // Update to aprovado
         await supabase
           .from("transactions")
           .update({
             status: "aprovado",
             paid_at: tx.time || new Date().toISOString(),
+            customer_name: customer.name,
+            customer_document: customer.document,
+            customer_phone: customer.phone,
+            customer_email: customer.email,
             metadata: {
               correlation_id: corrId,
               end_to_end_id: tx.endToEndId || null,
@@ -223,7 +243,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
           .eq("id", existing.id);
         console.log(`[openpix webhook] TRANSACTION_RECEIVED ${corrId} → UPDATE aprovado`);
       } else {
-        // Insert new
         const userId = await resolveUserId(corrId, supabase);
         if (!userId) {
           console.warn("[openpix webhook] Could not resolve user_id for TRANSACTION_RECEIVED, skipping");
@@ -237,10 +256,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
           status: "aprovado",
           source: "openpix",
           external_id: corrId,
-          customer_name: customer.name || null,
-          customer_email: customer.email || null,
-          customer_phone: customer.phone || null,
-          customer_document: customer.taxID?.taxID || null,
+          customer_name: customer.name,
+          customer_email: customer.email,
+          customer_phone: customer.phone,
+          customer_document: customer.document,
           payment_url: charge.paymentLinkUrl || null,
           paid_at: tx.time || new Date().toISOString(),
           metadata: {
@@ -255,7 +274,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
-    // ── CHARGE_COMPLETED / CHARGE_EXPIRED (existing logic) ──
+    // ── CHARGE_COMPLETED / CHARGE_EXPIRED ──
     const charge = body.charge || {};
     const correlationID = charge.correlationID || "";
 
@@ -266,6 +285,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
     if (event === "OPENPIX:CHARGE_COMPLETED") {
       const pix = Array.isArray(body.pix) ? body.pix[0] : body.pix;
+      const customer = extractCustomer(body, pix || {}, charge);
       const updateMeta = {
         openpix_charge_id: charge.id || null,
         correlation_id: correlationID,
@@ -278,6 +298,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
         .update({
           status: "aprovado",
           paid_at: pix?.time || new Date().toISOString(),
+          customer_name: customer.name,
+          customer_document: customer.document,
+          customer_phone: customer.phone,
+          customer_email: customer.email,
           metadata: updateMeta,
         })
         .eq("external_id", correlationID)
@@ -290,7 +314,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
           return res.sendStatus(200);
         }
 
-        const customer = charge.customer || {};
         const valueCents = charge.value || 0;
 
         await supabase.from("transactions").insert({
@@ -300,10 +323,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
           status: "aprovado",
           source: "openpix",
           external_id: correlationID,
-          customer_name: customer.name || null,
-          customer_email: customer.email || null,
-          customer_phone: customer.phone || null,
-          customer_document: customer.taxID?.taxID || null,
+          customer_name: customer.name,
+          customer_email: customer.email,
+          customer_phone: customer.phone,
+          customer_document: customer.document,
           payment_url: charge.paymentLinkUrl || null,
           paid_at: pix?.time || new Date().toISOString(),
           metadata: updateMeta,
@@ -314,6 +337,8 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.log(`[openpix webhook] Charge ${correlationID} → UPDATE aprovado`);
       }
     } else if (event === "OPENPIX:CHARGE_EXPIRED") {
+      const customer = extractCustomer(body, {}, charge);
+
       const { count } = await supabase
         .from("transactions")
         .update({ status: "cancelado" })
@@ -327,7 +352,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
           return res.sendStatus(200);
         }
 
-        const customer = charge.customer || {};
         const valueCents = charge.value || 0;
 
         await supabase.from("transactions").insert({
@@ -337,10 +361,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
           status: "cancelado",
           source: "openpix",
           external_id: correlationID,
-          customer_name: customer.name || null,
-          customer_email: customer.email || null,
-          customer_phone: customer.phone || null,
-          customer_document: customer.taxID?.taxID || null,
+          customer_name: customer.name,
+          customer_email: customer.email,
+          customer_phone: customer.phone,
+          customer_document: customer.document,
           payment_url: charge.paymentLinkUrl || null,
           metadata: { correlation_id: correlationID, openpix_charge_id: charge.id || null },
         });
