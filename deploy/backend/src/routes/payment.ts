@@ -320,7 +320,7 @@ router.post("/create", async (req: Request, res: Response) => {
         source: "mercadopago",
         external_id: String(mpData.id),
         customer_name,
-        customer_phone: customer_phone || null,
+        customer_phone: normalizePhone(customer_phone),
         customer_email: resolvedEmail || null,
         customer_document: customer_document || null,
         description: description || null,
