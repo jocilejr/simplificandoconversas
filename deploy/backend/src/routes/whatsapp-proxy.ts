@@ -84,7 +84,6 @@ router.post("/", async (req, res) => {
 
     const supabase = getServiceClient();
 
-    const body = req.body;
     const { action, ...params } = body;
 
     if (!action) return res.status(400).json({ error: "action required" });
