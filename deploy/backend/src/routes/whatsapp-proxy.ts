@@ -557,7 +557,7 @@ router.post("/", async (req, res) => {
         try {
           const { data: lidConvs } = await serviceClient.from("conversations")
             .select("id, remote_jid, lid")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .is("phone_number", null)
             .not("lid", "is", null);
 
