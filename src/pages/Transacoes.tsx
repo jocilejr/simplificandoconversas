@@ -28,31 +28,24 @@ const Transacoes = () => {
         />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
-          title="Total"
+          title="Total Geral"
           value={formatCurrency(stats.totalAmount)}
           subtitle={`${stats.total} transações`}
           icon={DollarSign}
         />
         <StatCard
-          title="Aprovados"
-          value={formatCurrency(stats.approvedAmount)}
-          subtitle={`${stats.approvedCount} transações`}
+          title="Pagos"
+          value={formatCurrency(stats.paidAmount)}
+          subtitle={`${stats.paidCount} transações`}
           icon={CheckCircle}
           iconColor="text-green-500"
         />
         <StatCard
-          title="Boletos"
-          value={formatCurrency(stats.boletosAmount)}
-          subtitle={`${stats.boletosCount} transações`}
-          icon={Receipt}
-          iconColor="text-blue-500"
-        />
-        <StatCard
-          title="PIX/Cartão Pendente"
-          value={formatCurrency(stats.pixCartaoPendenteAmount)}
-          subtitle={`${stats.pixCartaoPendenteCount} transações`}
+          title="Pendentes"
+          value={formatCurrency(stats.pendingAmount)}
+          subtitle={`${stats.pendingCount} transações`}
           icon={Clock}
           iconColor="text-yellow-500"
         />
