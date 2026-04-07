@@ -19,14 +19,24 @@ export function useMessageQueueConfig() {
     enabled: !!workspaceId,
   });
 
-  const upsertDelay = useMutation({
-    mutationFn: async ({ instanceName, delaySeconds }: { instanceName: string; delaySeconds: number }) => {
+  const upsertConfig = useMutation({
+    mutationFn: async (params: {
+      instanceName: string;
+      delaySeconds?: number;
+      pauseAfterSends?: number | null;
+      pauseMinutes?: number | null;
+    }) => {
       if (!workspaceId) throw new Error("No workspace");
-      const existing = configs.find((c: any) => c.instance_name === instanceName);
+      const existing = configs.find((c: any) => c.instance_name === params.instanceName);
+      const values: any = {};
+      if (params.delaySeconds !== undefined) values.delay_seconds = params.delaySeconds;
+      if (params.pauseAfterSends !== undefined) values.pause_after_sends = params.pauseAfterSends;
+      if (params.pauseMinutes !== undefined) values.pause_minutes = params.pauseMinutes;
+
       if (existing) {
         const { error } = await supabase
           .from("message_queue_config" as any)
-          .update({ delay_seconds: delaySeconds })
+          .update(values)
           .eq("id", existing.id);
         if (error) throw error;
       } else {
@@ -34,8 +44,10 @@ export function useMessageQueueConfig() {
           .from("message_queue_config" as any)
           .insert({
             workspace_id: workspaceId,
-            instance_name: instanceName,
-            delay_seconds: delaySeconds,
+            instance_name: params.instanceName,
+            delay_seconds: params.delaySeconds ?? 30,
+            pause_after_sends: params.pauseAfterSends ?? null,
+            pause_minutes: params.pauseMinutes ?? null,
           });
         if (error) throw error;
       }
@@ -50,5 +62,5 @@ export function useMessageQueueConfig() {
     return config?.delay_seconds || 30;
   };
 
-  return { configs, isLoading, upsertDelay, getDelay };
+  return { configs, isLoading, upsertConfig, getDelay };
 }

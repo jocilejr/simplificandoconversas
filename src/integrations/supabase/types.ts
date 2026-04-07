@@ -1373,6 +1373,8 @@ export type Database = {
           delay_seconds: number
           id: string
           instance_name: string
+          pause_after_sends: number | null
+          pause_minutes: number | null
           updated_at: string
           workspace_id: string
         }
@@ -1381,6 +1383,8 @@ export type Database = {
           delay_seconds?: number
           id?: string
           instance_name: string
+          pause_after_sends?: number | null
+          pause_minutes?: number | null
           updated_at?: string
           workspace_id: string
         }
@@ -1389,6 +1393,8 @@ export type Database = {
           delay_seconds?: number
           id?: string
           instance_name?: string
+          pause_after_sends?: number | null
+          pause_minutes?: number | null
           updated_at?: string
           workspace_id?: string
         }
