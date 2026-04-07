@@ -38,6 +38,82 @@ const STATUS_MAP: Record<string, string> = {
   charged_back: "estornado",
 };
 
+/**
+ * Download and save the boleto PDF to the local filesystem.
+ * Returns the public path (/media/userId/boletos/mpId.pdf) or null on failure.
+ */
+async function downloadAndSaveBoletoPdf(
+  paymentUrl: string,
+  userId: string,
+  mpId: string | number
+): Promise<string | null> {
+  if (!paymentUrl) {
+    console.warn("[payment] No paymentUrl provided for boleto PDF download");
+    return null;
+  }
+
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[payment] Downloading boleto PDF attempt ${attempt}/${maxRetries}: ${paymentUrl}`);
+      const pdfResp = await fetch(paymentUrl, {
+        headers: { "Accept": "application/pdf" },
+        redirect: "follow",
+      });
+
+      if (!pdfResp.ok) {
+        console.warn(`[payment] PDF download HTTP ${pdfResp.status} on attempt ${attempt}`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return null;
+      }
+
+      const contentType = pdfResp.headers.get("content-type") || "";
+      const buffer = Buffer.from(await pdfResp.arrayBuffer());
+
+      // Validate it's actually a PDF (check magic bytes %PDF)
+      if (buffer.length < 5) {
+        console.warn(`[payment] PDF response too small (${buffer.length} bytes) on attempt ${attempt}`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return null;
+      }
+
+      const header = buffer.subarray(0, 5).toString("ascii");
+      if (!header.startsWith("%PDF")) {
+        // It might be HTML (redirect page) — not a real PDF
+        console.warn(`[payment] Response is not PDF (starts with "${header}", content-type: ${contentType}) on attempt ${attempt}`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return null;
+      }
+
+      // Save to filesystem
+      const dir = `/media-files/${userId}/boletos`;
+      await fs.mkdir(dir, { recursive: true });
+      const filePath = path.join(dir, `${mpId}.pdf`);
+      await fs.writeFile(filePath, buffer);
+      const publicPath = `/media/${userId}/boletos/${mpId}.pdf`;
+      console.log(`[payment] Boleto PDF saved successfully: ${filePath} (${buffer.length} bytes)`);
+      return publicPath;
+    } catch (err: any) {
+      console.error(`[payment] PDF download error on attempt ${attempt}:`, err.message);
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+    }
+  }
+
+  return null;
+}
+
 // ─── POST /create ───
 router.post("/create", async (req: Request, res: Response) => {
   try {
@@ -134,8 +210,6 @@ router.post("/create", async (req: Request, res: Response) => {
         };
       }
     }
-    // Download and save boleto PDF to filesystem
-    let boletoFilePath: string | null = null;
 
     const mpResp = await fetch(`${MP_API}/v1/payments`, {
       method: "POST",
@@ -171,23 +245,12 @@ router.post("/create", async (req: Request, res: Response) => {
     const qrCodeBase64 =
       mpData.point_of_interaction?.transaction_data?.qr_code_base64 || "";
 
-    // Save boleto PDF to filesystem if boleto type
+    // Download and save boleto PDF
+    let boletoFilePath: string | null = null;
     if (type === "boleto" && paymentUrl) {
-      try {
-        const dir = `/media-files/${userId}/boletos`;
-        await fs.mkdir(dir, { recursive: true });
-        const filePath = path.join(dir, `${mpData.id}.pdf`);
-        const pdfResp = await fetch(paymentUrl);
-        if (pdfResp.ok) {
-          const buffer = Buffer.from(await pdfResp.arrayBuffer());
-          await fs.writeFile(filePath, buffer);
-          boletoFilePath = `/media/${userId}/boletos/${mpData.id}.pdf`;
-          console.log(`[payment] Boleto PDF saved: ${filePath}`);
-        } else {
-          console.warn(`[payment] Failed to download boleto PDF: ${pdfResp.status}`);
-        }
-      } catch (pdfErr: any) {
-        console.warn("[payment] Error saving boleto PDF:", pdfErr.message);
+      boletoFilePath = await downloadAndSaveBoletoPdf(paymentUrl, userId, mpData.id);
+      if (!boletoFilePath) {
+        console.error(`[payment] FAILED to save boleto PDF for MP payment ${mpData.id}. Will save transaction without file.`);
       }
     }
 
@@ -292,10 +355,20 @@ router.post("/webhook", async (req: Request, res: Response) => {
       const newStatus = STATUS_MAP[mpData.status] || mpData.status;
       const supabase = getServiceClient();
 
-      // Update transaction
+      // Fetch existing metadata to MERGE (not overwrite)
+      const { data: existing } = await supabase
+        .from("transactions")
+        .select("metadata")
+        .eq("external_id", String(paymentId))
+        .eq("source", "mercadopago")
+        .single();
+
+      const existingMeta = (existing?.metadata as any) || {};
+
       const updateData: any = {
         status: newStatus,
         metadata: {
+          ...existingMeta,
           mp_status: mpData.status,
           mp_status_detail: mpData.status_detail,
           payment_method: mpData.payment_method_id,
@@ -319,6 +392,69 @@ router.post("/webhook", async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("[payment webhook] error:", err.message);
     return res.sendStatus(200);
+  }
+});
+
+// ─── GET /boleto-pdf/:transactionId ─── On-demand PDF fetch/serve
+router.get("/boleto-pdf/:transactionId", async (req: Request, res: Response) => {
+  try {
+    const supabase = getServiceClient();
+    const { data: tx, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("id", req.params.transactionId)
+      .single();
+
+    if (error || !tx) {
+      return res.status(404).json({ error: "Transação não encontrada" });
+    }
+
+    if (tx.type !== "boleto") {
+      return res.status(400).json({ error: "Transação não é boleto" });
+    }
+
+    const meta = (tx.metadata as any) || {};
+
+    // Check if file already exists on disk
+    if (meta.boleto_file) {
+      const fsPath = (meta.boleto_file as string).replace("/media/", "/media-files/");
+      try {
+        await fs.access(fsPath);
+        // File exists, serve it
+        const buffer = await fs.readFile(fsPath);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="boleto-${tx.external_id}.pdf"`);
+        return res.send(buffer);
+      } catch {
+        // File doesn't exist on disk, try to re-download
+        console.log(`[payment] boleto_file path exists in DB but not on disk: ${fsPath}`);
+      }
+    }
+
+    // Try to download from payment_url
+    if (!tx.payment_url) {
+      return res.status(404).json({ error: "Nenhum link de pagamento disponível para este boleto" });
+    }
+
+    const savedPath = await downloadAndSaveBoletoPdf(tx.payment_url, tx.user_id, tx.external_id || tx.id);
+    if (savedPath) {
+      // Update metadata with the new file path
+      await supabase
+        .from("transactions")
+        .update({ metadata: { ...meta, boleto_file: savedPath } })
+        .eq("id", tx.id);
+
+      const fsPath = savedPath.replace("/media/", "/media-files/");
+      const buffer = await fs.readFile(fsPath);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="boleto-${tx.external_id}.pdf"`);
+      return res.send(buffer);
+    }
+
+    return res.status(404).json({ error: "Não foi possível obter o PDF do boleto" });
+  } catch (err: any) {
+    console.error("[payment] boleto-pdf error:", err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 
