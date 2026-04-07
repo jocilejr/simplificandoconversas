@@ -80,6 +80,7 @@ export function useBoletoRecovery() {
           .select("*")
           .eq("workspace_id", workspaceId!)
           .eq("type", "boleto")
+          .eq("source", "mercadopago")
           .not("status", "in", '("pago","cancelado","expirado")')
           .order("created_at", { ascending: false })
           .range(from, from + pageSize - 1);
