@@ -16,6 +16,7 @@ import emailRouter from "./routes/email";
 import analyzeCsvRouter from "./routes/analyze-csv-contacts";
 import paymentRouter from "./routes/payment";
 import paymentOpenpixRouter from "./routes/payment-openpix";
+import resolveUserRouter from "./routes/resolve-user";
 
 const app = express();
 app.use(cors());
@@ -33,6 +34,7 @@ app.use("/api/email", emailRouter);
 app.use("/api/analyze-csv-contacts", analyzeCsvRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/payment-openpix", paymentOpenpixRouter);
+app.use("/api/resolve-user-by-email", resolveUserRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);

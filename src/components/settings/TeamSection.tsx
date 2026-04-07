@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace, ALL_PERMISSIONS } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { apiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,6 +46,7 @@ interface MemberRow {
   permissions: Record<string, boolean>;
   created_at: string;
   profile?: { full_name: string | null; user_id: string } | null;
+  email?: string;
 }
 
 const roleLabels: Record<string, { label: string; icon: any; color: string }> = {
@@ -84,37 +86,79 @@ export function TeamSection() {
         .select("user_id, full_name")
         .in("user_id", userIds);
 
+      // Fetch emails from backend
+      let emailMap: Record<string, string> = {};
+      try {
+        const res = await fetch(apiUrl("resolve-user-by-email/batch"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userIds }),
+        });
+        if (res.ok) {
+          const body = await res.json();
+          emailMap = body.emails || {};
+        }
+      } catch {
+        // emails won't show, but it's not critical
+      }
+
       return (data || []).map((m) => ({
         ...m,
         permissions: (m.permissions as Record<string, boolean>) || {},
         profile: profiles?.find((p) => p.user_id === m.user_id) || null,
+        email: emailMap[m.user_id] || undefined,
       })) as MemberRow[];
     },
   });
 
-  const handleAddByUserId = async () => {
+  const handleAddByEmail = async () => {
     if (!inviteEmail.trim() || !workspaceId || !user) return;
     setSaving(true);
-    const userId = inviteEmail.trim();
+    const email = inviteEmail.trim().toLowerCase();
 
-    const { error } = await supabase.from("workspace_members").insert({
-      workspace_id: workspaceId,
-      user_id: userId,
-      role: inviteRole as "admin" | "operator" | "viewer",
-      invited_by: user.id,
-      permissions: invitePerms,
-    });
-
-    if (error) {
-      toast({ title: "Erro ao adicionar membro", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Membro adicionado!" });
-      qc.invalidateQueries({ queryKey: ["workspace-members"] });
-      setShowInvite(false);
-      setInviteEmail("");
-      setInviteRole("operator");
-      setInvitePerms({});
+    try {
+      const res = await fetch(apiUrl("resolve-user-by-email"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({
+          title: "Usuário não encontrado",
+          description: body.error || "Nenhum usuário com este email foi encontrado.",
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+      const { userId: foundUserId } = await res.json();
+      const { error } = await supabase.from("workspace_members").insert({
+        workspace_id: workspaceId,
+        user_id: foundUserId,
+        role: inviteRole as "admin" | "operator" | "viewer",
+        invited_by: user.id,
+        permissions: invitePerms,
+      });
+      if (error) {
+        toast({ title: "Erro ao adicionar membro", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Membro adicionado!" });
+        qc.invalidateQueries({ queryKey: ["workspace-members"] });
+        setShowInvite(false);
+        setInviteEmail("");
+        setInviteRole("operator");
+        setInvitePerms({});
+      }
+    } catch {
+      toast({ title: "Erro de conexão", description: "Não foi possível conectar ao servidor.", variant: "destructive" });
     }
+
+    toast({
+      title: "Usuário não encontrado",
+      description: "Nenhum usuário com este email foi encontrado. Verifique se ele já criou uma conta.",
+      variant: "destructive",
+    });
     setSaving(false);
   };
 
@@ -221,7 +265,7 @@ export function TeamSection() {
                       <Badge variant="outline" className="text-[10px] h-4">Você</Badge>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate">{member.user_id}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{member.email || member.user_id}</p>
                 </div>
 
                 {canManage && !isCurrentUser ? (
@@ -291,17 +335,17 @@ export function TeamSection() {
           <DialogHeader>
             <DialogTitle>Adicionar Membro</DialogTitle>
             <DialogDescription>
-              Informe o ID do usuário (UUID) para adicionar ao workspace.
+              Informe o email do usuário para adicionar ao workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">ID do Usuário</label>
+              <label className="text-xs font-medium">Email do Usuário</label>
               <Input
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                placeholder="usuario@exemplo.com"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                className="text-xs font-mono"
+                className="text-xs"
               />
             </div>
             <div className="space-y-1.5">
@@ -322,7 +366,7 @@ export function TeamSection() {
             )}
           </div>
           <DialogFooter>
-            <Button size="sm" className="text-xs" onClick={handleAddByUserId} disabled={saving || !inviteEmail.trim()}>
+            <Button size="sm" className="text-xs" onClick={handleAddByEmail} disabled={saving || !inviteEmail.trim()}>
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
               Adicionar
             </Button>
