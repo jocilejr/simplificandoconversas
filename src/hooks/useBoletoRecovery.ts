@@ -64,40 +64,37 @@ export function useBoletoRecovery() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Query 1: unpaid boletos
+  // Realtime: auto-refresh when transactions change status
+  useEffect(() => {
+    const channel = supabase
+      .channel("followup-transactions")
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "transactions",
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
+
+  // Query 1: unpaid boletos — same source as "Boletos Gerados" tab
   const { data: unpaidBoletos, isLoading } = useQuery({
     queryKey: ["unpaid-boletos", workspaceId],
     staleTime: 60000,
     enabled: !!workspaceId,
     queryFn: async () => {
-      const all: Transaction[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from("transactions")
-          .select("*")
-          .eq("workspace_id", workspaceId!)
-          .eq("type", "boleto")
-          .eq("source", "mercadopago")
-          .not("status", "in", '("pago","cancelado","expirado")')
-          .order("created_at", { ascending: false })
-          .range(from, from + pageSize - 1);
-        if (error) throw error;
-        if (data && data.length > 0) {
-          all.push(...(data as Transaction[]));
-          from += pageSize;
-          hasMore = data.length === pageSize;
-        } else {
-          hasMore = false;
-        }
-      }
-      // Only show boletos that actually have a PDF generated (real boletos, not webhook-created card payments)
-      return all.filter((tx) => {
-        const meta = tx.metadata as any;
-        return meta?.boleto_file;
-      });
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("workspace_id", workspaceId!)
+        .eq("type", "boleto")
+        .eq("status", "pendente")
+        .order("created_at", { ascending: false })
+        .limit(2000);
+      if (error) throw error;
+      return (data || []) as Transaction[];
     },
   });
 
