@@ -170,36 +170,19 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1">
-                <Clock className="h-3 w-3" /> Delay entre mensagens
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={20}
-                  value={delaySeconds}
-                  onChange={(e) => setDelaySeconds(Number(e.target.value))}
-                  className="h-8 text-sm"
-                />
-                <span className="text-xs text-muted-foreground whitespace-nowrap">seg</span>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs flex items-center gap-1">
-                <Clock className="h-3 w-3" /> Espera antes de enviar
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  value={sendAfterMinutes}
-                  onChange={(e) => setSendAfterMinutes(Number(e.target.value))}
-                  className="h-8 text-sm"
-                />
-                <span className="text-xs text-muted-foreground whitespace-nowrap">min</span>
-              </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs flex items-center gap-1">
+              <Clock className="h-3 w-3" /> Espera antes de enviar
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                value={sendAfterMinutes}
+                onChange={(e) => setSendAfterMinutes(Number(e.target.value))}
+                className="h-8 text-sm"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">min</span>
             </div>
           </div>
 
