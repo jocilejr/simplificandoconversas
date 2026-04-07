@@ -123,14 +123,14 @@ async function sendBlock(
     const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
     const fileName = `boleto-${firstName}.pdf`;
 
-    console.log(`[recovery-dispatch] Sending PDF block (local base64) from ${fsPath}`);
+    console.log(`[recovery-dispatch] Sending PDF block from ${fsPath} (${pdfBase64.length} chars base64)`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({
         number: phone,
         mediatype: "document",
-        media: mediaData,
+        media: pdfBase64,
         fileName,
         mimetype: "application/pdf",
       }),
