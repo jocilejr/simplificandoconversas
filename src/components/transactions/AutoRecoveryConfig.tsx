@@ -113,7 +113,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   const handleSave = () => {
     upsert.mutate({
-      delay_seconds: delaySeconds,
       send_after_minutes: sendAfterMinutes,
       instance_boleto: instanceBoleto || null,
       instance_pix: instancePix || null,
