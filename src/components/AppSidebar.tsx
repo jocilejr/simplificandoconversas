@@ -146,7 +146,7 @@ export function AppSidebar() {
 
       <SidebarContent className="px-2">
         {visibleMain.length > 0 && (
-          <MenuGroup label="Menu" items={visibleMain} collapsed={collapsed} isActive={isActive} />
+          <MenuGroup label="Operacional" items={visibleMain} collapsed={collapsed} isActive={isActive} />
         )}
 
         {visibleFinance.length > 0 && (
