@@ -41,6 +41,7 @@ const INTEGRATIONS: Integration[] = [
       { key: "access_token", label: "Access Token", placeholder: "APP_USR-...", type: "password" },
       { key: "public_key", label: "Public Key", placeholder: "APP_USR-...", type: "password" },
     ],
+    webhookPath: "/api/payment/webhook/boleto",
   },
   {
     id: "openpix",
