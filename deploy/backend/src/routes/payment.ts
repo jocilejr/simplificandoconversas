@@ -613,7 +613,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       } else if (mpData.status === "pending" && tx.customer_phone) {
         try {
           const workspaceId = tx.workspace_id || (await resolveWorkspaceId(tx.user_id));
-          await enqueueRecovery({
+          await dispatchRecovery({
             workspaceId,
             userId: tx.user_id,
             transactionId: tx.id,
