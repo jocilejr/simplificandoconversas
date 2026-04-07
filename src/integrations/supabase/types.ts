@@ -1291,6 +1291,47 @@ export type Database = {
           },
         ]
       }
+      followup_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          instance_name: string | null
+          send_after_minutes: number
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          instance_name?: string | null
+          send_after_minutes?: number
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          instance_name?: string | null
+          send_after_minutes?: number
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "followup_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           color: string
@@ -1319,6 +1360,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "fk_labels_workspace"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_queue_config: {
+        Row: {
+          created_at: string
+          delay_seconds: number
+          id: string
+          instance_name: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          delay_seconds?: number
+          id?: string
+          instance_name: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          delay_seconds?: number
+          id?: string
+          instance_name?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_queue_config_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
