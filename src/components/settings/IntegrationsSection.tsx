@@ -364,7 +364,6 @@ export function IntegrationsSection() {
                   <div className="bg-muted rounded p-2 space-y-0.5">
                     <p className="text-[11px] font-mono"><span className="text-primary">workspace_id</span> — UUID do workspace</p>
                     <p className="text-[11px] font-mono"><span className="text-primary">event</span> — evento (ver abaixo)</p>
-                    <p className="text-[11px] font-mono"><span className="text-primary">external_id</span> — ID único do seu sistema</p>
                   </div>
                 </div>
 
