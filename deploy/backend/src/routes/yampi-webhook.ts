@@ -305,6 +305,16 @@ router.post("/", async (req, res) => {
 
       console.log(`[yampi-webhook] Cart ${cartId} saved as abandoned (step: ${abandonedStep})`);
 
+      // Enqueue for recovery
+      const cartTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
+      if (cartTxId) {
+        await enqueueRecovery({
+          workspaceId, userId, transactionId: cartTxId,
+          customerPhone: customer.phone, customerName: customer.name,
+          amount, transactionType: "yampi_cart",
+        }).catch((e: any) => console.error("[yampi-webhook] enqueue error:", e.message));
+      }
+
     } else {
       console.log(`[yampi-webhook] Ignoring event: ${event}`);
     }
