@@ -763,6 +763,12 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
         open={boletoTemplateOpen}
         onOpenChange={setBoletoTemplateOpen}
       />
+
+      <BoletoQuickRecovery
+        open={!!quickRecoveryTx}
+        onOpenChange={(v) => !v && setQuickRecoveryTx(null)}
+        transaction={quickRecoveryTx}
+      />
     </div>
   );
 }
