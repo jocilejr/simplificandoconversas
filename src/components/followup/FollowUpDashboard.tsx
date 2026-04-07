@@ -85,7 +85,7 @@ export function FollowUpDashboard() {
     );
   }
 
-  const renderTable = (boletos: BoletoWithRecovery[], showProgress = false) => {
+  const renderTable = (boletos: BoletoWithRecovery[]) => {
     const visible = boletos.slice(0, visibleCount);
     if (boletos.length === 0) {
       return (
@@ -97,12 +97,6 @@ export function FollowUpDashboard() {
     }
     return (
       <div className="space-y-3">
-        {showProgress && stats.totalToday > 0 && (
-          <div className="flex items-center gap-3 px-1">
-            <Progress value={progressPercent} className="h-1.5 flex-1" />
-            <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">{stats.sentToday}/{stats.totalToday} enviados</span>
-          </div>
-        )}
         {/* Desktop table */}
         <div className="hidden md:block overflow-hidden rounded-lg border border-border/30">
           <table className="w-full text-sm">
@@ -116,14 +110,14 @@ export function FollowUpDashboard() {
                 <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/30">
+            <tbody className="divide-y divide-border/20">
               {visible.map((boleto) => (
                 <tr key={boleto.id} className="hover:bg-secondary/40 cursor-pointer transition-colors" onClick={() => setSelectedBoleto(boleto)}>
                   <td className="py-3 px-4">
-                    <span className="font-medium truncate max-w-[180px] block">{boleto.customer_name || "Cliente"}</span>
+                    <span className="font-medium truncate max-w-[200px] block">{boleto.customer_name || "Cliente"}</span>
                   </td>
-                  <td className="py-3 px-4 text-muted-foreground">{boleto.customer_phone || "—"}</td>
-                  <td className="py-3 px-4 text-right font-medium">{formatCurrency(boleto.amount)}</td>
+                  <td className="py-3 px-4 text-muted-foreground text-xs">{boleto.customer_phone || "—"}</td>
+                  <td className="py-3 px-4 text-right font-semibold">{formatCurrency(boleto.amount)}</td>
                   <td className="py-3 px-4">
                     <span className={boleto.isOverdue ? "text-destructive font-medium" : "text-muted-foreground"}>
                       {format(boleto.dueDate, "dd/MM/yy", { locale: ptBR })}
@@ -131,19 +125,19 @@ export function FollowUpDashboard() {
                   </td>
                   <td className="py-3 px-4">
                     {boleto.contactedToday ? (
-                      <Badge variant="outline" className="bg-green-500/20 text-green-600 border-green-500/30 text-[10px] gap-1"><CheckCircle2 className="h-3 w-3" />Enviado</Badge>
+                      <Badge variant="outline" className="bg-green-500/15 text-green-500 border-green-500/25 text-[10px] gap-1 font-medium"><CheckCircle2 className="h-3 w-3" />Enviado</Badge>
                     ) : boleto.isOverdue ? (
-                      <Badge variant="outline" className="bg-destructive/20 text-destructive border-destructive/30 text-[10px] gap-1"><AlertTriangle className="h-3 w-3" />Vencido</Badge>
+                      <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><AlertTriangle className="h-3 w-3" />Vencido</Badge>
                     ) : boleto.applicableRule ? (
-                      <Badge variant="outline" className="bg-blue-500/20 text-blue-600 border-blue-500/30 text-[10px] gap-1"><Clock className="h-3 w-3" />{boleto.applicableRule.name}</Badge>
+                      <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25 text-[10px] gap-1 font-medium"><Clock className="h-3 w-3" />{boleto.applicableRule.name}</Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30 text-[10px]">Pendente</Badge>
+                      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] font-medium">Pendente</Badge>
                     )}
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
                       {boleto.customer_phone && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleWhatsApp(boleto.customer_phone!, boleto.formattedMessage || undefined)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" onClick={() => handleWhatsApp(boleto.customer_phone!, boleto.formattedMessage || undefined)}>
                           <Phone className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -190,84 +184,112 @@ export function FollowUpDashboard() {
   };
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-      {/* Sidebar */}
-      <div className="sm:w-64 shrink-0 space-y-4">
-        <div className="bg-card border border-border/30 rounded-xl p-4 space-y-1">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Follow Up</h2>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] })}>
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-
-          <div className="divide-y divide-border/30">
-            <div className="flex items-center gap-3 py-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><DollarSign className="h-4 w-4 text-muted-foreground" /></div>
-              <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider">Valor Total</p><p className="text-base font-bold">{formatCurrency(stats.todayValue)}</p></div>
-            </div>
-            <div className="flex items-center gap-3 py-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><Timer className="h-4 w-4 text-muted-foreground" /></div>
-              <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pendentes</p><p className="text-base font-bold">{stats.pendingToday}</p></div>
-            </div>
-            <div className="flex items-center gap-3 py-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><Send className="h-4 w-4 text-muted-foreground" /></div>
-              <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider">Enviados</p><p className="text-base font-bold">{stats.sentToday} <span className="text-xs text-muted-foreground font-normal">/ {stats.totalToday}</span></p></div>
-            </div>
-            <div className="flex items-center gap-3 py-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><AlertTriangle className="h-4 w-4 text-muted-foreground" /></div>
-              <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider">Vencidos</p><p className="text-base font-bold">{stats.overdueCount}</p></div>
-            </div>
-          </div>
-
-          {stats.totalToday > 0 && (
-            <div className="space-y-1.5 pt-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Progresso do dia</span>
-                <span className="font-medium">{progressPercent}%</span>
-              </div>
-              <Progress value={progressPercent} className="h-1.5" />
-            </div>
-          )}
-
-          <div className="space-y-2 pt-3">
-            <Button onClick={() => setQueueOpen(true)} className="w-full gap-2 h-9 text-xs" size="sm"><Play className="h-3.5 w-3.5" />Iniciar Recuperação</Button>
-            <Button onClick={() => setSettingsOpen(true)} variant="outline" className="w-full gap-2 h-9 text-xs" size="sm"><Settings2 className="h-3.5 w-3.5" />Configurar Régua</Button>
-          </div>
+    <div className="bg-card border border-border/30 rounded-xl p-4 sm:p-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-bold">Follow Up</h2>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] })}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setSettingsOpen(true)} variant="outline" size="sm" className="gap-2 h-8 text-xs">
+            <Settings2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Configurar Régua</span>
+          </Button>
+          <Button onClick={() => setQueueOpen(true)} size="sm" className="gap-2 h-8 text-xs">
+            <Play className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Iniciar Recuperação</span>
+          </Button>
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 min-w-0">
-        <div className="bg-card border border-border/30 rounded-xl p-4 sm:p-5">
-          <Tabs defaultValue="today" className="w-full" onValueChange={() => setVisibleCount(20)}>
-            <TabsList className="grid w-full grid-cols-4 h-auto p-1 gap-1">
-              <TabsTrigger value="today" className="text-xs py-2 px-2">
-                Hoje {stats.totalToday > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.totalToday})</span>}
-              </TabsTrigger>
-              <TabsTrigger value="pending" className="text-xs py-2 px-2">
-                Pendentes {stats.pendingCount > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.pendingCount})</span>}
-              </TabsTrigger>
-              <TabsTrigger value="overdue" className="text-xs py-2 px-2">
-                Vencidos {stats.overdueCount > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.overdueCount})</span>}
-              </TabsTrigger>
-              <TabsTrigger value="all" className="text-xs py-2 px-2">
-                Todos {stats.totalCount > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.totalCount})</span>}
-              </TabsTrigger>
-            </TabsList>
-
-            <div className="relative mt-3">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Buscar por nome, telefone, email..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 h-9 text-sm" />
+      {/* Stats bar */}
+      <div className="p-4 bg-secondary/20 rounded-lg border border-border/30">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <DollarSign className="h-4 w-4 text-primary" />
             </div>
-
-            <TabsContent value="today" className="mt-3">{renderTable(filteredTodayBoletos, true)}</TabsContent>
-            <TabsContent value="pending" className="mt-3">{renderTable(filteredPendingBoletos)}</TabsContent>
-            <TabsContent value="overdue" className="mt-3">{renderTable(filteredOverdueBoletos)}</TabsContent>
-            <TabsContent value="all" className="mt-3">{renderTable(filteredAllBoletos)}</TabsContent>
-          </Tabs>
+            <div>
+              <p className="text-lg font-bold text-primary">{formatCurrency(stats.todayValue)}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Em jogo</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-secondary/50">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-lg font-bold">{stats.totalToday}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total hoje</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-500/10">
+              <Send className="h-4 w-4 text-green-500" />
+            </div>
+            <div>
+              <p className="text-lg font-bold"><span className="text-green-500">{stats.sentToday}</span><span className="text-muted-foreground text-sm font-normal">/{stats.totalToday}</span></p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Enviados</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Timer className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-lg font-bold">{stats.pendingToday}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pendentes</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-destructive/10">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+            </div>
+            <div>
+              <p className={`text-lg font-bold ${stats.overdueCount > 0 ? "text-destructive" : ""}`}>{stats.overdueCount}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Vencidos</p>
+            </div>
+          </div>
         </div>
+
+        {stats.totalToday > 0 && (
+          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-border/20">
+            <Progress value={progressPercent} className="h-2 flex-1" />
+            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{progressPercent}% do dia</span>
+          </div>
+        )}
       </div>
+
+      {/* Tabs + Search + Table */}
+      <Tabs defaultValue="today" className="w-full" onValueChange={() => setVisibleCount(20)}>
+        <TabsList className="grid w-full grid-cols-4 h-auto p-1 gap-1">
+          <TabsTrigger value="today" className="text-xs py-2 px-2">
+            Hoje {stats.totalToday > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.totalToday})</span>}
+          </TabsTrigger>
+          <TabsTrigger value="pending" className="text-xs py-2 px-2">
+            Pendentes {stats.pendingCount > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.pendingCount})</span>}
+          </TabsTrigger>
+          <TabsTrigger value="overdue" className="text-xs py-2 px-2">
+            Vencidos {stats.overdueCount > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.overdueCount})</span>}
+          </TabsTrigger>
+          <TabsTrigger value="all" className="text-xs py-2 px-2">
+            Todos {stats.totalCount > 0 && <span className="text-[10px] opacity-70 ml-1">({stats.totalCount})</span>}
+          </TabsTrigger>
+        </TabsList>
+
+        <div className="relative mt-3">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Buscar por nome, telefone, email..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 h-9 text-sm" />
+        </div>
+
+        <TabsContent value="today" className="mt-3">{renderTable(filteredTodayBoletos)}</TabsContent>
+        <TabsContent value="pending" className="mt-3">{renderTable(filteredPendingBoletos)}</TabsContent>
+        <TabsContent value="overdue" className="mt-3">{renderTable(filteredOverdueBoletos)}</TabsContent>
+        <TabsContent value="all" className="mt-3">{renderTable(filteredAllBoletos)}</TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
@@ -329,7 +351,7 @@ function BoletoDetailDialog({ boleto, onClose, onMarkContacted }: { boleto: Bole
             <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /><span>Gerado {formatDistanceToNow(new Date(boleto.created_at), { locale: ptBR, addSuffix: true })}</span></div>
             <div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-muted-foreground" /><span>Vence {format(boleto.dueDate, "dd/MM/yyyy", { locale: ptBR })}</span></div>
           </div>
-          {boleto.contactedToday && <Badge variant="outline" className="bg-green-500/20 text-green-600 border-green-500/30 gap-1"><CheckCircle2 className="h-3 w-3" />Já contactado hoje</Badge>}
+          {boleto.contactedToday && <Badge variant="outline" className="bg-green-500/15 text-green-500 border-green-500/25 gap-1"><CheckCircle2 className="h-3 w-3" />Já contactado hoje</Badge>}
           {boleto.external_id && (
             <div className="p-3 bg-muted/50 rounded-lg">
               <div className="flex items-center justify-between mb-1"><span className="text-xs text-muted-foreground">Código de barras</span><Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(boleto.external_id!); toast({ title: "Copiado!" }); }}><Copy className="h-3 w-3" />Copiar</Button></div>
