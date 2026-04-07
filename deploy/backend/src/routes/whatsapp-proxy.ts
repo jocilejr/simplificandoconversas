@@ -145,7 +145,7 @@ router.post("/", async (req, res) => {
           if (firstName) {
             const { error: updateErr } = await serviceClient.from("whatsapp_instances")
               .update({ is_active: true })
-              .eq("user_id", userId).eq("instance_name", firstName);
+              .eq("workspace_id", workspaceId!).eq("instance_name", firstName);
             if (updateErr) console.error(`[fetch-instances] Set active error for ${firstName}:`, updateErr);
             else console.log(`[fetch-instances] Set ${firstName} as active`);
           }
