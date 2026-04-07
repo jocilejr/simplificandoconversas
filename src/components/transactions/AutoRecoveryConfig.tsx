@@ -93,7 +93,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   const { settings, upsert } = useRecoverySettings();
   const { instances } = useWhatsAppInstances();
 
-  const [delaySeconds, setDelaySeconds] = useState(20);
   const [sendAfterMinutes, setSendAfterMinutes] = useState(5);
   const [instanceBoleto, setInstanceBoleto] = useState("");
   const [instancePix, setInstancePix] = useState("");
