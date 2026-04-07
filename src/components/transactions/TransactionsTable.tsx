@@ -85,6 +85,8 @@ const typeStyles: Record<string, string> = {
   pix: "bg-green-500/20 text-green-600 border-green-500/30",
   cartao: "bg-purple-500/20 text-purple-600 border-purple-500/30",
   card: "bg-purple-500/20 text-purple-600 border-purple-500/30",
+  yampi: "bg-emerald-500/20 text-emerald-600 border-emerald-500/30",
+  yampi_cart: "bg-orange-500/20 text-orange-600 border-orange-500/30",
 };
 
 const DEFAULT_EMAIL = "businessvivaorigem@gmail.com";
