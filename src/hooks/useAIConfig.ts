@@ -11,6 +11,7 @@ export function useAIConfig() {
   const { data: config, isLoading } = useQuery({
     queryKey: ["ai-config", workspaceId],
     enabled: !!workspaceId,
+    staleTime: 60_000,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");

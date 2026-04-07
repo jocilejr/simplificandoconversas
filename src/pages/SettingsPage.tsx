@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { Loader2, User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users } from "lucide-react";
+import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
@@ -24,21 +24,14 @@ const allSections = [
 ];
 
 const SettingsPage = () => {
-  const { isLoading } = useProfile();
+  useProfile(); // preload
   const { role } = useWorkspace();
-  const [active, setActive] = useState("connections");
+  const [active, setActive] = useState("profile");
 
   const roleLevel = (r: string) => r === "admin" ? 3 : r === "operator" ? 2 : 1;
   const userLevel = roleLevel(role || "viewer");
   const sections = allSections.filter((s) => userLevel >= roleLevel(s.minRole));
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   const renderContent = () => {
     switch (active) {

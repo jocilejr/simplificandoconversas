@@ -12,6 +12,7 @@ export function useSmtpConfig() {
   const { data: configs = [], isLoading } = useQuery({
     queryKey: ["smtp-configs", workspaceId],
     enabled: !!workspaceId,
+    staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("smtp_config")

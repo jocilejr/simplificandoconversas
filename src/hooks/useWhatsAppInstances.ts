@@ -53,23 +53,29 @@ export function useWhatsAppInstances() {
     isError: isServerError,
     isLoading: isRemoteLoading,
   } = useQuery({
-    queryKey: ["whatsapp-remote-instances"],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "fetch-instances" },
-      });
-      // Detect stub response from edge function error or data content
-      if (error) {
-        // Edge function 503 = self-hosted backend not available
-        return "stub" as const;
-      }
-      if (data?.error?.includes?.("self-hosted") || data?.info?.includes?.("VPS")) {
-        return "stub" as const;
-      }
-      const list = Array.isArray(data) ? data : data?.instances || [];
-      return list.map(parseRemoteInstance) as RemoteInstance[];
-    },
+    queryKey: ["whatsapp-remote-instances", workspaceId],
     staleTime: 30_000,
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
+          body: { action: "fetch-instances", workspaceId },
+        });
+        if (error) {
+          return "stub" as const;
+        }
+        if (data?.error?.includes?.("self-hosted") || data?.info?.includes?.("VPS")) {
+          return "stub" as const;
+        }
+        const list = Array.isArray(data) ? data : data?.instances || [];
+        return list.map(parseRemoteInstance) as RemoteInstance[];
+      } catch {
+        return "stub" as const;
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
     refetchInterval: (query) => {
       if (query.state.data === "stub") return false;
       return 10000;

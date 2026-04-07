@@ -8,6 +8,7 @@ export function useProfile() {
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
+    staleTime: 60_000,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
