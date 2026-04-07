@@ -1,11 +1,151 @@
 // ── Simplificando Conversas — Background Service Worker ──
+// Handles API calls + routes commands between dashboard and WhatsApp tabs
 
+// ── Tab tracking ──
+let whatsappTabId = null;
+let dashboardTabId = null;
+
+// ── Existing message handler for API calls ──
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // ── Tab registration from content scripts ──
+  if (message.action === "WHATSAPP_READY") {
+    whatsappTabId = sender.tab?.id || null;
+    console.log("[BG] WhatsApp tab registered:", whatsappTabId);
+    // Notify dashboard if connected
+    if (dashboardTabId) {
+      try {
+        chrome.tabs.sendMessage(dashboardTabId, {
+          type: "WHATSAPP_STATUS_UPDATE",
+          connected: true,
+        });
+      } catch (e) {}
+    }
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message.action === "DASHBOARD_READY") {
+    dashboardTabId = sender.tab?.id || null;
+    console.log("[BG] Dashboard tab registered:", dashboardTabId);
+    sendResponse({ ok: true });
+    return;
+  }
+
+  // ── PING: Check if WhatsApp tab is alive ──
+  if (message.action === "PING") {
+    if (!whatsappTabId) {
+      sendResponse({ whatsappConnected: false });
+      return;
+    }
+    chrome.tabs.sendMessage(
+      whatsappTabId,
+      { action: "HEARTBEAT" },
+      (resp) => {
+        if (chrome.runtime.lastError || !resp?.alive) {
+          whatsappTabId = null;
+          sendResponse({ whatsappConnected: false });
+        } else {
+          sendResponse({ whatsappConnected: true });
+        }
+      }
+    );
+    return true; // async
+  }
+
+  // ── Route DOM commands to WhatsApp tab ──
+  if (
+    message.action === "OPEN_CHAT" ||
+    message.action === "SEND_TEXT" ||
+    message.action === "SEND_IMAGE"
+  ) {
+    routeToWhatsApp(message)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true; // async
+  }
+
+  // ── Existing API-based actions ──
   handleMessage(message)
     .then(sendResponse)
     .catch((err) => sendResponse({ error: err.message }));
   return true;
 });
+
+// ── Clean up tab references ──
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === whatsappTabId) {
+    whatsappTabId = null;
+    console.log("[BG] WhatsApp tab closed");
+    if (dashboardTabId) {
+      try {
+        chrome.tabs.sendMessage(dashboardTabId, {
+          type: "WHATSAPP_STATUS_UPDATE",
+          connected: false,
+        });
+      } catch (e) {}
+    }
+  }
+  if (tabId === dashboardTabId) {
+    dashboardTabId = null;
+    console.log("[BG] Dashboard tab closed");
+  }
+});
+
+// ── Find or open WhatsApp Web tab ──
+async function findOrOpenWhatsApp() {
+  // Check if tracked tab is still valid
+  if (whatsappTabId) {
+    try {
+      const tab = await chrome.tabs.get(whatsappTabId);
+      if (tab && tab.url?.includes("web.whatsapp.com")) {
+        await chrome.tabs.update(whatsappTabId, { active: true });
+        return whatsappTabId;
+      }
+    } catch (e) {}
+    whatsappTabId = null;
+  }
+
+  // Search existing tabs
+  const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+  if (tabs.length > 0) {
+    whatsappTabId = tabs[0].id;
+    await chrome.tabs.update(whatsappTabId, { active: true });
+    return whatsappTabId;
+  }
+
+  // Open new tab
+  const newTab = await chrome.tabs.create({ url: "https://web.whatsapp.com", active: true });
+  whatsappTabId = newTab.id;
+
+  // Wait for content script to load
+  await new Promise((r) => setTimeout(r, 3000));
+  return whatsappTabId;
+}
+
+// ── Route command to WhatsApp tab ──
+async function routeToWhatsApp(message) {
+  const tabId = await findOrOpenWhatsApp();
+  if (!tabId) {
+    return { success: false, error: "Não foi possível abrir o WhatsApp Web" };
+  }
+
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({
+          success: false,
+          error: "WhatsApp Web não respondeu. Tente recarregar a página.",
+        });
+      } else {
+        resolve(response || { success: true });
+      }
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── EXISTING API LOGIC (preserved) ──
+// ═══════════════════════════════════════════════════════════════
 
 // ── JWT decode (no verification, just read payload) ──
 function decodeJwtPayload(token) {
