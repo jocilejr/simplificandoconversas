@@ -104,11 +104,9 @@ export async function processRecoveryQueue() {
     try {
       const workspaceId = settings.workspace_id;
       const delaySeconds = Math.max(settings.delay_seconds || 20, 20);
-      const instanceName = settings.instance_name;
 
-      if (!instanceName) {
-        continue;
-      }
+      // Determine instance based on transaction type (will be checked per item)
+      const defaultInstance = settings.instance_name;
 
       // Check if enough time passed since last send
       const { data: lastSent } = await sb

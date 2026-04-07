@@ -322,9 +322,12 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
-        <span className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
-          Mostrando {Math.min(visibleCount, filteredTransactions.length)} de {filteredTransactions.length}
-        </span>
+        <div className="flex items-center gap-3">
+          <AutoRecoveryToggle />
+          <span className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
+            {Math.min(visibleCount, filteredTransactions.length)} de {filteredTransactions.length}
+          </span>
+        </div>
       </div>
 
       {/* Date Filter */}
