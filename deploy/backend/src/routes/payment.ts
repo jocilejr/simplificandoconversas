@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 
@@ -55,6 +56,7 @@ router.post("/create", async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ error: "Não autenticado" });
     }
+    const workspaceId = await resolveWorkspaceId(userId);
 
     const token = await getMPTokenForUser(userId);
     if (!token) {
@@ -172,6 +174,7 @@ router.post("/create", async (req: Request, res: Response) => {
       .from("transactions")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         amount: Number(amount),
         type: type || "pix",
         status: STATUS_MAP[mpData.status] || "pendente",
@@ -212,6 +215,7 @@ router.post("/create", async (req: Request, res: Response) => {
       await supabase.from("conversations").upsert(
         {
           user_id: userId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           contact_name: customer_name,
           phone_number: phone,

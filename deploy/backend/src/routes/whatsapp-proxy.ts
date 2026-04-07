@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 import { lightSync } from "./light-sync";
 import crypto from "crypto";
 import fs from "fs";
@@ -77,7 +78,8 @@ router.post("/", async (req, res) => {
     if (!userResp.ok) return res.status(401).json({ error: "Unauthorized" });
     const userData: any = await userResp.json();
     const userId = userData.id;
-    console.log(`[whatsapp-proxy] Authenticated userId: ${userId}`);
+    const workspaceId = await resolveWorkspaceId(userId);
+    console.log(`[whatsapp-proxy] Authenticated userId: ${userId}, workspaceId: ${workspaceId}`);
 
     const supabase = getServiceClient();
 
@@ -125,7 +127,7 @@ router.post("/", async (req, res) => {
             else console.log(`[fetch-instances] Updated instance status: ${name}`);
           } else {
             const { error: insertErr } = await serviceClient.from("whatsapp_instances")
-              .insert({ user_id: userId, instance_name: name, status, is_active: false });
+              .insert({ user_id: userId, workspace_id: workspaceId, instance_name: name, status, is_active: false });
             if (insertErr) console.error(`[fetch-instances] DB insert error for ${name}:`, insertErr);
             else console.log(`[fetch-instances] Inserted new instance: ${name}`);
           }
@@ -164,7 +166,7 @@ router.post("/", async (req, res) => {
         console.log("[create-instance] Create result:", JSON.stringify(createResult));
         if (createResult?.instance) {
           const { error: upsertErr } = await serviceClient.from("whatsapp_instances").upsert(
-            { user_id: userId, instance_name: customName, status: "close", is_active: false },
+            { user_id: userId, workspace_id: workspaceId, instance_name: customName, status: "close", is_active: false },
             { onConflict: "user_id,instance_name" }
           );
           if (upsertErr) console.error("[create-instance] DB upsert error:", upsertErr);
@@ -264,7 +266,7 @@ router.post("/", async (req, res) => {
         if (result?.key) {
           const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
           const { data: conv, error: convErr } = await serviceClient.from("conversations").upsert(
-            { user_id: userId, remote_jid: jid, last_message: message || `[${messageType}]`, last_message_at: new Date().toISOString(), instance_name: instanceName },
+            { user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: message || `[${messageType}]`, last_message_at: new Date().toISOString(), instance_name: instanceName },
             { onConflict: "user_id,remote_jid,instance_name" }
           ).select("id").single();
           if (convErr) console.error("[send-message] Conv upsert error:", convErr);
@@ -272,7 +274,7 @@ router.post("/", async (req, res) => {
 
           if (conv) {
             const { error: msgErr } = await serviceClient.from("messages").insert({
-              conversation_id: conv.id, user_id: userId, remote_jid: jid, content: message,
+              conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: message,
               message_type: messageType, direction: "outbound", status: "sent",
               external_id: result?.key?.id || null, media_url: mediaUrl || null,
             });
@@ -303,7 +305,7 @@ router.post("/", async (req, res) => {
             .select("id").eq("user_id", userId).eq("instance_name", instName).maybeSingle();
           if (!existing) {
             const { error: insertErr } = await serviceClient.from("whatsapp_instances")
-              .insert({ user_id: userId, instance_name: instName, status: "close", is_active: false });
+              .insert({ user_id: userId, workspace_id: workspaceId, instance_name: instName, status: "close", is_active: false });
             if (insertErr) console.error(`[sync-chats] Instance insert error for ${instName}:`, insertErr);
           }
         }
@@ -447,6 +449,7 @@ router.post("/", async (req, res) => {
                 // No existing match — upsert normally
                 const upsertPayload: Record<string, unknown> = {
                   user_id: userId,
+                  workspace_id: workspaceId,
                   remote_jid: resolvedJid,
                   contact_name: contactName,
                   instance_name: instName,
@@ -525,6 +528,7 @@ router.post("/", async (req, res) => {
                   const { error: insertErr } = await serviceClient.from("messages").insert({
                     conversation_id: convData.id,
                     user_id: userId,
+                    workspace_id: workspaceId,
                     remote_jid: resolvedJid,
                     content: msgContent || (msgType !== "text" ? `[${msgType}]` : "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar"),
                     message_type: msgType,
@@ -654,6 +658,7 @@ router.post("/", async (req, res) => {
 
                 const insertPayload: Record<string, unknown> = {
                   user_id: userId,
+                  workspace_id: workspaceId,
                   remote_jid: cJid,
                   contact_name: cName,
                   instance_name: instName,
@@ -736,6 +741,7 @@ router.post("/", async (req, res) => {
                   if (url) {
                     photoRows.push({
                       user_id: userId,
+                      workspace_id: workspaceId,
                       remote_jid: conv.remote_jid,
                       photo_url: url,
                       updated_at: new Date().toISOString(),

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const router = Router();
 
@@ -14,6 +15,7 @@ async function logApiRequest(
     const sb = getServiceClient();
     await sb.from("api_request_logs").insert({
       user_id: userId,
+      workspace_id: workspaceId,
       method: req.method,
       path: req.originalUrl || req.path,
       status_code: statusCode,
@@ -58,7 +60,7 @@ setInterval(() => {
 }, 300_000);
 
 // ── API Key auth middleware ──
-async function resolveUserByApiKey(req: Request, res: Response): Promise<string | null> {
+async function resolveUserByApiKey(req: Request, res: Response): Promise<{ userId: string; workspaceId: string } | null> {
   const apiKey = req.headers["x-api-key"] as string;
   if (!apiKey || apiKey.length < 32) {
     res.status(401).json({ error: "Missing or invalid X-API-Key header" });
@@ -68,7 +70,7 @@ async function resolveUserByApiKey(req: Request, res: Response): Promise<string 
   const sb = getServiceClient();
   const { data, error } = await sb
     .from("platform_connections")
-    .select("user_id, enabled")
+    .select("user_id, enabled, workspace_id")
     .eq("platform", "custom_api")
     .eq("credentials->>api_key", apiKey)
     .maybeSingle();
@@ -83,7 +85,13 @@ async function resolveUserByApiKey(req: Request, res: Response): Promise<string 
     return null;
   }
 
-  return data.user_id;
+  const workspaceId = data.workspace_id || (await resolveWorkspaceId(data.user_id));
+  if (!workspaceId) {
+    res.status(500).json({ error: "No workspace" });
+    return null;
+  }
+
+  return { userId: data.user_id, workspaceId };
 }
 
 // Apply rate limiting to all routes
@@ -100,8 +108,9 @@ router.get("/ping", (_req, res) => {
 
 // GET /api/platform/instances
 router.get("/instances", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   try {
     const sb = getServiceClient();
@@ -136,8 +145,9 @@ router.get("/instances", async (req, res) => {
 
 // GET /api/platform/contacts
 router.get("/contacts", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const sb = getServiceClient();
   const { phone, name, instance } = req.query;
@@ -175,8 +185,9 @@ router.get("/contacts", async (req, res) => {
 
 // GET /api/platform/contacts/:phone
 router.get("/contacts/:phone", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const phone = req.params.phone.replace(/\D/g, "");
   if (!phone) return res.status(400).json({ error: "Invalid phone" });
@@ -218,8 +229,9 @@ router.get("/contacts/:phone", async (req, res) => {
 
 // POST /api/platform/contacts (upsert by phone)
 router.post("/contacts", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, name, instance_name } = req.body;
   if (!phone) return res.status(400).json({ error: "phone is required" });
@@ -262,6 +274,7 @@ router.post("/contacts", async (req, res) => {
     .from("conversations")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       remote_jid: remoteJid,
       phone_number: cleaned,
       contact_name: name || null,
@@ -284,8 +297,9 @@ router.post("/contacts", async (req, res) => {
 
 // GET /api/platform/transactions
 router.get("/transactions", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const sb = getServiceClient();
   const { status, from, to, phone } = req.query;
@@ -317,8 +331,9 @@ router.get("/transactions", async (req, res) => {
 
 // POST /api/platform/transactions
 router.post("/transactions", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { amount, type, status, description, customer_name, customer_email, customer_phone, customer_document, external_id, source, metadata } = req.body;
   if (amount === undefined || amount === null) return res.status(400).json({ error: "amount is required" });
@@ -328,6 +343,7 @@ router.post("/transactions", async (req, res) => {
     .from("transactions")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       amount: Number(amount),
       type: type || "pix",
       status: status || "pendente",
@@ -353,8 +369,9 @@ router.post("/transactions", async (req, res) => {
 
 // PATCH /api/platform/transactions/:id
 router.patch("/transactions/:id", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { id } = req.params;
   const { status, paid_at, metadata, description } = req.body;
@@ -393,8 +410,9 @@ router.patch("/transactions/:id", async (req, res) => {
 
 // POST /api/platform/transactions/webhook (receive external status updates)
 router.post("/transactions/webhook", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { external_id, status, paid_at, metadata } = req.body;
   if (!external_id || !status) {
@@ -433,8 +451,9 @@ router.post("/transactions/webhook", async (req, res) => {
 
 // GET /api/platform/tags?phone=X
 router.get("/tags", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   if (!phone) return res.status(400).json({ error: "phone query param is required" });
@@ -458,8 +477,9 @@ router.get("/tags", async (req, res) => {
 
 // POST /api/platform/tags
 router.post("/tags", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, tag_name } = req.body;
   if (!phone || !tag_name) return res.status(400).json({ error: "phone and tag_name are required" });
@@ -481,7 +501,7 @@ router.post("/tags", async (req, res) => {
 
   const { data, error } = await sb
     .from("contact_tags")
-    .insert({ user_id: userId, remote_jid: remoteJid, tag_name: tag_name.trim() })
+    .insert({ user_id: userId, workspace_id: workspaceId, remote_jid: remoteJid, tag_name: tag_name.trim() })
     .select()
     .single();
 
@@ -495,8 +515,9 @@ router.post("/tags", async (req, res) => {
 
 // DELETE /api/platform/tags
 router.delete("/tags", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, tag_name } = req.body;
   if (!phone || !tag_name) return res.status(400).json({ error: "phone and tag_name are required" });
@@ -526,8 +547,9 @@ router.delete("/tags", async (req, res) => {
 
 // GET /api/platform/reminders
 router.get("/reminders", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const sb = getServiceClient();
   const { filter, phone } = req.query;
@@ -568,8 +590,9 @@ router.get("/reminders", async (req, res) => {
 
 // POST /api/platform/reminders
 router.post("/reminders", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, title, description, due_date, contact_name, instance_name } = req.body;
   if (!phone || !title || !due_date) {
@@ -584,6 +607,7 @@ router.post("/reminders", async (req, res) => {
     .from("reminders")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       remote_jid: remoteJid,
       phone_number: cleaned,
       title: title.substring(0, 200),
@@ -605,8 +629,9 @@ router.post("/reminders", async (req, res) => {
 
 // PATCH /api/platform/reminders/:id
 router.patch("/reminders/:id", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { id } = req.params;
   const { completed, title, description, due_date } = req.body;
@@ -645,8 +670,9 @@ router.patch("/reminders/:id", async (req, res) => {
 
 // DELETE /api/platform/reminders/:id
 router.delete("/reminders/:id", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { id } = req.params;
   const sb = getServiceClient();
@@ -694,8 +720,9 @@ async function evolutionRequest(path: string, method: string = "POST", body?: an
 
 // POST /api/platform/send-message
 router.post("/send-message", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, message, instance, type, reference_id, customer_name, amount } = req.body;
   if (!phone || !message || !instance) {
@@ -735,6 +762,7 @@ router.post("/send-message", async (req, res) => {
         .from("conversations")
         .insert({
           user_id: userId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           phone_number: cleaned,
           contact_name: customer_name || null,
@@ -759,6 +787,7 @@ router.post("/send-message", async (req, res) => {
     if (conversationId) {
       await sb.from("messages").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         conversation_id: conversationId,
         remote_jid: remoteJid,
         content: message,
@@ -781,6 +810,7 @@ router.post("/send-message", async (req, res) => {
       if (!existingTx) {
         await sb.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           external_id: reference_id,
           amount: Number(amount),
           customer_phone: cleaned,
@@ -810,8 +840,9 @@ router.post("/send-message", async (req, res) => {
 
 // POST /api/platform/send-media
 router.post("/send-media", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, media_url, caption, type, instance } = req.body;
   if (!phone || !media_url) {
@@ -873,6 +904,7 @@ router.post("/send-media", async (req, res) => {
         .from("conversations")
         .insert({
           user_id: userId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           phone_number: cleaned,
           last_message: msgPreview,
@@ -891,6 +923,7 @@ router.post("/send-media", async (req, res) => {
     if (conversationId) {
       await sb.from("messages").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         conversation_id: conversationId,
         remote_jid: remoteJid,
         content: caption || null,
@@ -914,8 +947,9 @@ router.post("/send-media", async (req, res) => {
 
 // POST /api/platform/validate-number
 router.post("/validate-number", async (req, res) => {
-  const userId = await resolveUserByApiKey(req, res);
-  if (!userId) return;
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
 
   const { phone, instance } = req.body;
   if (!phone || !instance) return res.status(400).json({ error: "phone and instance are required" });

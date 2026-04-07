@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.post("/create", async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ error: "Não autenticado" });
     }
+    const workspaceId = await resolveWorkspaceId(userId);
 
     const appId = await getOpenpixAppId(userId);
     if (!appId) {
@@ -104,6 +106,7 @@ router.post("/create", async (req: Request, res: Response) => {
       .from("transactions")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         amount: Number(amount),
         type: "pix",
         status: "pendente",
@@ -250,9 +253,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
           console.warn("[openpix webhook] Could not resolve user_id for TRANSACTION_RECEIVED, skipping");
           return res.sendStatus(200);
         }
+        const workspaceId = await resolveWorkspaceId(userId);
 
         await supabase.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           amount: valueCents / 100,
           type: "pix",
           status: "aprovado",
@@ -320,6 +325,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         await supabase.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           amount: valueCents / 100,
           type: "pix",
           status: "aprovado",
@@ -358,6 +364,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         await supabase.from("transactions").insert({
           user_id: userId,
+          workspace_id: workspaceId,
           amount: valueCents / 100,
           type: "pix",
           status: "cancelado",

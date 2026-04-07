@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 import crypto from "crypto";
 
 const router = Router();
@@ -91,6 +92,7 @@ router.get("/dashboard", async (req, res) => {
   const start = Date.now();
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   try {
     const sb = getServiceClient();
@@ -169,6 +171,7 @@ router.get("/dashboard", async (req, res) => {
 router.get("/list-instances", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   try {
     const sb = getServiceClient();
@@ -191,6 +194,7 @@ router.get("/list-instances", async (req, res) => {
 router.get("/contact-cross", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   const name = (req.query.name as string || "").trim();
@@ -227,6 +231,7 @@ router.get("/contact-cross", async (req, res) => {
 router.get("/flows", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const sb = getServiceClient();
   const { data, error } = await sb
@@ -252,6 +257,7 @@ router.get("/contact-status", async (req, res) => {
   const start = Date.now();
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   const name = (req.query.name as string || "").trim();
@@ -324,6 +330,7 @@ router.get("/contact-status", async (req, res) => {
 router.post("/trigger-flow", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { flowId, phone, instanceName, remoteJid: bodyRemoteJid, name: bodyName } = req.body;
   if (!flowId || !instanceName) {
@@ -394,6 +401,7 @@ router.post("/trigger-flow", async (req, res) => {
 router.delete("/remove-tag", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { remoteJid, tagName } = req.body;
   if (!remoteJid || !tagName) return res.status(400).json({ error: "remoteJid and tagName required" });
@@ -414,6 +422,7 @@ router.delete("/remove-tag", async (req, res) => {
 router.post("/pause-flow", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { executionId } = req.body;
   if (!executionId) return res.status(400).json({ error: "executionId required" });
@@ -441,6 +450,7 @@ router.post("/pause-flow", async (req, res) => {
 router.get("/reminders", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const filter = (req.query.filter as string) || "all";
   const sb = getServiceClient();
@@ -469,6 +479,7 @@ router.get("/reminders", async (req, res) => {
 router.post("/reminders", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { title, description, phone_number, contact_name, due_date, remote_jid, instance_name } = req.body;
   if (!title || !due_date || !remote_jid) {
@@ -480,6 +491,7 @@ router.post("/reminders", async (req, res) => {
     .from("reminders")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       title,
       description: description || null,
       phone_number: phone_number || null,
@@ -499,6 +511,7 @@ router.post("/reminders", async (req, res) => {
 router.patch("/reminders/:id", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { id } = req.params;
   const { completed } = req.body;
@@ -518,6 +531,7 @@ router.patch("/reminders/:id", async (req, res) => {
 router.get("/ai-status", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const phone = (req.query.phone as string || "").replace(/\D/g, "");
   const name = (req.query.name as string || "").trim();
@@ -555,6 +569,7 @@ router.get("/ai-status", async (req, res) => {
 router.post("/ai-reply-toggle", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { remoteJid, instanceName, enabled } = req.body;
   if (!remoteJid || !instanceName) return res.status(400).json({ error: "remoteJid, instanceName required" });
@@ -580,6 +595,7 @@ router.post("/ai-reply-toggle", async (req, res) => {
       .from("ai_auto_reply_contacts")
       .upsert({
         user_id: userId,
+        workspace_id: workspaceId,
         remote_jid: remoteJid,
         instance_name: instanceName,
         enabled: true,
@@ -601,6 +617,7 @@ router.post("/ai-reply-toggle", async (req, res) => {
 router.post("/ai-listen-toggle", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { remoteJid, instanceName, enabled } = req.body;
   if (!remoteJid || !instanceName) return res.status(400).json({ error: "remoteJid, instanceName required" });
@@ -620,6 +637,7 @@ router.post("/ai-listen-toggle", async (req, res) => {
       .from("ai_listen_contacts")
       .upsert({
         user_id: userId,
+        workspace_id: workspaceId,
         remote_jid: remoteJid,
         instance_name: instanceName,
         enabled: false,
@@ -635,6 +653,7 @@ router.post("/ai-listen-toggle", async (req, res) => {
 router.get("/ai-config", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const sb = getServiceClient();
   let { data, error } = await sb
@@ -662,6 +681,7 @@ router.get("/ai-config", async (req, res) => {
 router.patch("/ai-config", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const { reply_system_prompt, listen_rules, max_context_messages } = req.body;
   const sb = getServiceClient();
@@ -684,6 +704,7 @@ router.patch("/ai-config", async (req, res) => {
 router.get("/platform-key", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const sb = getServiceClient();
   const { data } = await sb
@@ -707,6 +728,7 @@ router.get("/platform-key", async (req, res) => {
 router.post("/generate-platform-key", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
+  const workspaceId = await resolveWorkspaceId(userId);
 
   const newKey = crypto.randomBytes(32).toString("hex");
   const sb = getServiceClient();
@@ -730,6 +752,7 @@ router.post("/generate-platform-key", async (req, res) => {
       .from("platform_connections")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         platform: "custom_api",
         credentials: { api_key: newKey },
         enabled: true,

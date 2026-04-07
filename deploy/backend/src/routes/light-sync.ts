@@ -1,4 +1,5 @@
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
@@ -38,6 +39,7 @@ export async function lightSync() {
   console.log(`[light-sync] Found ${instances.length} instance(s) to check`);
 
   for (const inst of instances) {
+    const instWorkspaceId = (inst as any).workspace_id || await resolveWorkspaceId(inst.user_id);
     try {
       // Check connection state via Evolution API
       const stateResult = await evolutionRequest(
@@ -112,6 +114,7 @@ export async function lightSync() {
 
         const upsertPayload: Record<string, unknown> = {
           user_id: inst.user_id,
+          workspace_id: instWorkspaceId,
           remote_jid: rawJid,
           contact_name: contactName,
           instance_name: inst.instance_name,
@@ -180,6 +183,7 @@ export async function lightSync() {
 
           const upsertPayload: Record<string, unknown> = {
             user_id: inst.user_id,
+          workspace_id: instWorkspaceId,
             remote_jid: rawJid,
             contact_name: contactName,
             instance_name: inst.instance_name,

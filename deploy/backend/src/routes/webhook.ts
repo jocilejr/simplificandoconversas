@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceFromInstance, resolveWorkspaceId } from "../lib/workspace";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
@@ -302,6 +303,14 @@ router.post("/*", async (req, res) => {
 
     const userId = inst.user_id;
 
+    // Resolve workspace_id from the instance
+    const wsInfo = await resolveWorkspaceFromInstance(instance);
+    const workspaceId = wsInfo?.workspaceId || (await resolveWorkspaceId(userId));
+    if (!workspaceId) {
+      console.error("No workspace found for user:", userId);
+      return res.status(500).json({ error: "No workspace" });
+    }
+
     // Extract message content
     const message = data.message || {};
     const messageContent = message.conversation
@@ -341,6 +350,8 @@ router.post("/*", async (req, res) => {
       } else {
         const sendUpsert: Record<string, unknown> = {
           user_id: userId,
+          workspace_id: workspaceId,
+          workspace_id: workspaceId,
           remote_jid: remoteJid,
           last_message: lastMessagePreview,
           last_message_at: new Date().toISOString(),
@@ -395,6 +406,8 @@ router.post("/*", async (req, res) => {
       // No existing conv found — upsert with remote_jid as-is
       const upsertData: Record<string, unknown> = {
         user_id: userId,
+        workspace_id: workspaceId,
+          workspace_id: workspaceId,
         remote_jid: remoteJid,
         last_message: lastMessagePreview,
         last_message_at: new Date().toISOString(),
@@ -426,6 +439,8 @@ router.post("/*", async (req, res) => {
     const { error: insertError } = await supabase.from("messages").insert({
       conversation_id: conv.id,
       user_id: userId,
+      workspace_id: workspaceId,
+          workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: finalContent,
       message_type: messageType,
@@ -774,6 +789,8 @@ async function checkAndAutoReply(
     await supabase.from("messages").insert({
       conversation_id: conversationId,
       user_id: userId,
+      workspace_id: workspaceId,
+          workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: reply,
       message_type: "text",
@@ -939,6 +956,8 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
 
     await supabase.from("reminders").insert({
       user_id: userId,
+      workspace_id: workspaceId,
+          workspace_id: workspaceId,
       title: args.title,
       description: contextLines || null,
       due_date: args.due_date,

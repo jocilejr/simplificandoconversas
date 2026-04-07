@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getServiceClient, getAnonClient, SERVICE_ROLE_KEY } from "../lib/supabase";
 import { getMessageQueue } from "../lib/message-queue";
+import { resolveWorkspaceId } from "../lib/workspace";
 import crypto from "crypto";
 
 const router = Router();
@@ -45,7 +46,7 @@ async function evolutionRequest(path: string, method: string = "POST", body?: an
 }
 
 async function executeStep(
-  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string
+  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string, workspaceId?: string
 ): Promise<string> {
   const num = sendNumber || jid;
   const nodeType = stepData.type;
@@ -59,11 +60,11 @@ async function executeStep(
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
-      .upsert({ user_id: userId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
+      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id").single();
     if (conv) {
       await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, remote_jid: jid, content: resolvedText,
+        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: resolvedText,
         message_type: "text", direction: "outbound", status: "sent", external_id: r?.key?.id || null,
       });
     }
@@ -78,11 +79,11 @@ async function executeStep(
     
     const { data: conv } = await serviceClient
       .from("conversations")
-      .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
+      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id").single();
     if (conv) {
       await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, remote_jid: jid, content: stepData.caption || "",
+        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: stepData.caption || "",
         message_type: "image", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.mediaUrl,
       });
     }
@@ -97,11 +98,11 @@ async function executeStep(
     
     const { data: conv } = await serviceClient
       .from("conversations")
-      .upsert({ user_id: userId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
+      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id").single();
     if (conv) {
       await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, remote_jid: jid, content: "",
+        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: "",
         message_type: "audio", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.audioUrl,
       });
     }
@@ -116,11 +117,11 @@ async function executeStep(
     
     const { data: conv } = await serviceClient
       .from("conversations")
-      .upsert({ user_id: userId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
+      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id").single();
     if (conv) {
       await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, remote_jid: jid, content: stepData.caption || "",
+        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: stepData.caption || "",
         message_type: "video", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.mediaUrl,
       });
     }
@@ -137,11 +138,11 @@ async function executeStep(
     
     const { data: conv } = await serviceClient
       .from("conversations")
-      .upsert({ user_id: userId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
+      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
       .select("id").single();
     if (conv) {
       await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, remote_jid: jid, content: fileName,
+        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: fileName,
         message_type: "document", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: (stepData as any).fileUrl,
       });
     }
@@ -213,6 +214,9 @@ router.post("/", async (req, res) => {
       const userData: any = await userResp.json();
       userId = userData.id;
     }
+
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "No workspace" });
 
     if (!flowId || !remoteJid) {
       return res.status(400).json({ error: "flowId and remoteJid required" });
@@ -322,7 +326,7 @@ router.post("/", async (req, res) => {
 
     const { data: execution, error: execErr } = await serviceClient
       .from("flow_executions")
-      .insert({ user_id: userId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: instanceName || null })
+      .insert({ user_id: userId, workspace_id: workspaceId, conversation_id: resolvedConversationId, flow_id: flowId, remote_jid: jid, status: "running", instance_name: instanceName || null })
       .select("id").single();
 
     if (execErr || !execution) return res.status(500).json({ error: "Failed to start execution tracking" });
@@ -448,7 +452,7 @@ router.post("/", async (req, res) => {
           const actionType = data.actionType || "add_tag";
           const actionValue = (data.actionValue || "").trim();
           if (actionType === "add_tag" && actionValue) {
-            await serviceClient.from("contact_tags").upsert({ user_id: userId, remote_jid: jid, tag_name: actionValue.toLowerCase() }, { onConflict: "user_id,remote_jid,tag_name" });
+            await serviceClient.from("contact_tags").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, tag_name: actionValue.toLowerCase() }, { onConflict: "user_id,remote_jid,tag_name" });
             results.push(`action: add_tag "${actionValue}"`);
           } else if (actionType === "remove_tag" && actionValue) {
             await serviceClient.from("contact_tags").delete().eq("user_id", userId).eq("remote_jid", jid).ilike("tag_name", actionValue.toLowerCase());
@@ -575,9 +579,9 @@ router.post("/", async (req, res) => {
             if (data.aiAutoSend !== false && aiResponse) {
               const queue = getMessageQueue(instanceName);
               const sendResult = await queue.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: aiResponse }), `aiAgent→${sendNumber}`);
-              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
-                await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
+                await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
               }
             }
             results.push(`aiAgent: ok (${aiModel})`);
@@ -591,7 +595,7 @@ router.post("/", async (req, res) => {
             const nextNodeId = nextIds.length > 0 ? nextIds[0] : null;
 
             await serviceClient.from("tracked_links").insert({
-              user_id: userId, flow_id: flowId, execution_id: executionId, remote_jid: jid,
+              user_id: userId, workspace_id: workspaceId, flow_id: flowId, execution_id: executionId, remote_jid: jid,
               original_url: clickUrl, short_code: shortCode, next_node_id: nextNodeId,
               conversation_id: conversationId || null, preview_title: data.clickPreviewTitle || null,
               preview_description: data.clickPreviewDescription || null, preview_image: data.clickPreviewImage || null,
@@ -604,9 +608,9 @@ router.post("/", async (req, res) => {
 
             const queueWfc = getMessageQueue(instanceName);
             const sendResult = await queueWfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `waitForClick→${sendNumber}`);
-            const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+            const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
             if (conv) {
-              await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
+              await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
             }
 
             await serviceClient.from("flow_executions").update({ status: "waiting_click", current_node_index: nodeIndex, waiting_node_id: node.id }).eq("id", executionId);
@@ -617,7 +621,7 @@ router.post("/", async (req, res) => {
               const unit = data.clickTimeoutUnit || "minutes";
               const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
               const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
-              await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
+              await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, workspace_id: workspaceId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
             }
 
             results.push(`waitForClick: paused (code=${shortCode})`);
@@ -632,7 +636,7 @@ router.post("/", async (req, res) => {
             const unit = data.replyTimeoutUnit || "minutes";
             const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
             const timeoutAt = new Date(Date.now() + replyTimeout * multiplier).toISOString();
-            await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
+            await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, workspace_id: workspaceId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
           }
 
           results.push(`waitForReply: paused`);
@@ -657,7 +661,7 @@ router.post("/", async (req, res) => {
               const nextNodeId = (outgoingMap.get(node.id) || [])[0] || null;
 
               await serviceClient.from("tracked_links").insert({
-                user_id: userId, flow_id: flowId, execution_id: executionId, remote_jid: jid,
+                user_id: userId, workspace_id: workspaceId, flow_id: flowId, execution_id: executionId, remote_jid: jid,
                 original_url: clickUrl, short_code: shortCode, next_node_id: nextNodeId,
                 conversation_id: conversationId || null, preview_title: step.data.clickPreviewTitle || null,
                 preview_description: step.data.clickPreviewDescription || null, preview_image: step.data.clickPreviewImage || null,
@@ -670,9 +674,9 @@ router.post("/", async (req, res) => {
 
               const queueGwfc = getMessageQueue(instanceName);
               const sendResult = await queueGwfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `group.waitForClick→${sendNumber}`);
-              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+              const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
-                await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
+                await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
               }
 
               await serviceClient.from("flow_executions").update({ status: "waiting_click", current_node_index: nodeIndex, waiting_node_id: node.id }).eq("id", executionId);
@@ -683,7 +687,7 @@ router.post("/", async (req, res) => {
                 const unit = step.data.clickTimeoutUnit || "minutes";
                 const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
                 const timeoutAt = new Date(Date.now() + clickTimeout * multiplier).toISOString();
-                await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
+                await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, workspace_id: workspaceId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
               }
 
               results.push(`group.${step.id}: waitForClick: paused`);
@@ -698,7 +702,7 @@ router.post("/", async (req, res) => {
                 const unit = step.data.replyTimeoutUnit || "minutes";
                 const multiplier = unit === "seconds" ? 1000 : unit === "hours" ? 3600000 : 60000;
                 const timeoutAt = new Date(Date.now() + replyTimeout * multiplier).toISOString();
-                await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
+                await serviceClient.from("flow_timeouts").insert({ execution_id: executionId, flow_id: flowId, user_id: userId, workspace_id: workspaceId, remote_jid: jid, conversation_id: conversationId || null, timeout_node_id: timeoutNodeId, timeout_at: timeoutAt });
               }
 
               results.push(`group.${step.id}: waitForReply: paused`);
@@ -708,7 +712,7 @@ router.post("/", async (req, res) => {
               const actionType = step.data.actionType || "add_tag";
               const actionValue = (step.data.actionValue || "").trim();
               if (actionType === "add_tag" && actionValue) {
-                await serviceClient.from("contact_tags").upsert({ user_id: userId, remote_jid: jid, tag_name: actionValue.toLowerCase() }, { onConflict: "user_id,remote_jid,tag_name" });
+                await serviceClient.from("contact_tags").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, tag_name: actionValue.toLowerCase() }, { onConflict: "user_id,remote_jid,tag_name" });
                 results.push(`group.${step.id}: action: add_tag "${actionValue}"`);
               } else if (actionType === "remove_tag" && actionValue) {
                 await serviceClient.from("contact_tags").delete().eq("user_id", userId).eq("remote_jid", jid).ilike("tag_name", actionValue.toLowerCase());
@@ -784,7 +788,7 @@ router.post("/", async (req, res) => {
                 }
               }
             } else {
-              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
+              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId);
               results.push(`group.${step.id}: ${stepResult}`);
             }
             } catch (stepErr: any) {
@@ -794,7 +798,7 @@ router.post("/", async (req, res) => {
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber);
+          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId);
           results.push(result);
         }
       } catch (err: any) {

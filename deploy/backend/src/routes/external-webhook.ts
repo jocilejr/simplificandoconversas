@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const router = Router();
 
@@ -45,6 +46,7 @@ router.post("/", async (req, res) => {
   if (!conn.enabled) return res.status(403).json({ error: "API key is disabled" });
 
   const userId = conn.user_id;
+  const workspaceId = await resolveWorkspaceId(userId);
   const {
     event,
     id: reminderId,
@@ -100,6 +102,7 @@ router.post("/", async (req, res) => {
           .from("transactions")
           .insert({
             user_id: userId,
+            workspace_id: workspaceId,
             external_id: refId,
             amount: amount !== undefined ? Number(amount) : 0,
             status: status || "pendente",
@@ -156,6 +159,7 @@ router.post("/", async (req, res) => {
         if (!existing) {
           await sb.from("contact_tags").insert({
             user_id: userId,
+            workspace_id: workspaceId,
             remote_jid: remoteJid,
             tag_name: tagName,
           });
@@ -253,6 +257,7 @@ router.post("/", async (req, res) => {
     try {
       await sb.from("api_request_logs").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         method: req.method,
         path: req.originalUrl || req.path,
         status_code: 200,
@@ -270,6 +275,7 @@ router.post("/", async (req, res) => {
     try {
       await sb.from("api_request_logs").insert({
         user_id: userId,
+        workspace_id: workspaceId,
         method: req.method,
         path: req.originalUrl || req.path,
         status_code: 500,
