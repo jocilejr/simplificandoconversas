@@ -1,55 +1,64 @@
 
 
-## Atualizar Extensão Chrome para Comunicação Dashboard ↔ WhatsApp
+# Plano: Salvar PDF do Boleto no Filesystem ao Criar e Limpar Após Vencimento
 
-### Problema
-A extensão atual NÃO tem um content script para a página do dashboard. O hook `useWhatsAppExtension.ts` envia `postMessage` com `source: "simplificando-app"`, mas ninguém escuta isso na página do dashboard. A extensão só injeta sidebar no WhatsApp Web.
+## Problema
+O link do PDF do boleto no Mercado Pago pode ficar indisponível após horas. Atualmente o frontend tenta buscar o PDF diretamente desse link, resultando em "PDF não disponível".
 
-O Finance Hub resolve isso com uma arquitetura de 3 camadas:
-- `content-whatsapp.js` no WhatsApp Web (manipula DOM)
-- `content-dashboard.js` no dashboard (ponte postMessage ↔ background)
-- `background.js` roteia comandos entre as duas abas
+## Solução
 
-### Plano
+Salvar o PDF do boleto no volume `/media-files` (já montado no backend e servido pelo Nginx via `/media/`) no momento da criação da cobrança, e referenciar o caminho local no `metadata` da transação. Adicionar limpeza automática de boletos vencidos.
 
-**1. Criar `chrome-extension/content-dashboard.js`** (NOVO)
-- Content script que roda na página do dashboard (VPS domain + lovable domains)
-- Escuta `window.postMessage` com tipos: `WHATSAPP_EXTENSION_PING`, `WHATSAPP_CHECK_CONNECTION`, `WHATSAPP_OPEN_CHAT`, `WHATSAPP_SEND_TEXT`, `WHATSAPP_SEND_IMAGE`, e também formatos bare (`OPEN_CHAT`, `SEND_TEXT`)
-- Envia resposta `WHATSAPP_EXTENSION_READY` / `WHATSAPP_EXTENSION_LOADED` / `WHATSAPP_RESPONSE`
-- Dedup de requests via `requestId`
-- Baseado diretamente no `content-dashboard.js` do Finance Hub
+### 1. Backend: Baixar e salvar PDF ao criar boleto (`deploy/backend/src/routes/payment.ts`)
 
-**2. Criar `chrome-extension/content-whatsapp.js`** (NOVO)
-- Content script que roda no WhatsApp Web para receber comandos DOM (OPEN_CHAT, SEND_TEXT, SEND_IMAGE)
-- Funções: `openChat(phone)`, `prepareText(phone, text)`, `prepareImage(phone, imageDataUrl)`
-- Manipulação do DOM: clicar "Nova conversa", digitar número, selecionar resultado, inserir texto
-- Envia `WHATSAPP_READY` ao background a cada 5s
-- Baseado no `content-whatsapp.js` do Finance Hub
+Após criar o pagamento no Mercado Pago e obter o `paymentUrl` (ticket_url), se o tipo for `boleto`:
+- Fazer `fetch(paymentUrl)` server-side para obter o PDF
+- Salvar em `/media-files/{userId}/boletos/{externalId}.pdf`
+- Incluir no `metadata` da transação: `boleto_file: "/media/{userId}/boletos/{externalId}.pdf"`
 
-**3. Reescrever `chrome-extension/background.js`**
-- Manter TODA a lógica existente (apiCall, apiFetch, ensureFreshToken, doRefreshToken, handleMessage com contact-status, flows, trigger-flow, pause-flow, dashboard-stats, contact-cross, remove-tag, list-instances, validate-session, ai-status, ai-reply-toggle, ai-listen-toggle)
-- ADICIONAR: gerenciamento de `whatsappTabId` e `dashboardTabId`
-- ADICIONAR: roteamento de comandos `OPEN_CHAT`, `SEND_TEXT`, `SEND_IMAGE` do dashboard para o WhatsApp tab
-- ADICIONAR: listener `WHATSAPP_READY` e `DASHBOARD_READY`
-- ADICIONAR: `PING` para check de conexão WhatsApp
-- ADICIONAR: `chrome.tabs.onRemoved` para limpar referências
-- ADICIONAR: `findOrOpenWhatsApp()` que busca/abre tab do WhatsApp
+```text
+[Após linha ~168, antes de salvar a transação]
+if (type === "boleto" && paymentUrl) {
+  fetch PDF → salvar em /media-files/{userId}/boletos/{mpData.id}.pdf
+  metadata.boleto_file = `/media/${userId}/boletos/${mpData.id}.pdf`
+}
+```
 
-**4. Atualizar `chrome-extension/manifest.json`**
-- Substituir o content_scripts único por dois:
-  - `content-whatsapp.js` em `https://web.whatsapp.com/*`
-  - `content-dashboard.js` nos domínios do dashboard (VPS + lovable)
-- Manter `content.js` (sidebar no WhatsApp) como estava
-- Adicionar `host_permissions` para os domínios do dashboard
+### 2. Frontend: Usar arquivo local no `BoletoQuickRecovery.tsx`
 
-**5. Reescrever `src/hooks/useWhatsAppExtension.ts`**
-- Trocar protocolo `simplificando-app`/`PONG` pelo protocolo multi-formato do Finance Hub
-- Ping: `WHATSAPP_EXTENSION_PING`, resposta: `WHATSAPP_EXTENSION_READY`/`WHATSAPP_EXTENSION_LOADED`
-- Envio de comandos com envelope multi-protocolo (primary `WHATSAPP_OPEN_CHAT`, fallback `WHATSAPP_EXTENSION_COMMAND`, fallback bare `OPEN_CHAT`)
-- Resposta via `WHATSAPP_RESPONSE` com `requestId`
-- Adicionar `sendImage`, `fallbackOpenWhatsApp`
-- Normalizar telefone com prefixo `55`
+Alterar `loadPdf()` para buscar o PDF do caminho local (`metadata.boleto_file`) via a URL pública do app (`/media/...`), em vez do link do Mercado Pago:
 
-### Resultado
-A extensão no WhatsApp Web mantém a sidebar completa (dashboard, contato, fluxos, tags, IA) e GANHA a capacidade de receber comandos da aplicação web (abrir chat, enviar texto/imagem). A aplicação web detecta a extensão automaticamente e os botões de recuperação nas transações funcionam.
+```text
+const boletoFile = metadata?.boleto_file;
+if (boletoFile) {
+  const apiUrl = profile?.app_public_url || window.location.origin;
+  fetch(`${apiUrl}${boletoFile}`) → blob → setPdfBlobUrl
+}
+```
+
+### 3. Backend: Limpeza automática de boletos vencidos
+
+Adicionar um cron job (já existe infra de cron no `index.ts`) que roda diariamente:
+- Busca transações de boleto com status `pendente` criadas há mais de 5 dias (boletos vencem em ~3 dias úteis)
+- Deleta os arquivos PDF do filesystem
+- Limpa o campo `boleto_file` do metadata
+
+### 4. Configuração Nginx
+
+A rota `/media/` já está configurada para servir arquivos estáticos do volume `chatbot_media`. Nenhuma alteração necessária.
+
+## Arquivos Modificados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `deploy/backend/src/routes/payment.ts` | Baixar PDF após criação do boleto, salvar no filesystem |
+| `deploy/backend/src/index.ts` | Adicionar cron de limpeza diária |
+| `src/components/transactions/BoletoQuickRecovery.tsx` | Usar `metadata.boleto_file` em vez do link MP |
+
+## Instruções VPS
+
+Após deploy, apenas rebuild do backend:
+```bash
+cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
+```
 
