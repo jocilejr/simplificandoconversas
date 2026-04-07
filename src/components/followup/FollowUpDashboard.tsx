@@ -11,12 +11,13 @@ import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { supabase } from "@/integrations/supabase/client";
 import { FollowUpRulesConfig } from "./FollowUpRulesConfig";
 import { FollowUpQueue } from "./FollowUpQueue";
+import { FollowUpSettingsDialog } from "./FollowUpSettingsDialog";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Clock, CalendarClock, AlertTriangle, Phone, Copy, CheckCircle2,
   User, DollarSign, FileText, Search, Trash2, Play, Settings2,
-  Send, Timer, RefreshCw,
+  Send, Timer, RefreshCw, Zap,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -31,6 +32,7 @@ export function FollowUpDashboard() {
   const { workspaceId } = useWorkspace();
   const { extensionStatus, sendText } = useWhatsAppExtension();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoSettingsOpen, setAutoSettingsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [selectedBoleto, setSelectedBoleto] = useState<BoletoWithRecovery | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -194,13 +196,17 @@ export function FollowUpDashboard() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
+          <Button onClick={() => setAutoSettingsOpen(true)} variant="outline" size="sm" className="gap-2 h-8 text-xs">
+            <Zap className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Automático</span>
+          </Button>
           <Button onClick={() => setSettingsOpen(true)} variant="outline" size="sm" className="gap-2 h-8 text-xs">
             <Settings2 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Configurar Régua</span>
+            <span className="hidden sm:inline">Régua</span>
           </Button>
           <Button onClick={() => setQueueOpen(true)} size="sm" className="gap-2 h-8 text-xs">
             <Play className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Iniciar Recuperação</span>
+            <span className="hidden sm:inline">Iniciar</span>
           </Button>
         </div>
       </div>
@@ -298,6 +304,8 @@ export function FollowUpDashboard() {
           <div className="overflow-x-hidden"><FollowUpRulesConfig /></div>
         </DialogContent>
       </Dialog>
+
+      <FollowUpSettingsDialog open={autoSettingsOpen} onOpenChange={setAutoSettingsOpen} />
 
       <FollowUpQueue open={queueOpen} onOpenChange={setQueueOpen} boletos={pendingTodayBoletos} onMarkContacted={handleMarkContacted} />
 

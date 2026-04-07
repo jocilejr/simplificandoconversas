@@ -90,7 +90,8 @@ DECLARE _t text;
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
-    'flow_executions','flow_timeouts','labels','messages','meta_pixels',
+    'flow_executions','flow_timeouts','followup_settings','labels','messages',
+    'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances'
@@ -115,7 +116,8 @@ DECLARE _rec RECORD; _ws_id uuid;
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
-    'flow_executions','flow_timeouts','labels','messages','meta_pixels',
+    'flow_executions','flow_timeouts','followup_settings','labels','messages',
+    'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances'
@@ -158,7 +160,8 @@ DECLARE _t text; _cnt bigint; _total bigint := 0;
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
-    'flow_executions','flow_timeouts','labels','messages','meta_pixels',
+    'flow_executions','flow_timeouts','followup_settings','labels','messages',
+    'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances'
@@ -191,7 +194,8 @@ DECLARE _t text; _cnt bigint;
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
-    'flow_executions','flow_timeouts','labels','messages','meta_pixels',
+    'flow_executions','flow_timeouts','followup_settings','labels','messages',
+    'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances'
@@ -239,7 +243,8 @@ DECLARE _t text;
     'conversation_labels','conversations','email_campaigns','email_contacts',
     'email_events','email_follow_up_sends','email_follow_ups',
     'email_queue','email_sends','email_suppressions','email_templates',
-    'flow_executions','flow_timeouts','labels','messages','meta_pixels',
+    'flow_executions','flow_timeouts','followup_settings','labels','messages',
+    'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances'

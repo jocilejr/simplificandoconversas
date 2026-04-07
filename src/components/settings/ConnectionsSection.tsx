@@ -3,8 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
+import { useMessageQueueConfig } from "@/hooks/useMessageQueueConfig";
 import {
   Dialog,
   DialogContent,
@@ -36,10 +38,80 @@ import {
   RotateCcw,
   MessageSquareX,
   Settings,
+  Timer,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
+
+function MessageQueueSection({ instances }: { instances: any[] }) {
+  const { configs, upsertDelay } = useMessageQueueConfig();
+  const [localDelays, setLocalDelays] = useState<Record<string, string>>({});
+
+  const activeInstances = instances.filter((i: any) => i.is_active);
+  if (activeInstances.length === 0) return null;
+
+  return (
+    <div className="border-t border-border pt-6 mt-6 space-y-4">
+      <div>
+        <h4 className="text-sm font-semibold flex items-center gap-2">
+          <Timer className="h-4 w-4 text-primary" />
+          Fila de Mensagens
+        </h4>
+        <p className="text-xs text-muted-foreground mt-1">
+          Define o intervalo entre mensagens automáticas por instância. Usado por Transações e Follow Up.
+        </p>
+      </div>
+      <div className="space-y-2">
+        {activeInstances.map((inst: any) => {
+          const currentConfig = configs.find((c: any) => c.instance_name === inst.instance_name);
+          const currentDelay = currentConfig?.delay_seconds || 30;
+          const localValue = localDelays[inst.instance_name];
+
+          return (
+            <div key={inst.instance_name} className="flex items-center gap-3 p-3 rounded-lg border border-border/30 bg-secondary/10">
+              <div className={`h-2 w-2 rounded-full shrink-0 ${inst.status === "open" ? "bg-green-500" : "bg-red-500"}`} />
+              <span className="text-sm font-medium flex-1 truncate">{inst.instance_name}</span>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={5}
+                  max={300}
+                  value={localValue ?? String(currentDelay)}
+                  onChange={(e) => setLocalDelays((prev) => ({ ...prev, [inst.instance_name]: e.target.value }))}
+                  className="h-8 w-20 text-sm text-center"
+                />
+                <span className="text-xs text-muted-foreground shrink-0">seg</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs px-3"
+                  disabled={upsertDelay.isPending}
+                  onClick={() => {
+                    const val = Math.max(5, Math.min(300, parseInt(localValue || String(currentDelay)) || 30));
+                    upsertDelay.mutate({ instanceName: inst.instance_name, delaySeconds: val }, {
+                      onSuccess: () => {
+                        toast({ title: "Delay atualizado!" });
+                        setLocalDelays((prev) => {
+                          const next = { ...prev };
+                          delete next[inst.instance_name];
+                          return next;
+                        });
+                      },
+                      onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
+                    });
+                  }}
+                >
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function ConnectionsSection() {
   const { workspaceId } = useWorkspace();
@@ -477,6 +549,9 @@ export function ConnectionsSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Message Queue Config */}
+      <MessageQueueSection instances={instances} />
 
       {/* Delete all conversations section */}
       <div className="border-t border-border pt-6 mt-6">

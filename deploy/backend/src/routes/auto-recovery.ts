@@ -103,27 +103,9 @@ export async function processRecoveryQueue() {
   for (const settings of allSettings) {
     try {
       const workspaceId = settings.workspace_id;
-      const delaySeconds = Math.max(settings.delay_seconds || 20, 20);
 
       // Determine instance based on transaction type (will be checked per item)
       const defaultInstance = settings.instance_name;
-
-      // Check if enough time passed since last send
-      const { data: lastSent } = await sb
-        .from("recovery_queue")
-        .select("sent_at")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "sent")
-        .order("sent_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (lastSent?.sent_at) {
-        const elapsed = (Date.now() - new Date(lastSent.sent_at).getTime()) / 1000;
-        if (elapsed < delaySeconds) {
-          continue; // Not enough time passed
-        }
-      }
 
       // Get first pending item that is ready to send
       const { data: item } = await sb
@@ -148,6 +130,33 @@ export async function processRecoveryQueue() {
       if (!instanceName) {
         console.log(`[auto-recovery] No instance configured for type ${txType} in workspace ${workspaceId}`);
         continue;
+      }
+
+      // Get delay from message_queue_config for this instance
+      const { data: queueConfig } = await sb
+        .from("message_queue_config")
+        .select("delay_seconds")
+        .eq("workspace_id", workspaceId)
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+
+      const delaySeconds = Math.max(queueConfig?.delay_seconds || 30, 5);
+
+      // Check if enough time passed since last send for this instance
+      const { data: lastSent } = await sb
+        .from("recovery_queue")
+        .select("sent_at")
+        .eq("workspace_id", workspaceId)
+        .eq("status", "sent")
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastSent?.sent_at) {
+        const elapsed = (Date.now() - new Date(lastSent.sent_at).getTime()) / 1000;
+        if (elapsed < delaySeconds) {
+          continue; // Not enough time passed
+        }
       }
 
       // Check if transaction is still pending (may have been paid in the meantime)
