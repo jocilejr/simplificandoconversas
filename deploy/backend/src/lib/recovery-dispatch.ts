@@ -24,6 +24,18 @@ interface RecoveryBlock {
   content: string;
 }
 
+/**
+ * Strip data URI prefix and whitespace from base64 strings.
+ * Evolution API expects raw base64, not data URIs.
+ */
+function cleanBase64(input: string): string {
+  let cleaned = input.trim();
+  if (cleaned.startsWith("data:") && cleaned.includes(",")) {
+    cleaned = cleaned.split(",")[1];
+  }
+  return cleaned.replace(/\s/g, "");
+}
+
 function getGreeting(): string {
   const now = new Date();
   const brasiliaHour = (now.getUTCHours() - 3 + 24) % 24;
@@ -106,20 +118,19 @@ async function sendBlock(
     }
 
     const pdfBuffer = await fsModule.readFile(fsPath);
-    const pdfBase64 = pdfBuffer.toString("base64");
-    const mediaData = `data:application/pdf;base64,${pdfBase64}`;
+    const pdfBase64 = cleanBase64(pdfBuffer.toString("base64"));
 
     const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
     const fileName = `boleto-${firstName}.pdf`;
 
-    console.log(`[recovery-dispatch] Sending PDF block (local base64) from ${fsPath}`);
+    console.log(`[recovery-dispatch] Sending PDF block from ${fsPath} (${pdfBase64.length} chars base64)`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({
         number: phone,
         mediatype: "document",
-        media: mediaData,
+        media: pdfBase64,
         fileName,
         mimetype: "application/pdf",
       }),
@@ -170,17 +181,16 @@ async function sendBlock(
     }
 
     const imgBuffer = await fsModule.readFile(jpgPath);
-    const imgBase64 = imgBuffer.toString("base64");
-    const mediaData = `data:image/jpeg;base64,${imgBase64}`;
+    const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
 
-    console.log(`[recovery-dispatch] Sending IMAGE block (local base64) from ${jpgPath}`);
+    console.log(`[recovery-dispatch] Sending IMAGE block from ${jpgPath} (${imgBase64.length} chars base64)`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({
         number: phone,
         mediatype: "image",
-        media: mediaData,
+        media: imgBase64,
         caption: "",
       }),
     });
