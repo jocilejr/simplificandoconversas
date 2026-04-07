@@ -80,6 +80,9 @@ router.post("/", async (req, res) => {
     const userId = userData.id;
     const body = req.body;
     const workspaceId = await resolveWorkspaceIdFromRequest(body, userId);
+    if (!workspaceId) {
+      return res.status(403).json({ error: "Workspace não autorizado" });
+    }
     console.log(`[whatsapp-proxy] Authenticated userId: ${userId}, workspaceId: ${workspaceId}`);
 
     const supabase = getServiceClient();
