@@ -232,6 +232,16 @@ router.post("/", async (req, res) => {
 
       console.log(`[yampi-webhook] Refused transaction ${txId} saved`);
 
+      // Enqueue for recovery
+      const refusedTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
+      if (refusedTxId) {
+        await enqueueRecovery({
+          workspaceId, userId, transactionId: refusedTxId,
+          customerPhone: customer.phone, customerName: customer.name,
+          amount, transactionType: type,
+        }).catch((e: any) => console.error("[yampi-webhook] enqueue error:", e.message));
+      }
+
     // ─── cart.reminder ───
     } else if (event === "cart.reminder") {
       const cart = resource;
