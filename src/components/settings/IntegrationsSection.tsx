@@ -14,7 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Check, Settings2, Loader2, Eye, EyeOff } from "lucide-react";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Integration {
