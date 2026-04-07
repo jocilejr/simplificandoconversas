@@ -2,38 +2,34 @@
 
 ## Problema
 
-A tabela `profiles` tem linhas duplicadas para o mesmo `user_id` (`46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6` aparece 2x). O método `.maybeSingle()` do Supabase retorna erro quando encontra mais de uma linha, causando falha silenciosa ao carregar o perfil.
+A URL de webhook exibida na página de integrações usa `app.chatbotsimplificado.com` (domínio do frontend), mas os webhooks precisam apontar para `api.chatbotsimplificado.com` (domínio da API/backend). Isso faz com que os webhooks configurados na Yampi nunca cheguem ao backend.
 
 ## Solução
 
-### 1. Remover a linha duplicada no banco (VPS)
+### 1. Adicionar campo `api_public_url` na tabela `workspaces`
 
-Execute no terminal da VPS para identificar e remover o duplicado, mantendo apenas a linha mais recente:
+Criar uma migração para adicionar a coluna `api_public_url` à tabela `workspaces`, separando o domínio do app do domínio da API.
 
-```bash
-docker exec -it deploy-postgres-1 psql -U postgres -d postgres --pset=pager=off -c "
-DELETE FROM profiles
-WHERE id IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY updated_at DESC) as rn
-    FROM profiles
-  ) t WHERE rn > 1
-);"
-```
+### 2. Atualizar a geração de URL de webhook em `IntegrationsSection.tsx`
 
-### 2. Adicionar constraint UNIQUE para prevenir duplicatas futuras
+Na linha 298, usar `api_public_url` do workspace (ou um campo dedicado) em vez de `app_public_url` para construir a URL do webhook.
 
-```bash
-docker exec -it deploy-postgres-1 psql -U postgres -d postgres -c "
-ALTER TABLE profiles ADD CONSTRAINT profiles_user_id_unique UNIQUE (user_id);"
-```
+Lógica: `baseUrl = workspace.api_public_url || profile.app_public_url?.replace('app.', 'api.') || "https://SEU-API-DOMAIN"`
 
-### 3. Atualizar o hook `useProfile` para usar `.single()` com tratamento robusto
+### 3. Adicionar campo "URL da API" na seção de configurações do App (`AppSection.tsx`)
 
-No arquivo `src/hooks/useProfile.ts`, trocar `.maybeSingle()` por `.limit(1).single()` para garantir que sempre retorna apenas uma linha, mesmo em caso de dados inconsistentes.
+Adicionar um input para `api_public_url` ao lado do `app_public_url` existente, para que o usuário configure explicitamente o domínio da API.
+
+### 4. Atualizar valor no banco (instrução para VPS)
+
+Fornecer comando SQL para definir `api_public_url = 'https://api.chatbotsimplificado.com'` no workspace.
+
+## Alternativa mais simples
+
+Em vez de criar uma nova coluna, podemos simplesmente derivar a URL da API a partir da URL do app, substituindo `app.` por `api.` automaticamente na geração do webhook URL. Isso não exige migração nem campo extra, mas assume que a convenção de domínio sempre segue o padrão `app.` → `api.`.
 
 ## Impacto
-- Corrige a persistência da mensagem PIX/Boleto
-- Previne duplicatas futuras
-- Nenhuma mudança visual na interface
+- Corrige a URL de webhook exibida na interface
+- Garante que ao copiar a URL, o usuário configure o endereço correto na Yampi
+- Nenhuma mudança no backend — apenas no frontend
 
