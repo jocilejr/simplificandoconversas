@@ -70,10 +70,15 @@ export function FollowUpRulesConfig() {
     queryFn: async () => {
       const { data, error } = await supabase.from("boleto_settings" as any).select("*").eq("workspace_id", workspaceId!).maybeSingle();
       if (error) throw error;
-      if (data) setExpirationDays((data as any).default_expiration_days.toString());
       return data as any;
     },
   });
+
+  useEffect(() => {
+    if (settings?.default_expiration_days != null) {
+      setExpirationDays(settings.default_expiration_days.toString());
+    }
+  }, [settings]);
 
   const { data: rules, isLoading: loadingRules } = useQuery({
     queryKey: ["boleto-recovery-rules-all", workspaceId],
