@@ -183,8 +183,8 @@ export function BoletoRecoveryModal({ open, onOpenChange }: BoletoRecoveryModalP
 
       fetchTemplates();
     } catch (error: unknown) {
+      console.error("Save template error:", error);
       toast.error("Erro ao salvar template");
-      console.error(error);
     } finally {
       setIsLoading(false);
     }

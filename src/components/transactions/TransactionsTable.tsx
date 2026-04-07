@@ -34,6 +34,7 @@ import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
 import { useProfile } from "@/hooks/useProfile";
 import { RecoverySettingsDialog } from "./RecoverySettingsDialog";
 import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
+import { BoletoQuickRecovery } from "./BoletoQuickRecovery";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -101,6 +102,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
+  const [quickRecoveryTx, setQuickRecoveryTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
   // Recovery hooks
@@ -122,6 +124,14 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
     }
     return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+  };
+
+  const handleRowClick = (tx: Transaction) => {
+    if (activeTab === "boletos-gerados") {
+      setQuickRecoveryTx(tx);
+    } else {
+      setSelectedTx(tx);
+    }
   };
 
   // Reset visible count when tab changes
@@ -449,7 +459,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
           <div
             key={tx.id}
             className="border border-border/30 rounded-lg p-3 bg-secondary/10 cursor-pointer"
-            onClick={() => setSelectedTx(tx)}
+            onClick={() => handleRowClick(tx)}
           >
             <div className="flex items-center justify-between mb-2">
               <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
@@ -547,7 +557,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                   <tr
                     key={tx.id}
                     className="group hover:bg-secondary/40 transition-all duration-200 cursor-pointer"
-                    onClick={() => setSelectedTx(tx)}
+                    onClick={() => handleRowClick(tx)}
                   >
                     <td className="py-3.5 px-4">
                       <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
@@ -752,6 +762,12 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       <BoletoRecoveryModal
         open={boletoTemplateOpen}
         onOpenChange={setBoletoTemplateOpen}
+      />
+
+      <BoletoQuickRecovery
+        open={!!quickRecoveryTx}
+        onOpenChange={(v) => !v && setQuickRecoveryTx(null)}
+        transaction={quickRecoveryTx}
       />
     </div>
   );
