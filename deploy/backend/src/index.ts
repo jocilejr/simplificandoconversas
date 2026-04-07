@@ -80,8 +80,8 @@ cron.schedule("0 3 * * *", async () => {
       process.env.SUPABASE_SERVICE_ROLE_KEY || ""
     );
 
-    // Find pending boletos older than 5 days
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    // Find pending boletos older than 30 days
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: expired } = await supabase
       .from("transactions")
       .select("id, metadata, user_id")
