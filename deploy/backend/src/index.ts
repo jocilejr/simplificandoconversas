@@ -20,6 +20,7 @@ import paymentRouter from "./routes/payment";
 import paymentOpenpixRouter from "./routes/payment-openpix";
 import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
+import manualPaymentRouter from "./routes/manual-payment-webhook";
 
 const app = express();
 app.use(cors());
@@ -39,6 +40,7 @@ app.use("/api/payment", paymentRouter);
 app.use("/api/payment-openpix", paymentOpenpixRouter);
 app.use("/api/resolve-user-by-email", resolveUserRouter);
 app.use("/api/yampi-webhook", yampiWebhookRouter);
+app.use("/api/manual-payment", manualPaymentRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);

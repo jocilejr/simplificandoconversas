@@ -68,6 +68,18 @@ const INTEGRATIONS: Integration[] = [
     webhookPath: "/functions/v1/yampi-webhook",
   },
   {
+    id: "manual_payment",
+    name: "Webhook PIX/Cartão",
+    description: "Receba pagamentos via webhook genérico",
+    platform: "manual_payment",
+    icon: "🔗",
+    available: true,
+    fields: [
+      { key: "webhook_secret", label: "Webhook Secret", placeholder: "minha-chave-secreta", type: "password" },
+    ],
+    webhookPath: "/functions/v1/manual-payment/webhook",
+  },
+  {
     id: "stripe",
     name: "Stripe",
     description: "Pagamentos internacionais",
