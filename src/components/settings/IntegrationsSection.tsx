@@ -170,7 +170,6 @@ export function IntegrationsSection() {
     } else {
       toast({ title: "Integração salva com sucesso" });
       await loadConnections();
-      setConfigDialog(null);
     }
     setSaving(false);
   };
