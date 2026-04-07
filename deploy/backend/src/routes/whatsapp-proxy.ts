@@ -777,7 +777,7 @@ router.post("/", async (req, res) => {
         if (picJid.includes("@lid")) {
           const { data: convForPic } = await serviceClient.from("conversations")
             .select("phone_number")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .eq("remote_jid", picJid)
             .maybeSingle();
           if (convForPic?.phone_number) picNumber = convForPic.phone_number;
