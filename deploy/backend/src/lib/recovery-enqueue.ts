@@ -17,15 +17,20 @@ export async function enqueueRecovery(opts: {
 
   const sb = getServiceClient();
 
-  // Check if recovery is enabled for this workspace
+  // Fetch recovery settings for this workspace (no filter on deprecated 'enabled' column)
   const { data: settings } = await sb
     .from("recovery_settings")
     .select("*")
     .eq("workspace_id", opts.workspaceId)
-    .eq("enabled", true)
     .maybeSingle();
 
   if (!settings) return;
+
+  // Check per-type enablement
+  const txType = opts.transactionType;
+  if (txType === "boleto" && !settings.enabled_boleto) return;
+  else if ((txType === "yampi_cart" || txType === "yampi") && !settings.enabled_yampi) return;
+  else if (txType !== "boleto" && txType !== "yampi_cart" && txType !== "yampi" && !settings.enabled_pix) return;
 
   // Check if already queued for this transaction
   const { data: existing } = await sb
