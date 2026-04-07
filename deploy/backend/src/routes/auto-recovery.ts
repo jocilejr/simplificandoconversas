@@ -18,15 +18,20 @@ export async function enqueueRecovery(opts: {
 }) {
   const sb = getServiceClient();
 
-  // Check if recovery is enabled for this workspace
+  // Check if recovery is enabled for this transaction type
   const { data: settings } = await sb
     .from("recovery_settings")
     .select("*")
     .eq("workspace_id", opts.workspaceId)
-    .eq("enabled", true)
     .maybeSingle();
 
   if (!settings) return;
+
+  // Check per-type enablement
+  const txType = opts.transactionType;
+  if (txType === "boleto" && !settings.enabled_boleto) return;
+  else if ((txType === "yampi_cart" || txType === "yampi") && !settings.enabled_yampi) return;
+  else if (txType !== "boleto" && txType !== "yampi_cart" && txType !== "yampi" && !settings.enabled_pix) return;
   if (!opts.customerPhone) return;
 
   // Check if already queued for this transaction
@@ -92,15 +97,18 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
 export async function processRecoveryQueue() {
   const sb = getServiceClient();
 
-  // Get all enabled recovery settings
+  // Get all recovery settings that have at least one type enabled
   const { data: allSettings } = await sb
     .from("recovery_settings")
-    .select("*")
-    .eq("enabled", true);
+    .select("*");
 
   if (!allSettings || allSettings.length === 0) return;
 
-  for (const settings of allSettings) {
+  // Filter to only settings with at least one type enabled
+  const enabledSettings = allSettings.filter((s: any) => s.enabled_boleto || s.enabled_pix || s.enabled_yampi);
+  if (enabledSettings.length === 0) return;
+
+  for (const settings of enabledSettings) {
     try {
       const workspaceId = settings.workspace_id;
 
@@ -119,6 +127,18 @@ export async function processRecoveryQueue() {
         .maybeSingle();
 
       if (!item) continue;
+
+      // Check if this specific transaction type is enabled
+      const txType = item.transaction_type;
+      const typeEnabled =
+        (txType === "boleto" && settings.enabled_boleto) ||
+        ((txType === "yampi_cart" || txType === "yampi") && settings.enabled_yampi) ||
+        (txType !== "boleto" && txType !== "yampi_cart" && txType !== "yampi" && settings.enabled_pix);
+
+      if (!typeEnabled) {
+        // Skip this item — its type is not enabled
+        continue;
+      }
 
       // Determine the instance for this transaction type
       const txType = item.transaction_type;

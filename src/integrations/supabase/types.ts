@@ -1709,6 +1709,9 @@ export type Database = {
           created_at: string
           delay_seconds: number
           enabled: boolean
+          enabled_boleto: boolean
+          enabled_pix: boolean
+          enabled_yampi: boolean
           id: string
           instance_boleto: string | null
           instance_name: string | null
@@ -1723,6 +1726,9 @@ export type Database = {
           created_at?: string
           delay_seconds?: number
           enabled?: boolean
+          enabled_boleto?: boolean
+          enabled_pix?: boolean
+          enabled_yampi?: boolean
           id?: string
           instance_boleto?: string | null
           instance_name?: string | null
@@ -1737,6 +1743,9 @@ export type Database = {
           created_at?: string
           delay_seconds?: number
           enabled?: boolean
+          enabled_boleto?: boolean
+          enabled_pix?: boolean
+          enabled_yampi?: boolean
           id?: string
           instance_boleto?: string | null
           instance_name?: string | null
