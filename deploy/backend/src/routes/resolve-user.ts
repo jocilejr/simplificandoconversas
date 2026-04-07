@@ -3,6 +3,37 @@ import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
 
+// POST /create — admin creates a new user with email + password
+router.post("/create", async (req, res) => {
+  try {
+    const { email, password, fullName } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const sb = getServiceClient();
+
+    // Create user via admin API
+    const { data: newUser, error: createError } = await sb.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName || "" },
+    });
+
+    if (createError) {
+      return res.status(400).json({ error: createError.message });
+    }
+
+    return res.json({ userId: newUser.user.id, email: newUser.user.email });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST / — resolve single email to user_id
 router.post("/", async (req, res) => {
   try {
