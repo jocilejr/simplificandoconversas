@@ -136,7 +136,7 @@ router.post("/", async (req, res) => {
         // Ensure at least one instance is active
         const { data: activeCheck, error: activeCheckErr } = await serviceClient
           .from("whatsapp_instances")
-          .select("id").eq("user_id", userId).eq("is_active", true).limit(1);
+          .select("id").eq("workspace_id", workspaceId!).eq("is_active", true).limit(1);
         if (activeCheckErr) console.error("[fetch-instances] Active check error:", activeCheckErr);
         else console.log(`[fetch-instances] Active instances found: ${activeCheck?.length || 0}`);
         
