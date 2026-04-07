@@ -4,10 +4,9 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 
 export function useRecoverySettings() {
-  const { currentWorkspace } = useWorkspace();
+  const { workspaceId } = useWorkspace();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const workspaceId = currentWorkspace?.id;
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ["recovery-settings", workspaceId],
@@ -18,7 +17,7 @@ export function useRecoverySettings() {
         .select("*")
         .eq("workspace_id", workspaceId)
         .maybeSingle();
-      return data;
+      return data as any;
     },
     enabled: !!workspaceId,
   });
@@ -36,7 +35,7 @@ export function useRecoverySettings() {
         const { error } = await supabase
           .from("recovery_settings" as any)
           .update(values)
-          .eq("id", settings.id);
+          .eq("id", (settings as any).id);
         if (error) throw error;
       } else {
         const { error } = await supabase
@@ -58,8 +57,7 @@ export function useRecoverySettings() {
 }
 
 export function useRecoveryQueue() {
-  const { currentWorkspace } = useWorkspace();
-  const workspaceId = currentWorkspace?.id;
+  const { workspaceId } = useWorkspace();
 
   const { data: queue, isLoading, refetch } = useQuery({
     queryKey: ["recovery-queue", workspaceId],
