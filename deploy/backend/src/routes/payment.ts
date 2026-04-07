@@ -134,7 +134,8 @@ router.post("/create", async (req: Request, res: Response) => {
         };
       }
     }
-
+    // Download and save boleto PDF to filesystem
+    let boletoFilePath: string | null = null;
 
     const mpResp = await fetch(`${MP_API}/v1/payments`, {
       method: "POST",
