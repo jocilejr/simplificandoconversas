@@ -393,6 +393,24 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_transactions_user_created ON public.transactions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_external ON public.transactions(external_id, source);
 GRANT ALL ON public.transactions TO anon, authenticated, service_role;
+
+-- Email Link Clicks
+CREATE TABLE IF NOT EXISTS public.email_link_clicks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  send_id uuid NOT NULL REFERENCES public.email_sends(id) ON DELETE CASCADE,
+  original_url text NOT NULL,
+  clicked boolean DEFAULT false,
+  clicked_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.email_link_clicks ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_link_clicks' AND policyname = 'Users can view own link clicks') THEN
+    CREATE POLICY "Users can view own link clicks" ON public.email_link_clicks FOR SELECT TO authenticated USING (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.email_link_clicks TO anon, authenticated, service_role;
 EOSQL
 echo "✓ Base schema updates concluídos"
 
