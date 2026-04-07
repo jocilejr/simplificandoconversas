@@ -32,6 +32,7 @@ export function FollowUpDashboard() {
   const { workspaceId } = useWorkspace();
   const { extensionStatus, sendText } = useWhatsAppExtension();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoSettingsOpen, setAutoSettingsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [selectedBoleto, setSelectedBoleto] = useState<BoletoWithRecovery | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
