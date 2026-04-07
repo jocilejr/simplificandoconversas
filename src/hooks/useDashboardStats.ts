@@ -189,7 +189,8 @@ export function useDashboardStats(period: PeriodFilter, customRange?: DateRange)
     todayReminders.isLoading ||
     conversationsInPeriod.isLoading ||
     activeFlows.isLoading ||
-    messagesInPeriod.isLoading ||
+    messagesSent.isLoading ||
+    messagesReceived.isLoading ||
     executionsInPeriod.isLoading ||
     upcomingReminders.isLoading ||
     recentConversations.isLoading;
