@@ -304,24 +304,19 @@ router.post("/", async (req, res) => {
       }
 
       case "sync-chats": {
-        const allEvolutionInstances = await evolutionRequest("/instance/fetchInstances", "GET");
-        const evolutionList = Array.isArray(allEvolutionInstances) ? allEvolutionInstances : [];
-        
-        const instancesToSync = evolutionList.map((i: any) => 
-          i.name || i.instanceName || i.instance?.instanceName || "unknown"
-        ).filter((n: string) => n !== "unknown");
-        console.log(`[sync-chats] Instances from Evolution API: ${JSON.stringify(instancesToSync)}`);
+        const { data: workspaceInstances, error: workspaceInstancesError } = await serviceClient
+          .from("whatsapp_instances")
+          .select("instance_name")
+          .eq("workspace_id", workspaceId);
 
-        // Sync instances WITHOUT overwriting is_active
-        for (const instName of instancesToSync) {
-          const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", instName).maybeSingle();
-          if (!existing) {
-            const { error: insertErr } = await serviceClient.from("whatsapp_instances")
-              .insert({ user_id: userId, workspace_id: workspaceId, instance_name: instName, status: "close", is_active: false });
-            if (insertErr) console.error(`[sync-chats] Instance insert error for ${instName}:`, insertErr);
-          }
+        if (workspaceInstancesError) {
+          return res.status(500).json({ error: workspaceInstancesError.message });
         }
+
+        const instancesToSync = (workspaceInstances || [])
+          .map((i: any) => i.instance_name)
+          .filter(Boolean);
+        console.log(`[sync-chats] Workspace instances: ${JSON.stringify(instancesToSync)}`);
 
         let totalSynced = 0;
         let totalMessagesSynced = 0;
@@ -336,7 +331,7 @@ router.post("/", async (req, res) => {
           const { error: statusErr } = await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
             .eq("instance_name", instName)
-            .eq("workspace_id", workspaceId!);
+            .eq("workspace_id", workspaceId);
           if (statusErr) console.error(`[sync-chats] Status update error for ${instName}:`, statusErr);
           instanceStatuses.push({ instance: instName, connectionState });
 
