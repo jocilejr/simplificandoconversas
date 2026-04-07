@@ -363,9 +363,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         const valueCents = charge.value || 0;
 
+        const wkId2 = await resolveWorkspaceId(userId);
         await supabase.from("transactions").insert({
           user_id: userId,
-          workspace_id: workspaceId,
+          workspace_id: wkId2,
           amount: valueCents / 100,
           type: "pix",
           status: "cancelado",
