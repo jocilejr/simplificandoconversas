@@ -54,6 +54,8 @@ const typeLabels: Record<string, string> = {
   pix: "PIX",
   cartao: "Cartão",
   card: "Cartão",
+  yampi: "Yampi",
+  yampi_cart: "Carrinho",
 };
 
 const statusStyles: Record<string, string> = {
