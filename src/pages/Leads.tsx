@@ -25,12 +25,7 @@ const formatCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
 const formatPhone = (jid: string, phone?: string | null) => {
-  const num = (phone || jid).replace("@s.whatsapp.net", "").replace(/\D/g, "");
-  if (num.length === 13) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
-  if (num.length === 12) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 8)}-${num.slice(8)}`;
-  if (num.length === 11) return `(${num.slice(0, 2)}) ${num.slice(2, 7)}-${num.slice(7)}`;
-  if (num.length === 10) return `(${num.slice(0, 2)}) ${num.slice(2, 6)}-${num.slice(6)}`;
-  return num;
+  return (phone || jid).replace("@s.whatsapp.net", "").replace(/\D/g, "");
 };
 
 const Leads = () => {

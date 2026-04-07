@@ -45,9 +45,7 @@ const InfoRow = ({ icon: Icon, label, value }: { icon: any; label: string; value
 
 export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const formatPhone = (jid: string) => {
-    const num = jid.replace("@s.whatsapp.net", "");
-    if (num.length >= 12) return `+${num.slice(0, 2)} (${num.slice(2, 4)}) ${num.slice(4, 9)}-${num.slice(9)}`;
-    return num;
+    return jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
   };
 
   const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
