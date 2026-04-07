@@ -24,6 +24,18 @@ interface RecoveryBlock {
   content: string;
 }
 
+/**
+ * Strip data URI prefix and whitespace from base64 strings.
+ * Evolution API expects raw base64, not data URIs.
+ */
+function cleanBase64(input: string): string {
+  let cleaned = input.trim();
+  if (cleaned.startsWith("data:") && cleaned.includes(",")) {
+    cleaned = cleaned.split(",")[1];
+  }
+  return cleaned.replace(/\s/g, "");
+}
+
 function getGreeting(): string {
   const now = new Date();
   const brasiliaHour = (now.getUTCHours() - 3 + 24) % 24;
