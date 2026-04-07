@@ -184,16 +184,85 @@ router.post("/webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
     const event = body.event || "";
-    const charge = body.charge || {};
-    const correlationID = charge.correlationID || "";
 
-    console.log(`[openpix webhook] Event: ${event}, correlationID: ${correlationID}`);
+    console.log(`[openpix webhook] Event: ${event}, body keys: ${Object.keys(body).join(",")}`);
 
-    if (!correlationID) {
+    const supabase = getServiceClient();
+
+    // ── TRANSACTION_RECEIVED ──
+    if (event === "OPENPIX:TRANSACTION_RECEIVED") {
+      const tx = body.transaction || body.pix || {};
+      const charge = tx.charge || body.charge || {};
+      const corrId = charge.correlationID || tx.endToEndId || tx.globalID || `openpix-${Date.now()}`;
+      const valueCents = tx.value || charge.value || 0;
+      const customer = tx.customer || charge.customer || {};
+
+      console.log(`[openpix webhook] TRANSACTION_RECEIVED corrId=${corrId} value=${valueCents}`);
+
+      // Check if already exists
+      const { data: existing } = await supabase
+        .from("transactions")
+        .select("id")
+        .eq("external_id", corrId)
+        .eq("source", "openpix")
+        .maybeSingle();
+
+      if (existing) {
+        // Update to aprovado
+        await supabase
+          .from("transactions")
+          .update({
+            status: "aprovado",
+            paid_at: tx.time || new Date().toISOString(),
+            metadata: {
+              correlation_id: corrId,
+              end_to_end_id: tx.endToEndId || null,
+              openpix_charge_id: charge.id || null,
+            },
+          })
+          .eq("id", existing.id);
+        console.log(`[openpix webhook] TRANSACTION_RECEIVED ${corrId} → UPDATE aprovado`);
+      } else {
+        // Insert new
+        const userId = await resolveUserId(corrId, supabase);
+        if (!userId) {
+          console.warn("[openpix webhook] Could not resolve user_id for TRANSACTION_RECEIVED, skipping");
+          return res.sendStatus(200);
+        }
+
+        await supabase.from("transactions").insert({
+          user_id: userId,
+          amount: valueCents / 100,
+          type: "pix",
+          status: "aprovado",
+          source: "openpix",
+          external_id: corrId,
+          customer_name: customer.name || null,
+          customer_email: customer.email || null,
+          customer_phone: customer.phone || null,
+          customer_document: customer.taxID?.taxID || null,
+          payment_url: charge.paymentLinkUrl || null,
+          paid_at: tx.time || new Date().toISOString(),
+          metadata: {
+            correlation_id: corrId,
+            end_to_end_id: tx.endToEndId || null,
+            openpix_charge_id: charge.id || null,
+          },
+        });
+        console.log(`[openpix webhook] TRANSACTION_RECEIVED ${corrId} → INSERT aprovado (user ${userId})`);
+      }
+
       return res.sendStatus(200);
     }
 
-    const supabase = getServiceClient();
+    // ── CHARGE_COMPLETED / CHARGE_EXPIRED (existing logic) ──
+    const charge = body.charge || {};
+    const correlationID = charge.correlationID || "";
+
+    if (!correlationID) {
+      console.log(`[openpix webhook] No correlationID for event ${event}, skipping`);
+      return res.sendStatus(200);
+    }
 
     if (event === "OPENPIX:CHARGE_COMPLETED") {
       const pix = Array.isArray(body.pix) ? body.pix[0] : body.pix;
@@ -215,7 +284,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
         .eq("source", "openpix");
 
       if (count === 0) {
-        // Transaction doesn't exist — create it
         const userId = await resolveUserId(correlationID, supabase);
         if (!userId) {
           console.warn("[openpix webhook] Could not resolve user_id, skipping insert");
