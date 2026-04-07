@@ -1,74 +1,55 @@
 
 
-## Sistema de Recuperação via Extensão WhatsApp na Página de Transações
+## Atualizar Extensão Chrome para Comunicação Dashboard ↔ WhatsApp
 
-### Objetivo
-Adicionar botões de recuperação rápida nas abas "Boletos Ger." e "PIX/Cartão Pend." da tabela de transações, seguindo o padrão do Finance Hub. O sistema permite copiar mensagens prontas e abrir conversas no WhatsApp via extensão Chrome.
+### Problema
+A extensão atual NÃO tem um content script para a página do dashboard. O hook `useWhatsAppExtension.ts` envia `postMessage` com `source: "simplificando-app"`, mas ninguém escuta isso na página do dashboard. A extensão só injeta sidebar no WhatsApp Web.
 
-### Arquitetura (baseada no Finance Hub)
+O Finance Hub resolve isso com uma arquitetura de 3 camadas:
+- `content-whatsapp.js` no WhatsApp Web (manipula DOM)
+- `content-dashboard.js` no dashboard (ponte postMessage ↔ background)
+- `background.js` roteia comandos entre as duas abas
 
-O Finance Hub usa comunicação via `window.postMessage` entre a aplicação web e a extensão Chrome instalada no navegador. A extensão escuta pings e comandos (OPEN_CHAT, SEND_TEXT, SEND_IMAGE) e responde via postMessage.
+### Plano
 
-### Componentes a Criar/Modificar
+**1. Criar `chrome-extension/content-dashboard.js`** (NOVO)
+- Content script que roda na página do dashboard (VPS domain + lovable domains)
+- Escuta `window.postMessage` com tipos: `WHATSAPP_EXTENSION_PING`, `WHATSAPP_CHECK_CONNECTION`, `WHATSAPP_OPEN_CHAT`, `WHATSAPP_SEND_TEXT`, `WHATSAPP_SEND_IMAGE`, e também formatos bare (`OPEN_CHAT`, `SEND_TEXT`)
+- Envia resposta `WHATSAPP_EXTENSION_READY` / `WHATSAPP_EXTENSION_LOADED` / `WHATSAPP_RESPONSE`
+- Dedup de requests via `requestId`
+- Baseado diretamente no `content-dashboard.js` do Finance Hub
 
-**1. `src/hooks/useWhatsAppExtension.ts` (NOVO)**
-- Hook que gerencia a comunicação com a extensão Chrome via `window.postMessage`
-- Detecta se a extensão está conectada (ping/pong)
-- Expõe: `openChat(phone)`, `sendText(phone, text)`, `extensionStatus`, `retryConnection`
-- Protocolo multi-formato para compatibilidade (v1.x e v2.x da extensão)
-- Baseado diretamente no código do Finance Hub
+**2. Criar `chrome-extension/content-whatsapp.js`** (NOVO)
+- Content script que roda no WhatsApp Web para receber comandos DOM (OPEN_CHAT, SEND_TEXT, SEND_IMAGE)
+- Funções: `openChat(phone)`, `prepareText(phone, text)`, `prepareImage(phone, imageDataUrl)`
+- Manipulação do DOM: clicar "Nova conversa", digitar número, selecionar resultado, inserir texto
+- Envia `WHATSAPP_READY` ao background a cada 5s
+- Baseado no `content-whatsapp.js` do Finance Hub
 
-**2. `src/components/transactions/RecoveryPopover.tsx` (NOVO)**
-- Popover compacto que aparece ao clicar no ícone WhatsApp de uma transação pendente
-- Carrega mensagem de recuperação do `profiles` (campo `recovery_message_boleto` ou `recovery_message_pix`) com variáveis: `{saudação}`, `{nome}`, `{primeiro_nome}`, `{valor}`
-- Botões: "Copiar" e "WhatsApp" (abre chat via extensão)
-- Contador de tentativas de recuperação por transação
+**3. Reescrever `chrome-extension/background.js`**
+- Manter TODA a lógica existente (apiCall, apiFetch, ensureFreshToken, doRefreshToken, handleMessage com contact-status, flows, trigger-flow, pause-flow, dashboard-stats, contact-cross, remove-tag, list-instances, validate-session, ai-status, ai-reply-toggle, ai-listen-toggle)
+- ADICIONAR: gerenciamento de `whatsappTabId` e `dashboardTabId`
+- ADICIONAR: roteamento de comandos `OPEN_CHAT`, `SEND_TEXT`, `SEND_IMAGE` do dashboard para o WhatsApp tab
+- ADICIONAR: listener `WHATSAPP_READY` e `DASHBOARD_READY`
+- ADICIONAR: `PING` para check de conexão WhatsApp
+- ADICIONAR: `chrome.tabs.onRemoved` para limpar referências
+- ADICIONAR: `findOrOpenWhatsApp()` que busca/abre tab do WhatsApp
 
-**3. `src/components/transactions/TransactionsTable.tsx` (MODIFICAR)**
-- Nas abas "boletos-gerados" e "pix-cartao-pendentes", adicionar coluna/botão de ação WhatsApp ao lado das ações existentes
-- Renderizar o `RecoveryPopover` para cada transação pendente
-- Mobile: botão WhatsApp nos cards
+**4. Atualizar `chrome-extension/manifest.json`**
+- Substituir o content_scripts único por dois:
+  - `content-whatsapp.js` em `https://web.whatsapp.com/*`
+  - `content-dashboard.js` nos domínios do dashboard (VPS + lovable)
+- Manter `content.js` (sidebar no WhatsApp) como estava
+- Adicionar `host_permissions` para os domínios do dashboard
 
-**4. `src/pages/RecuperacaoBoletos.tsx` (MODIFICAR)**
-- Transformar de placeholder para página de configuração das mensagens de recuperação
-- Duas seções: "Mensagem Boleto" e "Mensagem PIX/Cartão"
-- Textarea com variáveis suportadas e botão salvar
+**5. Reescrever `src/hooks/useWhatsAppExtension.ts`**
+- Trocar protocolo `simplificando-app`/`PONG` pelo protocolo multi-formato do Finance Hub
+- Ping: `WHATSAPP_EXTENSION_PING`, resposta: `WHATSAPP_EXTENSION_READY`/`WHATSAPP_EXTENSION_LOADED`
+- Envio de comandos com envelope multi-protocolo (primary `WHATSAPP_OPEN_CHAT`, fallback `WHATSAPP_EXTENSION_COMMAND`, fallback bare `OPEN_CHAT`)
+- Resposta via `WHATSAPP_RESPONSE` com `requestId`
+- Adicionar `sendImage`, `fallbackOpenWhatsApp`
+- Normalizar telefone com prefixo `55`
 
-### Armazenamento das Mensagens
-
-Usar a tabela `profiles` adicionando dois campos via migration:
-- `recovery_message_boleto` (text, nullable)
-- `recovery_message_pix` (text, nullable)
-
-Isso evita criar tabelas extras e mantém as mensagens por usuário/workspace.
-
-### Armazenamento dos Cliques de Recuperação
-
-Migration para criar tabela `recovery_clicks`:
-- `id` (uuid PK)
-- `transaction_id` (text, ref transactions.id)
-- `user_id` (uuid)
-- `workspace_id` (uuid)
-- `recovery_type` (text: 'boleto' | 'pix' | 'cartao')
-- `created_at` (timestamptz)
-
-RLS: workspace members podem ler/inserir.
-
-### Fluxo do Usuário
-
-1. Na aba "Boletos Ger." ou "PIX/Cartão Pend.", cada linha terá um ícone WhatsApp
-2. Ao clicar, abre popover com a mensagem formatada (variáveis substituídas)
-3. Botão "Copiar" copia a mensagem, botão "WhatsApp" abre o chat na extensão
-4. Badge mostra quantas vezes já tentou recuperar aquela transação
-5. Na página "Recuperação", configura as mensagens padrão
-
-### Arquivos Envolvidos
-
-| Arquivo | Ação |
-|---------|------|
-| `src/hooks/useWhatsAppExtension.ts` | Criar |
-| `src/components/transactions/RecoveryPopover.tsx` | Criar |
-| `src/components/transactions/TransactionsTable.tsx` | Modificar (add WhatsApp button) |
-| `src/pages/RecuperacaoBoletos.tsx` | Reescrever (config mensagens) |
-| Migration SQL | Criar (campos em profiles + tabela recovery_clicks) |
+### Resultado
+A extensão no WhatsApp Web mantém a sidebar completa (dashboard, contato, fluxos, tags, IA) e GANHA a capacidade de receber comandos da aplicação web (abrir chat, enviar texto/imagem). A aplicação web detecta a extensão automaticamente e os botões de recuperação nas transações funcionam.
 
