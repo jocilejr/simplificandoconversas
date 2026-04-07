@@ -26,7 +26,15 @@ import autoRecoveryRouter from "./routes/auto-recovery";
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({
+  limit: "50mb",
+  verify: (req: any, _res, buf) => {
+    // Save raw body for routes that need HMAC verification
+    if (req.url?.startsWith("/api/yampi-webhook")) {
+      req.rawBody = buf;
+    }
+  },
+}));
 
 // Routes (mapped from /functions/v1/X via Nginx → /api/X)
 app.use("/api/whatsapp-proxy", whatsappProxyRouter);
