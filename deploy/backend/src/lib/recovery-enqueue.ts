@@ -42,8 +42,8 @@ export async function enqueueRecovery(opts: {
 
   if (existing) return;
 
-  const sendAfterMinutes = settings.send_after_minutes || 5;
-  const scheduledAt = new Date(Date.now() + sendAfterMinutes * 60 * 1000).toISOString();
+  // No initial delay — the global message queue already controls spacing between sends
+  const scheduledAt = new Date().toISOString();
 
   await sb.from("recovery_queue").insert({
     workspace_id: opts.workspaceId,
