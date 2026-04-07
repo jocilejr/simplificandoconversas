@@ -53,7 +53,6 @@ router.post("/webhook", async (req, res) => {
 
   if (!workspaceId) return res.status(400).json({ error: "workspace_id is required" });
   if (!event) return res.status(400).json({ error: "event is required" });
-  if (!external_id) return res.status(400).json({ error: "external_id is required" });
 
   // Validate workspace exists and get owner
   const { data: ws } = await sb
