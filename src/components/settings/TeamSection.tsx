@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace, ALL_PERMISSIONS } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { apiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
