@@ -215,6 +215,9 @@ router.post("/", async (req, res) => {
       userId = userData.id;
     }
 
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "No workspace" });
+
     if (!flowId || !remoteJid) {
       return res.status(400).json({ error: "flowId and remoteJid required" });
     }
