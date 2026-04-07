@@ -104,9 +104,9 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
       const s = settings as any;
       setDelaySeconds(s.delay_seconds || 20);
       setSendAfterMinutes(s.send_after_minutes || 5);
-      setInstanceBoleto(s.instance_boleto || s.instance_name || "");
-      setInstancePix(s.instance_pix || s.instance_name || "");
-      setInstanceYampi(s.instance_yampi || s.instance_name || "");
+      setInstanceBoleto(s.instance_boleto || "");
+      setInstancePix(s.instance_pix || "");
+      setInstanceYampi(s.instance_yampi || "");
     }
   }, [open, settings]);
 
@@ -123,7 +123,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
       instance_boleto: instanceBoleto || null,
       instance_pix: instancePix || null,
       instance_yampi: instanceYampi || null,
-      instance_name: instanceBoleto || instancePix || instanceYampi || null,
     } as any, {
       onSuccess: () => {
         toast.success("Configurações salvas!");
