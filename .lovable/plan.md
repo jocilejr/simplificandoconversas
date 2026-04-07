@@ -1,69 +1,60 @@
-RESOLVA PROBLEMA DE NÃO ESTAR CONSEGUINDO CRIAR NOVOS WORKSPACE POR LOW LEVEL SECURITY
 
-&nbsp;
 
-# Otimização de Performance pós-Workspace
+# Fix: Workspace Creation Blocked by workspace_members RLS
 
-## Diagnóstico
+## Problema raiz
 
-A lentidão tem **3 causas principais**:
+O trigger `auto_add_workspace_creator` tenta inserir o criador como admin em `workspace_members`, mas a policy `wm_insert` exige que o usuário **já seja admin** do workspace — criando um paradoxo (chicken-and-egg).
 
-### 1. RLS com funções SECURITY DEFINER em TODAS as queries
+## Solução
 
-Cada query agora passa por `is_workspace_member()`, `can_write_workspace()`, etc. Essas funções fazem sub-queries na tabela `workspace_members` a cada chamada. Sem índice adequado em `workspace_members(user_id, workspace_id)`, isso é lento.
+### 1. Alterar policy `wm_insert` em `workspace_members`
 
-### 2. QueryClient sem `staleTime` — refetch excessivo
-
-O `QueryClient` é criado sem configuração: `new QueryClient()`. Isso significa `staleTime: 0` — cada vez que um componente monta, TODAS as queries são refetched. Navegação entre páginas causa dezenas de requests simultâneos.
-
-### 3. Dashboard busca TODAS as mensagens do período
-
-`useDashboardStats` linha 112-123 faz `select("direction")` sem `head: true` — baixa TODOS os registros de mensagens para contar sent/received no cliente. Com milhares de mensagens, isso é muito pesado.
-
----
-
-## Plano de Correção
-
-### Arquivo 1: `src/App.tsx`
-
-Configurar o `QueryClient` com `staleTime` e `gcTime` para reduzir refetches:
-
-```ts
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,      // 30s antes de considerar dados "stale"
-      gcTime: 5 * 60 * 1000,  // 5 min no cache
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-```
-
-### Arquivo 2: `src/hooks/useDashboardStats.ts`
-
-Substituir a query de mensagens (que baixa todos os registros) por duas queries `count` separadas (sent/received), usando `head: true`:
-
-```ts
-// Em vez de baixar todas as mensagens:
-// select("direction") → filtrar no cliente
-// Usar duas queries count:
-// select("*", { count: "exact", head: true }).eq("direction", "outbound")
-// select("*", { count: "exact", head: true }).eq("direction", "inbound")
-```
-
-### Arquivo 3: `deploy/migrate-workspace.sql`
-
-Adicionar índice composto na tabela `workspace_members` para acelerar as funções RLS:
+Permitir que um usuário insira a si mesmo OU que um admin do workspace insira outros:
 
 ```sql
-CREATE INDEX IF NOT EXISTS idx_workspace_members_user_workspace 
-ON public.workspace_members(user_id, workspace_id);
+DROP POLICY IF EXISTS "wm_insert" ON public.workspace_members;
+CREATE POLICY "wm_insert" ON public.workspace_members
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    user_id = auth.uid()  -- pode inserir a si mesmo (trigger do workspace)
+    OR
+    has_workspace_role(auth.uid(), workspace_id, 'admin'::workspace_role)  -- admin pode convidar
+  );
 ```
 
-### Resultado esperado
+### 2. Garantir BYPASSRLS para postgres (instrução para VPS)
 
-- Menos requests ao navegar entre páginas (staleTime 30s)
-- Dashboard não baixa mais milhares de linhas de mensagens
-- Queries RLS executam mais rápido com o índice composto
-- Instruções para rodar na VPS: apenas o índice SQL precisa ser aplicado manualmente
+Como segurança adicional, garantir que o role `postgres` tenha BYPASSRLS para que triggers SECURITY DEFINER funcionem sem restrição:
+
+```sql
+ALTER ROLE postgres BYPASSRLS;
+```
+
+### 3. Atualizar `deploy/migrate-workspace.sql`
+
+Atualizar a definição da policy `wm_insert` no arquivo de migração para que futuros deploys já tenham a versão correta.
+
+### Arquivos modificados
+
+- `deploy/migrate-workspace.sql` — atualizar policy `wm_insert`
+- Nova migração Supabase (Lovable Cloud) — mesma alteração de policy
+
+### Instruções para VPS
+
+```bash
+cd ~/simplificandoconversas/deploy
+docker compose exec -T postgres psql -U postgres -d postgres <<'SQL'
+ALTER ROLE postgres BYPASSRLS;
+DROP POLICY IF EXISTS "wm_insert" ON public.workspace_members;
+CREATE POLICY "wm_insert" ON public.workspace_members
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    user_id = auth.uid()
+    OR has_workspace_role(auth.uid(), workspace_id, 'admin'::workspace_role)
+  );
+NOTIFY pgrst, 'reload schema';
+SQL
+docker compose restart postgrest
+```
+
