@@ -53,7 +53,7 @@ export function useWhatsAppInstances() {
     isError: isServerError,
     isLoading: isRemoteLoading,
   } = useQuery({
-    queryKey: ["whatsapp-remote-instances"],
+    queryKey: ["whatsapp-remote-instances", workspaceId],
     staleTime: 30_000,
     queryFn: async () => {
       const controller = new AbortController();
