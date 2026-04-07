@@ -24,7 +24,7 @@ const allSections = [
 ];
 
 const SettingsPage = () => {
-  const { isLoading } = useProfile();
+  useProfile(); // preload
   const { role } = useWorkspace();
   const [active, setActive] = useState("profile");
 
