@@ -1,4 +1,5 @@
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";

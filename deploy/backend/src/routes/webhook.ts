@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { resolveWorkspaceFromInstance, resolveWorkspaceId } from "../lib/workspace";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
