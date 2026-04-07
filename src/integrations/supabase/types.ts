@@ -1671,6 +1671,7 @@ export type Database = {
           created_at: string
           id: string
           invited_by: string | null
+          permissions: Json
           role: Database["public"]["Enums"]["workspace_role"]
           user_id: string
           workspace_id: string
@@ -1679,6 +1680,7 @@ export type Database = {
           created_at?: string
           id?: string
           invited_by?: string | null
+          permissions?: Json
           role?: Database["public"]["Enums"]["workspace_role"]
           user_id: string
           workspace_id: string
@@ -1687,6 +1689,7 @@ export type Database = {
           created_at?: string
           id?: string
           invited_by?: string | null
+          permissions?: Json
           role?: Database["public"]["Enums"]["workspace_role"]
           user_id?: string
           workspace_id?: string
