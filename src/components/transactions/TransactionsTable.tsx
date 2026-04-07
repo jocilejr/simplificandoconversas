@@ -127,7 +127,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     }
   }, [profile]);
 
-  const { updateProfile } = useProfile();
+  
 
   const handleSaveMessages = async () => {
     setSavingMsgs(true);
