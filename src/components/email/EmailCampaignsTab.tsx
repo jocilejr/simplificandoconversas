@@ -74,7 +74,7 @@ export function EmailCampaignsTab() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
       const { error } = await supabase.from("email_follow_ups").insert({
-        campaign_id: campaignId, user_id: user.id, template_id: tId, delay_days: delayDays, step_order: stepOrder,
+        campaign_id: campaignId, user_id: user.id, workspace_id: workspaceId!, template_id: tId, delay_days: delayDays, step_order: stepOrder,
       });
       if (error) throw error;
     },
