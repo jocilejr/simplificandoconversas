@@ -526,5 +526,24 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, created_at) WHERE status = 'pending';
 GRANT ALL ON public.email_queue TO anon, authenticated, service_role;
 
+-- message_queue_config (anti-ban global wait)
+CREATE TABLE IF NOT EXISTS public.message_queue_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  instance_name text NOT NULL,
+  delay_seconds integer NOT NULL DEFAULT 30,
+  pause_after_sends integer,
+  pause_minutes integer,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.message_queue_config ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'message_queue_config' AND policyname = 'service_all') THEN
+    CREATE POLICY service_all ON public.message_queue_config FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+GRANT ALL ON public.message_queue_config TO anon, authenticated, service_role;
+
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
