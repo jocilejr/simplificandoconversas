@@ -330,17 +330,17 @@ export function TeamSection() {
           <DialogHeader>
             <DialogTitle>Adicionar Membro</DialogTitle>
             <DialogDescription>
-              Informe o ID do usuário (UUID) para adicionar ao workspace.
+              Informe o email do usuário para adicionar ao workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">ID do Usuário</label>
+              <label className="text-xs font-medium">Email do Usuário</label>
               <Input
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                placeholder="usuario@exemplo.com"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                className="text-xs font-mono"
+                className="text-xs"
               />
             </div>
             <div className="space-y-1.5">
