@@ -155,7 +155,7 @@ router.post("/webhook", async (req, res) => {
 
     // Enqueue for recovery if pending/rejected
     if (newTx?.id && (txStatus === "pendente" || txStatus === "rejeitado")) {
-      await enqueueRecovery({
+      await dispatchRecovery({
         workspaceId,
         userId,
         transactionId: newTx.id,

@@ -308,7 +308,7 @@ router.post("/", async (req, res) => {
       // Enqueue for recovery
       const cartTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
       if (cartTxId) {
-        await enqueueRecovery({
+        await dispatchRecovery({
           workspaceId, userId, transactionId: cartTxId,
           customerPhone: customer.phone, customerName: customer.name,
           amount, transactionType: "yampi_cart",
