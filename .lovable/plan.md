@@ -1,21 +1,40 @@
 
 
-## Fix: Mover Fila de Mensagens para o Popover da Engrenagem
+## Adicionar documentação do webhook na integração Mercado Pago
 
-### Problema
-1. A seção "Fila de Mensagens" separada no final da página ficou ruim visualmente
-2. Erro ao salvar (provavelmente conflito entre o popover antigo que usa `updateDelay` na instancia e o novo `message_queue_config`)
-3. Existem DOIS controles de delay: o popover antigo (linhas 467-510) que salva `message_delay_ms` na instancia, e a seção nova que salva na tabela `message_queue_config`
+### O que será feito
 
-### Solução
-- Remover a seção `MessageQueueSection` inteira (componente separado no final)
-- Substituir o popover existente da engrenagem (que controla apenas `message_delay_ms`) por um popover com os 3 campos da fila: **Intervalo** (seg), **Pausar após** (msgs), **Pausa de** (min)
-- Salvar via `useMessageQueueConfig.upsertConfig` ao invés de `updateDelay`
-- Remover estado `delayInput` que era usado pelo popover antigo
+Abaixo da URL do webhook na integração do Mercado Pago, adicionar uma mini-documentação (igual já existe para `manual_payment`) explicando:
 
-### Arquivo
+1. Que o MP envia automaticamente — não é necessário configurar body
+2. O formato do JSON que o endpoint recebe
+3. Onde configurar no painel do Mercado Pago
+
+### Mudança
 
 | Arquivo | Ação |
 |---------|------|
-| `src/components/settings/ConnectionsSection.tsx` | Remover `MessageQueueSection`, substituir popover da engrenagem com campos de fila completos |
+| `src/components/settings/IntegrationsSection.tsx` | Adicionar bloco de documentação para `configDialog?.id === "mercadopago"` logo após o bloco de webhook URL |
+
+### Conteúdo da documentação na UI
+
+```text
+📄 Como configurar
+
+1. Acesse o painel do Mercado Pago
+2. Vá em Configurações > IPN (Notificações)
+3. Cole a URL acima no campo "URL de notificação"
+4. Selecione o evento "Pagamentos"
+
+O Mercado Pago envia automaticamente:
+
+{
+  "resource": "PAYMENT_ID",
+  "topic": "payment"
+}
+
+Não é necessário configurar nenhum body manualmente.
+```
+
+Apenas um bloco condicional novo, sem alterar nenhuma lógica existente.
 
