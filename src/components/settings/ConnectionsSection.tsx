@@ -551,7 +551,7 @@ export function ConnectionsSection() {
       </AlertDialog>
 
       {/* Message Queue Config */}
-      <MessageQueueSection instances={mergedInstances} />
+      <MessageQueueSection instances={instances} />
 
       {/* Delete all conversations section */}
       <div className="border-t border-border pt-6 mt-6">
