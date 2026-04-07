@@ -258,15 +258,15 @@ router.post("/create", async (req: Request, res: Response) => {
           source: "mercadopago",
           external_id: null,
           customer_name,
-          customer_phone: customer_phone || null,
-          customer_email: resolvedEmail || null,
-          customer_document: customer_document || null,
-          description: description || null,
-          payment_url: null,
-          metadata: {
-            error_reason: errorReason,
-            mp_error: mpData,
-          },
+        customer_phone: normalizePhone(customer_phone),
+        customer_email: resolvedEmail || null,
+        customer_document: customer_document || null,
+        description: description || null,
+        payment_url: null,
+        metadata: {
+          error_reason: errorReason,
+          mp_error: mpData,
+        },
         });
         console.log(`[payment] Saved rejected transaction: ${errorReason}`);
       } catch (saveErr: any) {
