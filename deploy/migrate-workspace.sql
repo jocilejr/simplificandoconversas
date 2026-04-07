@@ -91,7 +91,8 @@ DECLARE _t text;
     'email_events','email_follow_up_sends','email_follow_ups','email_link_clicks',
     'email_queue','email_sends','email_suppressions','email_templates',
     'flow_executions','flow_timeouts','labels','messages','meta_pixels',
-    'platform_connections','quick_replies','reminders','smtp_config',
+    'platform_connections','quick_replies','recovery_queue','recovery_settings',
+    'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances'
   ];
 BEGIN
