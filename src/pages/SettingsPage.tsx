@@ -26,7 +26,7 @@ const allSections = [
 const SettingsPage = () => {
   const { isLoading } = useProfile();
   const { role } = useWorkspace();
-  const [active, setActive] = useState("connections");
+  const [active, setActive] = useState("profile");
 
   const roleLevel = (r: string) => r === "admin" ? 3 : r === "operator" ? 2 : 1;
   const userLevel = roleLevel(role || "viewer");
