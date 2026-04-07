@@ -688,7 +688,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
           user_id: userId,
           workspace_id: workspaceId,
           amount: mpData.transaction_amount || 0,
-          type: mpData.payment_method_id === "pix" ? "pix" : "boleto",
+          type: resolveTransactionType(mpData.payment_method_id),
           status: newStatus,
           source: "mercadopago",
           external_id: String(mpData.id),
