@@ -118,8 +118,7 @@ async function sendBlock(
     }
 
     const pdfBuffer = await fsModule.readFile(fsPath);
-    const pdfBase64 = pdfBuffer.toString("base64");
-    const mediaData = `data:application/pdf;base64,${pdfBase64}`;
+    const pdfBase64 = cleanBase64(pdfBuffer.toString("base64"));
 
     const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
     const fileName = `boleto-${firstName}.pdf`;
