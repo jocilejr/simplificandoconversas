@@ -459,7 +459,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
           <div
             key={tx.id}
             className="border border-border/30 rounded-lg p-3 bg-secondary/10 cursor-pointer"
-            onClick={() => setSelectedTx(tx)}
+            onClick={() => handleRowClick(tx)}
           >
             <div className="flex items-center justify-between mb-2">
               <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
