@@ -1,56 +1,101 @@
 
 
-# Isolamento Total de Dados por Workspace
+# Super Admin + Permissões Granulares por Workspace
 
-## Problema
+## Visão Geral
 
-Atualmente, há vazamento de dados entre workspaces em dois pontos principais:
+Você (user_id `d2abc992...`) já tem `app_role = 'admin'` na tabela `user_roles`. Vamos usar isso como conceito de **Super Admin** — acesso total a TODOS os workspaces, sem precisar ser membro de cada um. Usuários comuns só veem os workspaces aos quais foram atribuídos, com permissões granulares por funcionalidade.
 
-1. **Conexões WhatsApp**: O backend `fetch-instances` busca TODAS as instâncias da Evolution API e as associa ao usuário (não ao workspace). As queries no backend filtram por `user_id` sem considerar `workspace_id`. O `resolveWorkspaceId()` pega o PRIMEIRO workspace do usuário, ignorando qual está ativo.
+## Arquitetura
 
-2. **Integrações**: O `IntegrationsSection` carrega `platform_connections` filtrado apenas por `user_id`, sem filtrar por `workspace_id`. Isso faz Mercado Pago, OpenPix etc. aparecerem em todos os workspaces.
+```text
+┌─────────────────────────────────────────┐
+│  user_roles.role = 'admin'              │  ← Super Admin (você)
+│  Vê TODOS os workspaces                 │
+│  Acesso total a TUDO                    │
+└─────────────────────────────────────────┘
 
-## Plano de Correção
+┌─────────────────────────────────────────┐
+│  workspace_members                      │  ← Usuários comuns
+│  + role (admin/operator/viewer)         │
+│  + permissions (jsonb) ← NOVO          │
+│  Só vê workspaces atribuídos            │
+│  Só vê abas/funcionalidades permitidas  │
+└─────────────────────────────────────────┘
+```
 
-### 1. Frontend: Passar `workspaceId` em todas as chamadas
+## Mudanças
 
-**`src/hooks/useWhatsAppInstances.ts`**
-- Já passa `workspaceId` no `fetch-instances` — OK
-- Adicionar `workspaceId` em `create-instance`, `delete-instance`, `sync-chats`, `logout-instance` e demais actions
+### 1. Schema: Adicionar `permissions` em `workspace_members`
 
-**`src/components/settings/IntegrationsSection.tsx`**  
-- Trocar `loadConnections` para filtrar por `workspace_id` em vez de `user_id`
-- Na inserção, já usa `workspace_id` — OK
-- Corrigir a query SELECT: `.eq("workspace_id", workspaceId)` em vez de `.eq("user_id", user.id)`
+```sql
+ALTER TABLE workspace_members
+ADD COLUMN permissions jsonb NOT NULL DEFAULT '{}';
+```
 
-**`src/components/settings/ConnectionsSection.tsx`**
-- Adicionar `workspaceId` na chamada de `sync-chats`
-- Na exclusão em massa (handleDeleteAllConversations), filtrar por `workspace_id`
+O campo `permissions` armazena quais funcionalidades o membro pode acessar:
+```json
+{
+  "dashboard": true,
+  "chatbot": true,
+  "email": false,
+  "leads": true,
+  "transacoes": false,
+  "reminders": true,
+  "recuperacao": false,
+  "gerar_boleto": false,
+  "grupos": false,
+  "area_membros": false,
+  "entrega": false,
+  "links_uteis": false,
+  "settings": false,
+  "disparar_fluxo": false
+}
+```
 
-### 2. Backend: Filtrar por `workspace_id` recebido do frontend
+Super admins e workspace admins ignoram este campo (acesso total).
 
-**`deploy/backend/src/lib/workspace.ts`**  
-- Adicionar função `resolveWorkspaceIdFromRequest(body, userId)` que prioriza o `workspaceId` enviado pelo frontend, com fallback para o método atual
+### 2. Frontend: `useWorkspace.tsx`
 
-**`deploy/backend/src/routes/whatsapp-proxy.ts`**
-- Usar `workspaceId` do body quando disponível: `const workspaceId = body.workspaceId || await resolveWorkspaceId(userId)`
-- **`fetch-instances`**: Filtrar instâncias do DB por `workspace_id` (não `user_id`). Só popular instâncias no DB para o workspace ativo
-- **`create-instance`**: Usar o `workspaceId` do body
-- **`delete-instance`**: Filtrar delete por `workspace_id`
-- **`sync-chats`**: Filtrar por `workspace_id`
-- **Active instance queries**: Adicionar `.eq("workspace_id", workspaceId)` em todas
+- Adicionar query para `user_roles` para detectar se o usuário é Super Admin
+- Se Super Admin: carregar TODOS os workspaces (não apenas os que tem membership), com role `"admin"` implícito
+- Expor `isSuperAdmin: boolean` e `permissions: Record<string, boolean>` no contexto
 
-### 3. Resumo de arquivos modificados
+### 3. Frontend: `AppSidebar.tsx`
+
+- Filtrar itens do menu baseado em `permissions` do workspace ativo
+- Super Admin e workspace admin veem tudo; outros veem apenas o permitido
+
+### 4. Frontend: `TeamSection.tsx` (Configurações > Equipe)
+
+- Ao adicionar/editar membro, exibir checkboxes para cada funcionalidade
+- Salvar no campo `permissions` do `workspace_members`
+- Super Admin pode gerenciar equipe de QUALQUER workspace
+
+### 5. Frontend: Proteção nas rotas/páginas
+
+- Cada página verifica se o usuário tem permissão via `useWorkspace().permissions`
+- Se não tem permissão, redireciona para dashboard ou mostra mensagem
+
+### 6. Frontend: `WorkspaceSwitcher.tsx`
+
+- Super Admin vê todos os workspaces no dropdown
+- Usuários comuns só veem os que são membros
+
+## Arquivos Modificados
 
 | Arquivo | Mudança |
 |---|---|
-| `src/components/settings/IntegrationsSection.tsx` | Filtrar por `workspace_id` no SELECT |
-| `src/components/settings/ConnectionsSection.tsx` | Passar `workspaceId` em sync/delete-all |
-| `src/hooks/useWhatsAppInstances.ts` | Passar `workspaceId` em todas as mutations |
-| `deploy/backend/src/routes/whatsapp-proxy.ts` | Usar `workspaceId` do body, filtrar queries por workspace |
-| `deploy/backend/src/lib/workspace.ts` | Helper para priorizar workspaceId do request |
+| Migration SQL | Adicionar coluna `permissions` jsonb |
+| `src/hooks/useWorkspace.tsx` | Super Admin detection + permissions no contexto |
+| `src/components/AppSidebar.tsx` | Filtrar menu por permissions |
+| `src/components/settings/TeamSection.tsx` | UI de checkboxes para permissões granulares |
+| `src/components/WorkspaceSwitcher.tsx` | Super Admin vê todos workspaces |
+| `src/pages/*.tsx` (rotas protegidas) | Verificar permission antes de renderizar |
 
-### Instruções para VPS após deploy
+## Resultado Final
 
-Rebuildar backend e frontend normalmente. Não há mudanças de schema — as tabelas já têm `workspace_id`.
+- **Você (Super Admin)**: vê TODOS os workspaces, acessa TUDO, gerencia equipe de qualquer workspace
+- **Usuários comuns**: só veem workspaces atribuídos, só acessam funcionalidades marcadas pelo admin
+- **Isolamento mantido**: dados continuam isolados por workspace_id via RLS
 
