@@ -34,6 +34,7 @@ import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
 import { useProfile } from "@/hooks/useProfile";
 import { RecoverySettingsDialog } from "./RecoverySettingsDialog";
 import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
+import { BoletoQuickRecovery } from "./BoletoQuickRecovery";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
