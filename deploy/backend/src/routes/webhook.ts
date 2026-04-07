@@ -303,6 +303,14 @@ router.post("/*", async (req, res) => {
 
     const userId = inst.user_id;
 
+    // Resolve workspace_id from the instance
+    const wsInfo = await resolveWorkspaceFromInstance(instance);
+    const workspaceId = wsInfo?.workspaceId || (await resolveWorkspaceId(userId));
+    if (!workspaceId) {
+      console.error("No workspace found for user:", userId);
+      return res.status(500).json({ error: "No workspace" });
+    }
+
     // Extract message content
     const message = data.message || {};
     const messageContent = message.conversation
