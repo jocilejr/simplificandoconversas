@@ -115,7 +115,7 @@ export function ConnectionsSection() {
     setSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "sync-chats" },
+        body: { action: "sync-chats", workspaceId },
       });
       if (error) throw error;
       toast({
