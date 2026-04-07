@@ -282,6 +282,7 @@ router.post("/create", async (req: Request, res: Response) => {
           barcode,
           qr_code: qrCode,
           payment_method: mpData.payment_method_id,
+          pdf_download_url: pdfDownloadUrl || null,
           ...(boletoFilePath ? { boleto_file: boletoFilePath } : {}),
         },
         paid_at: mpData.status === "approved" ? new Date().toISOString() : null,
