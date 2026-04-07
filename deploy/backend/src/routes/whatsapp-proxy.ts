@@ -622,7 +622,7 @@ router.post("/", async (req, res) => {
           // Get all existing remote_jids and phone_numbers for this user
           const { data: existingConvs } = await serviceClient.from("conversations")
             .select("remote_jid, phone_number, lid")
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
 
           const existingJids = new Set((existingConvs || []).map((c: any) => c.remote_jid));
           const existingPhones = new Set((existingConvs || []).filter((c: any) => c.phone_number).map((c: any) => c.phone_number));
