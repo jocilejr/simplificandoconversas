@@ -1,51 +1,21 @@
 
 
-## Webhook dedicado para Boletos (Mercado Pago IPN)
+## Fix: Mover Fila de Mensagens para o Popover da Engrenagem
 
 ### Problema
+1. A seção "Fila de Mensagens" separada no final da página ficou ruim visualmente
+2. Erro ao salvar (provavelmente conflito entre o popover antigo que usa `updateDelay` na instancia e o novo `message_queue_config`)
+3. Existem DOIS controles de delay: o popover antigo (linhas 467-510) que salva `message_delay_ms` na instancia, e a seção nova que salva na tabela `message_queue_config`
 
-O webhook atual (`/api/payment/webhook`) usa um `MERCADOPAGO_ACCESS_TOKEN` global, o que nao funciona em ambientes multi-usuario. Alem disso, quando o boleto e pago, o sistema nao atualiza corretamente a transacao porque nao resolve o token do usuario dono do pagamento.
+### Solução
+- Remover a seção `MessageQueueSection` inteira (componente separado no final)
+- Substituir o popover existente da engrenagem (que controla apenas `message_delay_ms`) por um popover com os 3 campos da fila: **Intervalo** (seg), **Pausar após** (msgs), **Pausa de** (min)
+- Salvar via `useMessageQueueConfig.upsertConfig` ao invés de `updateDelay`
+- Remover estado `delayInput` que era usado pelo popover antigo
 
-### Solucao
+### Arquivo
 
-Criar um endpoint dedicado `/api/payment/webhook/boleto` que:
-
-1. Recebe o IPN do Mercado Pago (formato `{ resource, topic }` no body ou `{ id, topic }` na query)
-2. Busca a transacao no banco pelo `external_id` = payment ID para descobrir o `user_id`
-3. Usa o token do Mercado Pago **do usuario** (via `platform_connections`)
-4. Consulta a API do MP para obter status completo
-5. Atualiza a transacao com status, `paid_at`, metadata (merge)
-6. Se status mudou para `aprovado`, remove da `recovery_queue`
-7. Se status e `pendente` e nao esta na fila, enfileira para recovery
-
-### Fluxo
-
-```text
-Mercado Pago IPN
-  → POST /api/payment/webhook/boleto
-  → Extrai payment_id do body.resource ou query.id
-  → Busca transacao no banco por external_id
-  → Resolve MP token do user_id
-  → GET MP API /v1/payments/{id}
-  → Atualiza transacao (status, paid_at, metadata merge)
-  → Se aprovado: remove da recovery_queue
-  → Se pendente: enfileira recovery
-  → Retorna 200
-```
-
-### Mudancas
-
-| Arquivo | Acao |
+| Arquivo | Ação |
 |---------|------|
-| `deploy/backend/src/routes/payment.ts` | Adicionar rota `POST /webhook/boleto` com resolucao per-user do token MP |
-
-Nenhum arquivo novo. A rota fica no mesmo router de payment, usando `getMPTokenForUser` e `STATUS_MAP` que ja existem.
-
-### Detalhes da rota
-
-- **Sem autenticacao**: webhooks do MP sao publicos (mesmo padrao do webhook existente)
-- **Idempotente**: se o status ja e o mesmo, nao faz nada
-- **Fallback**: se nao encontrar a transacao pelo `external_id`, tenta pelo `resource` na query
-- **Recovery**: se o pagamento foi aprovado, deleta da `recovery_queue`. Se pendente e nao enfileirado, enfileira
-- **Log**: registra em `console.log` para debug na VPS
+| `src/components/settings/ConnectionsSection.tsx` | Remover `MessageQueueSection`, substituir popover da engrenagem com campos de fila completos |
 
