@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
-  const { workspace, workspaces, setActiveWorkspace } = useWorkspace();
+  const { workspace, workspaces, setActiveWorkspace, isSuperAdmin } = useWorkspace();
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
