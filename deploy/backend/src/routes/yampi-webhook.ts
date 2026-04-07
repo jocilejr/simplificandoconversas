@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { getServiceClient } from "../lib/supabase";
-import { enqueueRecovery } from "../lib/recovery-enqueue";
+import { dispatchRecovery } from "../lib/recovery-dispatch";
 
 const router = Router();
 
@@ -235,7 +235,7 @@ router.post("/", async (req, res) => {
       // Enqueue for recovery
       const refusedTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
       if (refusedTxId) {
-        await enqueueRecovery({
+        await dispatchRecovery({
           workspaceId, userId, transactionId: refusedTxId,
           customerPhone: customer.phone, customerName: customer.name,
           amount, transactionType: type,
@@ -308,7 +308,7 @@ router.post("/", async (req, res) => {
       // Enqueue for recovery
       const cartTxId = (await sb.from("transactions").select("id").eq("workspace_id", workspaceId).eq("external_id", externalId).eq("source", "yampi").maybeSingle()).data?.id;
       if (cartTxId) {
-        await enqueueRecovery({
+        await dispatchRecovery({
           workspaceId, userId, transactionId: cartTxId,
           customerPhone: customer.phone, customerName: customer.name,
           amount, transactionType: "yampi_cart",

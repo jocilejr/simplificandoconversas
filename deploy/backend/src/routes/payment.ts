@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
-import { enqueueRecovery } from "../lib/recovery-enqueue";
+import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
@@ -340,7 +340,7 @@ router.post("/create", async (req: Request, res: Response) => {
     // Auto-recovery: enqueue immediately upon transaction creation
     if (tx?.id && customer_phone) {
       try {
-        await enqueueRecovery({
+        await dispatchRecovery({
           workspaceId,
           userId,
           transactionId: tx.id,
@@ -613,7 +613,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       } else if (mpData.status === "pending" && tx.customer_phone) {
         try {
           const workspaceId = tx.workspace_id || (await resolveWorkspaceId(tx.user_id));
-          await enqueueRecovery({
+          await dispatchRecovery({
             workspaceId,
             userId: tx.user_id,
             transactionId: tx.id,
@@ -713,7 +713,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       // Enqueue recovery if pending
       if (newTx?.id && mpData.status === "pending" && cleanPhone) {
         try {
-          await enqueueRecovery({
+          await dispatchRecovery({
             workspaceId,
             userId,
             transactionId: newTx.id,

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { enqueueRecovery } from "../lib/recovery-enqueue";
+import { dispatchRecovery } from "../lib/recovery-dispatch";
 
 const router = Router();
 
@@ -155,7 +155,7 @@ router.post("/webhook", async (req, res) => {
 
     // Enqueue for recovery if pending/rejected
     if (newTx?.id && (txStatus === "pendente" || txStatus === "rejeitado")) {
-      await enqueueRecovery({
+      await dispatchRecovery({
         workspaceId,
         userId,
         transactionId: newTx.id,
