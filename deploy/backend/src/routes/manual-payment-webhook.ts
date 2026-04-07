@@ -53,7 +53,6 @@ router.post("/webhook", async (req, res) => {
 
   if (!workspaceId) return res.status(400).json({ error: "workspace_id is required" });
   if (!event) return res.status(400).json({ error: "event is required" });
-  if (!external_id) return res.status(400).json({ error: "external_id is required" });
 
   // Validate workspace exists and get owner
   const { data: ws } = await sb
@@ -94,16 +93,17 @@ router.post("/webhook", async (req, res) => {
     });
   }
 
-  const externalKey = `manual_${paymentType}_${external_id}`;
+  const resolvedExternalId = external_id || crypto.randomUUID();
+  const externalKey = `manual_${paymentType}_${resolvedExternalId}`;
 
   try {
-    // Try update first (idempotent)
-    const { data: existing } = await sb
+    // Try update first (idempotent) — only if external_id was provided
+    const existing = external_id ? (await sb
       .from("transactions")
       .select("id")
       .eq("external_id", externalKey)
       .eq("workspace_id", workspaceId)
-      .maybeSingle();
+      .maybeSingle()).data : null;
 
     if (existing) {
       const updates: any = { status: txStatus };
