@@ -340,7 +340,7 @@ router.post("/create", async (req: Request, res: Response) => {
     // Auto-recovery: enqueue immediately upon transaction creation
     if (tx?.id && customer_phone) {
       try {
-        await enqueueRecovery({
+        await dispatchRecovery({
           workspaceId,
           userId,
           transactionId: tx.id,
