@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { addDays, differenceInDays, isBefore, startOfDay, format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { getGreeting } from "@/lib/greeting";
