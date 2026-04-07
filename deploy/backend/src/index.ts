@@ -16,6 +16,7 @@ import emailRouter from "./routes/email";
 import analyzeCsvRouter from "./routes/analyze-csv-contacts";
 import paymentRouter from "./routes/payment";
 import paymentOpenpixRouter from "./routes/payment-openpix";
+import resolveUserRouter from "./routes/resolve-user";
 
 const app = express();
 app.use(cors());
