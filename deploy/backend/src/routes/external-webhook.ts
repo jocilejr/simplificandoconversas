@@ -46,6 +46,7 @@ router.post("/", async (req, res) => {
   if (!conn.enabled) return res.status(403).json({ error: "API key is disabled" });
 
   const userId = conn.user_id;
+  const workspaceId = await resolveWorkspaceId(userId);
   const {
     event,
     id: reminderId,
