@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { resolveWorkspaceId } from "../lib/workspace";
+import { resolveWorkspaceId, resolveWorkspaceIdFromRequest } from "../lib/workspace";
 import { lightSync } from "./light-sync";
 import crypto from "crypto";
 import fs from "fs";
