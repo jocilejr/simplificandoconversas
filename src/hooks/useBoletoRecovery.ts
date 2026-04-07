@@ -93,7 +93,11 @@ export function useBoletoRecovery() {
           hasMore = false;
         }
       }
-      return all;
+      // Only show boletos that actually have a PDF generated (real boletos, not webhook-created card payments)
+      return all.filter((tx) => {
+        const meta = tx.metadata as any;
+        return meta?.boleto_file;
+      });
     },
   });
 
