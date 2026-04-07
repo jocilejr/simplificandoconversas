@@ -32,6 +32,7 @@ import { RecoveryPopover } from "./RecoveryPopover";
 import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
 import { useProfile } from "@/hooks/useProfile";
+import { RecoverySettingsDialog } from "./RecoverySettingsDialog";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
