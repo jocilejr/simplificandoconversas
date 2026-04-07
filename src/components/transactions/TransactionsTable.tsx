@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
@@ -11,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Trash2, Download, Search, ChevronDown, ChevronUp,
   Users, Clock, CheckCircle2, AlertCircle, RefreshCw,
-  CalendarIcon, Copy, ExternalLink, MessageSquare, Save, Info,
+  CalendarIcon, Copy, ExternalLink,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
