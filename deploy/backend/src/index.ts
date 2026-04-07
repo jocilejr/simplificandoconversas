@@ -19,6 +19,7 @@ import analyzeCsvRouter from "./routes/analyze-csv-contacts";
 import paymentRouter from "./routes/payment";
 import paymentOpenpixRouter from "./routes/payment-openpix";
 import resolveUserRouter from "./routes/resolve-user";
+import yampiWebhookRouter from "./routes/yampi-webhook";
 
 const app = express();
 app.use(cors());
