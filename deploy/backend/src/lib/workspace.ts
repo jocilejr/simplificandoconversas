@@ -1,6 +1,16 @@
 import { getServiceClient } from "./supabase";
 
 /**
+ * Resolve workspace_id from the request body (preferred) or fallback to DB lookup.
+ */
+export async function resolveWorkspaceIdFromRequest(body: any, userId: string): Promise<string | null> {
+  if (body?.workspaceId && typeof body.workspaceId === "string") {
+    return body.workspaceId;
+  }
+  return resolveWorkspaceId(userId);
+}
+
+/**
  * Resolve the workspace_id for a given user.
  * Strategy: return first workspace the user belongs to.
  * Falls back to null if no workspace found.
