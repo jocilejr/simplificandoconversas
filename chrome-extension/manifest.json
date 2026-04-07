@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Chatbot Interno Origem Viva",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Gerencie fluxos de chatbot diretamente no WhatsApp Web",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "tabs"],
   "host_permissions": ["https://web.whatsapp.com/*", "https://*/*", "http://*/*"],
   "background": {
     "service_worker": "background.js"
@@ -11,8 +11,14 @@
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content.js"],
+      "js": ["content.js", "content-whatsapp.js"],
       "css": ["styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "exclude_matches": ["https://web.whatsapp.com/*"],
+      "js": ["content-dashboard.js"],
       "run_at": "document_idle"
     }
   ],
