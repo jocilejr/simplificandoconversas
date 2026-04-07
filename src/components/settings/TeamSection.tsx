@@ -140,7 +140,7 @@ export function TeamSection() {
   const handleChangeRole = async (memberId: string, newRole: string) => {
     const { error } = await supabase
       .from("workspace_members")
-      .update({ role: newRole })
+      .update({ role: newRole as "admin" | "operator" | "viewer" })
       .eq("id", memberId);
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
