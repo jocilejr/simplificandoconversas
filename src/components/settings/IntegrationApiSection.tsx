@@ -177,6 +177,58 @@ export function IntegrationApiSection() {
                   <div><span className="text-yellow-500">PATCH</span> https://SEU-API-DOMAIN/api/platform/transactions/:id <span className="text-muted-foreground">{"{ status, paid_at, metadata }"}</span></div>
                   <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/transactions/webhook <span className="text-muted-foreground">{"{ external_id, status, paid_at }"}</span></div>
                 </div>
+            </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="generate-payment">
+              <AccordionTrigger className="text-sm">Gerar Cobrança (Boleto/PIX)</AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 text-xs font-mono">
+                  <div>
+                    <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/generate-payment</div>
+                  </div>
+                  <div className="text-muted-foreground">
+                    <div className="font-semibold text-foreground mb-1">Campos obrigatórios:</div>
+                    <div className="ml-2">• <code className="bg-muted px-1 rounded">customer_name</code> — Nome do cliente</div>
+                    <div className="ml-2">• <code className="bg-muted px-1 rounded">amount</code> — Valor em reais (ex: 80.00)</div>
+                  </div>
+                  <div className="text-muted-foreground">
+                    <div className="font-semibold text-foreground mb-1">Campos opcionais:</div>
+                    <div className="ml-2">• <code className="bg-muted px-1 rounded">customer_phone</code> — Telefone (ex: 11999999999)</div>
+                    <div className="ml-2">• <code className="bg-muted px-1 rounded">customer_document</code> — CPF/CNPJ</div>
+                    <div className="ml-2">• <code className="bg-muted px-1 rounded">description</code> — Descrição do produto/serviço</div>
+                    <div className="ml-2">• <code className="bg-muted px-1 rounded">type</code> — <code className="bg-muted px-1 rounded">pix</code> (default) ou <code className="bg-muted px-1 rounded">boleto</code></div>
+                  </div>
+                  <div className="text-muted-foreground">
+                    <div className="font-semibold text-foreground mb-1">Exemplo de payload:</div>
+                    <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">
+{`{
+  "customer_name": "João Silva",
+  "customer_phone": "11999999999",
+  "customer_document": "12345678900",
+  "amount": 80.00,
+  "description": "Produto X",
+  "type": "boleto"
+}`}
+                    </pre>
+                  </div>
+                  <div className="text-muted-foreground">
+                    <div className="font-semibold text-foreground mb-1">Resposta:</div>
+                    <pre className="bg-muted p-2 rounded text-xs overflow-x-auto">
+{`{
+  "success": true,
+  "transaction_id": "uuid",
+  "payment_url": "https://...",
+  "barcode": "23793...",
+  "qr_code": "00020126...",
+  "qr_code_base64": "data:image/png;base64,...",
+  "mp_id": 152800261621,
+  "status": "pendente"
+}`}
+                    </pre>
+                  </div>
+                  <div className="text-yellow-500">⚠ Requer token do Mercado Pago configurado nas Integrações</div>
+                </div>
               </AccordionContent>
             </AccordionItem>
 
