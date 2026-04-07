@@ -31,10 +31,12 @@ CREATE TABLE IF NOT EXISTS public.workspace_members (
   workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   user_id uuid NOT NULL,
   role workspace_role NOT NULL DEFAULT 'viewer',
+  permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
   invited_by uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(workspace_id, user_id)
 );
+ALTER TABLE public.workspace_members ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.workspace_members TO anon, authenticated, service_role;
 
