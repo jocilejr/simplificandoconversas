@@ -112,10 +112,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   const activeInstances = (instances || []).filter((i: any) => i.is_active);
 
   const handleSave = () => {
-    if (delaySeconds < 20) {
-      toast.error("O delay mínimo é de 20 segundos");
-      return;
-    }
     upsert.mutate({
       delay_seconds: delaySeconds,
       send_after_minutes: sendAfterMinutes,
