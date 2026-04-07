@@ -94,6 +94,7 @@ const INTEGRATIONS: Integration[] = [
 export function IntegrationsSection() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { profile } = useProfile();
   const [connections, setConnections] = useState<Record<string, { id: string; credentials: any; enabled: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [configDialog, setConfigDialog] = useState<Integration | null>(null);
