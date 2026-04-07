@@ -46,6 +46,7 @@ interface MemberRow {
   permissions: Record<string, boolean>;
   created_at: string;
   profile?: { full_name: string | null; user_id: string } | null;
+  email?: string;
 }
 
 const roleLabels: Record<string, { label: string; icon: any; color: string }> = {
@@ -85,10 +86,27 @@ export function TeamSection() {
         .select("user_id, full_name")
         .in("user_id", userIds);
 
+      // Fetch emails from backend
+      let emailMap: Record<string, string> = {};
+      try {
+        const res = await fetch(apiUrl("resolve-user-by-email/batch"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userIds }),
+        });
+        if (res.ok) {
+          const body = await res.json();
+          emailMap = body.emails || {};
+        }
+      } catch {
+        // emails won't show, but it's not critical
+      }
+
       return (data || []).map((m) => ({
         ...m,
         permissions: (m.permissions as Record<string, boolean>) || {},
         profile: profiles?.find((p) => p.user_id === m.user_id) || null,
+        email: emailMap[m.user_id] || undefined,
       })) as MemberRow[];
     },
   });
