@@ -322,7 +322,7 @@ CREATE INDEX IF NOT EXISTS idx_workspace_members_user_workspace
 DROP POLICY IF EXISTS "ws_insert" ON public.workspaces;
 CREATE POLICY "ws_insert" ON public.workspaces
   FOR INSERT TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (created_by = auth.uid());
 
 NOTIFY pgrst, 'reload schema';
 
