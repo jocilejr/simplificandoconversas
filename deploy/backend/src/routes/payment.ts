@@ -75,6 +75,7 @@ async function downloadAndSaveBoletoPdf(
 
       const contentType = pdfResp.headers.get("content-type") || "";
       const buffer = Buffer.from(await pdfResp.arrayBuffer());
+      console.log(`[payment] PDF response: status=${pdfResp.status}, content-type=${contentType}, size=${buffer.length}`);
 
       // Validate it's actually a PDF (check magic bytes %PDF)
       if (buffer.length < 5) {
