@@ -21,8 +21,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   Sidebar,
   SidebarContent,
@@ -107,6 +109,7 @@ export function AppSidebar() {
   const [triggerOpen, setTriggerOpen] = useState(false);
   const { user } = useAuth();
   const { profile } = useProfile();
+  const { isAdmin, canWrite } = useWorkspace();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -118,7 +121,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="p-3">
+      <SidebarHeader className="p-3 space-y-2">
         <div className="flex items-center gap-2">
           <img src="/images/logo-ov.png" alt="Origem Viva" className="h-7 w-7 shrink-0 rounded-lg" />
           {!collapsed && (
@@ -127,6 +130,7 @@ export function AppSidebar() {
             </span>
           )}
         </div>
+        <WorkspaceSwitcher collapsed={collapsed} />
       </SidebarHeader>
 
       <SidebarContent className="px-2">
