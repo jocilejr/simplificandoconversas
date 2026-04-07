@@ -51,6 +51,7 @@ const INTEGRATIONS: Integration[] = [
     fields: [
       { key: "app_id", label: "App ID", placeholder: "Q2xpZW50ZV9JZC...", type: "password" },
     ],
+    webhookPath: "/functions/v1/payment-openpix/webhook",
   },
   {
     id: "stripe",
