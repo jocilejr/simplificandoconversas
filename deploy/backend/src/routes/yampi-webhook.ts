@@ -29,7 +29,7 @@ function extractCustomer(customerData: any) {
   return {
     name: c.name || c.generic_name || [c.first_name, c.last_name].filter(Boolean).join(" ") || null,
     email: c.email || null,
-    phone: c.phone?.full_number || null,
+    phone: normalizePhone(c.phone?.full_number),
     document: c.cpf || c.cnpj || null,
   };
 }

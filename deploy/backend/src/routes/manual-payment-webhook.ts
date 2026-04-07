@@ -78,7 +78,7 @@ router.post("/webhook", async (req, res) => {
     billet: "boleto",
   };
   const paymentType = typeMap[(type || "pix").toLowerCase()] || "pix";
-  const cleanPhone = customer_phone ? customer_phone.replace(/\D/g, "") : null;
+  const cleanPhone = normalizePhone(customer_phone);
 
   // Map event to status
   const statusMap: Record<string, string> = {

@@ -674,7 +674,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       const payerPhone = mpData.payer?.phone?.number
         ? String(mpData.payer.phone.area_code || "") + String(mpData.payer.phone.number)
         : null;
-      const cleanPhone = payerPhone ? payerPhone.replace(/\D/g, "") : null;
+      const cleanPhone = normalizePhone(payerPhone);
 
       const paymentUrl =
         mpData.point_of_interaction?.transaction_data?.ticket_url ||
