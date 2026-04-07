@@ -11,12 +11,13 @@ import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { supabase } from "@/integrations/supabase/client";
 import { FollowUpRulesConfig } from "./FollowUpRulesConfig";
 import { FollowUpQueue } from "./FollowUpQueue";
+import { FollowUpSettingsDialog } from "./FollowUpSettingsDialog";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Clock, CalendarClock, AlertTriangle, Phone, Copy, CheckCircle2,
   User, DollarSign, FileText, Search, Trash2, Play, Settings2,
-  Send, Timer, RefreshCw,
+  Send, Timer, RefreshCw, Zap,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
