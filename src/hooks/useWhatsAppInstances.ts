@@ -130,7 +130,7 @@ export function useWhatsAppInstances() {
   const connectInstance = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "connect-instance", instanceName },
+        body: { action: "connect-instance", instanceName, workspaceId },
       });
       if (error) throw error;
       return data;
