@@ -788,7 +788,7 @@ router.post("/", async (req, res) => {
                 }
               }
             } else {
-              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber);
+              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId);
               results.push(`group.${step.id}: ${stepResult}`);
             }
             } catch (stepErr: any) {
@@ -798,7 +798,7 @@ router.post("/", async (req, res) => {
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber);
+          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId);
           results.push(result);
         }
       } catch (err: any) {
