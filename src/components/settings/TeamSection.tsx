@@ -113,28 +113,50 @@ export function TeamSection() {
     },
   });
 
-  const handleAddByEmail = async () => {
-    if (!inviteEmail.trim() || !workspaceId || !user) return;
+  const handleAddMember = async () => {
+    if (!inviteEmail.trim() || !invitePassword.trim() || !workspaceId || !user) return;
     setSaving(true);
     const email = inviteEmail.trim().toLowerCase();
 
     try {
-      const res = await fetch(apiUrl("resolve-user-by-email"), {
+      // First try to find existing user
+      let foundUserId: string | null = null;
+      const resolveRes = await fetch(apiUrl("resolve-user-by-email"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        toast({
-          title: "Usuário não encontrado",
-          description: body.error || "Nenhum usuário com este email foi encontrado.",
-          variant: "destructive",
+
+      if (resolveRes.ok) {
+        const body = await resolveRes.json();
+        foundUserId = body.userId;
+      } else {
+        // User doesn't exist — create via admin endpoint
+        const createRes = await fetch(apiUrl("resolve-user-by-email/create"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password: invitePassword, fullName: inviteName.trim() }),
         });
+        if (!createRes.ok) {
+          const err = await createRes.json().catch(() => ({}));
+          toast({
+            title: "Erro ao criar usuário",
+            description: err.error || "Não foi possível criar o usuário.",
+            variant: "destructive",
+          });
+          setSaving(false);
+          return;
+        }
+        const created = await createRes.json();
+        foundUserId = created.userId;
+      }
+
+      if (!foundUserId) {
+        toast({ title: "Erro", description: "Não foi possível resolver o usuário.", variant: "destructive" });
         setSaving(false);
         return;
       }
-      const { userId: foundUserId } = await res.json();
+
       const { error } = await supabase.from("workspace_members").insert({
         workspace_id: workspaceId,
         user_id: foundUserId,
@@ -145,10 +167,12 @@ export function TeamSection() {
       if (error) {
         toast({ title: "Erro ao adicionar membro", description: error.message, variant: "destructive" });
       } else {
-        toast({ title: "Membro adicionado!" });
+        toast({ title: "Membro adicionado com sucesso!" });
         qc.invalidateQueries({ queryKey: ["workspace-members"] });
         setShowInvite(false);
         setInviteEmail("");
+        setInvitePassword("");
+        setInviteName("");
         setInviteRole("operator");
         setInvitePerms({});
       }
@@ -156,11 +180,6 @@ export function TeamSection() {
       toast({ title: "Erro de conexão", description: "Não foi possível conectar ao servidor.", variant: "destructive" });
     }
 
-    toast({
-      title: "Usuário não encontrado",
-      description: "Nenhum usuário com este email foi encontrado. Verifique se ele já criou uma conta.",
-      variant: "destructive",
-    });
     setSaving(false);
   };
 
