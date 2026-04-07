@@ -44,7 +44,7 @@ interface TransactionsTableProps {
   dateEnd?: Date;
 }
 
-type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes";
+type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "yampi-abandonados";
 type SortField = "created_at" | "amount" | "customer_name";
 type SortDirection = "asc" | "desc";
 type DatePreset = "today" | "yesterday" | "7days" | "30days" | "custom";
@@ -54,11 +54,14 @@ const typeLabels: Record<string, string> = {
   pix: "PIX",
   cartao: "Cartão",
   card: "Cartão",
+  yampi: "Yampi",
+  yampi_cart: "Carrinho",
 };
 
 const statusStyles: Record<string, string> = {
   aprovado: "bg-green-500/20 text-green-600 border-green-500/30",
   pendente: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
+  abandonado: "bg-orange-500/20 text-orange-600 border-orange-500/30",
   rejeitado: "bg-destructive/20 text-destructive border-destructive/30",
   cancelado: "bg-destructive/20 text-destructive border-destructive/30",
   processando: "bg-blue-500/20 text-blue-600 border-blue-500/30",
@@ -69,6 +72,7 @@ const statusStyles: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   aprovado: "Pago",
   pendente: "Pendente",
+  abandonado: "Abandonado",
   rejeitado: "Rejeitado",
   cancelado: "Cancelado",
   processando: "Processando",
@@ -81,6 +85,8 @@ const typeStyles: Record<string, string> = {
   pix: "bg-green-500/20 text-green-600 border-green-500/30",
   cartao: "bg-purple-500/20 text-purple-600 border-purple-500/30",
   card: "bg-purple-500/20 text-purple-600 border-purple-500/30",
+  yampi: "bg-emerald-500/20 text-emerald-600 border-emerald-500/30",
+  yampi_cart: "bg-orange-500/20 text-orange-600 border-orange-500/30",
 };
 
 const DEFAULT_EMAIL = "businessvivaorigem@gmail.com";
@@ -207,6 +213,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     "pix-cartao-pendentes": transactions.filter(
       (t) => (t.type === "pix" || t.type === "cartao" || t.type === "card") && t.status === "pendente"
     ),
+    "yampi-abandonados": transactions.filter((t) => t.type === "yampi_cart" && t.status === "abandonado"),
   }), [transactions]);
 
   // Tab stats
@@ -373,15 +380,18 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
-          <TabsList className="grid grid-cols-3 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
+          <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
+            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
               Aprovados ({tabTransactions.aprovados.length})
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
-              Boletos Ger. ({tabTransactions["boletos-gerados"].length})
+            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              Boletos ({tabTransactions["boletos-gerados"].length})
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
-              PIX/Cartão Pend. ({tabTransactions["pix-cartao-pendentes"].length})
+            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
+            </TabsTrigger>
+            <TabsTrigger value="yampi-abandonados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              Carrinhos ({tabTransactions["yampi-abandonados"].length})
             </TabsTrigger>
           </TabsList>
         </Tabs>

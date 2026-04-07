@@ -55,6 +55,19 @@ const INTEGRATIONS: Integration[] = [
     webhookPath: "/functions/v1/payment-openpix/webhook",
   },
   {
+    id: "yampi",
+    name: "Yampi",
+    description: "Pagamentos aprovados e carrinho abandonado",
+    platform: "yampi",
+    icon: "🛒",
+    available: true,
+    fields: [
+      { key: "secret_key", label: "Webhook Secret", placeholder: "whsec_...", type: "password" },
+      { key: "alias", label: "Alias da Loja", placeholder: "minha-loja" },
+    ],
+    webhookPath: "/functions/v1/yampi-webhook",
+  },
+  {
     id: "stripe",
     name: "Stripe",
     description: "Pagamentos internacionais",
