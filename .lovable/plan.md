@@ -1,88 +1,103 @@
 
+Objetivo: alinhar o motor automático exatamente com a regra que você definiu na VPS:
+- template é absoluto
+- cada bloco deve ser enviado exatamente no formato do bloco
+- conversão PDF → JPG só acontece quando existir bloco de JPG/imagem
+- delay global da instância precisa ser respeitado no envio automático
 
-# Correção: Template ignorado + Fila Global com erro
+Implementação
 
-## Diagnóstico confirmado
+1. Tornar o template absoluto no backend
+- Ajustar `deploy/backend/src/lib/recovery-dispatch.ts`.
+- Remover os dois fallbacks atuais:
+  - fallback para “primeiro template disponível”
+  - fallback para `profiles.recovery_message_*`
+- Nova regra:
+  - buscar somente o template `is_default = true`
+  - se não existir, ou se `blocks` vier vazio, marcar o item como `failed` com erro explícito e não enviar nada
 
-### Problema 1: Template não respeitado
-Os logs do backend mostram **zero** linhas com `recovery-dispatch`. Isso significa que o código atualizado (com suporte a templates de blocos) **ainda não foi implantado na VPS**. O backend rodando ainda é a versão antiga que usa apenas a mensagem legada do `profiles`.
+2. Fazer o backend respeitar o tipo do bloco exatamente como o template define
+- Hoje o backend trata:
+  - `text` = texto
+  - `pdf` = envia PDF
+  - `image` = envia URL do próprio bloco
+- Vou alinhar ao comportamento desejado:
+  - `text`: envia texto com variáveis
+  - `pdf`: envia o PDF do boleto, sem conversão
+  - `image`/JPG: converte o boleto PDF em imagem e envia a imagem do boleto
+- Ou seja: a conversão não ficará ligada ao bloco `pdf`; ficará ligada somente ao bloco de imagem/JPG.
 
-O template existe e está correto no banco:
-- `Principal`, `is_default=true`, 3 blocos (text + pdf + image)
+3. Corrigir o significado do bloco de imagem no editor
+- O modal já comunica que “Imagem do boleto” converte PDF em JPG, mas o backend hoje interpreta `image` como URL livre.
+- Vou padronizar isso entre frontend e backend:
+  - no template de recuperação, `image` passa a significar “imagem gerada do boleto”
+  - se depois você quiser imagem externa/manual, isso deve ser um outro tipo de bloco no futuro, não esse atual
 
-**Solução**: Rebuild do backend na VPS para que o novo `recovery-dispatch.ts` entre em vigor.
+4. Adicionar endpoint de imagem do boleto na VPS
+- Criar em `deploy/backend/src/routes/payment.ts` uma rota dedicada, algo como:
+  - `GET /api/payment/boleto-image/:transactionId`
+- Essa rota:
+  - lê o PDF salvo em disco
+  - converte a primeira página para JPG
+  - retorna a imagem pronta
+- Importante: isso serve tanto para o envio automático quanto para manter coerência com a visualização manual.
 
-### Problema 2: Fila Global (message_queue_config) dando erro ao salvar
-A tabela `message_queue_config` **não existe na VPS**. Ela foi criada no Lovable Cloud via migration, mas nunca foi adicionada ao `deploy/init-db.sql`. O frontend tenta inserir/atualizar nela e recebe erro do PostgREST.
+5. Adicionar suporte de conversão no container da VPS
+- Atualizar `deploy/backend/Dockerfile` para instalar a ferramenta de conversão de PDF para JPG.
+- Hoje o container não tem nada para isso.
+- Depois do rebuild do backend na VPS, a conversão passa a funcionar no ambiente real.
 
-**Solução**: Adicionar o CREATE TABLE no `init-db.sql` e fornecer SQL para criar na VPS.
+6. Fazer o delay global ser respeitado de verdade
+- Hoje o código lê `delay_seconds`, mas dentro de um recovery com múltiplos blocos ele usa um `setTimeout(2000)` fixo entre blocos.
+- Isso quebra sua regra.
+- Vou trocar essa lógica para usar o delay configurado da instância entre os blocos do próprio template.
+- Resultado esperado:
+  - se a instância estiver com 30s, cada bloco do template também respeita esse intervalo
+  - não existirá um “2s fixo” escondido
 
-## Plano de implementação
+7. Preservar a fila global por instância
+- Manter a serialização por `instance_name` com `getMessageQueue(...)`
+- Mas complementar com logs claros em `recovery-dispatch.ts`:
+  - template carregado
+  - quantidade e ordem dos blocos
+  - delay resolvido para a instância
+  - tipo real enviado em cada bloco
+- Isso facilita sua verificação diretamente na VPS.
 
-### 1. Adicionar `message_queue_config` ao `init-db.sql`
-Incluir a criação da tabela com as mesmas colunas e RLS policies do Lovable Cloud:
-```sql
-CREATE TABLE IF NOT EXISTS message_queue_config (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  instance_name text NOT NULL,
-  delay_seconds integer NOT NULL DEFAULT 30,
-  pause_after_sends integer,
-  pause_minutes integer,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE message_queue_config ENABLE ROW LEVEL SECURITY;
+Arquivos que entram no plano
+- `deploy/backend/src/lib/recovery-dispatch.ts`
+- `deploy/backend/src/routes/payment.ts`
+- `deploy/backend/Dockerfile`
+
+Resultado esperado após implementar
+```text
+template default encontrado
+→ somente os blocos dele são usados
+→ sem fallback para profiles
+→ sem fallback para outro template
+
+bloco text
+→ envia texto
+
+bloco pdf
+→ envia PDF
+
+bloco image/jpg
+→ converte boleto para JPG
+→ envia imagem
+
+delay da instância
+→ respeitado entre os blocos e entre os envios da fila
 ```
 
-### 2. Fornecer SQL para rodar diretamente na VPS
-Para criar a tabela sem precisar refazer o init-db inteiro.
-
-### 3. Rebuild do backend
-O código do `recovery-dispatch.ts` já está correto (templates + normalização de telefone). Só precisa ser implantado.
-
-## Comandos para o usuário executar na VPS
-
-**Passo 1** — Criar a tabela que falta:
-```bash
-docker compose exec postgres psql -U postgres -d postgres -c "
-CREATE TABLE IF NOT EXISTS message_queue_config (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  instance_name text NOT NULL,
-  delay_seconds integer NOT NULL DEFAULT 30,
-  pause_after_sends integer,
-  pause_minutes integer,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE message_queue_config ENABLE ROW LEVEL SECURITY;
-CREATE POLICY service_all ON message_queue_config FOR ALL TO service_role USING (true) WITH CHECK (true);
-NOTIFY pgrst, 'reload schema';
-"
-```
-
-**Passo 2** — Reiniciar PostgREST para reconhecer a nova tabela:
-```bash
-docker compose restart postgrest
-```
-
-**Passo 3** — Rebuild do backend (para implantar o recovery-dispatch com templates):
-```bash
-docker compose up -d --build backend
-```
-
-**Passo 4** — Limpar itens antigos de teste e testar:
-```bash
-docker compose exec postgres psql -U postgres -d postgres --no-align -t -c "DELETE FROM recovery_queue WHERE status = 'failed';"
-```
-
-**Passo 5** — Após criar uma nova transação de teste, verificar:
-```bash
-docker logs deploy-backend-1 --tail 100 2>&1 | grep "recovery-dispatch"
-```
-
-## Alteração no código
-
-Adicionar a criação da tabela `message_queue_config` no `deploy/init-db.sql` para que futuros deploys a criem automaticamente.
-
+Validação que vou orientar você a fazer na VPS depois
+- rebuild do backend
+- criar uma transação pendente de teste
+- checar nos logs:
+  - template default encontrado
+  - bloco 1/2/3 com tipos corretos
+  - delay aplicado da instância
+  - ausência total de fallback
+- conferir em `recovery_queue`:
+  - `status = sent` quando tudo der certo
+  - `status = failed` com mensagem explícita quando não houver template default
