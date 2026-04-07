@@ -1,6 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { getRandomCep } from "../lib/random-ceps";
+import { lookupCep } from "../lib/cep-lookup";
+import fs from "fs/promises";
+import path from "path";
 
 const router = Router();
 
@@ -991,6 +995,248 @@ router.post("/validate-number", async (req, res) => {
     console.error("[platform-api] validate-number error:", err.message);
     logApiRequest(userId, workspaceId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to validate number" });
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// GENERATE PAYMENT (Mercado Pago)
+// ═══════════════════════════════════════════════════
+
+const MP_API = "https://api.mercadopago.com";
+
+const STATUS_MAP: Record<string, string> = {
+  pending: "pendente",
+  approved: "aprovado",
+  authorized: "autorizado",
+  in_process: "processando",
+  in_mediation: "em_mediacao",
+  rejected: "rejeitado",
+  cancelled: "cancelado",
+  refunded: "reembolsado",
+  charged_back: "estornado",
+};
+
+async function downloadAndSaveBoletoPdf(
+  paymentUrl: string,
+  userId: string,
+  mpId: string | number
+): Promise<string | null> {
+  if (!paymentUrl) return null;
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const pdfResp = await fetch(paymentUrl, {
+        headers: {
+          Accept: "application/pdf,*/*",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+        redirect: "follow",
+      });
+      if (!pdfResp.ok) {
+        if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 2000 * attempt)); continue; }
+        return null;
+      }
+      const buffer = Buffer.from(await pdfResp.arrayBuffer());
+      if (buffer.length < 5 || !buffer.subarray(0, 5).toString("ascii").startsWith("%PDF")) {
+        if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 2000 * attempt)); continue; }
+        return null;
+      }
+      const dir = `/media-files/${userId}/boletos`;
+      await fs.mkdir(dir, { recursive: true });
+      const filePath = path.join(dir, `${mpId}.pdf`);
+      await fs.writeFile(filePath, buffer);
+      return `/media/${userId}/boletos/${mpId}.pdf`;
+    } catch (err: any) {
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 2000 * attempt)); continue; }
+    }
+  }
+  return null;
+}
+
+// POST /api/platform/generate-payment
+router.post("/generate-payment", async (req, res) => {
+  const _auth = await resolveUserByApiKey(req, res);
+  if (!_auth) return;
+  const { userId, workspaceId } = _auth;
+
+  try {
+    const { customer_name, customer_phone, customer_email, customer_document, amount, description, type } = req.body;
+    const paymentType = type || "pix";
+
+    if (!customer_name) {
+      logApiRequest(userId, workspaceId, req, 400, "customer_name required");
+      return res.status(400).json({ error: "customer_name is required" });
+    }
+    if (!amount || Number(amount) <= 0) {
+      logApiRequest(userId, workspaceId, req, 400, "invalid amount");
+      return res.status(400).json({ error: "amount must be > 0" });
+    }
+
+    const sb = getServiceClient();
+
+    // Get MP token
+    const { data: mpConn } = await sb
+      .from("platform_connections")
+      .select("credentials")
+      .eq("user_id", userId)
+      .eq("platform", "mercadopago")
+      .eq("enabled", true)
+      .single();
+
+    const token = (mpConn?.credentials as any)?.access_token || process.env.MERCADOPAGO_ACCESS_TOKEN || "";
+    if (!token) {
+      logApiRequest(userId, workspaceId, req, 500, "No MP token");
+      return res.status(500).json({ error: "Mercado Pago access token not configured" });
+    }
+
+    // Resolve email
+    const FALLBACK_EMAIL = "businessvivaorigem@gmail.com";
+    let resolvedEmail = customer_email;
+    if (!resolvedEmail && customer_phone) {
+      const phone = customer_phone.replace(/\D/g, "");
+      const { data: conv } = await sb
+        .from("conversations")
+        .select("email")
+        .eq("user_id", userId)
+        .eq("phone_number", phone)
+        .not("email", "is", null)
+        .limit(1)
+        .maybeSingle();
+      resolvedEmail = conv?.email || FALLBACK_EMAIL;
+    }
+    if (!resolvedEmail) resolvedEmail = FALLBACK_EMAIL;
+
+    // Build MP body
+    const paymentBody: any = {
+      transaction_amount: Number(amount),
+      description: description || `Cobrança - ${customer_name}`,
+      payment_method_id: paymentType === "boleto" ? "bolbradesco" : "pix",
+      payer: {
+        email: resolvedEmail,
+        first_name: customer_name.split(" ")[0],
+        last_name: customer_name.split(" ").slice(1).join(" ") || ".",
+        identification: customer_document
+          ? { type: "CPF", number: customer_document.replace(/\D/g, "") }
+          : undefined,
+      },
+    };
+
+    if (paymentType === "boleto") {
+      try {
+        const cep = getRandomCep();
+        const addr = await lookupCep(cep);
+        paymentBody.payer.address = addr;
+      } catch {
+        paymentBody.payer.address = {
+          zip_code: "01001000", street_name: "Praça da Sé", street_number: "s/n",
+          neighborhood: "Sé", city: "São Paulo", federal_unit: "SP",
+        };
+      }
+    }
+
+    const mpResp = await fetch(`${MP_API}/v1/payments`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": `${userId}-${Date.now()}`,
+      },
+      body: JSON.stringify(paymentBody),
+    });
+
+    const mpData: any = await mpResp.json();
+
+    if (!mpResp.ok) {
+      console.error("[platform/generate-payment] MP error:", JSON.stringify(mpData));
+      const errorCause = mpData?.cause?.[0];
+      const errorReason = errorCause
+        ? `${errorCause.code || ""} - ${errorCause.description || mpData.message || "Unknown"}`.trim()
+        : mpData?.message || "Unknown error";
+
+      // Save rejected transaction
+      await sb.from("transactions").insert({
+        user_id: userId, workspace_id: workspaceId,
+        amount: Number(amount), type: paymentType,
+        status: "rejeitado", source: "mercadopago",
+        customer_name, customer_phone: customer_phone || null,
+        customer_email: resolvedEmail, customer_document: customer_document || null,
+        description: description || null,
+        metadata: { error_reason: errorReason, mp_error: mpData },
+      });
+
+      logApiRequest(userId, workspaceId, req, mpResp.status, errorReason);
+      return res.status(mpResp.status).json({ error: "Mercado Pago error", details: mpData });
+    }
+
+    // Extract payment info
+    const paymentUrl = mpData.point_of_interaction?.transaction_data?.ticket_url
+      || mpData.transaction_details?.external_resource_url || "";
+    const pdfDownloadUrl = mpData.transaction_details?.external_resource_url
+      || mpData.point_of_interaction?.transaction_data?.ticket_url || "";
+    const barcode = mpData.barcode?.content || mpData.transaction_details?.digitable_line || "";
+    const qrCode = mpData.point_of_interaction?.transaction_data?.qr_code || "";
+    const qrCodeBase64 = mpData.point_of_interaction?.transaction_data?.qr_code_base64 || "";
+
+    // Download boleto PDF
+    let boletoFilePath: string | null = null;
+    if (paymentType === "boleto" && pdfDownloadUrl) {
+      boletoFilePath = await downloadAndSaveBoletoPdf(pdfDownloadUrl, userId, mpData.id);
+    }
+
+    // Save transaction
+    const { data: tx, error: txError } = await sb
+      .from("transactions")
+      .insert({
+        user_id: userId, workspace_id: workspaceId,
+        amount: Number(amount), type: paymentType,
+        status: STATUS_MAP[mpData.status] || "pendente",
+        source: "mercadopago", external_id: String(mpData.id),
+        customer_name, customer_phone: customer_phone || null,
+        customer_email: resolvedEmail, customer_document: customer_document || null,
+        description: description || null, payment_url: paymentUrl,
+        metadata: {
+          mp_status: mpData.status, barcode, qr_code: qrCode,
+          payment_method: mpData.payment_method_id,
+          pdf_download_url: pdfDownloadUrl || null,
+          ...(boletoFilePath ? { boleto_file: boletoFilePath } : {}),
+        },
+        paid_at: mpData.status === "approved" ? new Date().toISOString() : null,
+      })
+      .select()
+      .single();
+
+    if (txError) {
+      logApiRequest(userId, workspaceId, req, 500, txError.message);
+      return res.status(500).json({ error: "Payment created but failed to save", mp_id: mpData.id });
+    }
+
+    // Upsert conversation
+    if (customer_phone) {
+      const phone = customer_phone.replace(/\D/g, "");
+      await sb.from("conversations").upsert(
+        { user_id: userId, workspace_id: workspaceId, remote_jid: `${phone}@s.whatsapp.net`,
+          contact_name: customer_name, phone_number: phone, email: resolvedEmail, instance_name: null },
+        { onConflict: "user_id,remote_jid,instance_name" }
+      );
+    }
+
+    const result = {
+      success: true,
+      transaction_id: tx?.id,
+      payment_url: paymentUrl,
+      barcode,
+      qr_code: qrCode,
+      qr_code_base64: qrCodeBase64,
+      mp_id: mpData.id,
+      status: STATUS_MAP[mpData.status] || "pendente",
+    };
+
+    logApiRequest(userId, workspaceId, req, 200, `Payment created: ${tx?.id}`);
+    res.json(result);
+  } catch (err: any) {
+    console.error("[platform/generate-payment] error:", err.message);
+    logApiRequest(userId, workspaceId, req, 500, err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
