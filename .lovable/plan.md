@@ -1,40 +1,45 @@
 
 
-## Adicionar documentação do webhook na integração Mercado Pago
+## Fix: Adicionar rota Nginx para `/api/payment/`
 
-### O que será feito
+### Problema
+O Nginx do API_DOMAIN não tem um `location` para `/api/payment/`. A requisição do n8n para `https://api.chatbotsimplificado.com/api/payment/webhook/boleto` retorna **404 Not Found** porque nenhum bloco intercepta esse caminho.
 
-Abaixo da URL do webhook na integração do Mercado Pago, adicionar uma mini-documentação (igual já existe para `manual_payment`) explicando:
+### Solução
 
-1. Que o MP envia automaticamente — não é necessário configurar body
-2. O formato do JSON que o endpoint recebe
-3. Onde configurar no painel do Mercado Pago
+Adicionar um bloco `location /api/payment/` no server do API_DOMAIN em `deploy/nginx/default.conf.template`, fazendo proxy para `http://backend:3001/api/payment/`.
 
-### Mudança
+### Workaround imediato (sem deploy)
+Enquanto o deploy não é feito, a URL que já funciona via o catch-all `/functions/v1/` é:
 
-| Arquivo | Ação |
-|---------|------|
-| `src/components/settings/IntegrationsSection.tsx` | Adicionar bloco de documentação para `configDialog?.id === "mercadopago"` logo após o bloco de webhook URL |
-
-### Conteúdo da documentação na UI
-
-```text
-📄 Como configurar
-
-1. Acesse o painel do Mercado Pago
-2. Vá em Configurações > IPN (Notificações)
-3. Cole a URL acima no campo "URL de notificação"
-4. Selecione o evento "Pagamentos"
-
-O Mercado Pago envia automaticamente:
-
-{
-  "resource": "PAYMENT_ID",
-  "topic": "payment"
-}
-
-Não é necessário configurar nenhum body manualmente.
+```
+https://api.chatbotsimplificado.com/functions/v1/payment/webhook/boleto
 ```
 
-Apenas um bloco condicional novo, sem alterar nenhuma lógica existente.
+Use essa URL no n8n agora mesmo.
+
+### Mudanças
+
+| Arquivo | Acao |
+|---------|------|
+| `deploy/nginx/default.conf.template` | Adicionar `location /api/payment/` no bloco API_DOMAIN |
+| `src/components/settings/IntegrationsSection.tsx` | Corrigir o `webhookPath` do Mercado Pago para usar `/functions/v1/payment/webhook/boleto` (compativel sem rebuild do Nginx) |
+
+### Bloco Nginx a adicionar (após `/api/external-messaging-webhook`)
+
+```nginx
+location /api/payment/ {
+    proxy_pass http://backend:3001/api/payment/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+### Após o deploy
+Será necessário recriar o container Nginx na VPS para aplicar a nova regra:
+```bash
+docker compose up -d --force-recreate nginx
+```
 
