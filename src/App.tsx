@@ -6,12 +6,11 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceProvider } from "@/hooks/useWorkspace";
+import { PermissionGate } from "@/components/PermissionGate";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Leads from "./pages/Leads";
-
 import ChatbotBuilder from "./pages/ChatbotBuilder";
-
 import SettingsPage from "./pages/SettingsPage";
 import Reminders from "./pages/Reminders";
 import EmailPage from "./pages/EmailPage";
@@ -48,22 +47,22 @@ const App = () => (
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/leads" element={<Leads />} />
+                <Route path="/dashboard" element={<PermissionGate permission="dashboard" redirect><Dashboard /></PermissionGate>} />
+                <Route path="/leads" element={<PermissionGate permission="leads" redirect><Leads /></PermissionGate>} />
                 <Route path="/contacts" element={<Navigate to="/leads" replace />} />
                 <Route path="/clientes-financeiro" element={<Navigate to="/leads" replace />} />
                 <Route path="/schedule" element={<Navigate to="/reminders" replace />} />
-                <Route path="/chatbot" element={<ChatbotBuilder />} />
-                <Route path="/email" element={<EmailPage />} />
-                <Route path="/reminders" element={<Reminders />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/transacoes" element={<Transacoes />} />
-                <Route path="/recuperacao" element={<RecuperacaoBoletos />} />
-                <Route path="/gerar-boleto" element={<GerarBoleto />} />
-                <Route path="/grupos" element={<GruposPage />} />
-                <Route path="/area-membros" element={<AreaMembros />} />
-                <Route path="/entrega" element={<EntregaDigital />} />
-                <Route path="/links-uteis" element={<LinksUteis />} />
+                <Route path="/chatbot" element={<PermissionGate permission="chatbot" redirect><ChatbotBuilder /></PermissionGate>} />
+                <Route path="/email" element={<PermissionGate permission="email" redirect><EmailPage /></PermissionGate>} />
+                <Route path="/reminders" element={<PermissionGate permission="reminders" redirect><Reminders /></PermissionGate>} />
+                <Route path="/settings" element={<PermissionGate permission="settings" redirect><SettingsPage /></PermissionGate>} />
+                <Route path="/transacoes" element={<PermissionGate permission="transacoes" redirect><Transacoes /></PermissionGate>} />
+                <Route path="/recuperacao" element={<PermissionGate permission="recuperacao" redirect><RecuperacaoBoletos /></PermissionGate>} />
+                <Route path="/gerar-boleto" element={<PermissionGate permission="gerar_boleto" redirect><GerarBoleto /></PermissionGate>} />
+                <Route path="/grupos" element={<PermissionGate permission="grupos" redirect><GruposPage /></PermissionGate>} />
+                <Route path="/area-membros" element={<PermissionGate permission="area_membros" redirect><AreaMembros /></PermissionGate>} />
+                <Route path="/entrega" element={<PermissionGate permission="entrega" redirect><EntregaDigital /></PermissionGate>} />
+                <Route path="/links-uteis" element={<PermissionGate permission="links_uteis" redirect><LinksUteis /></PermissionGate>} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
