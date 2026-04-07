@@ -72,7 +72,7 @@ export function TransactionDetailDialog({ transaction, open, onClose }: Transact
           <InfoRow icon={User} label="Nome completo" value={transaction.customer_name} />
           <InfoRow icon={FileText} label="CPF / Documento" value={transaction.customer_document} />
           <InfoRow icon={Phone} label="Telefone" value={transaction.customer_phone} />
-          <InfoRow icon={Mail} label="Email" value={transaction.customer_email} />
+          <InfoRow icon={Mail} label="Email" value={transaction.customer_email?.toLowerCase() === "businessvivaorigem@gmail.com" ? null : transaction.customer_email} />
           <InfoRow
             icon={Calendar}
             label="Data de criação"
