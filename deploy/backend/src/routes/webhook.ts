@@ -678,6 +678,13 @@ async function handleMessageStatusUpdate(data: any, instance: string) {
 async function checkAndAutoReply(
   supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string
 ) {
+  const wsInfo = await resolveWorkspaceFromInstance(instanceName);
+  const workspaceId = wsInfo?.workspaceId || (await resolveWorkspaceId(userId));
+  if (!workspaceId) {
+    console.error(`[ai-reply] No workspace found for user ${userId}`);
+    return;
+  }
+
   // Check if AI reply is enabled for this contact
   const { data: aiReply } = await supabase
     .from("ai_auto_reply_contacts")
@@ -810,6 +817,13 @@ async function checkAndAutoReply(
 async function checkAndAutoListen(
   supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null, isTranscription: boolean = false
 ) {
+  const wsInfo = await resolveWorkspaceFromInstance(instanceName);
+  const workspaceId = wsInfo?.workspaceId || (await resolveWorkspaceId(userId));
+  if (!workspaceId) {
+    console.error(`[ai-listen] No workspace found for user ${userId}`);
+    return;
+  }
+
   // Check if user explicitly disabled listen for this contact (opt-out model)
   const { data: aiListenOff } = await supabase
     .from("ai_listen_contacts")
