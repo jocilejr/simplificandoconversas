@@ -181,7 +181,7 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
           </div>
 
           <p className="text-xs text-muted-foreground">
-            A mensagem enviada será a mesma configurada no ⚙️ de cada aba (Boletos, PIX/Cartão).
+            A mensagem enviada será a mesma configurada no ⚙️ de cada aba. O intervalo entre mensagens é definido na Fila de Mensagens em Configurações &gt; Conexões.
           </p>
 
           <div className="flex justify-end gap-2">
