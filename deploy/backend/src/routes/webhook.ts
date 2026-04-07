@@ -787,7 +787,6 @@ async function checkAndAutoReply(
       conversation_id: conversationId,
       user_id: userId,
       workspace_id: workspaceId,
-          workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: reply,
       message_type: "text",
