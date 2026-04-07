@@ -53,7 +53,7 @@ export function BoletoRecoveryModal({ open, onOpenChange }: BoletoRecoveryModalP
   const [templateName, setTemplateName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null);
-  const { currentWorkspace } = useWorkspace();
+  const { workspace: currentWorkspace } = useWorkspace();
 
   useEffect(() => {
     if (open && currentWorkspace) {
