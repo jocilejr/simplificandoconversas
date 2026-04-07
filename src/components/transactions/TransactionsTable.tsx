@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Trash2, Download, Search, ChevronDown, ChevronUp,
   Users, Clock, CheckCircle2, AlertCircle, RefreshCw,
-  CalendarIcon, Copy, ExternalLink,
+  CalendarIcon, Copy, ExternalLink, Settings2,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
