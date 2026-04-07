@@ -730,7 +730,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
             customerPhone: cleanPhone,
             customerName: mpData.payer?.first_name || null,
             amount: mpData.transaction_amount || 0,
-            transactionType: mpData.payment_method_id === "pix" ? "pix" : "boleto",
+            transactionType: resolveTransactionType(mpData.payment_method_id),
           });
         } catch (enqErr: any) {
           console.error(`[boleto-webhook] Recovery enqueue error:`, enqErr.message);
