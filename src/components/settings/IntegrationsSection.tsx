@@ -294,7 +294,7 @@ export function IntegrationsSection() {
               </div>
             ))}
 
-            {configDialog?.webhookPath && connections[configDialog.platform] && (() => {
+            {configDialog?.webhookPath && (connections[configDialog.platform] || configDialog.fields.length === 0) && (() => {
               const baseUrl = (workspaceUrl || profile?.app_public_url || "").replace(/\/+$/, "") || "https://SEU-API-DOMAIN";
               const webhookUrl = `${baseUrl}${configDialog.webhookPath}`;
               return (
