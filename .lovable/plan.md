@@ -1,48 +1,42 @@
+## Implementação: Recuperação Event-Driven
 
+### O que mudou
 
-## Problema
+A recuperação automática agora é **event-driven** (disparada no momento em que a transação é salva), não mais dependente do cron.
 
-O `enqueueRecovery` é chamado apenas no webhook (linha 697) e nunca no endpoint de criação (`POST /payment/create`, linha 338). Quando o boleto é gerado pela UI, o webhook do Mercado Pago recebe `pending → pending` e faz skip. Resultado: nenhum caminho enfileira a transação.
+### Novo fluxo
 
-## Solução
-
-Adicionar chamada a `enqueueRecovery` logo após `Transaction saved` (linha 338) no `deploy/backend/src/routes/payment.ts`.
-
-## Alteração
-
-| Arquivo | O que muda |
-|---------|-----------|
-| `deploy/backend/src/routes/payment.ts` | Inserir bloco após linha 338 que chama `enqueueRecovery` incondicionalmente (sem depender de webhook ou status externo) |
-
-Código a inserir após a linha 338 (`console.log("[payment] Transaction saved:", tx?.id);`):
-
-```typescript
-// Auto-recovery: enqueue immediately upon transaction creation
-if (tx?.id && customer_phone) {
-  try {
-    await enqueueRecovery({
-      workspaceId,
-      userId,
-      transactionId: tx.id,
-      customerPhone: customer_phone,
-      customerName: customer_name || null,
-      amount: amount,
-      transactionType: isBoleto ? "boleto" : "pix",
-    });
-  } catch (enqErr: any) {
-    console.error("[payment] Recovery enqueue error:", enqErr.message);
-  }
-}
+```
+transação pendente salva
+→ dispatchRecovery() chamada imediatamente
+→ valida recovery_settings (tipo habilitado)
+→ resolve instância (instance_boleto/pix/yampi)
+→ insere registro em recovery_queue (status: pending)
+→ enfileira na MessageQueue global da instância
+→ fila global respeita delay anti-ban
+→ ao enviar: atualiza recovery_queue (sent/failed/cancelled)
 ```
 
-A função `enqueueRecovery` já importada (linha 4) faz internamente a verificação de `enabled_boleto`/`enabled_pix` e de duplicatas. Se o tipo não estiver ativado, simplesmente retorna sem enfileirar.
+### Arquivos alterados
 
-## Deploy na VPS
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/backend/src/lib/recovery-dispatch.ts` | **NOVO** — motor de disparo imediato usando fila global |
+| `deploy/backend/src/routes/payment.ts` | `enqueueRecovery` → `dispatchRecovery` |
+| `deploy/backend/src/routes/yampi-webhook.ts` | `enqueueRecovery` → `dispatchRecovery` |
+| `deploy/backend/src/routes/manual-payment-webhook.ts` | `enqueueRecovery` → `dispatchRecovery` |
+| `deploy/backend/src/routes/auto-recovery.ts` | Simplificado para fallback de retry de itens stuck |
+
+### Deploy
 
 ```bash
 cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
 docker logs deploy-backend-1 --tail 50 -f
 ```
 
-Gerar um boleto de teste e confirmar que aparece `[auto-recovery] Enqueued tx ...` logo após `[payment] Transaction saved`.
+### Validação
 
+Gerar boleto de teste e verificar nos logs:
+- `[recovery-dispatch] Queued tx ...`
+- `[queue:INSTANCE] enqueued recovery:TX_ID`
+- `[recovery-dispatch] Sent recovery to ...`
