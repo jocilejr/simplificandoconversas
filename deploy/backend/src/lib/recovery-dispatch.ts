@@ -4,10 +4,17 @@
  * Called immediately after a transaction is saved/updated to pending.
  * Uses the global MessageQueue for anti-ban serialization.
  * Writes audit trail to recovery_queue.
+ * Supports block-based templates (text, PDF, image) from boleto_recovery_templates.
  */
 
 import { getServiceClient } from "./supabase";
 import { getMessageQueue } from "./message-queue";
+
+interface RecoveryBlock {
+  id: string;
+  type: "text" | "pdf" | "image";
+  content: string;
+}
 
 function getGreeting(): string {
   const now = new Date();
@@ -32,10 +39,6 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
 
 /**
  * Normalize phone number to Brazilian format for Evolution API.
- * - Strips non-digits
- * - Removes leading zero
- * - Adds country code 55 if missing (10-11 digit numbers)
- * - Returns plain number (no @s.whatsapp.net)
  */
 function normalizePhone(raw: string): string {
   let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
@@ -46,8 +49,102 @@ function normalizePhone(raw: string): string {
 }
 
 /**
+ * Send a single block via Evolution API.
+ */
+async function sendBlock(
+  block: RecoveryBlock,
+  vars: { name: string | null; amount: number },
+  phone: string,
+  instanceName: string,
+  evoBaseUrl: string,
+  evoApiKey: string,
+  transactionId: string,
+  sb: ReturnType<typeof getServiceClient>,
+): Promise<void> {
+  if (block.type === "text") {
+    const text = replaceVariables(block.content, vars);
+    console.log(`[recovery-dispatch] Sending text block to ${phone}`);
+    const resp = await fetch(`${evoBaseUrl}/message/sendText/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoApiKey },
+      body: JSON.stringify({ number: phone, text }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[recovery-dispatch] Evolution sendText error ${resp.status}: ${errText}`);
+      throw new Error(`Evolution API ${resp.status}: ${errText}`);
+    }
+  } else if (block.type === "pdf") {
+    // Get the PDF URL from the transaction metadata
+    const { data: tx } = await sb
+      .from("transactions")
+      .select("metadata, external_id")
+      .eq("id", transactionId)
+      .maybeSingle();
+
+    const meta = (tx?.metadata as any) || {};
+    const boletoFile = meta.boleto_file as string | undefined;
+
+    if (!boletoFile) {
+      console.log(`[recovery-dispatch] No PDF file for tx ${transactionId}, skipping PDF block`);
+      return;
+    }
+
+    // Build a public URL for the PDF via the backend endpoint
+    const appPublicUrl = process.env.APP_PUBLIC_URL || "";
+    if (!appPublicUrl) {
+      console.log(`[recovery-dispatch] APP_PUBLIC_URL not set, skipping PDF block`);
+      return;
+    }
+
+    const pdfUrl = `${appPublicUrl}/api/payment/boleto-pdf/${transactionId}`;
+    const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
+    const fileName = `boleto-${firstName}.pdf`;
+
+    console.log(`[recovery-dispatch] Sending PDF block: ${pdfUrl}`);
+    const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evoApiKey },
+      body: JSON.stringify({
+        number: phone,
+        mediatype: "document",
+        media: pdfUrl,
+        fileName,
+        mimetype: "application/pdf",
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[recovery-dispatch] Evolution sendMedia/PDF error ${resp.status}: ${errText}`);
+      throw new Error(`Evolution API PDF ${resp.status}: ${errText}`);
+    }
+  } else if (block.type === "image") {
+    // Image block — if it has content (URL), send it
+    if (block.content) {
+      console.log(`[recovery-dispatch] Sending image block: ${block.content}`);
+      const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evoApiKey },
+        body: JSON.stringify({
+          number: phone,
+          mediatype: "image",
+          media: block.content,
+          caption: "",
+        }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.error(`[recovery-dispatch] Evolution sendMedia/image error ${resp.status}: ${errText}`);
+        throw new Error(`Evolution API Image ${resp.status}: ${errText}`);
+      }
+    } else {
+      console.log(`[recovery-dispatch] Image block has no content URL, skipping`);
+    }
+  }
+}
+
+/**
  * Dispatch recovery for a single transaction immediately.
- * This is the main entry point — call after saving a pending transaction.
  */
 export async function dispatchRecovery(opts: {
   workspaceId: string;
@@ -56,7 +153,7 @@ export async function dispatchRecovery(opts: {
   customerPhone: string | null;
   customerName: string | null;
   amount: number;
-  transactionType: string; // "boleto" | "pix" | "yampi" | "yampi_cart"
+  transactionType: string;
 }) {
   console.log(`[recovery-dispatch] START tx=${opts.transactionId} type=${opts.transactionType} phone=${opts.customerPhone}`);
 
@@ -80,7 +177,7 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  console.log(`[recovery-dispatch] Settings found: enabled_boleto=${settings.enabled_boleto} enabled_pix=${settings.enabled_pix} enabled_yampi=${settings.enabled_yampi}`);
+  console.log(`[recovery-dispatch] Settings: enabled_boleto=${settings.enabled_boleto} enabled_pix=${settings.enabled_pix} enabled_yampi=${settings.enabled_yampi}`);
 
   // 2. Check per-type enablement
   if (txType === "boleto" && !settings.enabled_boleto) {
@@ -119,15 +216,14 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  console.log(`[recovery-dispatch] Instance resolved: ${instanceName}`);
+  console.log(`[recovery-dispatch] Instance: ${instanceName}`);
 
   // 5. Normalize phone
   const normalizedPhone = normalizePhone(opts.customerPhone);
-  console.log(`[recovery-dispatch] Phone: raw="${opts.customerPhone}" → normalized="${normalizedPhone}"`);
+  console.log(`[recovery-dispatch] Phone: "${opts.customerPhone}" → "${normalizedPhone}"`);
 
   if (normalizedPhone.length < 12) {
-    console.log(`[recovery-dispatch] INVALID phone after normalization: "${normalizedPhone}" (too short)`);
-    // Insert as failed immediately
+    console.log(`[recovery-dispatch] INVALID phone: "${normalizedPhone}" (too short)`);
     await sb.from("recovery_queue").insert({
       workspace_id: opts.workspaceId,
       user_id: opts.userId,
@@ -143,26 +239,54 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  // 6. Get message template
-  const { data: profile } = await sb
-    .from("profiles")
-    .select("recovery_message_boleto, recovery_message_pix")
-    .eq("user_id", settings.user_id)
+  // 6. Load template blocks from boleto_recovery_templates (default template)
+  let blocks: RecoveryBlock[] = [];
+
+  const { data: defaultTemplate } = await sb
+    .from("boleto_recovery_templates")
+    .select("blocks")
+    .eq("workspace_id", opts.workspaceId)
+    .eq("is_default", true)
     .maybeSingle();
 
-  const isBoleto = txType === "boleto";
-  const defaultMsg = isBoleto
-    ? `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`
-    : `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+  if (defaultTemplate && Array.isArray(defaultTemplate.blocks) && defaultTemplate.blocks.length > 0) {
+    blocks = defaultTemplate.blocks as RecoveryBlock[];
+    console.log(`[recovery-dispatch] Using default template with ${blocks.length} blocks`);
+  } else {
+    // Fallback: try first template
+    const { data: anyTemplate } = await sb
+      .from("boleto_recovery_templates")
+      .select("blocks")
+      .eq("workspace_id", opts.workspaceId)
+      .limit(1)
+      .maybeSingle();
 
-  const template = isBoleto
-    ? (profile?.recovery_message_boleto || defaultMsg)
-    : (profile?.recovery_message_pix || defaultMsg);
+    if (anyTemplate && Array.isArray(anyTemplate.blocks) && anyTemplate.blocks.length > 0) {
+      blocks = anyTemplate.blocks as RecoveryBlock[];
+      console.log(`[recovery-dispatch] Using first available template with ${blocks.length} blocks`);
+    }
+  }
 
-  const message = replaceVariables(template, {
-    name: opts.customerName,
-    amount: opts.amount,
-  });
+  // If no template blocks found, fall back to legacy profiles message
+  if (blocks.length === 0) {
+    console.log(`[recovery-dispatch] No template blocks found, using legacy profiles message`);
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("recovery_message_boleto, recovery_message_pix")
+      .eq("user_id", settings.user_id)
+      .maybeSingle();
+
+    const isBoleto = txType === "boleto";
+    const defaultMsg = isBoleto
+      ? `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`
+      : `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+
+    const template = isBoleto
+      ? (profile?.recovery_message_boleto || defaultMsg)
+      : (profile?.recovery_message_pix || defaultMsg);
+
+    blocks = [{ id: "legacy", type: "text", content: template }];
+  }
 
   // 7. Insert audit record as pending
   const { data: queueItem } = await sb
@@ -200,6 +324,8 @@ export async function dispatchRecovery(opts: {
   const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
   const evoApiKey = process.env.EVOLUTION_API_KEY || "";
 
+  const vars = { name: opts.customerName, amount: opts.amount };
+
   queue.enqueue(async () => {
     // Re-check transaction status before sending (may have been paid)
     const { data: tx } = await sb
@@ -214,18 +340,18 @@ export async function dispatchRecovery(opts: {
       return;
     }
 
-    console.log(`[recovery-dispatch] Sending to ${normalizedPhone} via instance ${instanceName}`);
+    console.log(`[recovery-dispatch] Sending ${blocks.length} block(s) to ${normalizedPhone} via ${instanceName}`);
 
-    const resp = await fetch(`${evoBaseUrl}/message/sendText/${instanceName}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: evoApiKey },
-      body: JSON.stringify({ number: normalizedPhone, text: message }),
-    });
+    // Send each block sequentially with a small delay between them
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      console.log(`[recovery-dispatch] Block ${i + 1}/${blocks.length}: type=${block.type}`);
+      await sendBlock(block, vars, normalizedPhone, instanceName!, evoBaseUrl, evoApiKey, opts.transactionId, sb);
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.error(`[recovery-dispatch] Evolution error ${resp.status}: ${errText}`);
-      throw new Error(`Evolution API ${resp.status}: ${errText}`);
+      // Small delay between blocks (2s) to avoid rate limiting
+      if (i < blocks.length - 1) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
 
     await sb.from("recovery_queue").update({
@@ -233,7 +359,7 @@ export async function dispatchRecovery(opts: {
       sent_at: new Date().toISOString(),
     }).eq("id", queueId);
 
-    console.log(`[recovery-dispatch] ✅ Sent recovery to ${normalizedPhone} (tx: ${opts.transactionId})`);
+    console.log(`[recovery-dispatch] ✅ Sent ${blocks.length} block(s) to ${normalizedPhone} (tx: ${opts.transactionId})`);
   }, `recovery:${opts.transactionId}`).catch(async (err: any) => {
     if (queueId) {
       try {
