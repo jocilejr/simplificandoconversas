@@ -88,17 +88,27 @@ function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
 export function AppSection() {
   const { profile, updateProfile } = useProfile();
   const { pixels, isLoading: pixelsLoading, addPixel, updatePixel, deletePixel } = useMetaPixels();
+  const { workspaceId } = useWorkspace();
   const [appPublicUrl, setAppPublicUrl] = useState("");
+  const [apiPublicUrl, setApiPublicUrl] = useState("");
   const [showAddPixel, setShowAddPixel] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPixelId, setNewPixelId] = useState("");
   const [newAccessToken, setNewAccessToken] = useState("");
+  const { toast } = useToast();
 
   useEffect(() => {
     if (profile) {
       setAppPublicUrl(profile.app_public_url || "");
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    supabase.from("workspaces").select("api_public_url").eq("id", workspaceId).single().then(({ data }) => {
+      setApiPublicUrl(data?.api_public_url || "");
+    });
+  }, [workspaceId]);
 
   const handleAddPixel = () => {
     if (!newPixelId.trim() || !newAccessToken.trim()) return;

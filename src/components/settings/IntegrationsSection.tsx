@@ -131,8 +131,9 @@ export function IntegrationsSection() {
   useEffect(() => {
     if (!user || !workspaceId) return;
     loadConnections();
-    supabase.from("workspaces").select("app_public_url").eq("id", workspaceId).single().then(({ data }) => {
-      if (data?.app_public_url) setWorkspaceUrl(data.app_public_url);
+    supabase.from("workspaces").select("app_public_url, api_public_url").eq("id", workspaceId).single().then(({ data }) => {
+      if (data?.api_public_url) setWorkspaceUrl(data.api_public_url);
+      else if (data?.app_public_url) setWorkspaceUrl(data.app_public_url.replace("://app.", "://api."));
     });
   }, [user, workspaceId]);
 
