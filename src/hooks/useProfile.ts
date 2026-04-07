@@ -40,6 +40,8 @@ export function useProfile() {
       full_name?: string;
       openai_api_key?: string;
       app_public_url?: string;
+      recovery_message_boleto?: string;
+      recovery_message_pix?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");

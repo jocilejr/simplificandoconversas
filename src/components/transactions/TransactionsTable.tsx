@@ -28,6 +28,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Transaction } from "@/hooks/useTransactions";
 import { TransactionDetailDialog } from "./TransactionDetailDialog";
+import { RecoveryPopover } from "./RecoveryPopover";
+import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
+import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
+import { useProfile } from "@/hooks/useProfile";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
