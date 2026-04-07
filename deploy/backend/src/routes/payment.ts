@@ -421,43 +421,20 @@ router.get("/boleto-pdf/:transactionId", async (req: Request, res: Response) => 
 
     const meta = (tx.metadata as any) || {};
 
-    // Check if file already exists on disk
-    if (meta.boleto_file) {
-      const fsPath = (meta.boleto_file as string).replace("/media/", "/media-files/");
-      try {
-        await fs.access(fsPath);
-        // File exists, serve it
-        const buffer = await fs.readFile(fsPath);
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="boleto-${tx.external_id}.pdf"`);
-        return res.send(buffer);
-      } catch {
-        // File doesn't exist on disk, try to re-download
-        console.log(`[payment] boleto_file path exists in DB but not on disk: ${fsPath}`);
-      }
+    if (!meta.boleto_file) {
+      return res.status(404).json({ error: "O boleto não existe no banco de dados" });
     }
 
-    // Try to download from payment_url
-    if (!tx.payment_url) {
-      return res.status(404).json({ error: "Nenhum link de pagamento disponível para este boleto" });
-    }
-
-    const savedPath = await downloadAndSaveBoletoPdf(tx.payment_url, tx.user_id, tx.external_id || tx.id);
-    if (savedPath) {
-      // Update metadata with the new file path
-      await supabase
-        .from("transactions")
-        .update({ metadata: { ...meta, boleto_file: savedPath } })
-        .eq("id", tx.id);
-
-      const fsPath = savedPath.replace("/media/", "/media-files/");
+    const fsPath = (meta.boleto_file as string).replace("/media/", "/media-files/");
+    try {
+      await fs.access(fsPath);
       const buffer = await fs.readFile(fsPath);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `inline; filename="boleto-${tx.external_id}.pdf"`);
       return res.send(buffer);
+    } catch {
+      return res.status(404).json({ error: "O boleto não existe no banco de dados" });
     }
-
-    return res.status(404).json({ error: "Não foi possível obter o PDF do boleto" });
   } catch (err: any) {
     console.error("[payment] boleto-pdf error:", err.message);
     return res.status(500).json({ error: err.message });
