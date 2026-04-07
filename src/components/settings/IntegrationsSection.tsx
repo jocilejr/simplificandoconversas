@@ -110,6 +110,7 @@ export function IntegrationsSection() {
   const { toast } = useToast();
   const { profile } = useProfile();
   const { workspaceId } = useWorkspace();
+  const [workspaceUrl, setWorkspaceUrl] = useState<string | null>(null);
   const [connections, setConnections] = useState<Record<string, { id: string; credentials: any; enabled: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [configDialog, setConfigDialog] = useState<Integration | null>(null);
@@ -120,6 +121,9 @@ export function IntegrationsSection() {
   useEffect(() => {
     if (!user || !workspaceId) return;
     loadConnections();
+    supabase.from("workspaces").select("app_public_url").eq("id", workspaceId).single().then(({ data }) => {
+      if (data?.app_public_url) setWorkspaceUrl(data.app_public_url);
+    });
   }, [user, workspaceId]);
 
   const loadConnections = async () => {
@@ -281,7 +285,7 @@ export function IntegrationsSection() {
             ))}
 
             {configDialog?.webhookPath && connections[configDialog.platform] && (() => {
-              const baseUrl = profile?.app_public_url?.replace(/\/+$/, "") || "https://SEU-API-DOMAIN";
+              const baseUrl = (workspaceUrl || profile?.app_public_url || "").replace(/\/+$/, "") || "https://SEU-API-DOMAIN";
               const webhookUrl = `${baseUrl}${configDialog.webhookPath}`;
               return (
                 <div className="space-y-1.5 pt-2 border-t">
