@@ -1,60 +1,95 @@
+## Fila Global de Mensagens + Instancias Independentes para Follow Up
 
+### Conceito
 
-## Fix: Dias para vencimento do boleto nao persistem
+Centralizar o controle de delay entre mensagens em uma **Fila Global por Instancia** nas Configuracoes. Transacoes e Follow Up passam a configurar apenas **qual instancia usar**, sem definir delay — o delay vem da fila global.
 
-### Problema identificado
+### Nova tabela: `message_queue_config`
 
-O bug esta em `FollowUpRulesConfig.tsx`. O componente tem sua propria query local para `boleto_settings` e usa `setExpirationDays` dentro do `queryFn` para inicializar o estado. Porem:
-
-1. **Estado inicial vazio**: `expirationDays` inicia como `""`. Se a query retorna `null` (nenhuma configuracao salva ainda), o valor permanece vazio.
-2. **Apos INSERT, o `settings` fica stale**: Quando o usuario salva pela primeira vez (INSERT), o `onSuccess` invalida a query. Porem, a variavel `settings` usada na closure da mutacao `updateSettings` pode nao ter atualizado ainda. Na proxima vez que salvar, a condicao `!settings?.id` pode estar errada.
-3. **Re-mount reseta**: Ao fechar e reabrir o dialog, o componente re-monta, `expirationDays` volta para `""`, e a query re-roda. Se o dado foi salvo corretamente, deveria funcionar — mas se o INSERT falhou silenciosamente, o campo aparece vazio.
-4. **Possivel falha silenciosa do INSERT**: A tabela `boleto_settings` no banco esta **vazia**, indicando que os INSERTs nunca foram persistidos com sucesso na VPS do usuario.
-
-### Solucao
-
-Refatorar o `FollowUpRulesConfig` para usar o hook `useBoletoRecovery` que ja tem `settings` e `updateSettings`, eliminando a duplicacao de logica. Alem disso, corrigir a inicializacao do `expirationDays` usando `useEffect` para sincronizar com os dados do banco quando carregados.
-
-### Mudancas
-
-**`src/components/followup/FollowUpRulesConfig.tsx`**:
-- Remover a query local duplicada de `boleto_settings` — usar `settings` e `updateSettings` do `useBoletoRecovery()` que ja sao importados indiretamente
-- Adicionar `useEffect` para sincronizar `expirationDays` com `settings?.default_expiration_days` quando os dados carregam
-- Garantir que apos salvar, a invalidacao da query atualiza o estado corretamente
-- Trocar a condicao do INSERT/UPDATE para usar o `settings` mais atualizado via re-render
-
-**`src/hooks/useBoletoRecovery.ts`**:
-- Nenhuma mudanca necessaria — o hook ja tem `settings` e `updateSettings` expostos
-
-### Detalhes tecnicos
-
-O fix principal e trocar:
-```tsx
-// ANTES — query separada com side-effect no queryFn
-const { data: settings } = useQuery({
-  queryFn: async () => {
-    const { data } = await supabase.from("boleto_settings")...
-    if (data) setExpirationDays(data.default_expiration_days.toString());
-    return data;
-  }
-});
+```sql
+CREATE TABLE public.message_queue_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  instance_name text NOT NULL,
+  delay_seconds integer NOT NULL DEFAULT 30,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, instance_name)
+);
+ALTER TABLE public.message_queue_config ENABLE ROW LEVEL SECURITY;
+-- RLS policies ws_select, ws_insert, ws_update, ws_delete (padrao workspace)
 ```
 
-Para:
-```tsx
-// DEPOIS — useEffect para sincronizar estado
-const { data: settings } = useQuery({ ... });
+### Nova tabela: `followup_settings`
 
-useEffect(() => {
-  if (settings?.default_expiration_days) {
-    setExpirationDays(settings.default_expiration_days.toString());
-  }
-}, [settings]);
+```sql
+CREATE TABLE public.followup_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL UNIQUE,
+  user_id uuid NOT NULL,
+  instance_name text,
+  send_after_minutes integer NOT NULL DEFAULT 5,
+  enabled boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.followup_settings ENABLE ROW LEVEL SECURITY;
+-- RLS policies ws_select, ws_insert, ws_update, ws_delete
 ```
 
-E garantir que o `updateSettings` mutation invalide tambem o `["boleto-settings"]` query key corretamente.
+### Estrutura visual
 
-| Arquivo | Acao |
-|---------|------|
-| `src/components/followup/FollowUpRulesConfig.tsx` | Fix: useEffect para sincronizar estado, remover side-effect do queryFn |
+```text
+CONFIGURACOES > Conexoes
+  ┌─────────────────────────────────────────────┐
+  │ Instancia "vendas"    [●Conectado]  ...     │
+  │ Instancia "suporte"   [●Conectado]  ...     │
+  └─────────────────────────────────────────────┘
 
+  ┌─ Fila de Mensagens ────────────────────────┐
+  │  Instancia       │ Delay entre msgs         │
+  │  vendas          │ [30] seg                  │
+  │  suporte         │ [45] seg                  │
+  │  (auto-criado para cada instancia ativa)    │
+  └────────────────────────────────────────────┘
+
+TRANSACOES > Config (⚙)
+  - Instancia Boleto: [select]
+  - Instancia PIX:    [select]
+  - Instancia Yampi:  [select]
+  (SEM campo de delay ou de espera — vem da fila global)
+
+FOLLOW UP > Config (⚙)
+  - Instancia: [select]
+  - Espera antes de enviar: [5] min
+  (SEM campo de delay — vem da fila global)
+```
+
+### Mudancas por arquivo
+
+
+| Arquivo                                              | Acao                                                                                                            |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Migration SQL**                                    | Criar tabelas `message_queue_config` e `followup_settings` com RLS                                              |
+| `src/hooks/useMessageQueueConfig.ts`                 | **Novo** — hook CRUD para `message_queue_config`                                                                |
+| `src/hooks/useFollowUpSettings.ts`                   | **Novo** — hook CRUD para `followup_settings`                                                                   |
+| `src/components/settings/ConnectionsSection.tsx`     | Adicionar secao "Fila de Mensagens" abaixo das instancias — lista instancias ativas com campo de delay editavel |
+| `src/components/transactions/AutoRecoveryConfig.tsx` | Remover campo "Delay entre mensagens" — manter apenas selecao de instancias e "Espera antes de enviar"          |
+| `src/components/followup/FollowUpDashboard.tsx`      | Adicionar botao de config (⚙) que abre modal de selecao de instancia para follow up                             |
+| `src/components/followup/FollowUpSettingsDialog.tsx` | **Novo** — modal com select de instancia + espera antes de enviar + toggle enabled                              |
+| `deploy/backend/src/routes/auto-recovery.ts`         | Ler delay da `message_queue_config` ao inves de `recovery_settings.delay_seconds`                               |
+| `deploy/backend/src/lib/message-queue.ts`            | Sem mudanca (ja funciona por instancia) — o backend le o delay da tabela ao processar                           |
+
+
+### Fluxo do backend (processRecoveryQueue)
+
+1. Ao processar um item da fila, busca o `delay_seconds` de `message_queue_config` para a instancia que sera usada
+2. Se nao encontrar config, usa fallback de 30 segundos
+3. Mesmo principio se aplica ao futuro processamento automatico de follow up
+
+### Detalhes
+
+- A secao "Fila de Mensagens" nas Configuracoes mostra automaticamente todas as instancias ativas do workspace
+- Ao criar uma instancia nova, nao precisa pre-criar o registro — o hook usa upsert
+- O campo `delay_seconds` e removido de `recovery_settings` na interface (campo fica no banco para compatibilidade, mas nao e mais usado)
+- O backend passa a consultar `message_queue_config` para determinar o delay
