@@ -266,7 +266,7 @@ export function IntegrationsSection() {
             <DialogDescription>{configDialog?.description}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
             {configDialog?.fields.map((field) => (
               <div key={field.key} className="space-y-1.5">
                 <label className="text-xs font-medium">{field.label}</label>
@@ -301,7 +301,7 @@ export function IntegrationsSection() {
                 <div className="space-y-1.5 pt-2 border-t">
                   <label className="text-xs font-medium">URL do Webhook</label>
                   <p className="text-[11px] text-muted-foreground">
-                    Copie e cole esta URL na plataforma {configDialog.name} para receber notificações
+                    Copie e cole esta URL para receber notificações
                   </p>
                   <div className="flex gap-2">
                     <Input
@@ -325,6 +325,68 @@ export function IntegrationsSection() {
                 </div>
               );
             })()}
+
+            {/* Mini documentação para webhook manual */}
+            {configDialog?.id === "manual_payment" && (
+              <div className="space-y-3 pt-3 border-t">
+                <label className="text-xs font-semibold">📄 Documentação</label>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Método</p>
+                  <code className="block text-[11px] bg-muted rounded px-2 py-1 font-mono">POST</code>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Campos obrigatórios</p>
+                  <div className="bg-muted rounded p-2 space-y-0.5">
+                    <p className="text-[11px] font-mono"><span className="text-primary">workspace_id</span> — UUID do workspace</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">event</span> — evento (ver abaixo)</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">external_id</span> — ID único do seu sistema</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Eventos</p>
+                  <div className="bg-muted rounded p-2 space-y-0.5">
+                    <p className="text-[11px] font-mono"><span className="text-yellow-400">payment_pending</span> → pendente</p>
+                    <p className="text-[11px] font-mono"><span className="text-green-400">payment_approved</span> → aprovado</p>
+                    <p className="text-[11px] font-mono"><span className="text-red-400">payment_refused</span> → rejeitado</p>
+                    <p className="text-[11px] font-mono"><span className="text-orange-400">payment_refunded</span> → reembolsado</p>
+                    <p className="text-[11px] font-mono"><span className="text-red-500">payment_chargeback</span> → chargeback</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Tipos de pagamento (type)</p>
+                  <div className="bg-muted rounded p-2">
+                    <p className="text-[11px] font-mono">pix · cartao · boleto</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Default: pix</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Campos opcionais</p>
+                  <div className="bg-muted rounded p-2 space-y-0.5">
+                    <p className="text-[11px] font-mono">amount · customer_name · customer_email</p>
+                    <p className="text-[11px] font-mono">customer_phone · customer_document</p>
+                    <p className="text-[11px] font-mono">description · payment_url · paid_at · metadata</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Exemplo de payload</p>
+                  <pre className="bg-muted rounded p-2 text-[10px] font-mono whitespace-pre overflow-x-auto">{`{
+  "workspace_id": "seu-uuid",
+  "event": "payment_approved",
+  "type": "pix",
+  "external_id": "PAG-12345",
+  "amount": 149.90,
+  "customer_name": "João Silva",
+  "customer_phone": "5511999998888"
+}`}</pre>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="flex-row gap-2">
