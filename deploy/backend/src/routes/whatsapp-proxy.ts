@@ -118,7 +118,7 @@ router.post("/", async (req, res) => {
           if (name === "unknown") continue;
           // Check if instance already exists
           const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("user_id", userId).eq("instance_name", name).maybeSingle();
+            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", name).maybeSingle();
           if (existing) {
             // Only update status, never touch is_active
             const { error: updateErr } = await serviceClient.from("whatsapp_instances")
