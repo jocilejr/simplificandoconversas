@@ -117,7 +117,7 @@ export function useWhatsAppInstances() {
   const getQrCode = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "get-qrcode", instanceName },
+        body: { action: "get-qrcode", instanceName, workspaceId },
       });
       if (error) throw error;
       return data;
