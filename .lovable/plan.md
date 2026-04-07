@@ -1,64 +1,30 @@
 
 
-# Integração OpenPix/Woovi — Receber webhooks de transações
+# Corrigir webhook OpenPix — Retornar 200 na validação
 
-## Objetivo
-Adicionar OpenPix como gateway complementar ao Mercado Pago. O OpenPix será usado para receber notificações de transações PIX via webhook, registrando-as na tabela `transactions` com `source: 'openpix'`. Também permitirá gerar cobranças PIX diretamente.
-
-## API OpenPix — Referência
-- **Criar cobrança**: `POST https://api.openpix.com.br/api/openpix/v1/charge` com header `Authorization: APP_ID`
-- **Payload**: `correlationID`, `value` (centavos), `comment`, `customer` (name, email, phone, taxID)
-- **Resposta**: retorna `charge` com `paymentLinkUrl`, `qrCodeImage`, `brCode`
-- **Webhook**: OpenPix envia POST para URL configurada quando PIX é recebido. O evento contém `charge.status` e `pix` com detalhes do pagamento
+## Problema
+1. A URL do webhook (`https://app.chatbotsimplificado.com/functions/v1/payment-openpix/webhook`) usa o **APP_DOMAIN**, mas o proxy `/functions/v1/` só existe no bloco **API_DOMAIN** do Nginx. O APP_DOMAIN retorna o `index.html` do SPA em vez de encaminhar para o backend.
+2. O endpoint só responde a `POST`. A OpenPix pode enviar um `GET` (ou `HEAD`) para validar que o endpoint retorna 200 antes de registrar.
 
 ## Alterações
 
-### 1. Frontend — Adicionar OpenPix nas Integrações
-**`src/components/settings/IntegrationsSection.tsx`**
-- Adicionar entrada no array `INTEGRATIONS`:
-  - `platform: "openpix"`, `name: "Woovi / OpenPix"`, `icon: "🟢"`, `available: true`
-  - Campo: `app_id` (App ID, tipo password)
+### 1. Backend — Adicionar handler GET no webhook
+**`deploy/backend/src/routes/payment-openpix.ts`**
+- Adicionar `router.get("/webhook", ...)` que retorna `200 { ok: true }` para a validação da OpenPix
 
-### 2. Backend — Criar rota `/api/payment-openpix`
-**`deploy/backend/src/routes/payment-openpix.ts`** (novo)
+### 2. Nginx — Adicionar proxy no APP_DOMAIN para o webhook
+**`deploy/nginx/default.conf.template`**
+- Adicionar um bloco `location /functions/v1/payment-openpix/` no server do APP_DOMAIN que faz proxy para `http://backend:3001/api/payment-openpix/`
+- Sem CORS restritivo (webhook externo), sem exigir autenticação
 
-- **`POST /create`** — Cria cobrança PIX
-  - Autentica usuário via JWT
-  - Busca `app_id` na `platform_connections` onde `platform = 'openpix'`
-  - Chama `POST https://api.openpix.com.br/api/openpix/v1/charge`
-  - Salva na tabela `transactions` com `source: 'openpix'`, `type: 'pix'`
-  - Retorna `payment_url`, `qr_code`, `qr_code_base64`
-
-- **`POST /webhook`** — Recebe webhooks da OpenPix (sem autenticação JWT)
-  - Evento `OPENPIX:CHARGE_COMPLETED` → atualiza `status: 'aprovado'` e `paid_at`
-  - Evento `OPENPIX:CHARGE_EXPIRED` → atualiza `status: 'cancelado'`
-  - Busca transação pelo `external_id` (correlationID)
-
-### 3. Backend — Registrar rota
-**`deploy/backend/src/index.ts`**
-- Importar e montar: `app.use("/api/payment-openpix", openpixRouter)`
-
-### 4. Frontend — Seletor de gateway no formulário
-**`src/pages/GerarBoleto.tsx`**
-- Adicionar campo "Gateway" (Mercado Pago / OpenPix)
-- Se OpenPix selecionado, tipo fica fixo em "pix" (OpenPix só faz PIX)
-- Chamar hook diferente conforme gateway
-
-### 5. Hook para OpenPix
-**`src/hooks/useCreatePaymentOpenpix.ts`** (novo)
-- Mesmo padrão do `useCreatePayment.ts`, chamando `apiUrl("payment-openpix/create")`
-
-### 6. Nginx — Rota de webhook
-Instrução para adicionar no Nginx da VPS a rota `/functions/v1/payment-openpix/webhook` apontando para o backend, sem exigir autenticação.
-
-## Arquivos modificados/criados
-1. `src/components/settings/IntegrationsSection.tsx` — adicionar OpenPix ao catálogo
-2. `deploy/backend/src/routes/payment-openpix.ts` — **novo** — rota backend
-3. `deploy/backend/src/index.ts` — registrar rota
-4. `src/pages/GerarBoleto.tsx` — seletor de gateway
-5. `src/hooks/useCreatePaymentOpenpix.ts` — **novo** — hook frontend
+### 3. Frontend — Corrigir URL exibida (opcional)
+Se o `app_public_url` do perfil apontar para o API_DOMAIN, a URL já estaria correta. Mas como o usuário configurou o APP_DOMAIN, o fix no Nginx resolve o problema diretamente.
 
 ## Pós-deploy (VPS)
-Configurar o webhook na plataforma OpenPix apontando para:
-`https://SEU_API_DOMAIN/functions/v1/payment-openpix/webhook`
+```bash
+docker compose up -d --build backend
+docker compose restart nginx
+```
+
+Depois, testar novamente o registro do webhook na OpenPix.
 
