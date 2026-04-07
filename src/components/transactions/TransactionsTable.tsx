@@ -6,9 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Copy, ExternalLink, Search, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -52,7 +49,7 @@ const typeLabels: Record<string, string> = {
 
 export function TransactionsTable({ transactions, isLoading }: TransactionsTableProps) {
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState("todos");
+  const [tab, setTab] = useState("pagos");
   const [pendingSubFilter, setPendingSubFilter] = useState("todos");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
@@ -113,24 +110,30 @@ export function TransactionsTable({ transactions, isLoading }: TransactionsTable
         <div className="flex items-center gap-3 flex-wrap">
           <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "pendentes") setPendingSubFilter("todos"); }}>
             <TabsList>
-              <TabsTrigger value="todos">Todos ({counts.todos})</TabsTrigger>
               <TabsTrigger value="pagos">Pagos ({counts.pagos})</TabsTrigger>
               <TabsTrigger value="pendentes">Pendentes ({counts.pendentes})</TabsTrigger>
             </TabsList>
           </Tabs>
 
           {tab === "pendentes" && (
-            <Select value={pendingSubFilter} onValueChange={setPendingSubFilter}>
-              <SelectTrigger className="w-[180px] h-9">
-                <SelectValue placeholder="Filtrar por tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos pendentes</SelectItem>
-                <SelectItem value="boleto">Boleto (não pago)</SelectItem>
-                <SelectItem value="pix">PIX pendente</SelectItem>
-                <SelectItem value="cartao">Cartão pendente</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-1.5">
+              {[
+                { value: "todos", label: "Todos" },
+                { value: "boleto", label: "Boleto" },
+                { value: "pix", label: "PIX" },
+                { value: "cartao", label: "Cartão" },
+              ].map((item) => (
+                <Button
+                  key={item.value}
+                  size="sm"
+                  variant={pendingSubFilter === item.value ? "default" : "outline"}
+                  className="h-8 px-3 text-xs font-medium rounded-full"
+                  onClick={() => setPendingSubFilter(item.value)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
           )}
         </div>
 
