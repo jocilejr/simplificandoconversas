@@ -38,6 +38,7 @@ app.use("/api/analyze-csv-contacts", analyzeCsvRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/payment-openpix", paymentOpenpixRouter);
 app.use("/api/resolve-user-by-email", resolveUserRouter);
+app.use("/api/yampi-webhook", yampiWebhookRouter);
 
 // Health
 app.use("/api/health", healthDbRouter);

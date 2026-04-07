@@ -380,15 +380,18 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
-          <TabsList className="grid grid-cols-3 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
+          <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
+            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
               Aprovados ({tabTransactions.aprovados.length})
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
-              Boletos Ger. ({tabTransactions["boletos-gerados"].length})
+            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              Boletos ({tabTransactions["boletos-gerados"].length})
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1.5 sm:px-3">
-              PIX/Cartão Pend. ({tabTransactions["pix-cartao-pendentes"].length})
+            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
+            </TabsTrigger>
+            <TabsTrigger value="yampi-abandonados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              Carrinhos ({tabTransactions["yampi-abandonados"].length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
