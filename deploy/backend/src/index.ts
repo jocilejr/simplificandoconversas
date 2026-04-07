@@ -21,6 +21,8 @@ import paymentOpenpixRouter from "./routes/payment-openpix";
 import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
+import autoRecoveryRouter from "./routes/auto-recovery";
+import { processRecoveryQueue } from "./routes/auto-recovery";
 
 const app = express();
 app.use(cors());
