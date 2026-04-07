@@ -121,6 +121,9 @@ export function IntegrationsSection() {
   useEffect(() => {
     if (!user || !workspaceId) return;
     loadConnections();
+    supabase.from("workspaces").select("app_public_url").eq("id", workspaceId).single().then(({ data }) => {
+      if (data?.app_public_url) setWorkspaceUrl(data.app_public_url);
+    });
   }, [user, workspaceId]);
 
   const loadConnections = async () => {
