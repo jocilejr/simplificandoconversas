@@ -123,7 +123,6 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
       instance_boleto: instanceBoleto || null,
       instance_pix: instancePix || null,
       instance_yampi: instanceYampi || null,
-      instance_name: instanceBoleto || instancePix || instanceYampi || null,
     } as any, {
       onSuccess: () => {
         toast.success("Configurações salvas!");
