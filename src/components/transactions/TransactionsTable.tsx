@@ -748,6 +748,11 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
         open={!!selectedTx}
         onClose={() => setSelectedTx(null)}
       />
+
+      <BoletoRecoveryModal
+        open={boletoTemplateOpen}
+        onOpenChange={setBoletoTemplateOpen}
+      />
     </div>
   );
 }
