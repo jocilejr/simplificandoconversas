@@ -401,7 +401,6 @@ export function IntegrationsSection() {
   "workspace_id": "${workspaceId || "seu-uuid"}",
   "event": "payment_approved",
   "type": "pix",
-  "external_id": "PAG-12345",
   "amount": 149.90,
   "customer_name": "João Silva",
   "customer_phone": "5511999998888"
