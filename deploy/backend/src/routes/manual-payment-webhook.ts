@@ -93,17 +93,18 @@ router.post("/webhook", async (req, res) => {
     });
   }
 
-  const resolvedExternalId = external_id || crypto.randomUUID();
-  const externalKey = `manual_${paymentType}_${resolvedExternalId}`;
-
   try {
-    // Try update first (idempotent) — only if external_id was provided
-    const existing = external_id ? (await sb
-      .from("transactions")
-      .select("id")
-      .eq("external_id", externalKey)
-      .eq("workspace_id", workspaceId)
-      .maybeSingle()).data : null;
+    // If external_id provided, try to find and update existing transaction
+    let existing: { id: string } | null = null;
+    if (external_id) {
+      const externalKey = `manual_${paymentType}_${external_id}`;
+      existing = (await sb
+        .from("transactions")
+        .select("id")
+        .eq("external_id", externalKey)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle()).data;
+    }
 
     if (existing) {
       const updates: any = { status: txStatus };
