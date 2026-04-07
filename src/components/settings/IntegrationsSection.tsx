@@ -364,7 +364,6 @@ export function IntegrationsSection() {
                   <div className="bg-muted rounded p-2 space-y-0.5">
                     <p className="text-[11px] font-mono"><span className="text-primary">workspace_id</span> — UUID do workspace</p>
                     <p className="text-[11px] font-mono"><span className="text-primary">event</span> — evento (ver abaixo)</p>
-                    <p className="text-[11px] font-mono"><span className="text-primary">external_id</span> — ID único do seu sistema</p>
                   </div>
                 </div>
 
@@ -390,8 +389,8 @@ export function IntegrationsSection() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-foreground">Campos opcionais</p>
                   <div className="bg-muted rounded p-2 space-y-0.5">
-                    <p className="text-[11px] font-mono">amount · customer_name · customer_email</p>
-                    <p className="text-[11px] font-mono">customer_phone · customer_document</p>
+                    <p className="text-[11px] font-mono">external_id · amount · customer_name</p>
+                    <p className="text-[11px] font-mono">customer_email · customer_phone · customer_document</p>
                     <p className="text-[11px] font-mono">description · payment_url · paid_at · metadata</p>
                   </div>
                 </div>
@@ -402,7 +401,6 @@ export function IntegrationsSection() {
   "workspace_id": "${workspaceId || "seu-uuid"}",
   "event": "payment_approved",
   "type": "pix",
-  "external_id": "PAG-12345",
   "amount": 149.90,
   "customer_name": "João Silva",
   "customer_phone": "5511999998888"
