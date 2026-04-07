@@ -106,19 +106,34 @@ export function useDashboardStats(period: PeriodFilter, customRange?: DateRange)
     enabled,
   });
 
-  const messagesInPeriod = useQuery({
-    queryKey: ["dashboard", "messages", workspaceId, period, customRange?.from?.toISOString()],
+  const messagesSent = useQuery({
+    queryKey: ["dashboard", "messages-sent", workspaceId, period, customRange?.from?.toISOString()],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { count, error } = await (supabase as any)
         .from("messages")
-        .select("direction")
+        .select("*", { count: "exact", head: true })
         .eq("workspace_id", workspaceId)
+        .eq("direction", "outbound")
         .gte("created_at", range.from)
         .lt("created_at", range.to);
       if (error) throw error;
-      const sent = (data || []).filter((m: any) => m.direction === "outbound").length;
-      const received = (data || []).filter((m: any) => m.direction === "inbound").length;
-      return { sent, received, total: sent + received };
+      return count || 0;
+    },
+    enabled,
+  });
+
+  const messagesReceived = useQuery({
+    queryKey: ["dashboard", "messages-received", workspaceId, period, customRange?.from?.toISOString()],
+    queryFn: async () => {
+      const { count, error } = await (supabase as any)
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("direction", "inbound")
+        .gte("created_at", range.from)
+        .lt("created_at", range.to);
+      if (error) throw error;
+      return count || 0;
     },
     enabled,
   });
@@ -174,7 +189,8 @@ export function useDashboardStats(period: PeriodFilter, customRange?: DateRange)
     todayReminders.isLoading ||
     conversationsInPeriod.isLoading ||
     activeFlows.isLoading ||
-    messagesInPeriod.isLoading ||
+    messagesSent.isLoading ||
+    messagesReceived.isLoading ||
     executionsInPeriod.isLoading ||
     upcomingReminders.isLoading ||
     recentConversations.isLoading;
@@ -185,7 +201,7 @@ export function useDashboardStats(period: PeriodFilter, customRange?: DateRange)
     todayReminders: todayReminders.data ?? 0,
     conversationsInPeriod: conversationsInPeriod.data ?? 0,
     activeFlows: activeFlows.data ?? 0,
-    messages: messagesInPeriod.data ?? { sent: 0, received: 0, total: 0 },
+    messages: { sent: messagesSent.data ?? 0, received: messagesReceived.data ?? 0, total: (messagesSent.data ?? 0) + (messagesReceived.data ?? 0) },
     executionsInPeriod: executionsInPeriod.data ?? 0,
     upcomingReminders: upcomingReminders.data ?? [],
     recentConversations: recentConversations.data ?? [],

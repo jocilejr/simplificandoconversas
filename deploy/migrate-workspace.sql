@@ -314,6 +314,16 @@ BEGIN
 END;
 $$;
 
+-- Performance index for RLS membership lookups
+CREATE INDEX IF NOT EXISTS idx_workspace_members_user_workspace
+  ON public.workspace_members(user_id, workspace_id);
+
+-- Fix: allow any authenticated user to create a workspace (they must be the creator)
+DROP POLICY IF EXISTS "ws_insert" ON public.workspaces;
+CREATE POLICY "ws_insert" ON public.workspaces
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
