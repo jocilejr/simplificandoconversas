@@ -100,6 +100,30 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
 
+  // Recovery hooks
+  const { profile } = useProfile();
+  const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
+
+  // Get pending transaction IDs for recovery clicks
+  const pendingTxIds = useMemo(() =>
+    transactions.filter((t) => t.status === "pendente").map((t) => t.id),
+    [transactions]
+  );
+  const { addClick, getClickCount } = useRecoveryClicks(pendingTxIds);
+
+  const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
+  const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+
+  const getRecoveryMessage = (tab: TabKey) => {
+    if (tab === "boletos-gerados") {
+      return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
+    }
+    return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+  };
+
+  // Reset visible count when tab changes
+  const queryClient = useQueryClient();
+
   // Reset visible count when tab changes
   useEffect(() => {
     setVisibleCount(15);
