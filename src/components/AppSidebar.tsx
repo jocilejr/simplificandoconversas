@@ -53,6 +53,8 @@ const mainItems: MenuItem[] = [
   { title: "Fluxos", url: "/chatbot", icon: Workflow, permKey: "chatbot" },
   { title: "E-mail", url: "/email", icon: Mail, permKey: "email" },
   { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
+  { title: "Grupos", url: "/grupos", icon: UsersRound, permKey: "grupos" },
+  { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon, permKey: "links_uteis" },
 ];
 
 const financeItems: MenuItem[] = [
@@ -60,10 +62,8 @@ const financeItems: MenuItem[] = [
   { title: "Transações", url: "/transacoes", icon: Receipt, permKey: "transacoes" },
   { title: "Recuperação", url: "/recuperacao", icon: RefreshCw, permKey: "recuperacao" },
   { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
-  { title: "Grupos", url: "/grupos", icon: UsersRound, permKey: "grupos" },
   { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
   { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
-  { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon, permKey: "links_uteis" },
 ];
 
 function MenuGroup({ label, items, collapsed, isActive }: {
@@ -146,7 +146,7 @@ export function AppSidebar() {
 
       <SidebarContent className="px-2">
         {visibleMain.length > 0 && (
-          <MenuGroup label="Menu" items={visibleMain} collapsed={collapsed} isActive={isActive} />
+          <MenuGroup label="Operacional" items={visibleMain} collapsed={collapsed} isActive={isActive} />
         )}
 
         {visibleFinance.length > 0 && (
