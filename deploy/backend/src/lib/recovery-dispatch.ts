@@ -80,7 +80,7 @@ async function sendBlock(
       throw new Error(`Evolution API ${resp.status}: ${errText}`);
     }
   } else if (block.type === "pdf") {
-    // Send the actual PDF document
+    // Send the actual PDF document via local file + base64
     const { data: tx } = await sb
       .from("transactions")
       .select("metadata, external_id")
@@ -95,24 +95,31 @@ async function sendBlock(
       return;
     }
 
-    const appPublicUrl = process.env.APP_PUBLIC_URL || "";
-    if (!appPublicUrl) {
-      console.log(`[recovery-dispatch] APP_PUBLIC_URL not set, skipping PDF block`);
+    const fsModule = await import("fs/promises");
+    const fsPath = boletoFile.replace("/media/", "/media-files/");
+
+    try {
+      await fsModule.access(fsPath);
+    } catch {
+      console.log(`[recovery-dispatch] PDF file not found on disk: ${fsPath}, skipping PDF block`);
       return;
     }
 
-    const pdfUrl = `${appPublicUrl}/api/payment/boleto-pdf/${transactionId}`;
+    const pdfBuffer = await fsModule.readFile(fsPath);
+    const pdfBase64 = pdfBuffer.toString("base64");
+    const mediaData = `data:application/pdf;base64,${pdfBase64}`;
+
     const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
     const fileName = `boleto-${firstName}.pdf`;
 
-    console.log(`[recovery-dispatch] Sending PDF block (document): ${pdfUrl}`);
+    console.log(`[recovery-dispatch] Sending PDF block (local base64) from ${fsPath}`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({
         number: phone,
         mediatype: "document",
-        media: pdfUrl,
+        media: mediaData,
         fileName,
         mimetype: "application/pdf",
       }),
@@ -123,13 +130,7 @@ async function sendBlock(
       throw new Error(`Evolution API PDF ${resp.status}: ${errText}`);
     }
   } else if (block.type === "image") {
-    // Convert boleto PDF to JPG and send as image
-    const appPublicUrl = process.env.APP_PUBLIC_URL || "";
-    if (!appPublicUrl) {
-      console.log(`[recovery-dispatch] APP_PUBLIC_URL not set, skipping IMAGE block`);
-      return;
-    }
-
+    // Convert boleto PDF to JPG locally and send as base64
     const { data: tx } = await sb
       .from("transactions")
       .select("metadata")
@@ -142,15 +143,44 @@ async function sendBlock(
       return;
     }
 
-    const imageUrl = `${appPublicUrl}/api/payment/boleto-image/${transactionId}`;
-    console.log(`[recovery-dispatch] Sending IMAGE block (PDF→JPG): ${imageUrl}`);
+    const fsModule = await import("fs/promises");
+    const boletoFile = meta.boleto_file as string;
+    const fsPath = boletoFile.replace("/media/", "/media-files/");
+    const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
+
+    // Check cache or convert
+    try {
+      await fsModule.access(jpgPath);
+      console.log(`[recovery-dispatch] JPG cache hit: ${jpgPath}`);
+    } catch {
+      // Verify PDF exists
+      try {
+        await fsModule.access(fsPath);
+      } catch {
+        console.log(`[recovery-dispatch] PDF not found on disk: ${fsPath}, skipping IMAGE block`);
+        return;
+      }
+      // Convert PDF → JPG via pdftoppm
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execPromise = promisify(exec);
+      const prefix = jpgPath.replace(/\.jpg$/i, "");
+      console.log(`[recovery-dispatch] Converting PDF→JPG: pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+      await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+    }
+
+    const imgBuffer = await fsModule.readFile(jpgPath);
+    const imgBase64 = imgBuffer.toString("base64");
+    const mediaData = `data:image/jpeg;base64,${imgBase64}`;
+
+    console.log(`[recovery-dispatch] Sending IMAGE block (local base64) from ${jpgPath}`);
     const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({
         number: phone,
         mediatype: "image",
-        media: imageUrl,
+        media: mediaData,
         caption: "",
       }),
     });
