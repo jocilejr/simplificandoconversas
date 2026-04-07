@@ -210,7 +210,6 @@ router.get("/list-instances", async (req, res) => {
     let query = sb
       .from("whatsapp_instances")
       .select("id, instance_name, status, is_active")
-      .eq("is_active", true)
       .order("created_at");
 
     if (workspaceId) {
