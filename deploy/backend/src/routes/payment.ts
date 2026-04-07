@@ -638,9 +638,8 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       }
     } else {
       // ── Step 4: Create new transaction from MP data
-      console.log(`[boleto-webhook] Creating new transaction for MP payment ${paymentId}`);
 
-      // Determine user_id and workspace_id from the connection that worked
+      // Resolve user/workspace from the connection that matched the token
       let userId: string | null = null;
       let workspaceId: string | null = null;
 
@@ -660,7 +659,6 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
             break;
           }
         }
-        // Fallback: use first connection
         if (!userId && matchedConn.length > 0) {
           userId = matchedConn[0].user_id;
           workspaceId = matchedConn[0].workspace_id;
@@ -682,6 +680,80 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
         mpData.transaction_details?.external_resource_url ||
         "";
 
+      const metadataObj = {
+        mp_status: mpData.status,
+        mp_status_detail: mpData.status_detail,
+        payment_method: mpData.payment_method_id,
+        barcode: mpData.barcode?.content || null,
+        digitable_line: mpData.transaction_details?.digitable_line || null,
+        created_by_webhook: true,
+      };
+
+      // ── Approved: always create (appears in "Aprovados" tab)
+      if (mpData.status === "approved") {
+        console.log(`[boleto-webhook] Creating APPROVED transaction for MP payment ${paymentId}`);
+        const { error: insertErr } = await supabase
+          .from("transactions")
+          .insert({
+            user_id: userId,
+            workspace_id: workspaceId,
+            amount: mpData.transaction_amount || 0,
+            type: resolveTransactionType(mpData.payment_method_id),
+            status: "aprovado",
+            source: "mercadopago",
+            external_id: String(mpData.id),
+            customer_name: mpData.payer?.first_name
+              ? `${mpData.payer.first_name} ${mpData.payer.last_name || ""}`.trim()
+              : null,
+            customer_email: mpData.payer?.email || null,
+            customer_phone: cleanPhone,
+            customer_document: mpData.payer?.identification?.number || null,
+            description: mpData.description || null,
+            payment_url: paymentUrl,
+            metadata: metadataObj,
+            paid_at: mpData.date_approved || new Date().toISOString(),
+          });
+
+        if (insertErr) {
+          console.error(`[boleto-webhook] Insert approved error:`, insertErr.message);
+        }
+        return res.sendStatus(200);
+      }
+
+      // ── Non-pending statuses: ignore
+      if (mpData.status !== "pending") {
+        console.log(`[boleto-webhook] Ignoring status ${mpData.status} for unknown payment ${paymentId}`);
+        return res.sendStatus(200);
+      }
+
+      // ── Pending: require 5 mandatory fields before creating
+      const hasBarcode = !!(mpData.barcode?.content || mpData.transaction_details?.digitable_line);
+      const hasCpf = !!mpData.payer?.identification?.number;
+      const hasName = !!mpData.payer?.first_name;
+      const hasPhone = !!(mpData.payer?.phone?.number);
+      const hasPdf = !!(mpData.transaction_details?.external_resource_url ||
+                        mpData.point_of_interaction?.transaction_data?.ticket_url);
+
+      if (!hasBarcode || !hasCpf || !hasName || !hasPhone || !hasPdf) {
+        console.log(`[boleto-webhook] Skipping pending — missing fields: barcode=${hasBarcode} cpf=${hasCpf} name=${hasName} phone=${hasPhone} pdf=${hasPdf}`);
+        return res.sendStatus(200);
+      }
+
+      // Retry: wait 3s in case /create route is still processing
+      await new Promise(r => setTimeout(r, 3000));
+      const { data: retryTx } = await supabase
+        .from("transactions")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("external_id", String(mpData.id))
+        .maybeSingle();
+
+      if (retryTx) {
+        console.log(`[boleto-webhook] Transaction appeared after retry, skipping create`);
+        return res.sendStatus(200);
+      }
+
+      console.log(`[boleto-webhook] Creating PENDING transaction for MP payment ${paymentId}`);
       const { data: newTx, error: insertErr } = await supabase
         .from("transactions")
         .insert({
@@ -689,39 +761,29 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
           workspace_id: workspaceId,
           amount: mpData.transaction_amount || 0,
           type: resolveTransactionType(mpData.payment_method_id),
-          status: newStatus,
+          status: "pendente",
           source: "mercadopago",
           external_id: String(mpData.id),
-          customer_name: mpData.payer?.first_name
-            ? `${mpData.payer.first_name} ${mpData.payer.last_name || ""}`.trim()
-            : null,
+          customer_name: `${mpData.payer.first_name} ${mpData.payer.last_name || ""}`.trim(),
           customer_email: mpData.payer?.email || null,
           customer_phone: cleanPhone,
-          customer_document: mpData.payer?.identification?.number || null,
+          customer_document: mpData.payer.identification.number,
           description: mpData.description || null,
           payment_url: paymentUrl,
-          metadata: {
-            mp_status: mpData.status,
-            mp_status_detail: mpData.status_detail,
-            payment_method: mpData.payment_method_id,
-            barcode: mpData.barcode?.content || null,
-            digitable_line: mpData.transaction_details?.digitable_line || null,
-            created_by_webhook: true,
-          },
-          paid_at: mpData.status === "approved" ? (mpData.date_approved || new Date().toISOString()) : null,
+          metadata: metadataObj,
         })
         .select("id")
         .single();
 
       if (insertErr) {
-        console.error(`[boleto-webhook] Insert error:`, insertErr.message);
+        console.error(`[boleto-webhook] Insert pending error:`, insertErr.message);
         return res.sendStatus(200);
       }
 
-      console.log(`[boleto-webhook] Created transaction ${newTx?.id} for MP payment ${paymentId}`);
+      console.log(`[boleto-webhook] Created pending transaction ${newTx?.id}`);
 
-      // Enqueue recovery if pending
-      if (newTx?.id && mpData.status === "pending" && cleanPhone) {
+      // Enqueue recovery
+      if (newTx?.id && cleanPhone) {
         try {
           await dispatchRecovery({
             workspaceId,
