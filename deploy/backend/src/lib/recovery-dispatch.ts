@@ -190,7 +190,7 @@ async function sendBlock(
       body: JSON.stringify({
         number: phone,
         mediatype: "image",
-        media: mediaData,
+        media: imgBase64,
         caption: "",
       }),
     });
