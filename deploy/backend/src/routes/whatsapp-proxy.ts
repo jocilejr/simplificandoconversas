@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { resolveWorkspaceId } from "../lib/workspace";
+import { resolveWorkspaceId, resolveWorkspaceIdFromRequest } from "../lib/workspace";
 import { lightSync } from "./light-sync";
 import crypto from "crypto";
 import fs from "fs";
@@ -78,12 +78,12 @@ router.post("/", async (req, res) => {
     if (!userResp.ok) return res.status(401).json({ error: "Unauthorized" });
     const userData: any = await userResp.json();
     const userId = userData.id;
-    const workspaceId = await resolveWorkspaceId(userId);
+    const body = req.body;
+    const workspaceId = await resolveWorkspaceIdFromRequest(body, userId);
     console.log(`[whatsapp-proxy] Authenticated userId: ${userId}, workspaceId: ${workspaceId}`);
 
     const supabase = getServiceClient();
 
-    const body = req.body;
     const { action, ...params } = body;
 
     if (!action) return res.status(400).json({ error: "action required" });
@@ -93,7 +93,7 @@ router.post("/", async (req, res) => {
       const { data: activeInst, error: activeInstErr } = await supabase
         .from("whatsapp_instances")
         .select("instance_name")
-        .eq("user_id", userId)
+        .eq("workspace_id", workspaceId!)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle();
@@ -118,7 +118,7 @@ router.post("/", async (req, res) => {
           if (name === "unknown") continue;
           // Check if instance already exists
           const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("user_id", userId).eq("instance_name", name).maybeSingle();
+            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", name).maybeSingle();
           if (existing) {
             // Only update status, never touch is_active
             const { error: updateErr } = await serviceClient.from("whatsapp_instances")
@@ -136,7 +136,7 @@ router.post("/", async (req, res) => {
         // Ensure at least one instance is active
         const { data: activeCheck, error: activeCheckErr } = await serviceClient
           .from("whatsapp_instances")
-          .select("id").eq("user_id", userId).eq("is_active", true).limit(1);
+          .select("id").eq("workspace_id", workspaceId!).eq("is_active", true).limit(1);
         if (activeCheckErr) console.error("[fetch-instances] Active check error:", activeCheckErr);
         else console.log(`[fetch-instances] Active instances found: ${activeCheck?.length || 0}`);
         
@@ -145,7 +145,7 @@ router.post("/", async (req, res) => {
           if (firstName) {
             const { error: updateErr } = await serviceClient.from("whatsapp_instances")
               .update({ is_active: true })
-              .eq("user_id", userId).eq("instance_name", firstName);
+              .eq("workspace_id", workspaceId!).eq("instance_name", firstName);
             if (updateErr) console.error(`[fetch-instances] Set active error for ${firstName}:`, updateErr);
             else console.log(`[fetch-instances] Set ${firstName} as active`);
           }
@@ -216,6 +216,7 @@ router.post("/", async (req, res) => {
         const { data: deleted, error: deleteErr } = await serviceClient
           .from("whatsapp_instances").delete()
           .eq("instance_name", delInstName)
+          .eq("workspace_id", workspaceId!)
           .select("id");
         if (deleteErr) console.error(`[delete-instance] DB delete error:`, deleteErr);
         else console.log(`[delete-instance] DB rows deleted: ${deleted?.length || 0}`);
@@ -302,7 +303,7 @@ router.post("/", async (req, res) => {
         // Sync instances WITHOUT overwriting is_active
         for (const instName of instancesToSync) {
           const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("user_id", userId).eq("instance_name", instName).maybeSingle();
+            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", instName).maybeSingle();
           if (!existing) {
             const { error: insertErr } = await serviceClient.from("whatsapp_instances")
               .insert({ user_id: userId, workspace_id: workspaceId, instance_name: instName, status: "close", is_active: false });
@@ -323,7 +324,7 @@ router.post("/", async (req, res) => {
           const { error: statusErr } = await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
             .eq("instance_name", instName)
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
           if (statusErr) console.error(`[sync-chats] Status update error for ${instName}:`, statusErr);
           instanceStatuses.push({ instance: instName, connectionState });
 
@@ -386,7 +387,7 @@ router.post("/", async (req, res) => {
                 // Chat is @lid: check if we already have a conversation with this lid in this instance
                 const { data: byLid } = await serviceClient.from("conversations")
                   .select("id, remote_jid")
-                  .eq("user_id", userId)
+                  .eq("workspace_id", workspaceId!)
                   .eq("lid", rawJid)
                   .eq("instance_name", instName)
                   .limit(1)
@@ -399,7 +400,7 @@ router.post("/", async (req, res) => {
                 // Chat is @s.whatsapp.net: check if there's an existing @lid conversation with this phone_number
                 const { data: byPhone } = await serviceClient.from("conversations")
                   .select("id, remote_jid, lid")
-                  .eq("user_id", userId)
+                  .eq("workspace_id", workspaceId!)
                   .eq("phone_number", phoneNumber)
                   .eq("instance_name", instName)
                   .limit(1)
@@ -411,7 +412,7 @@ router.post("/", async (req, res) => {
                   // Fallback: search by contact_name + instance for @lid convs without phone_number yet
                   const { data: byName } = await serviceClient.from("conversations")
                     .select("id, remote_jid, lid")
-                    .eq("user_id", userId)
+                    .eq("workspace_id", workspaceId!)
                     .eq("contact_name", contactName)
                     .eq("instance_name", instName)
                     .not("lid", "is", null)
@@ -556,7 +557,7 @@ router.post("/", async (req, res) => {
         try {
           const { data: lidConvs } = await serviceClient.from("conversations")
             .select("id, remote_jid, lid")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .is("phone_number", null)
             .not("lid", "is", null);
 
@@ -621,7 +622,7 @@ router.post("/", async (req, res) => {
           // Get all existing remote_jids and phone_numbers for this user
           const { data: existingConvs } = await serviceClient.from("conversations")
             .select("remote_jid, phone_number, lid")
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
 
           const existingJids = new Set((existingConvs || []).map((c: any) => c.remote_jid));
           const existingPhones = new Set((existingConvs || []).filter((c: any) => c.phone_number).map((c: any) => c.phone_number));
@@ -698,11 +699,11 @@ router.post("/", async (req, res) => {
           // Get all conversations that DON'T have a photo yet
           const { data: allConvs } = await serviceClient.from("conversations")
             .select("remote_jid, phone_number")
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
 
           const { data: existingPhotos } = await serviceClient.from("contact_photos")
             .select("remote_jid")
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
 
           const existingSet = new Set((existingPhotos || []).map((p: any) => p.remote_jid));
           const convsNeedingPhoto = (allConvs || []).filter((c: any) => !existingSet.has(c.remote_jid));
@@ -712,7 +713,7 @@ router.post("/", async (req, res) => {
           // Get active instance for photo fetching
           const { data: activeInst } = await serviceClient.from("whatsapp_instances")
             .select("instance_name")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .eq("is_active", true)
             .limit(1)
             .maybeSingle();
@@ -776,7 +777,7 @@ router.post("/", async (req, res) => {
         if (picJid.includes("@lid")) {
           const { data: convForPic } = await serviceClient.from("conversations")
             .select("phone_number")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .eq("remote_jid", picJid)
             .maybeSingle();
           if (convForPic?.phone_number) picNumber = convForPic.phone_number;
@@ -796,7 +797,7 @@ router.post("/", async (req, res) => {
         if (lidJids.length > 0) {
           const { data: lidConvs } = await serviceClient.from("conversations")
             .select("remote_jid, phone_number")
-            .eq("user_id", userId)
+            .eq("workspace_id", workspaceId!)
             .in("remote_jid", lidJids);
           (lidConvs || []).forEach((c: any) => {
             if (c.phone_number) phoneMap[c.remote_jid] = c.phone_number;

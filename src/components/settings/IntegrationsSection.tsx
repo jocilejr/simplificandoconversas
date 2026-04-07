@@ -105,15 +105,16 @@ export function IntegrationsSection() {
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !workspaceId) return;
     loadConnections();
-  }, [user]);
+  }, [user, workspaceId]);
 
   const loadConnections = async () => {
+    if (!workspaceId) return;
     const { data } = await supabase
       .from("platform_connections")
       .select("*")
-      .eq("user_id", user!.id);
+      .eq("workspace_id", workspaceId);
     const map: typeof connections = {};
     data?.forEach((c) => {
       map[c.platform] = { id: c.id, credentials: c.credentials, enabled: c.enabled ?? true };

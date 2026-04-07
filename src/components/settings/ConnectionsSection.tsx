@@ -39,8 +39,10 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function ConnectionsSection() {
+  const { workspaceId } = useWorkspace();
   const {
     instances,
     remoteInstances,
@@ -113,7 +115,7 @@ export function ConnectionsSection() {
     setSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "sync-chats" },
+        body: { action: "sync-chats", workspaceId },
       });
       if (error) throw error;
       toast({
@@ -136,20 +138,21 @@ export function ConnectionsSection() {
   };
 
   const handleDeleteAllConversations = async () => {
+    if (!workspaceId) return;
     setDeletingAll(true);
     try {
       // Delete in order: flow_timeouts → flow_executions → tracked_links → messages → conversation_labels → conversations
-      const { error: toErr } = await supabase.from("flow_timeouts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error: toErr } = await supabase.from("flow_timeouts").delete().eq("workspace_id", workspaceId).neq("id", "00000000-0000-0000-0000-000000000000");
       if (toErr) throw toErr;
-      const { error: feErr } = await supabase.from("flow_executions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error: feErr } = await supabase.from("flow_executions").delete().eq("workspace_id", workspaceId).neq("id", "00000000-0000-0000-0000-000000000000");
       if (feErr) throw feErr;
-      const { error: tlErr } = await supabase.from("tracked_links").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error: tlErr } = await supabase.from("tracked_links").delete().eq("workspace_id", workspaceId).neq("id", "00000000-0000-0000-0000-000000000000");
       if (tlErr) throw tlErr;
-      const { error: msgErr } = await supabase.from("messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error: msgErr } = await supabase.from("messages").delete().eq("workspace_id", workspaceId).neq("id", "00000000-0000-0000-0000-000000000000");
       if (msgErr) throw msgErr;
-      const { error: labelsErr } = await supabase.from("conversation_labels").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error: labelsErr } = await supabase.from("conversation_labels").delete().eq("workspace_id", workspaceId).neq("id", "00000000-0000-0000-0000-000000000000");
       if (labelsErr) throw labelsErr;
-      const { error: convErr } = await supabase.from("conversations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error: convErr } = await supabase.from("conversations").delete().eq("workspace_id", workspaceId).neq("id", "00000000-0000-0000-0000-000000000000");
       if (convErr) throw convErr;
       toast({ title: "Conversas excluídas", description: "Todas as conversas foram removidas com sucesso." });
     } catch (e: any) {

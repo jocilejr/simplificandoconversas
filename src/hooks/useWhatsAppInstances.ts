@@ -99,7 +99,7 @@ export function useWhatsAppInstances() {
   const createInstance = useMutation({
     mutationFn: async (customName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "create-instance", instanceName: customName },
+        body: { action: "create-instance", instanceName: customName, workspaceId },
       });
       if (error) throw error;
       return data;
@@ -117,7 +117,7 @@ export function useWhatsAppInstances() {
   const getQrCode = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "get-qrcode", instanceName },
+        body: { action: "get-qrcode", instanceName, workspaceId },
       });
       if (error) throw error;
       return data;
@@ -130,7 +130,7 @@ export function useWhatsAppInstances() {
   const connectInstance = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "connect-instance", instanceName },
+        body: { action: "connect-instance", instanceName, workspaceId },
       });
       if (error) throw error;
       return data;
@@ -143,7 +143,7 @@ export function useWhatsAppInstances() {
   const logoutInstance = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "logout-instance", instanceName },
+        body: { action: "logout-instance", instanceName, workspaceId },
       });
       if (error) throw error;
       return data;
@@ -160,9 +160,9 @@ export function useWhatsAppInstances() {
   const deleteInstance = useMutation({
     mutationFn: async (instanceName: string) => {
       const { data, error } = await supabase.functions.invoke("whatsapp-proxy", {
-        body: { action: "delete-instance", instanceName },
+        body: { action: "delete-instance", instanceName, workspaceId },
       });
-      await supabase.from("whatsapp_instances").delete().eq("instance_name", instanceName);
+      await supabase.from("whatsapp_instances").delete().eq("instance_name", instanceName).eq("workspace_id", workspaceId!);
       if (error) throw error;
       return data;
     },
