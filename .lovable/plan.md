@@ -1,89 +1,41 @@
+NÃO DEVE SER POSSIVEL VINCULAR INSTANCIAS DE OUTRO WORKSPACE. CADA WORKSPACE TEM SUAS INSTANCIAS CONECTADAS, NUNCA DEVO PODER CONSEGUIR VER A INSTANCIAS DE OUTRO WORKSPACE. INDIVIDUALIZE TUDO  
+  
+Investigação: Configurações lentas para carregar
 
-Objetivo: corrigir o erro persistente ao criar workspace na VPS sem depender dos logs do Lovable Cloud.
+## Diagnóstico
 
-Diagnóstico mais provável:
-- As policies atuais da VPS já mostram `ws_insert = true` em `workspaces` e `wm_insert = user_id = auth.uid() OR admin`.
-- O frontend cria o workspace com:
-  `supabase.from("workspaces").insert(...).select().single()`
-- Em ambiente self-hosted com PostgREST, esse `select().single()` faz o INSERT retornar a linha recém-criada via `RETURNING`, o que pode exigir passar imediatamente pela policy de `SELECT` de `workspaces`.
-- A policy de `SELECT` em `workspaces` depende de `workspace_members`, mas a associação do criador é criada por trigger no mesmo fluxo. Em VPS isso pode falhar por ordem/visibilidade dentro da transação e o erro acaba aparecendo como violação RLS em `workspaces`.
+O problema tem duas causas principais:
 
-Plano de implementação:
-1. Ajustar o frontend para criar o workspace sem `select().single()`
-- Arquivo: `src/components/WorkspaceSwitcher.tsx`
-- Trocar o fluxo atual por:
-  - `insert(...)` sem pedir retorno da linha
-  - após sucesso, invalidar a query `["workspaces"]`
-  - aguardar o refetch da lista
-  - localizar o workspace recém-criado por `slug` ou `name+slug`
-  - então chamar `setActiveWorkspace(...)`
-- Isso evita depender do `SELECT` imediato na mesma operação que hoje pode estar disparando o erro.
+1. `**useProfile()` chamado no nível da página** — executa `supabase.auth.getUser()` a cada navegação para Settings, mesmo que o perfil já esteja em cache. Não tem `staleTime`, então refaz a query toda vez.
+2. **Aba padrão "Conexões" carrega edge function lenta** — `useWhatsAppInstances` chama `supabase.functions.invoke("whatsapp-proxy")` que na VPS faz proxy para o backend Express. Se o backend demorar ou o timeout for alto, a página inteira fica travada no spinner do `useProfile` + a aba padrão fica lenta.
+3. **Queries sem `staleTime**` — `useProfile`, `useAIConfig`, `useSmtpConfig` não têm `staleTime` individual, forçando refetch desnecessário toda vez que o usuário navega para Settings.
 
-2. Melhorar resiliência do fluxo de criação
-- Manter estado de loading até o refetch terminar.
-- Se o insert funcionar, mas o novo workspace ainda não aparecer no primeiro refetch, exibir mensagem mais clara:
-  - “Workspace criado. Atualizando lista...”
-- Se necessário, fazer um segundo refresh curto apenas da lista de workspaces, sem travar a UI inteira.
+## Plano de correção
 
-3. Preservar compatibilidade com o modelo atual
-- Não alterar `useWorkspace.tsx` agora, porque ele já centraliza a lista e o workspace ativo.
-- Reaproveitar a invalidação da query já existente.
-- Não mexer no cliente gerado nem em autenticação.
+### 1. Adicionar `staleTime` aos hooks de Settings
 
-4. Ajuste opcional de segurança/consistência no SQL de deploy
-- Revisar `deploy/migrate-workspace.sql` para deixar `ws_insert` mais estrito:
-  `WITH CHECK (created_by = auth.uid())`
-- Isso não deve ser a causa principal do erro atual, mas melhora consistência.
-- Só aplicar se não quebrar o fluxo do trigger na VPS.
+- `**useProfile.ts**`: Adicionar `staleTime: 60_000` (1 min)
+- `**useAIConfig.ts**`: Adicionar `staleTime: 60_000`
+- `**useSmtpConfig.ts**`: Adicionar `staleTime: 60_000`
 
-Como validar na VPS depois da mudança:
-1. Rebuildar e publicar o frontend na VPS com seu fluxo normal de deploy.
-2. Fazer login normalmente.
-3. Tentar criar um workspace novo.
-4. Confirmar:
-   - não aparece mais o toast de RLS
-   - o workspace entra na lista
-   - ele pode ser selecionado logo após criar
+### 2. Mudar aba padrão para "profile"
 
-Se ainda persistir após essa mudança, a investigação seguinte dentro da VPS deve ser esta:
-```bash
-cd /root/simplificandoconversas/deploy
+- `**SettingsPage.tsx**`: Trocar `useState("connections")` por `useState("profile")`
+- A aba Perfil carrega apenas dados locais (profile), muito mais rápido
+- Conexões (WhatsApp) fica sob demanda quando o usuário clicar
 
-docker compose exec -T postgres psql -U postgres -d postgres <<'SQL'
-SELECT
-  pol.tablename,
-  pol.policyname,
-  pol.cmd,
-  pol.qual,
-  pol.with_check
-FROM pg_policies pol
-WHERE pol.schemaname = 'public'
-  AND pol.tablename IN ('workspaces', 'workspace_members')
-ORDER BY pol.tablename, pol.policyname;
+### 3. Adicionar timeout à query de instâncias remotas
 
-SELECT
-  tgname,
-  tgenabled
-FROM pg_trigger
-WHERE tgrelid = 'public.workspaces'::regclass
-  AND NOT tgisinternal;
+- `**useWhatsAppInstances.ts**`: Usar `AbortSignal.timeout(8000)` na chamada `supabase.functions.invoke` para não travar a UI por mais de 8 segundos
 
-SELECT
-  proname,
-  prosecdef
-FROM pg_proc
-WHERE proname IN (
-  'auto_add_workspace_creator',
-  'get_user_workspace_ids',
-  'has_workspace_role',
-  'is_workspace_member'
-)
-ORDER BY proname;
-SQL
-```
+### 4. Não bloquear renderização no loading do profile
 
-Detalhes técnicos:
-- `WorkspaceSwitcher.tsx` é hoje o ponto crítico.
-- O problema não parece mais ser “policy errada”, e sim “fluxo do frontend exigindo retorno imediato da linha”.
-- Em bancos com RLS, `INSERT ... RETURNING` pode falhar mesmo quando o `INSERT` em si seria permitido.
-- Isso combina com o sintoma: mensagem de erro em `workspaces` apesar de `ws_insert` já estar liberada na VPS.
+- `**SettingsPage.tsx**`: Remover o spinner de tela cheia baseado em `isLoading` do profile — renderizar o layout imediatamente e deixar cada seção mostrar seu próprio loading
+
+### Arquivos modificados
+
+- `src/hooks/useProfile.ts` — staleTime
+- `src/hooks/useAIConfig.ts` — staleTime
+- `src/hooks/useSmtpConfig.ts` — staleTime  
+- `src/pages/SettingsPage.tsx` — aba padrão + remover spinner bloqueante
+- `src/hooks/useWhatsAppInstances.ts` — timeout na query remota
