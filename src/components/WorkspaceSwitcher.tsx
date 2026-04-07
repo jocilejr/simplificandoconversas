@@ -35,20 +35,25 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     if (!newName.trim() || !user) return;
     setCreating(true);
     const slug = "ws-" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("workspaces")
-      .insert({ name: newName.trim(), slug, created_by: user.id })
-      .select()
-      .single();
+      .insert({ name: newName.trim(), slug, created_by: user.id });
     if (error) {
       toast({ title: "Erro ao criar workspace", description: error.message, variant: "destructive" });
-    } else if (data) {
-      toast({ title: "Workspace criado!" });
-      await qc.invalidateQueries({ queryKey: ["workspaces"] });
-      setActiveWorkspace(data.id);
-      setShowCreate(false);
-      setNewName("");
+      setCreating(false);
+      return;
     }
+    toast({ title: "Workspace criado!" });
+    // Wait a moment for the trigger to create workspace_members, then refetch
+    await new Promise((r) => setTimeout(r, 600));
+    const result = await qc.fetchQuery({ queryKey: ["workspaces", user.id], staleTime: 0 });
+    const list = result as Array<{ id: string; slug: string }> | undefined;
+    const created = list?.find((w) => w.slug === slug);
+    if (created) {
+      setActiveWorkspace(created.id);
+    }
+    setShowCreate(false);
+    setNewName("");
     setCreating(false);
   };
 
