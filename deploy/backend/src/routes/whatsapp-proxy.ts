@@ -324,7 +324,7 @@ router.post("/", async (req, res) => {
           const { error: statusErr } = await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
             .eq("instance_name", instName)
-            .eq("user_id", userId);
+            .eq("workspace_id", workspaceId!);
           if (statusErr) console.error(`[sync-chats] Status update error for ${instName}:`, statusErr);
           instanceStatuses.push({ instance: instName, connectionState });
 
