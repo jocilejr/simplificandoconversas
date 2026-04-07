@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { pdfToImage } from "@/lib/pdfToImage";
 import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { apiUrl } from "@/lib/api";
 import type { Transaction } from "@/hooks/useTransactions";
 
 interface BoletoQuickRecoveryProps {
@@ -119,26 +120,25 @@ export function BoletoQuickRecovery({ open, onOpenChange, transaction }: BoletoQ
   };
 
   const loadPdf = async () => {
-    const metadata = transaction?.metadata as Record<string, unknown> | null;
-    const boletoFile = metadata?.boleto_file as string | undefined;
-
-    if (!boletoFile) {
-      console.warn("[BoletoQuickRecovery] No boleto_file in metadata");
-      return;
-    }
+    if (!transaction) return;
 
     setIsLoadingPdf(true);
     try {
-      // Fetch from local media volume via app public URL
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("app_public_url")
-        .single();
-      const baseUrl = (profileData as any)?.app_public_url || window.location.origin;
-      const fullUrl = `${baseUrl}${boletoFile}`;
+      // Use the backend endpoint that handles both cached and on-demand PDF fetch
+      const { data: { session } } = await supabase.auth.getSession();
+      const pdfEndpoint = apiUrl(`payment/boleto-pdf/${transaction.id}`);
+      
+      const response = await fetch(pdfEndpoint, {
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {},
+      });
 
-      const response = await fetch(fullUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        console.warn(`[BoletoQuickRecovery] PDF endpoint returned ${response.status}`);
+        return;
+      }
+
       const arrayBuffer = await response.arrayBuffer();
       const blob = new Blob([arrayBuffer], { type: "application/pdf" });
       const pdfUrl = URL.createObjectURL(blob);
