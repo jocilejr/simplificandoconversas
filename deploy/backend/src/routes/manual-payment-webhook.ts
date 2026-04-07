@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { enqueueRecovery } from "../lib/recovery-enqueue";
 
 const router = Router();
 
