@@ -171,6 +171,26 @@ router.post("/create", async (req: Request, res: Response) => {
     const qrCodeBase64 =
       mpData.point_of_interaction?.transaction_data?.qr_code_base64 || "";
 
+    // Save boleto PDF to filesystem if boleto type
+    if (type === "boleto" && paymentUrl) {
+      try {
+        const dir = `/media-files/${userId}/boletos`;
+        await fs.mkdir(dir, { recursive: true });
+        const filePath = path.join(dir, `${mpData.id}.pdf`);
+        const pdfResp = await fetch(paymentUrl);
+        if (pdfResp.ok) {
+          const buffer = Buffer.from(await pdfResp.arrayBuffer());
+          await fs.writeFile(filePath, buffer);
+          boletoFilePath = `/media/${userId}/boletos/${mpData.id}.pdf`;
+          console.log(`[payment] Boleto PDF saved: ${filePath}`);
+        } else {
+          console.warn(`[payment] Failed to download boleto PDF: ${pdfResp.status}`);
+        }
+      } catch (pdfErr: any) {
+        console.warn("[payment] Error saving boleto PDF:", pdfErr.message);
+      }
+    }
+
     // Save transaction
     console.log("[payment] MP success, saving transaction...");
     const { data: tx, error: txError } = await supabase
@@ -194,6 +214,7 @@ router.post("/create", async (req: Request, res: Response) => {
           barcode,
           qr_code: qrCode,
           payment_method: mpData.payment_method_id,
+          ...(boletoFilePath ? { boleto_file: boletoFilePath } : {}),
         },
         paid_at: mpData.status === "approved" ? new Date().toISOString() : null,
       })
