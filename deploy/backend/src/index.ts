@@ -22,7 +22,7 @@ import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
-import { processRecoveryQueue } from "./routes/auto-recovery";
+// processRecoveryQueue import removed — cron disabled
 
 const app = express();
 app.use(cors());
