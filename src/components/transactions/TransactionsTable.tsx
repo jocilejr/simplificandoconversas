@@ -587,8 +587,8 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                       </div>
                     </td>
                     <td className="py-3.5 px-4 hidden xl:table-cell">
-                      <span className="text-sm text-muted-foreground">
-                        {tx.customer_phone || "-"}
+                      <span className="text-sm text-muted-foreground font-mono">
+                        {tx.customer_phone?.replace(/\D/g, "") || "-"}
                       </span>
                     </td>
                     <td className="py-3.5 px-4">
