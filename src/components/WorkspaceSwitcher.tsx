@@ -47,7 +47,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     // Wait a moment for the trigger to create workspace_members, then refetch
     await new Promise((r) => setTimeout(r, 600));
     const result = await qc.fetchQuery({ queryKey: ["workspaces", user.id], staleTime: 0 });
-    const list = result as WorkspaceInfo[] | undefined;
+    const list = result as Array<{ id: string; slug: string }> | undefined;
     const created = list?.find((w) => w.slug === slug);
     if (created) {
       setActiveWorkspace(created.id);
