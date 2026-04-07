@@ -102,7 +102,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const queryClient = useQueryClient();
 
   // Recovery hooks
-  const { profile } = useProfile();
+  const { profile, updateProfile } = useProfile();
   const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
 
   // Get pending transaction IDs for recovery clicks
