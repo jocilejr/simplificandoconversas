@@ -93,6 +93,10 @@ DECLARE _t text;
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
+    IF to_regclass(format('public.%I', _t)) IS NULL THEN
+      RAISE NOTICE 'Pulando tabela ausente: %', _t;
+      CONTINUE;
+    END IF;
     EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS workspace_id uuid', _t);
   END LOOP;
 END $$;
@@ -128,6 +132,10 @@ BEGIN
     );
 
     FOREACH _t IN ARRAY _tables LOOP
+      IF to_regclass(format('public.%I', _t)) IS NULL THEN
+        RAISE NOTICE 'Pulando backfill em tabela ausente: %', _t;
+        CONTINUE;
+      END IF;
       EXECUTE format('UPDATE public.%I SET workspace_id = $1 WHERE user_id = $2 AND workspace_id IS NULL', _t)
       USING _ws_id, _rec.user_id;
     END LOOP;
@@ -149,6 +157,9 @@ DECLARE _t text; _cnt bigint; _total bigint := 0;
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
+    IF to_regclass(format('public.%I', _t)) IS NULL THEN
+      CONTINUE;
+    END IF;
     EXECUTE format('SELECT count(*) FROM public.%I WHERE workspace_id IS NULL', _t) INTO _cnt;
     IF _cnt > 0 THEN
       RAISE WARNING '⚠ Tabela % tem % registros sem workspace_id (NÃO deletados)', _t, _cnt;
@@ -177,6 +188,9 @@ DECLARE _t text; _cnt bigint;
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
+    IF to_regclass(format('public.%I', _t)) IS NULL THEN
+      CONTINUE;
+    END IF;
     EXECUTE format('SELECT count(*) FROM public.%I WHERE workspace_id IS NULL', _t) INTO _cnt;
     IF _cnt > 0 THEN
       RAISE WARNING 'Pulando NOT NULL para % (% registros sem workspace)', _t, _cnt;
@@ -247,7 +261,8 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='email_link_clicks' AND policyname='ws_select') THEN
+  IF to_regclass('public.email_link_clicks') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='email_link_clicks' AND policyname='ws_select') THEN
     CREATE POLICY "ws_select" ON public.email_link_clicks FOR SELECT TO authenticated USING (public.is_workspace_member(auth.uid(), workspace_id));
   END IF;
 END $$;
