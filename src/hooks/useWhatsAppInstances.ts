@@ -74,7 +74,7 @@ export function useWhatsAppInstances() {
         return "stub" as const;
       } finally {
         clearTimeout(timeout);
-      }
+    },
     refetchInterval: (query) => {
       if (query.state.data === "stub") return false;
       return 10000;
