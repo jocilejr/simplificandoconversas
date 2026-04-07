@@ -713,7 +713,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       // Enqueue recovery if pending
       if (newTx?.id && mpData.status === "pending" && cleanPhone) {
         try {
-          await enqueueRecovery({
+          await dispatchRecovery({
             workspaceId,
             userId,
             transactionId: newTx.id,
