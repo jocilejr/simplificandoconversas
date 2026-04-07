@@ -351,7 +351,6 @@ router.post("/*", async (req, res) => {
         const sendUpsert: Record<string, unknown> = {
           user_id: userId,
           workspace_id: workspaceId,
-          workspace_id: workspaceId,
           remote_jid: remoteJid,
           last_message: lastMessagePreview,
           last_message_at: new Date().toISOString(),
@@ -407,7 +406,6 @@ router.post("/*", async (req, res) => {
       const upsertData: Record<string, unknown> = {
         user_id: userId,
         workspace_id: workspaceId,
-          workspace_id: workspaceId,
         remote_jid: remoteJid,
         last_message: lastMessagePreview,
         last_message_at: new Date().toISOString(),
@@ -440,7 +438,6 @@ router.post("/*", async (req, res) => {
       conversation_id: conv.id,
       user_id: userId,
       workspace_id: workspaceId,
-          workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: finalContent,
       message_type: messageType,
@@ -790,7 +787,6 @@ async function checkAndAutoReply(
       conversation_id: conversationId,
       user_id: userId,
       workspace_id: workspaceId,
-          workspace_id: workspaceId,
       remote_jid: remoteJid,
       content: reply,
       message_type: "text",
@@ -957,7 +953,6 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
     await supabase.from("reminders").insert({
       user_id: userId,
       workspace_id: workspaceId,
-          workspace_id: workspaceId,
       title: args.title,
       description: contextLines || null,
       due_date: args.due_date,

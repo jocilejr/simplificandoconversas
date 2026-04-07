@@ -7,6 +7,7 @@ const router = Router();
 // ── API Request Logger ──
 async function logApiRequest(
   userId: string,
+  wsId: string,
   req: Request,
   statusCode: number,
   responseSummary?: string
@@ -15,7 +16,7 @@ async function logApiRequest(
     const sb = getServiceClient();
     await sb.from("api_request_logs").insert({
       user_id: userId,
-      workspace_id: workspaceId,
+      workspace_id: wsId,
       method: req.method,
       path: req.originalUrl || req.path,
       status_code: statusCode,
@@ -130,11 +131,11 @@ router.get("/instances", async (req, res) => {
     }));
 
     const response = { data: instances, count: instances.length };
-    logApiRequest(userId, req, 200, `${instances.length} instances`);
+    logApiRequest(userId, workspaceId, req, 200, `${instances.length} instances`);
     res.json(response);
   } catch (err: any) {
     console.error("GET /instances error:", err);
-    logApiRequest(userId, req, 500, err.message);
+    logApiRequest(userId, workspaceId, req, 500, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -175,11 +176,11 @@ router.get("/contacts", async (req, res) => {
 
   const { data, error, count } = await query;
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
 
-  logApiRequest(userId, req, 200, `${data?.length || 0} contacts`);
+  logApiRequest(userId, workspaceId, req, 200, `${data?.length || 0} contacts`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
@@ -214,11 +215,11 @@ router.get("/contacts/:phone", async (req, res) => {
   ]);
 
   if (!convRes.data || convRes.data.length === 0) {
-    logApiRequest(userId, req, 404, "Contact not found");
+    logApiRequest(userId, workspaceId, req, 404, "Contact not found");
     return res.status(404).json({ error: "Contact not found" });
   }
 
-  logApiRequest(userId, req, 200, `Contact found: ${convRes.data[0]?.contact_name || phone}`);
+  logApiRequest(userId, workspaceId, req, 200, `Contact found: ${convRes.data[0]?.contact_name || phone}`);
   res.json({
     contact: convRes.data[0],
     all_instances: convRes.data,
@@ -263,10 +264,10 @@ router.post("/contacts", async (req, res) => {
       .single();
 
     if (error) {
-      logApiRequest(userId, req, 500, error.message);
+      logApiRequest(userId, workspaceId, req, 500, error.message);
       return res.status(500).json({ error: error.message });
     }
-    logApiRequest(userId, req, 200, `Contact updated: ${cleaned}`);
+    logApiRequest(userId, workspaceId, req, 200, `Contact updated: ${cleaned}`);
     return res.json({ data, created: false });
   }
 
@@ -284,10 +285,10 @@ router.post("/contacts", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
-  logApiRequest(userId, req, 201, `Contact created: ${cleaned}`);
+  logApiRequest(userId, workspaceId, req, 201, `Contact created: ${cleaned}`);
   res.status(201).json({ data, created: true });
 });
 
@@ -321,11 +322,11 @@ router.get("/transactions", async (req, res) => {
 
   const { data, error } = await query;
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
 
-  logApiRequest(userId, req, 200, `${data?.length || 0} transactions`);
+  logApiRequest(userId, workspaceId, req, 200, `${data?.length || 0} transactions`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
@@ -360,10 +361,10 @@ router.post("/transactions", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
-  logApiRequest(userId, req, 201, `Transaction created: ${data.id}`);
+  logApiRequest(userId, workspaceId, req, 201, `Transaction created: ${data.id}`);
   res.status(201).json({ data });
 });
 
@@ -396,15 +397,15 @@ router.patch("/transactions/:id", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
   if (!data) {
-    logApiRequest(userId, req, 404, "Transaction not found");
+    logApiRequest(userId, workspaceId, req, 404, "Transaction not found");
     return res.status(404).json({ error: "Transaction not found" });
   }
 
-  logApiRequest(userId, req, 200, `Transaction updated: ${data.id}`);
+  logApiRequest(userId, workspaceId, req, 200, `Transaction updated: ${data.id}`);
   res.json({ data });
 });
 
@@ -433,15 +434,15 @@ router.post("/transactions/webhook", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
   if (!data) {
-    logApiRequest(userId, req, 404, "Transaction not found for this external_id");
+    logApiRequest(userId, workspaceId, req, 404, "Transaction not found for this external_id");
     return res.status(404).json({ error: "Transaction not found for this external_id" });
   }
 
-  logApiRequest(userId, req, 200, `Transaction webhook updated: ${data.id}`);
+  logApiRequest(userId, workspaceId, req, 200, `Transaction webhook updated: ${data.id}`);
   res.json({ data });
 });
 
@@ -468,10 +469,10 @@ router.get("/tags", async (req, res) => {
     .eq("remote_jid", remoteJid);
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
-  logApiRequest(userId, req, 200, `${data?.length || 0} tags`);
+  logApiRequest(userId, workspaceId, req, 200, `${data?.length || 0} tags`);
   res.json({ data: data || [] });
 });
 
@@ -506,10 +507,10 @@ router.post("/tags", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
-  logApiRequest(userId, req, 201, `Tag created: ${req.body.tag_name}`);
+  logApiRequest(userId, workspaceId, req, 201, `Tag created: ${req.body.tag_name}`);
   res.status(201).json({ data, created: true });
 });
 
@@ -534,10 +535,10 @@ router.delete("/tags", async (req, res) => {
     .eq("tag_name", tag_name);
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
-  logApiRequest(userId, req, 200, `Tag deleted: ${req.body.tag_name}`);
+  logApiRequest(userId, workspaceId, req, 200, `Tag deleted: ${req.body.tag_name}`);
   res.json({ ok: true });
 });
 
@@ -580,11 +581,11 @@ router.get("/reminders", async (req, res) => {
 
   const { data, error } = await query;
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
 
-  logApiRequest(userId, req, 200, `${data?.length || 0} reminders`);
+  logApiRequest(userId, workspaceId, req, 200, `${data?.length || 0} reminders`);
   res.json({ data: data || [], count: data?.length || 0, offset, limit });
 });
 
@@ -620,10 +621,10 @@ router.post("/reminders", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
-  logApiRequest(userId, req, 201, `Reminder created: ${req.body.title}`);
+  logApiRequest(userId, workspaceId, req, 201, `Reminder created: ${req.body.title}`);
   res.status(201).json({ data });
 });
 
@@ -656,15 +657,15 @@ router.patch("/reminders/:id", async (req, res) => {
     .single();
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
   if (!data) {
-    logApiRequest(userId, req, 404, "Reminder not found");
+    logApiRequest(userId, workspaceId, req, 404, "Reminder not found");
     return res.status(404).json({ error: "Reminder not found" });
   }
 
-  logApiRequest(userId, req, 200, `Reminder updated: ${id}`);
+  logApiRequest(userId, workspaceId, req, 200, `Reminder updated: ${id}`);
   res.json({ data });
 });
 
@@ -694,11 +695,11 @@ router.delete("/reminders/:id", async (req, res) => {
     .eq("user_id", userId);
 
   if (error) {
-    logApiRequest(userId, req, 500, error.message);
+    logApiRequest(userId, workspaceId, req, 500, error.message);
     return res.status(500).json({ error: error.message });
   }
 
-  logApiRequest(userId, req, 200, `Reminder deleted: ${id}`);
+  logApiRequest(userId, workspaceId, req, 200, `Reminder deleted: ${id}`);
   res.json({ ok: true });
 });
 
@@ -825,7 +826,7 @@ router.post("/send-message", async (req, res) => {
 
 
     console.log(`[platform-api] send-message to ${cleaned} via ${instanceName}`);
-    logApiRequest(userId, req, 200, `Message sent to ${cleaned} via ${instanceName}, id: ${result?.key?.id || "?"}`);
+    logApiRequest(userId, workspaceId, req, 200, `Message sent to ${cleaned} via ${instanceName}, id: ${result?.key?.id || "?"}`);
     res.json({
       ok: true,
       message_id: result?.key?.id || null,
@@ -833,7 +834,7 @@ router.post("/send-message", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[platform-api] send-message error:", err.message);
-    logApiRequest(userId, req, 500, err.message);
+    logApiRequest(userId, workspaceId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to send message" });
   }
 });
@@ -936,11 +937,11 @@ router.post("/send-media", async (req, res) => {
     }
 
     console.log(`[platform-api] send-media (${mediaType}) to ${cleaned} via ${instanceName}`);
-    logApiRequest(userId, req, 200, `Media (${mediaType}) sent to ${cleaned} via ${instanceName}`);
+    logApiRequest(userId, workspaceId, req, 200, `Media (${mediaType}) sent to ${cleaned} via ${instanceName}`);
     res.json({ ok: true, message_id: result?.key?.id || null, instance: instanceName });
   } catch (err: any) {
     console.error("[platform-api] send-media error:", err.message);
-    logApiRequest(userId, req, 500, err.message);
+    logApiRequest(userId, workspaceId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to send media" });
   }
 });
@@ -979,7 +980,7 @@ router.post("/validate-number", async (req, res) => {
       .eq("remote_jid", remoteJid)
       .maybeSingle();
 
-    logApiRequest(userId, req, 200, `Number ${cleaned}: exists=${exists}`);
+    logApiRequest(userId, workspaceId, req, 200, `Number ${cleaned}: exists=${exists}`);
     res.json({
       exists,
       is_mobile: exists,
@@ -988,7 +989,7 @@ router.post("/validate-number", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[platform-api] validate-number error:", err.message);
-    logApiRequest(userId, req, 500, err.message);
+    logApiRequest(userId, workspaceId, req, 500, err.message);
     res.status(500).json({ error: err.message || "Failed to validate number" });
   }
 });
