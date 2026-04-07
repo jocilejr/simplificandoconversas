@@ -574,6 +574,20 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        {/* Recovery button for pending tabs */}
+                        {activeTab !== "aprovados" && tx.customer_phone && (
+                          <RecoveryPopover
+                            transaction={tx}
+                            recoveryMessage={getRecoveryMessage(activeTab)}
+                            clickCount={getClickCount(tx.id)}
+                            onSendWhatsApp={sendText}
+                            onRecoveryClick={() => addClick.mutate({
+                              transactionId: tx.id,
+                              recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,
+                            })}
+                            isExtensionConnected={isExtensionConnected}
+                          />
+                        )}
                         {tx.payment_url && (
                           <>
                             <TooltipProvider>
