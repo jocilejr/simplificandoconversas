@@ -80,6 +80,9 @@ router.post("/", async (req, res) => {
     const userId = userData.id;
     const body = req.body;
     const workspaceId = await resolveWorkspaceIdFromRequest(body, userId);
+    if (!workspaceId) {
+      return res.status(403).json({ error: "Workspace não autorizado" });
+    }
     console.log(`[whatsapp-proxy] Authenticated userId: ${userId}, workspaceId: ${workspaceId}`);
 
     const supabase = getServiceClient();
@@ -93,7 +96,7 @@ router.post("/", async (req, res) => {
       const { data: activeInst, error: activeInstErr } = await supabase
         .from("whatsapp_instances")
         .select("instance_name")
-        .eq("workspace_id", workspaceId!)
+        .eq("workspace_id", workspaceId)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle();
@@ -103,55 +106,64 @@ router.post("/", async (req, res) => {
     }
 
     const serviceClient = getServiceClient();
+    const actionsRequiringWorkspaceInstance = new Set([
+      "get-qrcode",
+      "logout-instance",
+      "connect-instance",
+      "delete-instance",
+      "test-connection",
+      "send-message",
+      "fetch-chats",
+    ]);
+
+    if (instanceName && actionsRequiringWorkspaceInstance.has(action)) {
+      const { data: ownedInstance } = await serviceClient
+        .from("whatsapp_instances")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+
+      if (!ownedInstance) {
+        return res.status(403).json({ error: "Instância não pertence ao workspace atual" });
+      }
+    }
+
     let result: any;
 
     switch (action) {
       case "fetch-instances": {
-        const instances = await evolutionRequest("/instance/fetchInstances", "GET");
-        const list = Array.isArray(instances) ? instances : [];
-        console.log(`[fetch-instances] Evolution returned ${list.length} instances`);
-
-        // Auto-populate whatsapp_instances table (without overwriting is_active)
-        for (const inst of list) {
-          const name = inst.name || inst.instanceName || "unknown";
-          const status = inst.connectionStatus || "close";
-          if (name === "unknown") continue;
-          // Check if instance already exists
-          const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", name).maybeSingle();
-          if (existing) {
-            // Only update status, never touch is_active
-            const { error: updateErr } = await serviceClient.from("whatsapp_instances")
-              .update({ status }).eq("id", existing.id);
-            if (updateErr) console.error(`[fetch-instances] DB update error for ${name}:`, updateErr);
-            else console.log(`[fetch-instances] Updated instance status: ${name}`);
-          } else {
-            const { error: insertErr } = await serviceClient.from("whatsapp_instances")
-              .insert({ user_id: userId, workspace_id: workspaceId, instance_name: name, status, is_active: false });
-            if (insertErr) console.error(`[fetch-instances] DB insert error for ${name}:`, insertErr);
-            else console.log(`[fetch-instances] Inserted new instance: ${name}`);
-          }
-        }
-
-        // Ensure at least one instance is active
-        const { data: activeCheck, error: activeCheckErr } = await serviceClient
+        const { data: workspaceRows, error: workspaceRowsError } = await serviceClient
           .from("whatsapp_instances")
-          .select("id").eq("workspace_id", workspaceId!).eq("is_active", true).limit(1);
-        if (activeCheckErr) console.error("[fetch-instances] Active check error:", activeCheckErr);
-        else console.log(`[fetch-instances] Active instances found: ${activeCheck?.length || 0}`);
-        
-        if ((!activeCheck || activeCheck.length === 0) && list.length > 0) {
-          const firstName = list[0].name || list[0].instanceName;
-          if (firstName) {
-            const { error: updateErr } = await serviceClient.from("whatsapp_instances")
-              .update({ is_active: true })
-              .eq("workspace_id", workspaceId!).eq("instance_name", firstName);
-            if (updateErr) console.error(`[fetch-instances] Set active error for ${firstName}:`, updateErr);
-            else console.log(`[fetch-instances] Set ${firstName} as active`);
-          }
+          .select("instance_name, status, is_active")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: true });
+
+        if (workspaceRowsError) {
+          return res.status(500).json({ error: workspaceRowsError.message });
         }
 
-        result = instances;
+        const names = (workspaceRows || []).map((row: any) => row.instance_name);
+        const remoteInstances = names.length > 0
+          ? await Promise.all(
+              names.map(async (name) => {
+                try {
+                  const stateResult = await evolutionRequest(`/instance/connectionState/${encodeURIComponent(name)}`, "GET");
+                  const status = stateResult?.instance?.state || stateResult?.state || "close";
+                  await serviceClient
+                    .from("whatsapp_instances")
+                    .update({ status })
+                    .eq("workspace_id", workspaceId)
+                    .eq("instance_name", name);
+                  return { name, status, profileName: "" };
+                } catch {
+                  return { name, status: "close", profileName: "" };
+                }
+              })
+            )
+          : [];
+
+        result = remoteInstances;
         break;
       }
 
@@ -292,24 +304,19 @@ router.post("/", async (req, res) => {
       }
 
       case "sync-chats": {
-        const allEvolutionInstances = await evolutionRequest("/instance/fetchInstances", "GET");
-        const evolutionList = Array.isArray(allEvolutionInstances) ? allEvolutionInstances : [];
-        
-        const instancesToSync = evolutionList.map((i: any) => 
-          i.name || i.instanceName || i.instance?.instanceName || "unknown"
-        ).filter((n: string) => n !== "unknown");
-        console.log(`[sync-chats] Instances from Evolution API: ${JSON.stringify(instancesToSync)}`);
+        const { data: workspaceInstances, error: workspaceInstancesError } = await serviceClient
+          .from("whatsapp_instances")
+          .select("instance_name")
+          .eq("workspace_id", workspaceId);
 
-        // Sync instances WITHOUT overwriting is_active
-        for (const instName of instancesToSync) {
-          const { data: existing } = await serviceClient.from("whatsapp_instances")
-            .select("id").eq("workspace_id", workspaceId!).eq("instance_name", instName).maybeSingle();
-          if (!existing) {
-            const { error: insertErr } = await serviceClient.from("whatsapp_instances")
-              .insert({ user_id: userId, workspace_id: workspaceId, instance_name: instName, status: "close", is_active: false });
-            if (insertErr) console.error(`[sync-chats] Instance insert error for ${instName}:`, insertErr);
-          }
+        if (workspaceInstancesError) {
+          return res.status(500).json({ error: workspaceInstancesError.message });
         }
+
+        const instancesToSync = (workspaceInstances || [])
+          .map((i: any) => i.instance_name)
+          .filter(Boolean);
+        console.log(`[sync-chats] Workspace instances: ${JSON.stringify(instancesToSync)}`);
 
         let totalSynced = 0;
         let totalMessagesSynced = 0;
@@ -324,7 +331,7 @@ router.post("/", async (req, res) => {
           const { error: statusErr } = await serviceClient.from("whatsapp_instances")
             .update({ status: connectionState })
             .eq("instance_name", instName)
-            .eq("workspace_id", workspaceId!);
+            .eq("workspace_id", workspaceId);
           if (statusErr) console.error(`[sync-chats] Status update error for ${instName}:`, statusErr);
           instanceStatuses.push({ instance: instName, connectionState });
 

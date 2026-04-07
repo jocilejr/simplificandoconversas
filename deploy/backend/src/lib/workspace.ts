@@ -2,10 +2,23 @@ import { getServiceClient } from "./supabase";
 
 /**
  * Resolve workspace_id from the request body (preferred) or fallback to DB lookup.
+ * If a workspaceId is provided, validate that the user belongs to it or is super admin.
  */
 export async function resolveWorkspaceIdFromRequest(body: any, userId: string): Promise<string | null> {
   if (body?.workspaceId && typeof body.workspaceId === "string") {
-    return body.workspaceId;
+    const sb = getServiceClient();
+    const requestedWorkspaceId = body.workspaceId;
+
+    const [{ data: adminRole }, { data: membership }] = await Promise.all([
+      sb.from("user_roles").select("id").eq("user_id", userId).eq("role", "admin").maybeSingle(),
+      sb.from("workspace_members").select("workspace_id").eq("user_id", userId).eq("workspace_id", requestedWorkspaceId).maybeSingle(),
+    ]);
+
+    if (adminRole || membership) {
+      return requestedWorkspaceId;
+    }
+
+    return null;
   }
   return resolveWorkspaceId(userId);
 }
