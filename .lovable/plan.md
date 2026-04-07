@@ -1,104 +1,60 @@
 
 
-# Fix: Yampi webhook HMAC validation quebrando silenciosamente
+# Fix: Normalizar telefone antes de salvar no banco de dados
 
 ## Problema
 
-O webhook da Yampi está configurado corretamente na URL `https://api.chatbotsimplificado.com/functions/v1/yampi-webhook` e a rota funciona (teste interno retornou `{"ok":true}`). Porém nenhum evento real da Yampi chegou nas últimas 24h.
+Os números de telefone estão sendo salvos na tabela `transactions` com formatos inconsistentes (ex: `051997147570`, `011999716771`) — com zero inicial que deveria ser removido e sem o prefixo `55`.
 
-Há dois problemas:
+A função `normalizePhone` já existe em `recovery-dispatch.ts` e faz exatamente o que é necessário:
+1. Remove caracteres não numéricos
+2. Remove zeros iniciais (`replace(/^0+/, "")`)
+3. Adiciona prefixo `55` se necessário
 
-### 1. HMAC calculado sobre JSON re-serializado (bug crítico)
-Na linha 97, o código faz `JSON.stringify(req.body)` para calcular o HMAC. Mas o Express já fez o parse do JSON — ao re-serializar, a ordem das chaves, espaçamentos e formatação podem diferir do body original que a Yampi usou para gerar a assinatura. Resultado: **HMAC mismatch silencioso → 401 retornado para a Yampi → ela para de enviar**.
-
-### 2. Sem log de chegada antes da validação HMAC
-O primeiro log só aparece se tudo passar. Se o HMAC falhar, o único log é "HMAC mismatch" — sem detalhes do evento ou IP.
+Porém essa função só é usada na hora do envio da recuperação — **não é usada na hora de persistir** o telefone no banco.
 
 ## Solução
 
-### Arquivo: `deploy/backend/src/routes/yampi-webhook.ts`
+### 1. Extrair `normalizePhone` para um utilitário compartilhado
 
-1. **Capturar o raw body** antes do JSON parse para usar no HMAC. Como o Express global já faz `express.json()`, precisamos de um middleware que salve o buffer original antes do parse.
-
-### Arquivo: `deploy/backend/src/index.ts`
-
-2. **Adicionar `verify` callback** no `express.json()` para salvar o raw body em `req.rawBody` — mas isso afeta todas as rotas. Alternativa mais limpa: usar um middleware específico na rota yampi.
-
-### Abordagem escolhida (mais simples e sem impacto em outras rotas)
-
-No `index.ts`, antes do `express.json()` global, adicionar um middleware que intercepta apenas `/api/yampi-webhook` e salva o raw body:
+Criar `deploy/backend/src/lib/normalize-phone.ts` com a função que já existe em `recovery-dispatch.ts`:
 
 ```typescript
-// Save raw body for HMAC validation (yampi webhook)
-app.use("/api/yampi-webhook", (req, res, next) => {
-  let chunks: Buffer[] = [];
-  req.on("data", (chunk) => chunks.push(chunk));
-  req.on("end", () => {
-    (req as any).rawBody = Buffer.concat(chunks);
-    next();
-  });
-});
-```
-
-**Problema**: isso não funciona se `express.json()` já consumiu o stream. A solução correta é usar o parâmetro `verify` do `express.json`:
-
-```typescript
-app.use(express.json({
-  limit: "50mb",
-  verify: (req: any, _res, buf) => {
-    // Save raw body for routes that need HMAC verification
-    if (req.url?.startsWith("/api/yampi-webhook")) {
-      req.rawBody = buf;
-    }
-  },
-}));
-```
-
-No `yampi-webhook.ts`, usar `(req as any).rawBody` em vez de `JSON.stringify(req.body)`:
-
-```typescript
-const hmacHeader = req.headers["x-yampi-hmac-sha256"] as string | undefined;
-if (secretKey && hmacHeader) {
-  const rawBody = (req as any).rawBody;
-  if (!rawBody) {
-    console.log("[yampi-webhook] No raw body available for HMAC validation, skipping");
-  } else {
-    const computed = crypto
-      .createHmac("sha256", secretKey)
-      .update(rawBody)
-      .digest("hex");
-    if (computed !== hmacHeader) {
-      console.log("[yampi-webhook] HMAC mismatch — computed:", computed, "received:", hmacHeader);
-      return res.status(401).json({ error: "Invalid signature" });
-    }
-    console.log("[yampi-webhook] HMAC validated OK");
+export function normalizePhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55")) {
+    phone = "55" + phone;
   }
+  return phone || null;
 }
 ```
 
-3. **Melhorar logs**: adicionar log no início com IP e evento antes de qualquer validação.
+### 2. Aplicar em todos os webhooks (4 arquivos)
 
-## Arquivos alterados
+| Arquivo | Onde aplicar |
+|---------|-------------|
+| `payment.ts` | Geração de boleto/PIX (linha ~260), webhook Step 4 (linhas ~709, ~769) |
+| `yampi-webhook.ts` | Função `extractCustomer` (linha ~31) |
+| `manual-payment-webhook.ts` | Variável `cleanPhone` (linha ~80) |
+| `payment-openpix.ts` | Geração (linha ~116) e webhook (linhas ~240, ~268, ~310, ~337, ~377) |
 
-- `deploy/backend/src/index.ts` — adicionar `verify` no `express.json()`
-- `deploy/backend/src/routes/yampi-webhook.ts` — usar `rawBody` no HMAC + melhorar logs
+### 3. Atualizar `recovery-dispatch.ts`
 
-## Deploy
+Importar de `normalize-phone.ts` em vez de ter a função duplicada.
+
+### Resultado
+
+| Entrada | Antes (banco) | Depois (banco) |
+|---------|--------------|----------------|
+| `051997147570` | `051997147570` | `5551997147570` |
+| `011999716771` | `011999716771` | `5511999716771` |
+| `5511999999999` | `5511999999999` | `5511999999999` (sem mudança) |
+| `(51) 99714-7570` | `51997147570` | `5551997147570` |
+
+### Deploy
 
 ```bash
 cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
 ```
-
-## Diagnóstico adicional na VPS
-
-Após o deploy, testar externamente para confirmar que o endpoint está acessível:
-
-```bash
-curl -s -w "\n%{http_code}" -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"event":"test.ping","resource":{}}' \
-  https://api.chatbotsimplificado.com/functions/v1/yampi-webhook
-```
-
-Se retornar 200, o problema era HMAC. Monitorar os logs para ver os próximos eventos reais da Yampi.
 
