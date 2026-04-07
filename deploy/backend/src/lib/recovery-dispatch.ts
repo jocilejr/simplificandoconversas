@@ -186,10 +186,12 @@ export async function dispatchRecovery(opts: {
     console.log(`[recovery-dispatch] Sent recovery to ${opts.customerPhone} (tx: ${opts.transactionId})`);
   }, `recovery:${opts.transactionId}`).catch(async (err: any) => {
     if (queueId) {
-      await sb.from("recovery_queue").update({
-        status: "failed",
-        error_message: err.message?.substring(0, 500),
-      }).eq("id", queueId).catch(() => {});
+      try {
+        await sb.from("recovery_queue").update({
+          status: "failed",
+          error_message: err.message?.substring(0, 500),
+        }).eq("id", queueId);
+      } catch (_) {}
     }
     console.error(`[recovery-dispatch] Failed for ${opts.customerPhone}:`, err.message);
   });
