@@ -342,7 +342,7 @@ export function BoletoQuickRecovery({ open, onOpenChange, transaction }: BoletoQ
                   <span>Telefone</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium font-mono">{transaction.customer_phone?.replace(/\D/g, "") || "-"}</p>
+                  <p className="text-sm font-medium font-mono">{normalizePhone(transaction.customer_phone)}</p>
                   {transaction.customer_phone && (
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleCopyField(transaction.customer_phone!, "phone")}>
                       {copiedId === "phone" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}

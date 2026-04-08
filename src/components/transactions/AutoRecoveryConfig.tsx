@@ -244,7 +244,7 @@ function RecoveryQueueDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                     <td className="p-2">
                       <div>
                         <p className="font-medium truncate max-w-[120px]">{item.customer_name || "-"}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{item.customer_phone}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{normalizePhone(item.customer_phone)}</p>
                       </div>
                     </td>
                     <td className="p-2 text-xs">{item.transaction_type}</td>

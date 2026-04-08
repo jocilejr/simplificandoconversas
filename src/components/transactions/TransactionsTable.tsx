@@ -609,7 +609,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                           <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="WhatsApp inválido" />
                         )}
                         <span className="text-sm text-muted-foreground font-mono">
-                          {tx.customer_phone?.replace(/\D/g, "") || "-"}
+                          {normalizePhone(tx.customer_phone)}
                         </span>
                       </div>
                     </td>
