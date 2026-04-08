@@ -22,7 +22,7 @@ import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
-import { getAllQueuesStatus } from "./lib/message-queue";
+import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
 const app = express();
 app.use(cors());
