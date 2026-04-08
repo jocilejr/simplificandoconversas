@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users } from "lucide-react";
+import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users, Percent } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
