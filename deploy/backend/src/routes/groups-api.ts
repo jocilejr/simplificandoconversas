@@ -132,7 +132,7 @@ router.post("/debug-groups", async (req: Request, res: Response) => {
       try {
         const r = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(jid)}`, { headers: { apikey: apiKey } });
         const body = r.ok ? await r.json() : { status: r.status, body: await r.text() };
-        result.rawFindGroupInfos.push({ jid, ...body });
+        result.rawFindGroupInfos.push({ jid, ...(body as Record<string, unknown>) });
       } catch (e: any) {
         result.rawFindGroupInfos.push({ jid, error: e.message });
       }
