@@ -1,25 +1,37 @@
 
 
-# Fix: Erro ao salvar configurações do Follow Up
+# Fix: Tabela `followup_settings` não existe na VPS
 
 ## Causa raiz
 
-O hook usa `as any` desnecessariamente (a tabela `followup_settings` já existe nos tipos gerados). Além disso, o fluxo insert/update depende de `settings?.id` que pode estar desatualizado — se já existe um registro mas `settings` ainda não carregou, tenta INSERT e falha por UNIQUE constraint em `workspace_id`.
+A tabela `followup_settings` foi criada apenas nas migrations do Lovable Cloud (arquivo `20260407151222_...sql`). O script `update.sh` da VPS, que cria todas as tabelas via SQL inline, **nunca incluiu o `CREATE TABLE` para `followup_settings`**. Quando o `migrate-workspace.sql` roda, ele tenta adicionar `workspace_id` e RLS a uma tabela que não existe — mas usa `IF NOT EXISTS` em tudo, então falha silenciosamente.
 
 ## Solução
 
-### Arquivo: `src/hooks/useFollowUpSettings.ts`
+### Arquivo: `deploy/update.sh`
 
-1. **Remover todos os `as any`** — usar a tabela tipada diretamente: `.from("followup_settings")`
-2. **Usar UPSERT nativo** — substituir a lógica condicional insert/update por `.upsert()` com `onConflict: "workspace_id"`, eliminando a race condition
-3. **Incluir `workspace_id` e `user_id` no payload do upsert** para que funcione tanto como insert quanto update
+Adicionar o bloco `CREATE TABLE IF NOT EXISTS public.followup_settings` na seção de "base schema updates", **antes** do `migrate-workspace.sql`. A tabela precisa ter:
 
-### Arquivo: `src/components/followup/FollowUpSettingsDialog.tsx`
+- `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`
+- `workspace_id uuid NOT NULL UNIQUE` (UNIQUE é obrigatório para o upsert funcionar)
+- `user_id uuid NOT NULL`
+- `instance_name text`
+- `enabled boolean NOT NULL DEFAULT false`
+- `send_after_minutes integer NOT NULL DEFAULT 5`
+- `send_at_hour text NOT NULL DEFAULT '09:00'`
+- `max_messages_per_phone_per_day integer NOT NULL DEFAULT 1`
+- `created_at timestamptz NOT NULL DEFAULT now()`
+- `updated_at timestamptz NOT NULL DEFAULT now()`
 
-4. **Remover o cast `as any`** do `upsert.mutate()` — o tipo do payload agora bate com a interface
+Incluir RLS + policies + GRANT, seguindo o padrão das outras tabelas no mesmo bloco.
 
-## Resultado
-- Salvar sempre funciona (insert na primeira vez, update nas seguintes)
-- Sem race condition entre query e mutation
-- Tipos corretos sem casts
+### Resultado
+
+Após o próximo `update.sh`:
+1. A tabela será criada
+2. O `migrate-workspace.sql` adicionará as policies de workspace
+3. O frontend conseguirá fazer upsert sem erro
+
+## Arquivos alterados
+1. `deploy/update.sh` — Adicionar CREATE TABLE para followup_settings
 
