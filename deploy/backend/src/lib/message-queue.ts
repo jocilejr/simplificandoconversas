@@ -15,6 +15,8 @@ interface QueueItem {
 class MessageQueue {
   private queue: QueueItem[] = [];
   private processing = false;
+  private inCooldown = false;
+  private currentLabel: string | null = null;
   private instanceName: string;
   private delayMs: number;
   private pauseAfterSends: number | null;
