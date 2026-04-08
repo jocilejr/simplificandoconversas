@@ -10,6 +10,7 @@ import { IntegrationApiSection } from "@/components/settings/IntegrationApiSecti
 import { EmailSettingsSection } from "@/components/settings/EmailSettingsSection";
 import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
 import { TeamSection } from "@/components/settings/TeamSection";
+import { FeesSection } from "@/components/settings/FeesSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const allSections = [
