@@ -416,7 +416,7 @@ export async function processFollowUpDaily() {
 
   const { data: allSettings } = await sb
     .from("followup_settings")
-    .select("workspace_id, user_id, instance_name, send_at_hour, enabled")
+    .select("workspace_id, user_id, instance_name, send_at_hour, enabled, max_messages_per_phone_per_day")
     .eq("enabled", true);
 
   if (!allSettings || allSettings.length === 0) {
@@ -432,12 +432,15 @@ export async function processFollowUpDaily() {
       continue;
     }
 
+    const maxPerPhone = (setting as any).max_messages_per_phone_per_day ?? 1;
+
     try {
       const result = await processWorkspace(
         sb,
         setting.workspace_id,
         setting.user_id,
         setting.instance_name,
+        maxPerPhone,
       );
       if (result) {
         totalSent += result.sent;
