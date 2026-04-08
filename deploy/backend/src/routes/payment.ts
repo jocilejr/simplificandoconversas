@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
-import { dispatchRecovery } from "../lib/recovery-dispatch";
+import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
@@ -347,6 +347,35 @@ router.post("/create", async (req: Request, res: Response) => {
       });
     }
     console.log("[payment] Transaction saved:", tx?.id);
+
+    // Check WhatsApp number validity and save to DB
+    if (tx?.id && customer_phone) {
+      try {
+        const phone = normalizePhone(customer_phone);
+        if (phone && phone.length >= 12) {
+          // Resolve instance from recovery_settings
+          const { data: recSettings } = await supabase
+            .from("recovery_settings")
+            .select("instance_boleto, instance_pix, instance_name")
+            .eq("workspace_id", workspaceId)
+            .maybeSingle();
+
+          const instanceName = type === "boleto"
+            ? (recSettings as any)?.instance_boleto || (recSettings as any)?.instance_name
+            : (recSettings as any)?.instance_pix || (recSettings as any)?.instance_name;
+
+          if (instanceName) {
+            const isValid = await checkWhatsAppNumber(phone, instanceName);
+            if (isValid !== null) {
+              await supabase.from("transactions").update({ whatsapp_valid: isValid } as any).eq("id", tx.id);
+              console.log(`[payment] WhatsApp check for ${phone}: ${isValid}`);
+            }
+          }
+        }
+      } catch (waErr: any) {
+        console.warn("[payment] WhatsApp check error:", waErr.message);
+      }
+    }
 
     // Auto-recovery: enqueue immediately upon transaction creation
     if (tx?.id && customer_phone) {

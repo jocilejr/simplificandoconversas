@@ -468,3 +468,43 @@ export async function dispatchRecovery(opts: {
     console.error(`[recovery-dispatch] ❌ Failed for ${normalizedPhone}:`, err.message);
   });
 }
+
+/**
+ * Check if a phone number exists on WhatsApp via Evolution API.
+ * Returns true/false or null if check fails.
+ */
+export async function checkWhatsAppNumber(
+  phone: string,
+  instanceName: string,
+): Promise<boolean | null> {
+  const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
+  const evoApiKey = process.env.EVOLUTION_API_KEY || "";
+
+  if (!phone || !instanceName || !evoApiKey) return null;
+
+  try {
+    const resp = await fetch(
+      `${evoBaseUrl}/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evoApiKey },
+        body: JSON.stringify({ numbers: [phone] }),
+      }
+    );
+
+    if (!resp.ok) {
+      console.warn(`[whatsapp-check] Evolution API ${resp.status} for ${phone}`);
+      return null;
+    }
+
+    const result: any = await resp.json();
+    // Evolution v2 returns array: [{ exists: true, jid: "..." }]
+    if (Array.isArray(result) && result.length > 0) {
+      return !!result[0].exists;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn(`[whatsapp-check] Error checking ${phone}: ${err.message}`);
+    return null;
+  }
+}

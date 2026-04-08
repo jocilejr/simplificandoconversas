@@ -600,9 +600,17 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                       </div>
                     </td>
                     <td className="py-3.5 px-4 hidden xl:table-cell">
-                      <span className="text-sm text-muted-foreground font-mono">
-                        {tx.customer_phone?.replace(/\D/g, "") || "-"}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {tx.whatsapp_valid === true && (
+                          <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="WhatsApp válido" />
+                        )}
+                        {tx.whatsapp_valid === false && (
+                          <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="WhatsApp inválido" />
+                        )}
+                        <span className="text-sm text-muted-foreground font-mono">
+                          {tx.customer_phone?.replace(/\D/g, "") || "-"}
+                        </span>
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <TooltipProvider>
