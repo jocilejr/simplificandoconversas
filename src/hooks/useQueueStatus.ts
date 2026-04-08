@@ -1,5 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiUrl, safeJsonResponse } from "@/lib/api";
+
+export interface QueueHistoryItem {
+  label: string;
+  status: "sent" | "failed";
+  timestamp: string;
+  error?: string;
+}
 
 export interface QueueStatus {
   instanceName: string;
@@ -12,6 +19,7 @@ export interface QueueStatus {
   delayMs: number;
   pauseAfterSends: number | null;
   pauseMinutes: number | null;
+  history: QueueHistoryItem[];
 }
 
 export function useQueueStatus() {
@@ -25,4 +33,16 @@ export function useQueueStatus() {
     refetchInterval: 3000,
     retry: 0,
   });
+}
+
+export function useClearQueueHistory() {
+  const queryClient = useQueryClient();
+  return async (instanceName: string) => {
+    await fetch(apiUrl("queue-clear-history"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instanceName }),
+    });
+    queryClient.invalidateQueries({ queryKey: ["queue-status"] });
+  };
 }

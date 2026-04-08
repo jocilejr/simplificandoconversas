@@ -169,3 +169,8 @@ export function getAllQueuesStatus() {
   }
   return result;
 }
+
+export function clearQueueHistory(instanceName: string) {
+  const q = queues.get(instanceName);
+  if (q) q.clearHistory();
+}

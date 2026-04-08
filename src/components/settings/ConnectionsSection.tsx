@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { useMessageQueueConfig } from "@/hooks/useMessageQueueConfig";
-import { useQueueStatus, type QueueStatus } from "@/hooks/useQueueStatus";
+import { useQueueStatus, useClearQueueHistory, type QueueStatus, type QueueHistoryItem } from "@/hooks/useQueueStatus";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +45,9 @@ import {
   Inbox,
   Pause,
   Send,
+  CheckCircle2,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
