@@ -24,7 +24,7 @@ import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily } from "./routes/followup-daily";
-import groupsApiRouter from "./routes/groups-api";
+import groupsApiRouter, { computeNextRunAfterExecution } from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
@@ -190,6 +190,131 @@ cron.schedule("0 3 * * *", async () => {
     console.log(`[cron] Boleto cleanup done: ${deleted} files deleted from ${expired.length} expired transactions.`);
   } catch (err: any) {
     console.error("[cron] boleto-cleanup error:", err.message);
+  }
+});
+
+// ─── Group Scheduler Cron (1/min): enqueue scheduled messages ───
+cron.schedule("* * * * *", async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    );
+
+    const now = new Date().toISOString();
+    const { data: dueMessages, error } = await sb
+      .from("group_scheduled_messages")
+      .select("*, group_campaigns!inner(workspace_id, user_id, instance_name, group_jids, is_active)")
+      .eq("is_active", true)
+      .lte("next_run_at", now);
+
+    if (error) {
+      console.error("[cron] group-scheduler query error:", error.message);
+      return;
+    }
+    if (!dueMessages || dueMessages.length === 0) return;
+
+    console.log(`[cron] 📅 Group scheduler: ${dueMessages.length} message(s) due`);
+
+    for (const msg of dueMessages) {
+      const campaign = (msg as any).group_campaigns;
+      if (!campaign || !campaign.is_active) continue;
+
+      const batch = `auto-${Date.now()}-${msg.id.slice(0, 8)}`;
+      const queueItems: any[] = [];
+
+      for (const jid of (campaign.group_jids || [])) {
+        const { data: sg } = await sb
+          .from("group_selected")
+          .select("group_name")
+          .eq("workspace_id", campaign.workspace_id)
+          .eq("group_jid", jid)
+          .maybeSingle();
+
+        queueItems.push({
+          workspace_id: campaign.workspace_id,
+          user_id: campaign.user_id,
+          campaign_id: msg.campaign_id,
+          scheduled_message_id: msg.id,
+          group_jid: jid,
+          group_name: sg?.group_name || "",
+          instance_name: campaign.instance_name,
+          message_type: msg.message_type,
+          content: msg.content,
+          status: "pending",
+          execution_batch: batch,
+        });
+      }
+
+      if (queueItems.length > 0) {
+        const { error: insertErr } = await sb.from("group_message_queue").insert(queueItems);
+        if (insertErr) {
+          console.error("[cron] group-scheduler insert error:", insertErr.message);
+          continue;
+        }
+        console.log(`[cron] ✅ Enqueued ${queueItems.length} items for msg ${msg.id} (batch: ${batch})`);
+      }
+
+      // Update last_run_at and compute next_run_at
+      const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, msg.cron_expression, msg.interval_minutes);
+      const updateData: any = { last_run_at: now };
+      if (nextRun) {
+        updateData.next_run_at = nextRun;
+      } else {
+        // For 'once' or expired: deactivate
+        updateData.is_active = false;
+        updateData.next_run_at = null;
+      }
+
+      await sb.from("group_scheduled_messages").update(updateData).eq("id", msg.id);
+    }
+  } catch (err: any) {
+    console.error("[cron] group-scheduler error:", err.message);
+  }
+});
+
+// ─── Group Queue Processor Cron (30s): process pending with rate limiting ───
+cron.schedule("*/30 * * * * *", async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    );
+
+    // Get all workspaces that have pending items
+    const { data: workspaces } = await sb
+      .from("group_message_queue")
+      .select("workspace_id")
+      .eq("status", "pending")
+      .limit(100);
+
+    if (!workspaces || workspaces.length === 0) return;
+
+    const uniqueWs = [...new Set(workspaces.map((w: any) => w.workspace_id))];
+
+    for (const wsId of uniqueWs) {
+      try {
+        const resp = await fetch(`http://localhost:${PORT}/api/groups/queue/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: wsId }),
+        });
+        if (!resp.ok) {
+          console.error(`[cron] group-queue-processor error for ws ${wsId}:`, await resp.text());
+        } else {
+          const result = await resp.json();
+          if (result.sent > 0 || result.failed > 0) {
+            console.log(`[cron] 📨 Group queue processed ws ${wsId}: sent=${result.sent}, failed=${result.failed}, skipped=${result.skipped}`);
+          }
+        }
+      } catch (e: any) {
+        console.error(`[cron] group-queue-processor fetch error:`, e.message);
+      }
+    }
+  } catch (err: any) {
+    console.error("[cron] group-queue-processor error:", err.message);
   }
 });
 

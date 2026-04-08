@@ -96,7 +96,7 @@ DECLARE _t text;
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
-    'group_message_queue','group_participant_events'
+    'group_message_queue','group_participant_events','group_queue_config'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
@@ -124,7 +124,7 @@ DECLARE _rec RECORD; _ws_id uuid;
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
-    'group_message_queue','group_participant_events'
+    'group_message_queue','group_participant_events','group_queue_config'
   ]; _t text;
 BEGIN
   FOR _rec IN
@@ -170,7 +170,7 @@ DECLARE _t text; _cnt bigint; _total bigint := 0;
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
-    'group_message_queue','group_participant_events'
+    'group_message_queue','group_participant_events','group_queue_config'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
@@ -206,7 +206,7 @@ DECLARE _t text; _cnt bigint;
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
-    'group_message_queue','group_participant_events'
+    'group_message_queue','group_participant_events','group_queue_config'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
@@ -257,7 +257,7 @@ DECLARE _t text;
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
-    'group_message_queue','group_participant_events'
+    'group_message_queue','group_participant_events','group_queue_config'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP

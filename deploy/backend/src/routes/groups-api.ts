@@ -36,7 +36,6 @@ const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[
 async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: string): Promise<string> {
   const encoded = encodeURIComponent(instanceName);
 
-  // Camada 1: fetchInstances → instance.owner
   try {
     const resp = await fetch(`${baseUrl}/instance/fetchInstances`, {
       headers: { apikey: apiKey },
@@ -54,7 +53,6 @@ async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: st
     console.warn("[groups-api] fetchInstances failed:", e?.message);
   }
 
-  // Camada 2: connectionState → instance.wuid
   try {
     const resp = await fetch(`${baseUrl}/instance/connectionState/${encoded}`, {
       headers: { apikey: apiKey },
@@ -71,7 +69,6 @@ async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: st
     console.warn("[groups-api] connectionState failed:", e?.message);
   }
 
-  // Camada 3: connect → number (alguns builds da Evolution)
   try {
     const resp = await fetch(`${baseUrl}/instance/connect/${encoded}`, {
       headers: { apikey: apiKey },
@@ -91,6 +88,91 @@ async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: st
   return "";
 }
 
+/* ─── helper: calcular next_run_at ─── */
+function computeNextRunAt(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
+  const now = new Date();
+
+  switch (scheduleType) {
+    case "once": {
+      if (!scheduledAt) return null;
+      const dt = new Date(scheduledAt);
+      return dt > now ? dt.toISOString() : null;
+    }
+    case "daily": {
+      if (!scheduledAt) return null;
+      const ref = new Date(scheduledAt);
+      const next = new Date(now);
+      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      return next.toISOString();
+    }
+    case "weekly": {
+      if (!scheduledAt) return null;
+      const ref = new Date(scheduledAt);
+      const targetDay = ref.getDay();
+      const next = new Date(now);
+      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+      let daysAhead = targetDay - now.getDay();
+      if (daysAhead < 0) daysAhead += 7;
+      if (daysAhead === 0 && next <= now) daysAhead = 7;
+      next.setDate(next.getDate() + daysAhead);
+      return next.toISOString();
+    }
+    case "monthly": {
+      if (!scheduledAt) return null;
+      const ref = new Date(scheduledAt);
+      const targetDate = ref.getDate();
+      const next = new Date(now.getFullYear(), now.getMonth(), targetDate, ref.getHours(), ref.getMinutes(), 0, 0);
+      if (next <= now) next.setMonth(next.getMonth() + 1);
+      return next.toISOString();
+    }
+    case "interval": {
+      if (!intervalMinutes || intervalMinutes <= 0) return null;
+      return new Date(now.getTime() + intervalMinutes * 60000).toISOString();
+    }
+    default:
+      return scheduledAt || null;
+  }
+}
+
+/* ─── helper: calcular PRÓXIMO next_run_at após execução ─── */
+function computeNextRunAfterExecution(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
+  const now = new Date();
+
+  switch (scheduleType) {
+    case "once":
+      return null; // desativa
+    case "daily": {
+      if (!scheduledAt) return null;
+      const ref = new Date(scheduledAt);
+      const next = new Date(now);
+      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+      next.setDate(next.getDate() + 1);
+      return next.toISOString();
+    }
+    case "weekly": {
+      if (!scheduledAt) return null;
+      const ref = new Date(scheduledAt);
+      const next = new Date(now);
+      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+      next.setDate(next.getDate() + 7);
+      return next.toISOString();
+    }
+    case "monthly": {
+      if (!scheduledAt) return null;
+      const ref = new Date(scheduledAt);
+      const next = new Date(now.getFullYear(), now.getMonth() + 1, ref.getDate(), ref.getHours(), ref.getMinutes(), 0, 0);
+      return next.toISOString();
+    }
+    case "interval": {
+      if (!intervalMinutes || intervalMinutes <= 0) return null;
+      return new Date(now.getTime() + intervalMinutes * 60000).toISOString();
+    }
+    default:
+      return null;
+  }
+}
+
 /* ─── POST /debug-groups (temporário) ─── */
 router.post("/debug-groups", async (req: Request, res: Response) => {
   try {
@@ -101,25 +183,21 @@ router.post("/debug-groups", async (req: Request, res: Response) => {
     const encoded = encodeURIComponent(instanceName);
     const result: any = { instanceName, baseUrl };
 
-    // 1. fetchAllGroups raw
     try {
       const r = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=false`, { headers: { apikey: apiKey } });
       result.rawFetchAllGroups = r.ok ? await r.json() : { status: r.status, body: await r.text() };
     } catch (e: any) { result.rawFetchAllGroups = { error: e.message }; }
 
-    // 2. fetchInstances raw
     try {
       const r = await fetch(`${baseUrl}/instance/fetchInstances`, { headers: { apikey: apiKey } });
       result.rawFetchInstances = r.ok ? await r.json() : { status: r.status, body: await r.text() };
     } catch (e: any) { result.rawFetchInstances = { error: e.message }; }
 
-    // 3. connectionState raw
     try {
       const r = await fetch(`${baseUrl}/instance/connectionState/${encoded}`, { headers: { apikey: apiKey } });
       result.rawConnectionState = r.ok ? await r.json() : { status: r.status, body: await r.text() };
     } catch (e: any) { result.rawConnectionState = { error: e.message }; }
 
-    // 4. findGroupInfos for each @g.us group
     const rawList = Array.isArray(result.rawFetchAllGroups) ? result.rawFetchAllGroups : (result.rawFetchAllGroups?.groups || []);
     const gus = rawList.filter((g: any) => {
       const jid = g.id || g.jid || g.groupJid || "";
@@ -156,7 +234,6 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
 
-    // 1. Buscar lista inicial de grupos
     const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=false`, {
       headers: { apikey: apiKey },
     });
@@ -176,14 +253,12 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
 
     console.log(`[groups-api] Total raw: ${list.length}, @g.us candidates: ${gusOnly.length}`);
 
-    // 2. Resolver ownerJid com fallback em camadas
     const ownerJid = await resolveOwnerJid(baseUrl, apiKey, instanceName);
     const ownerNorm = normalizeJid(ownerJid);
     const hasOwner = !!ownerNorm;
 
     console.log(`[groups-api] ownerJid resolved: "${ownerJid}", ownerNorm: "${ownerNorm}", hasOwner: ${hasOwner}`);
 
-    // 3. Validar cada grupo individualmente via findGroupInfos
     const groups: any[] = [];
     const discarded: string[] = [];
 
@@ -191,7 +266,6 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
       const jid = g.id || g.jid || g.groupJid || "";
 
       try {
-        // Buscar info real do grupo
         const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(jid)}`, {
           headers: { apikey: apiKey },
         });
@@ -205,13 +279,11 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
         const participants = info?.participants || [];
         const subject = info?.subject || info?.name || g.subject || g.name || "";
 
-        // Sem participantes = grupo inacessível
         if (!Array.isArray(participants) || participants.length === 0) {
           discarded.push(`${jid} (no participants in real-time info)`);
           continue;
         }
 
-        // Se temos ownerJid, exigir que esteja nos participantes
         if (hasOwner) {
           const found = participants.some((p: any) => {
             const pJid = typeof p === "string" ? p : (p.id || p.jid || "");
@@ -224,7 +296,6 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
           }
         }
 
-        // Grupo válido
         groups.push({
           jid,
           name: subject || "Sem nome",
@@ -460,6 +531,8 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
     const { workspaceId, userId, messageType, content, scheduleType, scheduledAt, cronExpression, intervalMinutes } = req.body;
     if (!workspaceId || !userId) return res.status(400).json({ error: "Missing fields" });
 
+    const nextRunAt = computeNextRunAt(scheduleType || "once", scheduledAt || null, cronExpression || null, intervalMinutes || null);
+
     const sb = getServiceClient();
     const { data, error } = await sb
       .from("group_scheduled_messages")
@@ -474,6 +547,7 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
         cron_expression: cronExpression || null,
         interval_minutes: intervalMinutes || null,
         is_active: true,
+        next_run_at: nextRunAt,
       })
       .select()
       .single();
@@ -495,6 +569,24 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
     if (scheduledAt !== undefined) update.scheduled_at = scheduledAt;
     if (cronExpression !== undefined) update.cron_expression = cronExpression;
     if (intervalMinutes !== undefined) update.interval_minutes = intervalMinutes;
+
+    // Recalculate next_run_at if schedule changed
+    if (scheduleType !== undefined || scheduledAt !== undefined || intervalMinutes !== undefined) {
+      // Need to get current values to merge
+      const sb2 = getServiceClient();
+      const { data: current } = await sb2
+        .from("group_scheduled_messages")
+        .select("schedule_type, scheduled_at, cron_expression, interval_minutes")
+        .eq("id", req.params.msgId)
+        .single();
+
+      const finalScheduleType = scheduleType ?? current?.schedule_type ?? "once";
+      const finalScheduledAt = scheduledAt ?? current?.scheduled_at ?? null;
+      const finalCron = cronExpression ?? current?.cron_expression ?? null;
+      const finalInterval = intervalMinutes ?? current?.interval_minutes ?? null;
+
+      update.next_run_at = computeNextRunAt(finalScheduleType, finalScheduledAt, finalCron, finalInterval);
+    }
 
     const sb = getServiceClient();
     const { data, error } = await sb
@@ -531,14 +623,22 @@ router.patch("/campaigns/:id/messages/:msgId/toggle", async (req: Request, res: 
     const sb = getServiceClient();
     const { data: msg, error: fErr } = await sb
       .from("group_scheduled_messages")
-      .select("is_active")
+      .select("is_active, schedule_type, scheduled_at, cron_expression, interval_minutes")
       .eq("id", req.params.msgId)
       .single();
     if (fErr || !msg) return res.status(404).json({ error: "Message not found" });
 
+    const newActive = !msg.is_active;
+    const updateData: any = { is_active: newActive };
+
+    // Recalculate next_run_at when activating
+    if (newActive) {
+      updateData.next_run_at = computeNextRunAt(msg.schedule_type, msg.scheduled_at, msg.cron_expression, msg.interval_minutes);
+    }
+
     const { data, error } = await sb
       .from("group_scheduled_messages")
-      .update({ is_active: !msg.is_active })
+      .update(updateData)
       .eq("id", req.params.msgId)
       .select()
       .single();
@@ -569,13 +669,25 @@ router.get("/queue-status", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /queue/process ─── */
+/* ─── POST /queue/process — agora chamado pelo cron automaticamente ─── */
 router.post("/queue/process", async (req: Request, res: Response) => {
   try {
     const { workspaceId } = req.body;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const sb = getServiceClient();
+
+    // Get spam config
+    const { data: spamConfig } = await sb
+      .from("group_queue_config")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+
+    const maxPerGroup = spamConfig?.max_messages_per_group ?? 3;
+    const perMinutes = spamConfig?.per_minutes ?? 60;
+    const delayMs = spamConfig?.delay_between_sends_ms ?? 3000;
+
     const { data: pending, error } = await sb
       .from("group_message_queue")
       .select("*")
@@ -583,16 +695,35 @@ router.post("/queue/process", async (req: Request, res: Response) => {
       .eq("status", "pending")
       .order("priority", { ascending: false })
       .order("created_at", { ascending: true })
-      .limit(10);
+      .limit(50);
 
     if (error) throw error;
-    if (!pending || pending.length === 0) return res.json({ processed: 0 });
+    if (!pending || pending.length === 0) return res.json({ processed: 0, sent: 0, failed: 0, skipped: 0 });
 
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
+
+    // Track sends per group in this window
+    const windowStart = new Date(Date.now() - perMinutes * 60000).toISOString();
 
     for (const item of pending) {
+      // Rate limit check: count recent sends to this group
+      const { count } = await sb
+        .from("group_message_queue")
+        .select("id", { count: "exact", head: true })
+        .eq("group_jid", item.group_jid)
+        .eq("workspace_id", workspaceId)
+        .eq("status", "sent")
+        .gte("completed_at", windowStart);
+
+      if ((count || 0) >= maxPerGroup) {
+        console.log(`[groups-queue] ⏸ Rate limit: ${item.group_jid} has ${count}/${maxPerGroup} sends in ${perMinutes}min window`);
+        skipped++;
+        continue;
+      }
+
       await sb.from("group_message_queue").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", item.id);
 
       try {
@@ -628,10 +759,11 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         failed++;
       }
 
-      await new Promise((r) => setTimeout(r, 2000));
+      // Delay between sends
+      await new Promise((r) => setTimeout(r, delayMs));
     }
 
-    res.json({ processed: pending.length, sent, failed });
+    res.json({ processed: sent + failed, sent, failed, skipped });
   } catch (err: any) {
     console.error("[groups-api] queue/process error:", err?.message || err?.details || JSON.stringify(err));
     res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
@@ -656,5 +788,68 @@ router.post("/queue/cancel-batch", async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+/* ─── Anti-Spam Config Endpoints ─── */
+router.get("/spam-config", async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.query.workspaceId as string;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("group_queue_config")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (error) throw error;
+
+    res.json(data || { max_messages_per_group: 3, per_minutes: 60, delay_between_sends_ms: 3000 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/spam-config", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, maxMessagesPerGroup, perMinutes, delayBetweenSendsMs } = req.body;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+    const { data: existing } = await sb
+      .from("group_queue_config")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+
+    const values: any = {};
+    if (maxMessagesPerGroup !== undefined) values.max_messages_per_group = maxMessagesPerGroup;
+    if (perMinutes !== undefined) values.per_minutes = perMinutes;
+    if (delayBetweenSendsMs !== undefined) values.delay_between_sends_ms = delayBetweenSendsMs;
+
+    if (existing) {
+      const { data, error } = await sb
+        .from("group_queue_config")
+        .update(values)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      res.json(data);
+    } else {
+      const { data, error } = await sb
+        .from("group_queue_config")
+        .insert({ workspace_id: workspaceId, ...values })
+        .select()
+        .single();
+      if (error) throw error;
+      res.json(data);
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ─── Exportar helpers para uso no cron ─── */
+export { computeNextRunAfterExecution, getEvolutionConfig };
 
 export default router;

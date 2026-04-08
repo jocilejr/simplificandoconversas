@@ -1511,6 +1511,44 @@ export type Database = {
           },
         ]
       }
+      group_queue_config: {
+        Row: {
+          created_at: string
+          delay_between_sends_ms: number
+          id: string
+          max_messages_per_group: number
+          per_minutes: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          delay_between_sends_ms?: number
+          id?: string
+          max_messages_per_group?: number
+          per_minutes?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          delay_between_sends_ms?: number
+          id?: string
+          max_messages_per_group?: number
+          per_minutes?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_queue_config_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_scheduled_messages: {
         Row: {
           campaign_id: string
