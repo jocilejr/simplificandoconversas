@@ -1,58 +1,76 @@
-
-
-# Aba de Relatório Financeiro na página de Transações
+# Aba "Taxas" nas Configurações
 
 ## Resumo
-Adicionar uma aba "Relatório" na página de Transações com um dashboard financeiro idêntico ao do projeto Finance Hub. A aba terá: stat cards por tipo de pagamento (gerado vs pago), cards de faturamento/imposto/líquido, gráfico de faturamento (area chart) e gráfico de distribuição por método (pie chart).
 
-## Estrutura
+Criar uma nova aba "Taxas" na página de Configurações para o usuário definir taxas por método de pagamento (boleto, PIX, cartão) e impostos. Cada taxa pode ser **fixa** (R$) ou **percentual** (%). O relatório financeiro usará esses valores para calcular o "Líquido".  
+  
+Essa taxa vai ser implementada dentro do WORKSPACE, não podendo transbordar para os outros workspaces
 
-A página `Transacoes.tsx` passará a ter duas abas de nível superior: **Transações** (conteúdo atual) e **Relatório** (novo dashboard financeiro).
+## Migração SQL
+
+Criar tabela `financial_settings`:
+
+```sql
+CREATE TABLE public.financial_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  
+  -- Taxas por método
+  boleto_fee_type text NOT NULL DEFAULT 'fixed',    -- 'fixed' ou 'percent'
+  boleto_fee_value numeric NOT NULL DEFAULT 0,
+  pix_fee_type text NOT NULL DEFAULT 'fixed',
+  pix_fee_value numeric NOT NULL DEFAULT 0,
+  cartao_fee_type text NOT NULL DEFAULT 'percent',
+  cartao_fee_value numeric NOT NULL DEFAULT 0,
+  
+  -- Impostos
+  tax_type text NOT NULL DEFAULT 'percent',          -- 'fixed' ou 'percent'
+  tax_value numeric NOT NULL DEFAULT 0,
+  tax_name text NOT NULL DEFAULT 'Imposto',
+  
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  
+  UNIQUE(workspace_id)
+);
+
+ALTER TABLE public.financial_settings ENABLE ROW LEVEL SECURITY;
+
+-- RLS padrão do workspace
+CREATE POLICY "ws_select" ON public.financial_settings FOR SELECT TO authenticated
+  USING (is_workspace_member(auth.uid(), workspace_id));
+CREATE POLICY "ws_insert" ON public.financial_settings FOR INSERT TO authenticated
+  WITH CHECK (can_write_workspace(auth.uid(), workspace_id));
+CREATE POLICY "ws_update" ON public.financial_settings FOR UPDATE TO authenticated
+  USING (can_write_workspace(auth.uid(), workspace_id));
+CREATE POLICY "ws_delete" ON public.financial_settings FOR DELETE TO authenticated
+  USING (has_workspace_role(auth.uid(), workspace_id, 'admin'));
+```
 
 ## Arquivos a criar
 
-### 1. `src/components/transactions/FinancialReport.tsx`
-Componente principal da aba Relatório, contendo:
-- **DateFilter** — filtro de período (Hoje, Ontem, 7 dias, 30 dias, Personalizado) idêntico ao Finance Hub
-- **Stat Cards (linha 1)** — PIX Gerado, Boleto Gerado, Cartão Gerado (variant info)
-- **Stat Cards (linha 2)** — PIX Pago, Boleto Pago, Cartão Pago (variant success) com taxa de conversão
-- **Stat Cards (linha 3)** — Faturamento, Líquido (sem imposto/ads por enquanto, simplificado)
-- **RevenueChart** — gráfico de área com faturamento por dia, separado por tipo (boleto/pix/cartão), com seletor de período (3D, 7D, 15D, 1M, 6M)
-- **PaymentMethodsChart** — gráfico de pizza com distribuição por método de pagamento
+### 1. `src/hooks/useFinancialSettings.ts`
 
-Usará os dados de `useTransactions` filtrados pelo período selecionado e fará queries adicionais para o RevenueChart (que precisa de dados de vários dias).
+Hook para buscar e salvar as configurações de taxas. Faz upsert na tabela `financial_settings` pelo `workspace_id`.
 
-Mapeamento de status do projeto atual:
-- `aprovado` = pago
-- `pendente` = gerado
-- `rejeitado` = rejeitado
+### 2. `src/components/settings/FeesSection.tsx`
 
-### 2. `src/components/transactions/RevenueChart.tsx`
-Gráfico de área (recharts) copiado/adaptado do Finance Hub, com cores para boleto/pix/cartão e seletor de período interno.
+Componente da aba "Taxas" com:
 
-### 3. `src/components/transactions/PaymentMethodsChart.tsx`
-Gráfico de pizza (recharts) copiado/adaptado do Finance Hub mostrando distribuição por tipo.
+- **3 blocos** (Boleto, PIX, Cartão): cada um com toggle "Fixa / Percentual" e input do valor
+- **1 bloco** de Impostos: toggle "Fixo / Percentual", input do valor, campo nome do imposto
+- Botão "Salvar"
 
-### 4. `src/components/transactions/DateFilter.tsx`
-Componente de filtro de datas com presets (Hoje, Ontem, 7 dias, 30 dias) + calendário personalizado.
+## Arquivos a modificar
 
-### 5. `src/components/transactions/FinancialStatCard.tsx`
-StatCard com variantes (success, info, warning) e animação, idêntico ao do Finance Hub.
+### `src/pages/SettingsPage.tsx`
 
-## Arquivo a modificar
+- Adicionar entrada `{ key: "fees", label: "Taxas", icon: Percent, minRole: "admin" }` no array `allSections`
+- Adicionar case `"fees"` no `renderContent()` retornando `<FeesSection />`
 
-### `src/pages/Transacoes.tsx`
-Adicionar Tabs de nível superior com duas abas:
-- **Transações** — conteúdo atual (`TransactionsTable`)
-- **Relatório** — novo componente `FinancialReport`
+### `src/components/transactions/FinancialReport.tsx`
 
-## Dados
-- O RevenueChart buscará transações dos últimos 6 meses (independente do filtro de data da tabela) para ter dados completos no gráfico
-- As stat cards usam as transações filtradas pelo DateFilter
-- Não incluirá GroupStats, MetaAds ou financial_settings (tabelas que não existem neste projeto)
-
-## Dependências
-- `recharts` — já instalado no projeto
-- `date-fns` — já disponível
-- Nenhuma migração de banco necessária
-
+- Buscar `financial_settings` do workspace
+- Calcular taxas e impostos sobre as transações aprovadas
+- Exibir o card "Líquido" como `Faturamento - taxas - impostos` (ao invés de exibir o mesmo valor do faturamento)
