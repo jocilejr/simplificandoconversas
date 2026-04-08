@@ -22,6 +22,8 @@ import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
+import followupDailyRouter from "./routes/followup-daily";
+import { processFollowUpDaily } from "./routes/followup-daily";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
 const app = express();
