@@ -395,7 +395,7 @@ export function IntegrationsSection() {
                   <div className="bg-muted rounded p-2 space-y-0.5">
                     <p className="text-[11px] font-mono"><span className="text-primary">event</span> — evento original da Yampi</p>
                     <p className="text-[11px] font-mono"><span className="text-primary">workspace_id</span> — UUID do workspace</p>
-                    <p className="text-[11px] font-mono"><span className="text-primary">user_id</span> — UUID do usuário</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">resource</span> — objeto original da Yampi (com CPF)</p>
                     <p className="text-[11px] font-mono"><span className="text-primary">resource</span> — objeto original da Yampi</p>
                   </div>
                 </div>
