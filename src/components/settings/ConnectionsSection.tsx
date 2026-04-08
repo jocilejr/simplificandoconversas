@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { useMessageQueueConfig } from "@/hooks/useMessageQueueConfig";
+import { useQueueStatus, type QueueStatus } from "@/hooks/useQueueStatus";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +40,9 @@ import {
   RotateCcw,
   MessageSquareX,
   Settings,
+  Inbox,
+  Pause,
+  Send,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
