@@ -45,6 +45,9 @@ app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
 app.use("/api/auto-recovery", autoRecoveryRouter);
 
+// Queue status (no auth — internal)
+app.get("/api/queue-status", (_, res) => res.json(getAllQueuesStatus()));
+
 // Health
 app.use("/api/health", healthDbRouter);
 app.get("/health", (_, res) => res.json({ ok: true }));
