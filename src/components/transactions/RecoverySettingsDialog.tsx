@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 
 interface RecoverySettingsDialogProps {
-  type: "boleto" | "pix";
+  type: "boleto" | "pix" | "abandoned";
 }
 
 const VARIABLES = [
