@@ -1,39 +1,39 @@
 
 
-# Fix: Recuperação automática para boletos gerados via API
+# Fix: Deduplicação de transações rejeitadas via API
 
-## Problema identificado
-O arquivo `deploy/backend/src/routes/platform-api.ts` cria transações de boleto via API externa (endpoint `/api/platform/generate-payment`) mas **nunca chama `dispatchRecovery()`** após salvar a transação. Por isso, boletos gerados por API não entram no sistema de recuperação automática.
+## Problema
+Quando a API retorna erro (ex: CPF inválido no Mercado Pago), o n8n re-envia a mesma requisição automaticamente. Cada tentativa salva uma nova transação "rejeitado" na tabela, causando duplicação (5 registros iguais na screenshot).
 
-O endpoint manual (`/api/payment/create` em `payment.ts`) chama `dispatchRecovery` na linha 354. A API externa não.
+O código na linha 1158 faz `insert` incondicional — não verifica se já existe uma transação rejeitada idêntica.
 
 ## Solução
 
-### Arquivo: `deploy/backend/src/routes/platform-api.ts`
+**Arquivo:** `deploy/backend/src/routes/platform-api.ts`
 
-Após a inserção da transação (linha ~1206), adicionar chamada ao `dispatchRecovery`:
-
-1. Importar `dispatchRecovery` no topo do arquivo
-2. Após `logApiRequest(userId, workspaceId, req, 200, ...)` e antes do `res.json(result)`, adicionar:
+No bloco de erro do Mercado Pago (linha ~1157), antes de inserir a transação rejeitada, verificar se já existe uma transação idêntica recente (mesmo cliente, valor, tipo, status rejeitado, nos últimos 5 minutos). Se existir, pular o insert.
 
 ```typescript
-// Auto-recovery: enqueue if pending and has phone
-if (tx?.id && customer_phone && (STATUS_MAP[mpData.status] || "pendente") === "pendente") {
-  try {
-    await dispatchRecovery({
-      workspaceId,
-      userId,
-      transactionId: tx.id,
-      customerPhone: customer_phone,
-      customerName: customer_name || null,
-      amount: Number(amount),
-      transactionType: paymentType === "boleto" ? "boleto" : "pix",
-    });
-  } catch (enqErr: any) {
-    console.error("[platform/generate-payment] Recovery enqueue error:", enqErr.message);
-  }
+// Antes de inserir transação rejeitada, checar duplicata recente
+const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+const { data: existing } = await sb
+  .from("transactions")
+  .select("id")
+  .eq("workspace_id", workspaceId)
+  .eq("customer_phone", customer_phone || "")
+  .eq("amount", Number(amount))
+  .eq("type", paymentType)
+  .eq("status", "rejeitado")
+  .gte("created_at", fiveMinAgo)
+  .limit(1)
+  .maybeSingle();
+
+if (!existing) {
+  await sb.from("transactions").insert({
+    // ... campos existentes
+  });
 }
 ```
 
-Isso garante que qualquer boleto ou PIX criado via API externa também entre na fila de recuperação automática, igual ao fluxo manual.
+Isso impede que retries automáticos do n8n criem múltiplas transações rejeitadas idênticas, sem alterar o fluxo normal.
 
