@@ -327,28 +327,42 @@ export async function dispatchRecovery(opts: {
       return;
     }
   } else {
-    // PIX/Cartão or Rejected/Abandoned: load single text message from profiles
+    // PIX/Cartão or Rejected/Abandoned: load single text message from profiles — NO FALLBACK
     const fieldKey = (txType === "yampi_cart" || txType === "yampi")
       ? "recovery_message_abandoned"
       : "recovery_message_pix";
 
-    const { data: profile } = await sb
+    const { data: profile, error: profileError } = await sb
       .from("profiles")
       .select("recovery_message_pix, recovery_message_abandoned")
       .eq("user_id", opts.userId)
       .maybeSingle();
 
-    const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
-    const DEFAULT_ABANDONED_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?\n\nSe já resolveu, pode desconsiderar! 🙏`;
+    if (profileError) {
+      console.error(`[recovery-dispatch] Profile query error for user ${opts.userId}: ${profileError.message}`);
+    }
 
-    const defaultMsg = fieldKey === "recovery_message_pix" ? DEFAULT_PIX_MSG : DEFAULT_ABANDONED_MSG;
-    const message = (profile as any)?.[fieldKey] || defaultMsg;
+    const message = (profile as any)?.[fieldKey];
+    console.log(`[recovery-dispatch] Profile loaded for user ${opts.userId}: field=${fieldKey}, hasMessage=${!!message}, messageLength=${message?.length || 0}`);
+
+    if (!message || !message.trim()) {
+      console.log(`[recovery-dispatch] FAIL — No ${fieldKey} message configured for user ${opts.userId}. Configure via modal.`);
+      await sb.from("recovery_queue").insert({
+        workspace_id: opts.workspaceId,
+        user_id: opts.userId,
+        transaction_id: opts.transactionId,
+        customer_phone: normalizedPhone,
+        customer_name: opts.customerName || null,
+        amount: opts.amount,
+        transaction_type: txType,
+        status: "failed",
+        error_message: `Nenhuma mensagem de recuperação configurada para ${fieldKey}. Configure no modal de configuração.`,
+        scheduled_at: new Date().toISOString(),
+      });
+      return;
+    }
 
     blocks = [{ id: "profile-text", type: "text", content: message }];
-
-    if (!message || message === defaultMsg) {
-      console.log(`[recovery-dispatch] Using default ${fieldKey} message (no custom message configured)`);
-    }
   }
 
   console.log(`[recovery-dispatch] Default template loaded: ${blocks.length} block(s) [${blocks.map(b => b.type).join(", ")}]`);
