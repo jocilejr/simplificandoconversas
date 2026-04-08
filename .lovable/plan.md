@@ -1,56 +1,29 @@
 
 
-# Implementar a lógica de pausa (cooldown) na fila de mensagens
+# Corrigir: primeira mensagem deve aguardar o delay
 
 ## Problema
-A `MessageQueue` só implementa delay entre mensagens (`delayMs`). As colunas `pause_after_sends` e `pause_minutes` existem na tabela `message_queue_config` e são configuráveis na UI, mas o backend **nunca lê nem aplica** essas regras. Resultado: a fila não respeita o cooldown configurado.
+Na `processNext()` (linha 64-91), o delay acontece **depois** do envio. Isso significa que a primeira mensagem é enviada imediatamente, sem respeitar o delay configurado. O delay só se aplica entre a 1a e a 2a mensagem.
 
 ## Solução
+Mover o delay para **antes** do envio na `processNext()`. Assim toda mensagem — incluindo a primeira — aguarda o delay configurado antes de ser enviada.
 
-### 1. `deploy/backend/src/lib/message-queue.ts` — Adicionar cooldown à classe
+### Arquivo: `deploy/backend/src/lib/message-queue.ts`
 
-Adicionar ao `MessageQueue`:
-- `pauseAfterSends: number | null` — após N envios, pausar
-- `pauseMinutes: number | null` — pausar por M minutos
-- `sendCount: number` — contador de envios desde último cooldown
-
-Na `processNext()`:
-```text
-1. Enviar mensagem
-2. Incrementar sendCount
-3. Se pauseAfterSends > 0 E sendCount >= pauseAfterSends:
-   → Esperar pauseMinutes * 60 * 1000 ms
-   → Resetar sendCount = 0
-4. Senão: esperar delayMs normal
-```
-
-Atualizar `getMessageQueue()` para aceitar e propagar `pauseAfterSends` e `pauseMinutes`.
-
-Adicionar método `setCooldown(pauseAfterSends, pauseMinutes)` similar ao `setDelay()`.
-
-### 2. `deploy/backend/src/lib/recovery-dispatch.ts` — Ler cooldown do banco
-
-No passo 8 (onde já lê `delay_seconds`), também ler `pause_after_sends` e `pause_minutes`:
+Reordenar a lógica de `processNext()`:
 
 ```text
-const { data: queueConfig } = await sb
-  .from("message_queue_config")
-  .select("delay_seconds, pause_after_sends, pause_minutes")
-  .eq("workspace_id", opts.workspaceId)
-  .eq("instance_name", instanceName)
-  .maybeSingle();
+1. Pegar item da fila
+2. AGUARDAR delay (ou cooldown se atingiu o limite)
+3. Só então executar o envio
+4. Incrementar sendCount
+5. Processar próximo
 ```
 
-Passar esses valores ao `getMessageQueue()`.
-
-### 3. `deploy/backend/src/routes/execute-flow.ts` — Ler cooldown para fluxos
-
-Na inicialização da queue (linha ~260), também ler `pause_after_sends` e `pause_minutes` do `message_queue_config` e passar ao `getMessageQueue()`.
-
-## Arquivos alterados
-1. **`deploy/backend/src/lib/message-queue.ts`** — cooldown logic na classe + API atualizada
-2. **`deploy/backend/src/lib/recovery-dispatch.ts`** — ler e passar cooldown params
-3. **`deploy/backend/src/routes/execute-flow.ts`** — ler e passar cooldown params
+Mudança concreta na função `processNext()`:
+- Mover o bloco de `await new Promise(setTimeout)` para **antes** do `await item.fn()`
+- Manter o check de cooldown antes do delay normal
+- Log indicando "waiting Xms before sending..."
 
 ## Deploy
 ```bash
