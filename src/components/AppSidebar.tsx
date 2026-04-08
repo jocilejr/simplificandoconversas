@@ -26,6 +26,7 @@ import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useWorkspace, PermissionKey } from "@/hooks/useWorkspace";
+import { useUnseenTransactions } from "@/hooks/useUnseenTransactions";
 import {
   Sidebar,
   SidebarContent,
