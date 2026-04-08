@@ -206,7 +206,8 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
             ) : remoteGroups.length === 0 ? (
               <div className="border border-border/50 rounded-md p-6 text-center bg-background/30">
                 <Users className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">Nenhum grupo encontrado nesta instância.</p>
+                <p className="text-xs text-muted-foreground">Nenhum grupo ativo encontrado nesta instância.</p>
+                <p className="text-[10px] text-muted-foreground/70 mt-1">Apenas grupos onde você participa ativamente são listados. Verifique se a instância está conectada.</p>
               </div>
             ) : (
               <>
