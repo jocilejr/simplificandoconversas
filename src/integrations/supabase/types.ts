@@ -1338,6 +1338,289 @@ export type Database = {
           },
         ]
       }
+      group_campaigns: {
+        Row: {
+          created_at: string
+          description: string | null
+          group_jids: string[]
+          id: string
+          instance_name: string
+          is_active: boolean
+          name: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          group_jids?: string[]
+          id?: string
+          instance_name: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          group_jids?: string[]
+          id?: string
+          instance_name?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_campaigns_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_message_queue: {
+        Row: {
+          campaign_id: string | null
+          completed_at: string | null
+          content: Json
+          created_at: string
+          error_message: string | null
+          execution_batch: string | null
+          group_jid: string
+          group_name: string
+          id: string
+          instance_name: string
+          message_type: string
+          priority: number
+          scheduled_message_id: string | null
+          started_at: string | null
+          status: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          completed_at?: string | null
+          content?: Json
+          created_at?: string
+          error_message?: string | null
+          execution_batch?: string | null
+          group_jid: string
+          group_name?: string
+          id?: string
+          instance_name: string
+          message_type?: string
+          priority?: number
+          scheduled_message_id?: string | null
+          started_at?: string | null
+          status?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          completed_at?: string | null
+          content?: Json
+          created_at?: string
+          error_message?: string | null
+          execution_batch?: string | null
+          group_jid?: string
+          group_name?: string
+          id?: string
+          instance_name?: string
+          message_type?: string
+          priority?: number
+          scheduled_message_id?: string | null
+          started_at?: string | null
+          status?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_message_queue_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_message_queue_scheduled_message_id_fkey"
+            columns: ["scheduled_message_id"]
+            isOneToOne: false
+            referencedRelation: "group_scheduled_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_message_queue_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_participant_events: {
+        Row: {
+          action: string
+          created_at: string
+          group_jid: string
+          group_name: string
+          id: string
+          instance_name: string
+          participant_jid: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          group_jid: string
+          group_name?: string
+          id?: string
+          instance_name: string
+          participant_jid: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          group_jid?: string
+          group_name?: string
+          id?: string
+          instance_name?: string
+          participant_jid?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_participant_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_scheduled_messages: {
+        Row: {
+          campaign_id: string
+          content: Json
+          created_at: string
+          cron_expression: string | null
+          id: string
+          interval_minutes: number | null
+          is_active: boolean
+          last_run_at: string | null
+          message_type: string
+          next_run_at: string | null
+          schedule_type: string
+          scheduled_at: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id: string
+          content?: Json
+          created_at?: string
+          cron_expression?: string | null
+          id?: string
+          interval_minutes?: number | null
+          is_active?: boolean
+          last_run_at?: string | null
+          message_type?: string
+          next_run_at?: string | null
+          schedule_type?: string
+          scheduled_at?: string | null
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string
+          content?: Json
+          created_at?: string
+          cron_expression?: string | null
+          id?: string
+          interval_minutes?: number | null
+          is_active?: boolean
+          last_run_at?: string | null
+          message_type?: string
+          next_run_at?: string | null
+          schedule_type?: string
+          scheduled_at?: string | null
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_scheduled_messages_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_scheduled_messages_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_selected: {
+        Row: {
+          created_at: string
+          group_jid: string
+          group_name: string
+          id: string
+          instance_name: string
+          member_count: number
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_jid: string
+          group_name?: string
+          id?: string
+          instance_name: string
+          member_count?: number
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          group_jid?: string
+          group_name?: string
+          id?: string
+          instance_name?: string
+          member_count?: number
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_selected_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           color: string
