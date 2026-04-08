@@ -25,7 +25,6 @@ export function useGroupCampaigns() {
       description?: string;
       instanceName: string;
       groupJids: string[];
-      messages?: any[];
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
