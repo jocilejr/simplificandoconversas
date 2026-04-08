@@ -257,8 +257,23 @@ router.post("/", async (req, res) => {
       messageDelayMs = instData?.message_delay_ms || 2000;
     }
 
-    // Initialize queue with configured delay
-    getMessageQueue(instanceName, messageDelayMs);
+    // Initialize queue with configured delay + cooldown from message_queue_config
+    let flowPauseAfterSends: number | null = null;
+    let flowPauseMinutes: number | null = null;
+    try {
+      const { data: mqc } = await serviceClient
+        .from("message_queue_config")
+        .select("delay_seconds, pause_after_sends, pause_minutes")
+        .eq("workspace_id", workspaceId)
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+      if (mqc) {
+        if (mqc.delay_seconds) messageDelayMs = mqc.delay_seconds * 1000;
+        flowPauseAfterSends = mqc.pause_after_sends ?? null;
+        flowPauseMinutes = mqc.pause_minutes ?? null;
+      }
+    } catch (_) {}
+    getMessageQueue(instanceName, messageDelayMs, flowPauseAfterSends, flowPauseMinutes);
 
     const [flowResult, profileResult, activeExecsResult] = await Promise.all([
       serviceClient.from("chatbot_flows").select("*").eq("id", flowId).eq("user_id", userId).single(),
