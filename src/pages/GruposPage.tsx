@@ -1,7 +1,6 @@
 import { UsersRound } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import GroupDashboardTab from "@/components/grupos/GroupDashboardTab";
-import GroupSelectorTab from "@/components/grupos/GroupSelectorTab";
 import GroupCampaignsTab from "@/components/grupos/GroupCampaignsTab";
 import GroupQueueTab from "@/components/grupos/GroupQueueTab";
 
@@ -22,16 +21,12 @@ const GruposPage = () => (
     <Tabs defaultValue="overview" className="w-full">
       <TabsList className="bg-muted/50">
         <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-        <TabsTrigger value="selection">Seleção</TabsTrigger>
         <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
         <TabsTrigger value="queue">Fila</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="mt-4">
         <GroupDashboardTab />
-      </TabsContent>
-      <TabsContent value="selection" className="mt-4">
-        <GroupSelectorTab />
       </TabsContent>
       <TabsContent value="campaigns" className="mt-4">
         <GroupCampaignsTab />

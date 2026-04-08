@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Megaphone, Radio, Users } from "lucide-react";
+import { Megaphone, Radio, Users, Loader2, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
-import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { apiUrl } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+
+interface RemoteGroup {
+  jid: string;
+  name: string;
+  memberCount: number;
+}
 
 interface Props {
   open: boolean;
@@ -21,13 +29,18 @@ interface Props {
 
 export default function GroupCampaignDialog({ open, onOpenChange, editData }: Props) {
   const { instances } = useWhatsAppInstances();
-  const { selectedGroups } = useGroupSelected();
   const { createCampaign, updateCampaign } = useGroupCampaigns();
+  const { workspaceId } = useWorkspace();
+  const { toast } = useToast();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [instanceName, setInstanceName] = useState("");
   const [groupJids, setGroupJids] = useState<Set<string>>(new Set());
+
+  const [remoteGroups, setRemoteGroups] = useState<RemoteGroup[]>([]);
+  const [fetchingGroups, setFetchingGroups] = useState(false);
+  const [searchFilter, setSearchFilter] = useState("");
 
   useEffect(() => {
     if (editData) {
@@ -41,7 +54,48 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
       setInstanceName("");
       setGroupJids(new Set());
     }
+    setRemoteGroups([]);
+    setSearchFilter("");
   }, [editData, open]);
+
+  // Auto-fetch groups when instance changes
+  useEffect(() => {
+    if (!instanceName || !workspaceId) {
+      setRemoteGroups([]);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchGroups = async () => {
+      setFetchingGroups(true);
+      try {
+        const resp = await fetch(apiUrl("groups/fetch-groups"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instanceName, workspaceId }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const groups: RemoteGroup[] = await resp.json();
+        if (!cancelled) {
+          setRemoteGroups(groups);
+          // If editing, keep existing selections; if new, auto-select none
+          if (!editData) {
+            setGroupJids(new Set());
+          }
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          toast({ title: "Erro ao buscar grupos", description: err.message, variant: "destructive" });
+          setRemoteGroups([]);
+        }
+      } finally {
+        if (!cancelled) setFetchingGroups(false);
+      }
+    };
+
+    fetchGroups();
+    return () => { cancelled = true; };
+  }, [instanceName, workspaceId]);
 
   const toggleGroup = (jid: string) => {
     setGroupJids((prev) => {
@@ -52,8 +106,12 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
     });
   };
 
-  const selectAll = () => setGroupJids(new Set(selectedGroups.map(g => g.group_jid)));
+  const selectAll = () => setGroupJids(new Set(filteredGroups.map(g => g.jid)));
   const deselectAll = () => setGroupJids(new Set());
+
+  const filteredGroups = remoteGroups.filter(g =>
+    !searchFilter || g.name.toLowerCase().includes(searchFilter.toLowerCase())
+  );
 
   const handleSave = async () => {
     if (!name || !instanceName) return;
@@ -77,7 +135,7 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
             {editData ? "Editar Campanha" : "Nova Campanha"}
           </DialogTitle>
           <DialogDescription>
-            Configure os detalhes da campanha e selecione os grupos-alvo.
+            Selecione a instância para carregar os grupos automaticamente.
           </DialogDescription>
         </DialogHeader>
 
@@ -127,24 +185,58 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
                 Grupos-alvo
                 <Badge variant="secondary" className="text-[10px] h-5">{groupJids.size}</Badge>
               </Label>
-              <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={selectAll}>Todos</Button>
-                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={deselectAll}>Nenhum</Button>
-              </div>
-            </div>
-            <div className="max-h-[180px] overflow-y-auto border border-border/50 rounded-md p-1.5 space-y-0.5 bg-background/30">
-              {selectedGroups.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">Adicione grupos na aba "Seleção" primeiro.</p>
-              ) : (
-                selectedGroups.map((g) => (
-                  <div key={g.group_jid} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => toggleGroup(g.group_jid)}>
-                    <Checkbox checked={groupJids.has(g.group_jid)} onCheckedChange={() => toggleGroup(g.group_jid)} />
-                    <span className="text-sm flex-1 truncate">{g.group_name}</span>
-                    <span className="text-[10px] text-muted-foreground">{g.member_count}</span>
-                  </div>
-                ))
+              {remoteGroups.length > 0 && (
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={selectAll}>Todos</Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={deselectAll}>Nenhum</Button>
+                </div>
               )}
             </div>
+
+            {!instanceName ? (
+              <div className="border border-border/50 rounded-md p-6 text-center bg-background/30">
+                <Radio className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">Selecione uma instância para carregar os grupos.</p>
+              </div>
+            ) : fetchingGroups ? (
+              <div className="border border-border/50 rounded-md p-6 text-center bg-background/30">
+                <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">Buscando grupos da instância...</p>
+              </div>
+            ) : remoteGroups.length === 0 ? (
+              <div className="border border-border/50 rounded-md p-6 text-center bg-background/30">
+                <Users className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">Nenhum grupo encontrado nesta instância.</p>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    placeholder="Filtrar grupos..."
+                    className="pl-8 h-8 text-xs bg-background/50 border-border/50"
+                  />
+                </div>
+                <div className="max-h-[220px] overflow-y-auto border border-border/50 rounded-md p-1.5 space-y-0.5 bg-background/30">
+                  {filteredGroups.map((g) => (
+                    <div
+                      key={g.jid}
+                      className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => toggleGroup(g.jid)}
+                    >
+                      <Checkbox checked={groupJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} />
+                      <span className="text-sm flex-1 truncate">{g.name}</span>
+                      <Badge variant="outline" className="text-[10px] shrink-0">{g.memberCount}</Badge>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground text-right">
+                  {filteredGroups.length} grupo(s) · {groupJids.size} selecionado(s)
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
