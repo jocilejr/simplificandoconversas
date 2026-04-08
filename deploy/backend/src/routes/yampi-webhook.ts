@@ -223,7 +223,7 @@ router.post("/", async (req, res) => {
       const customer = extractCustomer(cart.customer);
       const totalizers = cart.totalizers || {};
       const amount = Number(totalizers.total || 0);
-      const cartId = String(cart.id || "");
+      const cartId = String(cart.id || randomUUID());
       const externalId = `yampi_cart_${cartId}`;
 
       // Dedup
