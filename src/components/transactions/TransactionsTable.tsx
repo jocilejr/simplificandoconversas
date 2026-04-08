@@ -113,7 +113,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
   const [quickRecoveryTx, setQuickRecoveryTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
-
+  const { hasUnseen, markSeen } = useUnseenTransactions();
   // Recovery hooks
   const { profile } = useProfile();
   const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
