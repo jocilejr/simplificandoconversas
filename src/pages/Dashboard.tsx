@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { AlertTriangle, MessageSquare, Bot, Clock, CalendarIcon, Send, Download, Zap } from "lucide-react";
+import { AlertTriangle, MessageSquare, Bot, Clock, CalendarIcon, Send, Download, Zap, Percent, Receipt } from "lucide-react";
 import { format, formatDistanceToNow, isToday, isPast, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useDashboardStats, type PeriodFilter } from "@/hooks/useDashboardStats";
 import { useProfile } from "@/hooks/useProfile";
+import { useFinancialSettings } from "@/hooks/useFinancialSettings";
 import { cn } from "@/lib/utils";
 
 const periodLabels: { value: PeriodFilter; label: string }[] = [
@@ -28,6 +29,7 @@ const Dashboard = () => {
   const [tempTo, setTempTo] = useState<Date | undefined>();
 
   const { profile } = useProfile();
+  const { settings: feeSettings, isLoading: feesLoading } = useFinancialSettings();
   const stats = useDashboardStats(period, customRange);
 
   const firstName = profile?.full_name?.split(" ")[0] || "";
@@ -185,6 +187,54 @@ const Dashboard = () => {
           </>
         )}
       </div>
+
+      {/* Fees & Taxes Card */}
+      <Card className="rounded-xl border-border">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-primary" />
+            Taxas e Impostos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {feesLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-6 w-full" />
+              ))}
+            </div>
+          ) : !feeSettings ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Nenhuma taxa configurada. Acesse Configurações → Taxas para definir.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {[
+                { label: "Boleto", type: feeSettings.boleto_fee_type, value: feeSettings.boleto_fee_value },
+                { label: "PIX", type: feeSettings.pix_fee_type, value: feeSettings.pix_fee_value },
+                { label: "Cartão", type: feeSettings.cartao_fee_type, value: feeSettings.cartao_fee_value },
+              ].map((fee) => (
+                <div key={fee.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                  <span className="text-sm font-medium">{fee.label}</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {fee.type === "percent"
+                      ? `${fee.value}%`
+                      : `R$ ${fee.value.toFixed(2)}`}
+                  </Badge>
+                </div>
+              ))}
+              <div className="flex items-center justify-between py-1.5 border-t border-border">
+                <span className="text-sm font-medium">{feeSettings.tax_name}</span>
+                <Badge variant="outline" className="text-xs">
+                  {feeSettings.tax_type === "percent"
+                    ? `${feeSettings.tax_value}%`
+                    : `R$ ${feeSettings.tax_value.toFixed(2)}`}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Bottom Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
