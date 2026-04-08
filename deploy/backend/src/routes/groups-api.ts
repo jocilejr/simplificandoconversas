@@ -77,7 +77,7 @@ async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: st
       headers: { apikey: apiKey },
     });
     if (resp.ok) {
-      const data = await resp.json();
+      const data: any = await resp.json();
       const num = data?.instance?.owner || data?.number || data?.wuid || "";
       if (num) {
         console.log("[groups-api] ownerJid via connect:", num);
