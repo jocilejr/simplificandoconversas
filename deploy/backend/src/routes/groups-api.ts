@@ -450,8 +450,8 @@ router.post("/queue/process", async (req: Request, res: Response) => {
 
     res.json({ processed: pending.length, sent, failed });
   } catch (err: any) {
-    console.error("[groups-api] queue/process error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] queue/process error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
