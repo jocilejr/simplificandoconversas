@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { MessageSquare, Copy, Send, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Transaction } from "@/hooks/useTransactions";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 interface RecoveryPopoverProps {
   transaction: Transaction;
