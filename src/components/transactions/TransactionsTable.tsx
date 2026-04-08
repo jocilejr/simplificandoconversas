@@ -37,6 +37,7 @@ import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
 import { BoletoQuickRecovery } from "./BoletoQuickRecovery";
 import { AutoRecoveryToggle } from "./AutoRecoveryConfig";
 import { normalizePhone } from "@/lib/normalizePhone";
+import { useUnseenTransactions } from "@/hooks/useUnseenTransactions";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
