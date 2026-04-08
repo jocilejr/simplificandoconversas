@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { AlertTriangle, MessageSquare, Bot, Clock, CalendarIcon, Send, Download, Zap } from "lucide-react";
+import { AlertTriangle, MessageSquare, Bot, Clock, CalendarIcon, Send, Download, Zap, Percent, Receipt } from "lucide-react";
 import { format, formatDistanceToNow, isToday, isPast, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useDashboardStats, type PeriodFilter } from "@/hooks/useDashboardStats";
 import { useProfile } from "@/hooks/useProfile";
+import { useFinancialSettings } from "@/hooks/useFinancialSettings";
 import { cn } from "@/lib/utils";
 
 const periodLabels: { value: PeriodFilter; label: string }[] = [
