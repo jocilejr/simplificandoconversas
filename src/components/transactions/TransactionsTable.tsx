@@ -400,8 +400,8 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
             <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
             </TabsTrigger>
-            <TabsTrigger value="yampi-abandonados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
-              Carrinhos ({tabTransactions["yampi-abandonados"].length})
+            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              Rejeitados ({tabTransactions.rejeitados.length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
