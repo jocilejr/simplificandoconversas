@@ -1,70 +1,59 @@
 
+# Reestruturar Campanhas — Separar Criação de Programação
 
-# Aprimorar Grupos WhatsApp — Layout profissional + padroes do whats-grupos
+## Conceito
 
-## Analise da referencia
+O GroupCampaignDialog deve conter APENAS: Nome, Descrição, Instância, Grupos-alvo (sem editor de mensagens).
+O botão "Programação" no card da campanha abre um modal dedicado (GroupMessagesDialog) com abas por tipo de agendamento.
+Dentro dele, um form (GroupScheduledMessageForm) para criar/editar mensagens individualmente.
 
-O projeto `whats-grupos` utiliza:
-- **Cards de campanha com gradiente no topo** e glow animado quando ativa
-- **Sub-dialogos separados**: CampaignDialog (CRUD), CampaignMessagesDialog (mensagens agendadas com abas por tipo: Unico/Diario/Semanal/Mensal/Avancado), CampaignLeadsDialog (smart links + stats por grupo)
-- **Switch inline** para ativar/desativar campanha no card
-- **Badges com icones** (Zap/ZapOff para status, Radio para instancia)
-- **Stats integrados no card**: contagem de grupos e mensagens
-- **Acoes em botoes separados**: Editar, Mensagens, Leads, Excluir
-- **Filtro por dia da semana** nas mensagens semanais
-- **Tipos de mensagem expandidos**: texto, imagem, video, audio, sticker, localizacao, contato, enquete, lista
-- **AlertDialog para confirmacao de exclusao**
+## Arquivos
 
-## Mudancas planejadas
+### 1. `src/components/grupos/GroupCampaignDialog.tsx` — Simplificar
+- Remover import e uso de `GroupMessageEditor`
+- Remover state `messages` e a seção de mensagens
+- Manter apenas: Nome, Instância, Descrição, Grupos-alvo
 
-### 1. `src/pages/GruposPage.tsx` — Header sofisticado + nomes menores
-- Titulo: "Grupos" (sem "WhatsApp")
-- Subtitulo discreto: "Gerencie campanhas e monitore seus grupos"
-- Nomes das abas mais curtos: "Visao Geral", "Selecao", "Campanhas", "Fila"
+### 2. `src/components/grupos/GroupCampaignsTab.tsx` — Adicionar botão "Programação"
+- Importar `CalendarClock` e `GroupMessagesDialog`
+- Adicionar state `messagesDialogCampaign`
+- No card, adicionar botão com ícone CalendarClock e tooltip "Programação"
+- Renderizar `GroupMessagesDialog` passando a campanha selecionada
 
-### 2. `src/components/grupos/GroupDashboardTab.tsx` — Layout profissional
-- Usar `StatCard` pattern do projeto (icone em bg-muted + rounded-lg)
-- Secoes com titulos menores e separadores
-- Tabela de grupos com layout mais compacto
-- Eventos com icones de cor no fundo, nao soltos
+### 3. CRIAR `src/components/grupos/GroupMessagesDialog.tsx`
+Modal com abas: Único, Diário, Semanal, Mensal, Avançado
+- Usa `useGroupScheduledMessages(campaign.id)`
+- Cada aba filtra mensagens por `schedule_type` (once/daily/weekly/monthly/custom)
+- Cada aba tem header com descrição + botão "Adicionar Mensagem"
+- Aba Semanal tem filtro por dia da semana (Dom-Sáb)
+- Lista de mensagens com: ícone do tipo, preview do conteúdo, horário, Switch ativo/inativo, botões Editar/Excluir
+- Ao clicar Adicionar/Editar, abre GroupScheduledMessageForm
 
-### 3. `src/components/grupos/GroupCampaignsTab.tsx` — Estilo da referencia
-- Cards de campanha com gradiente no topo (2px) usando cor primaria
-- Glow sutil quando campanha ativa
-- Switch inline para toggle ativo/inativo
-- Badge com icone Zap/ZapOff
-- Stats inline (grupos, mensagens)
-- Botoes de acao separados: "Editar", "Mensagens", "Excluir"
-- Badge com nome da instancia + icone Radio
-- AlertDialog para confirmacao de exclusao
-- Botao "Nova Campanha" com gradiente primario + shadow glow
+### 4. CRIAR `src/components/grupos/GroupScheduledMessageForm.tsx`
+Form completo baseado no ScheduledMessageForm do whats-grupos:
+- Grid de tipos: Texto, Imagem, Vídeo, Áudio, Documento, Figurinha, Localização, Contato, Enquete, Lista
+- Campos dinâmicos por tipo
+- Seção de agendamento por scheduleType:
+  - Único: Calendário + hora
+  - Diário: Apenas hora
+  - Semanal: Seletor de dias (Dom-Sáb) + hora
+  - Mensal: Dia do mês + hora
+  - Avançado: Dias personalizados + hora
+- Opções: mentionAll, linkPreview
+- Calcula next_run_at (timezone BRT)
+- Salva via useGroupScheduledMessages
 
-### 4. `src/components/grupos/GroupCampaignDialog.tsx` — Profissional
-- DialogDescription adicionado
-- Inputs com `bg-background/50 border-border/50 focus:border-primary/50`
-- Icones nos labels (Megaphone, Radio, Users)
-- Layout mais respirado
+### 5. CRIAR `src/hooks/useGroupScheduledMessages.ts`
+- Query: GET /campaigns/:id/messages
+- Mutations: create, update, delete, toggle
 
-### 5. `src/components/grupos/GroupSelectorTab.tsx` — Polido
-- Remover emoji de status (proibido pelo design system)
-- Badge com cor para status (open = verde, closed = vermelho)
-- Headers de secao mais compactos
+### 6. REMOVER `src/components/grupos/GroupMessageEditor.tsx`
 
-### 6. `src/components/grupos/GroupQueueTab.tsx` — Polido
-- Stats usando o pattern `StatCard` com icone em bg
-- Tabela mais profissional com separadores
-- Botoes com estilo consistente
+### 7. Backend `deploy/backend/src/routes/groups-api.ts` — Novas rotas
+- GET /campaigns/:id/messages
+- POST /campaigns/:id/messages
+- PUT /campaigns/:id/messages/:msgId
+- DELETE /campaigns/:id/messages/:msgId
+- PATCH /campaigns/:id/messages/:msgId/toggle
 
-### 7. `src/components/grupos/GroupMessageEditor.tsx` — Tipos expandidos
-- Adicionar tipos: audio, sticker, localizacao, contato, enquete, lista (para paridade com referencia)
-- Ou manter simplificado mas com visual melhorado
-
-## Arquivos alterados
-1. `src/pages/GruposPage.tsx`
-2. `src/components/grupos/GroupDashboardTab.tsx`
-3. `src/components/grupos/GroupCampaignsTab.tsx`
-4. `src/components/grupos/GroupCampaignDialog.tsx`
-5. `src/components/grupos/GroupSelectorTab.tsx`
-6. `src/components/grupos/GroupQueueTab.tsx`
-7. `src/components/grupos/GroupMessageEditor.tsx`
-
+### 8. `src/hooks/useGroupCampaigns.ts` — Remover `messages` do payload de createCampaign
