@@ -38,7 +38,7 @@ export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
       enabled,
       instance_name: instanceName || null,
       send_at_hour: sendAtHour,
-    } as any, {
+    }, {
       onSuccess: () => {
         toast.success("Configurações salvas!");
         onOpenChange(false);

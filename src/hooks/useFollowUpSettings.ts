@@ -13,11 +13,11 @@ export function useFollowUpSettings() {
     queryFn: async () => {
       if (!workspaceId) return null;
       const { data } = await supabase
-        .from("followup_settings" as any)
+        .from("followup_settings")
         .select("*")
         .eq("workspace_id", workspaceId)
         .maybeSingle();
-      return data as any;
+      return data;
     },
     enabled: !!workspaceId,
   });
@@ -31,27 +31,18 @@ export function useFollowUpSettings() {
     }) => {
       if (!workspaceId || !user?.id) throw new Error("No workspace");
 
-      const payload = {
-        ...values,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (settings?.id) {
-        const { error } = await supabase
-          .from("followup_settings" as any)
-          .update(payload)
-          .eq("id", settings.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("followup_settings" as any)
-          .insert({
+      const { error } = await supabase
+        .from("followup_settings")
+        .upsert(
+          {
             workspace_id: workspaceId,
             user_id: user.id,
-            ...payload,
-          });
-        if (error) throw error;
-      }
+            updated_at: new Date().toISOString(),
+            ...values,
+          },
+          { onConflict: "workspace_id" }
+        );
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["followup-settings", workspaceId] });
