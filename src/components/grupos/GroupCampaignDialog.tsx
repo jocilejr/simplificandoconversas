@@ -79,7 +79,6 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
         if (!cancelled) {
           setRemoteGroups(groups);
           setGroupJids(new Set());
-          }
         }
       } catch (err: any) {
         if (!cancelled) {
