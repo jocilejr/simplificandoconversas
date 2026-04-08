@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { getServiceClient } from "../lib/supabase";
 import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
@@ -9,13 +10,13 @@ const router = Router();
  * Yampi Webhook Handler (via n8n)
  *
  * O n8n recebe os eventos da Yampi e repassa para esta rota
- * com workspace_id e user_id já definidos no body.
+ * com workspace_id já definido no body. O user_id é derivado
+ * automaticamente do workspace (created_by).
  *
  * Payload esperado:
  * {
  *   "event": "order.paid" | "transaction.payment.refused" | "cart.reminder",
  *   "workspace_id": "uuid",
- *   "user_id": "uuid",
  *   "resource": { ... }
  * }
  */
@@ -59,7 +60,6 @@ router.post("/", async (req, res) => {
     const event = body?.event;
     const resource = body?.resource;
     const workspaceId = body?.workspace_id;
-    const userId = body?.user_id;
 
     const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
     console.log(`[yampi-webhook] Incoming request — event: ${event || "none"}, ip: ${clientIp}`);
@@ -69,9 +69,9 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Missing event or resource" });
     }
 
-    if (!workspaceId || !userId) {
-      console.log("[yampi-webhook] Missing workspace_id or user_id, returning 400");
-      return res.status(400).json({ error: "Missing workspace_id or user_id" });
+    if (!workspaceId) {
+      console.log("[yampi-webhook] Missing workspace_id, returning 400");
+      return res.status(400).json({ error: "Missing workspace_id" });
     }
 
     const sb = getServiceClient();
