@@ -304,9 +304,9 @@ cron.schedule("*/30 * * * * *", async () => {
         if (!resp.ok) {
           console.error(`[cron] group-queue-processor error for ws ${wsId}:`, await resp.text());
         } else {
-          const result = await resp.json();
-          if (result.sent > 0 || result.failed > 0) {
-            console.log(`[cron] 📨 Group queue processed ws ${wsId}: sent=${result.sent}, failed=${result.failed}, skipped=${result.skipped}`);
+          const result = await resp.json() as { sent?: number; failed?: number; skipped?: number };
+          if ((result.sent || 0) > 0 || (result.failed || 0) > 0) {
+            console.log(`[cron] 📨 Group queue processed ws ${wsId}: sent=${result.sent || 0}, failed=${result.failed || 0}, skipped=${result.skipped || 0}`);
           }
         }
       } catch (e: any) {
