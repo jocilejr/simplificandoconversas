@@ -97,6 +97,8 @@ export function useWhatsAppInstances() {
       ...inst,
       status: remote?.status || inst.status,
       profileName: remote?.profileName || "",
+      ownerJid: remote?.ownerJid || "",
+      profilePicUrl: remote?.profilePicUrl || "",
     };
   });
 
