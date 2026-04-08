@@ -56,16 +56,32 @@ class MessageQueue {
     });
   }
 
+  getStatus() {
+    return {
+      instanceName: this.instanceName,
+      queueSize: this.queue.length,
+      processing: this.processing,
+      inCooldown: this.inCooldown,
+      sendCount: this.sendCount,
+      currentLabel: this.currentLabel,
+      pendingLabels: this.queue.map((q) => q.label),
+      delayMs: this.delayMs,
+      pauseAfterSends: this.pauseAfterSends,
+      pauseMinutes: this.pauseMinutes,
+    };
+  }
+
   private async processNext() {
     if (this.queue.length === 0) {
       this.processing = false;
+      this.currentLabel = null;
       return;
     }
 
     this.processing = true;
     const item = this.queue.shift()!;
+    this.currentLabel = item.label;
 
-    // Check cooldown BEFORE sending: if we've sent N messages, pause for M minutes
     if (
       this.pauseAfterSends &&
       this.pauseAfterSends > 0 &&
@@ -76,15 +92,16 @@ class MessageQueue {
       const cooldownMs = this.pauseMinutes * 60 * 1000;
       console.log(`[queue:${this.instanceName}] ⏸ COOLDOWN: sent ${this.sendCount} msgs, pausing for ${this.pauseMinutes} min (${cooldownMs}ms)`);
       this.sendCount = 0;
+      this.inCooldown = true;
       await new Promise((r) => setTimeout(r, cooldownMs));
+      this.inCooldown = false;
     } else {
-      // Normal delay BEFORE sending (including the first message)
       console.log(`[queue:${this.instanceName}] waiting ${this.delayMs}ms before sending ${item.label}...`);
       await new Promise((r) => setTimeout(r, this.delayMs));
     }
 
     try {
-      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length})`);
+      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
       const result = await item.fn();
       item.resolve(result);
     } catch (err) {
