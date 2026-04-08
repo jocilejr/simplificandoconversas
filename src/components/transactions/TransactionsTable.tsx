@@ -154,6 +154,15 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     setVisibleCount(15);
   }, [activeTab]);
 
+  // Mark transactions as seen when tab changes
+  useEffect(() => {
+    const currentTxs = tabTransactions[activeTab] || [];
+    const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
+    if (unseenIds.length > 0) {
+      markSeen(unseenIds);
+    }
+  }, [activeTab, tabTransactions, markSeen]);
+
   const handleDatePreset = (type: DatePreset) => {
     const now = getBrazilNow();
     let start: Date;
