@@ -113,9 +113,16 @@ class MessageQueue {
       console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
       const result = await item.fn();
       item.resolve(result);
-    } catch (err) {
+      this.history.push({ label: item.label, status: "sent", timestamp: new Date().toISOString() });
+    } catch (err: any) {
       console.error(`[queue:${this.instanceName}] error ${item.label}:`, err);
       item.reject(err);
+      this.history.push({ label: item.label, status: "failed", timestamp: new Date().toISOString(), error: err?.message || String(err) });
+    }
+
+    // Trim history
+    if (this.history.length > MessageQueue.MAX_HISTORY) {
+      this.history = this.history.slice(-MessageQueue.MAX_HISTORY);
     }
 
     this.sendCount++;
