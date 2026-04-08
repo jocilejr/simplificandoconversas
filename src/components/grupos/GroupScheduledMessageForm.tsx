@@ -90,7 +90,6 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
 
   const handleSubmit = () => {
     const finalContent = { ...content, mentionAll, forceLinkPreview };
-
     let scheduled_at: string | null = null;
     let cron_expression: string | null = null;
     let interval_minutes: number | null = null;
@@ -132,13 +131,15 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
     });
   };
 
+  const inputClasses = "h-9 text-sm bg-secondary border-border placeholder:text-muted-foreground/50 focus:border-primary/50";
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
       {/* Left: Form */}
-      <div className="space-y-4 p-4 border border-border/30 rounded-xl bg-[#0b141a]/60">
+      <div className="space-y-4 p-4 border border-border rounded-xl bg-card">
         {/* Type grid */}
         <div className="space-y-2">
-          <Label className="text-xs font-medium text-[#8696a0]">Tipo de mensagem</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Tipo de mensagem</Label>
           <div className="grid grid-cols-5 gap-1.5">
             {MESSAGE_TYPES.map(t => {
               const Icon = t.icon;
@@ -150,8 +151,8 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
                   className={cn(
                     "flex flex-col items-center gap-1 p-2 rounded-lg border text-xs transition-all duration-200",
                     messageType === t.value
-                      ? "border-[#c5a55a] bg-[#c5a55a]/10 text-[#c5a55a] shadow-[0_0_12px_rgba(197,165,90,0.15)]"
-                      : "border-white/5 bg-[#202c33]/60 hover:border-[#c5a55a]/30 text-[#8696a0] hover:text-[#e9edef]"
+                      ? "border-primary bg-primary/10 text-primary shadow-[0_0_12px_hsl(var(--primary)/0.15)]"
+                      : "border-border bg-secondary/60 hover:border-primary/30 text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -164,7 +165,7 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
 
         {/* Content fields */}
         <div className="space-y-3">
-          <Label className="text-xs font-medium text-[#8696a0]">Conteúdo</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Conteúdo</Label>
 
           {messageType === "text" && (
             <div className="space-y-3">
@@ -173,26 +174,18 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
                 onChange={(e) => setContent({ ...content, text: e.target.value })}
                 placeholder="Texto da mensagem... Use *negrito*, _itálico_, ~tachado~"
                 rows={5}
-                className="text-sm bg-[#2a3942] border-white/5 resize-none placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50"
+                className="text-sm bg-secondary border-border resize-none placeholder:text-muted-foreground/50 focus:border-primary/50"
               />
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
-                  <Switch
-                    checked={mentionAll}
-                    onCheckedChange={setMentionAll}
-                    className="data-[state=checked]:bg-[#c5a55a]"
-                  />
-                  <Label className="text-xs text-[#8696a0] flex items-center gap-1.5 cursor-pointer">
+                  <Switch checked={mentionAll} onCheckedChange={setMentionAll} />
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer">
                     <AtSign className="h-3 w-3" /> Mencionar todos
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Switch
-                    checked={forceLinkPreview}
-                    onCheckedChange={setForceLinkPreview}
-                    className="data-[state=checked]:bg-[#c5a55a]"
-                  />
-                  <Label className="text-xs text-[#8696a0] flex items-center gap-1.5 cursor-pointer">
+                  <Switch checked={forceLinkPreview} onCheckedChange={setForceLinkPreview} />
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer">
                     <Link2 className="h-3 w-3" /> Link Preview
                   </Label>
                 </div>
@@ -202,28 +195,14 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
 
           {["image", "video", "audio", "document", "sticker"].includes(messageType) && (
             <div className="space-y-3">
-              <Input
-                value={content?.mediaUrl || ""}
-                onChange={(e) => setContent({ ...content, mediaUrl: e.target.value })}
-                placeholder="URL da mídia"
-                className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50"
-              />
+              <Input value={content?.mediaUrl || ""} onChange={(e) => setContent({ ...content, mediaUrl: e.target.value })} placeholder="URL da mídia" className={inputClasses} />
               {messageType !== "sticker" && messageType !== "audio" && (
-                <Input
-                  value={content?.caption || ""}
-                  onChange={(e) => setContent({ ...content, caption: e.target.value })}
-                  placeholder="Legenda (opcional)"
-                  className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50"
-                />
+                <Input value={content?.caption || ""} onChange={(e) => setContent({ ...content, caption: e.target.value })} placeholder="Legenda (opcional)" className={inputClasses} />
               )}
               {SUPPORTS_MENTION.includes(messageType) && messageType !== "text" && (
                 <div className="flex items-center gap-2">
-                  <Switch
-                    checked={mentionAll}
-                    onCheckedChange={setMentionAll}
-                    className="data-[state=checked]:bg-[#c5a55a]"
-                  />
-                  <Label className="text-xs text-[#8696a0] flex items-center gap-1.5 cursor-pointer">
+                  <Switch checked={mentionAll} onCheckedChange={setMentionAll} />
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer">
                     <AtSign className="h-3 w-3" /> Mencionar todos
                   </Label>
                 </div>
@@ -233,96 +212,78 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
 
           {messageType === "contact" && (
             <div className="grid grid-cols-2 gap-2">
-              <Input value={content?.contactName || ""} onChange={(e) => setContent({ ...content, contactName: e.target.value })} placeholder="Nome do contato" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.contactPhone || ""} onChange={(e) => setContent({ ...content, contactPhone: e.target.value })} placeholder="Telefone" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
+              <Input value={content?.contactName || ""} onChange={(e) => setContent({ ...content, contactName: e.target.value })} placeholder="Nome do contato" className={inputClasses} />
+              <Input value={content?.contactPhone || ""} onChange={(e) => setContent({ ...content, contactPhone: e.target.value })} placeholder="Telefone" className={inputClasses} />
             </div>
           )}
 
           {messageType === "location" && (
             <div className="grid grid-cols-2 gap-2">
-              <Input value={content?.latitude || ""} onChange={(e) => setContent({ ...content, latitude: e.target.value })} placeholder="Latitude" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.longitude || ""} onChange={(e) => setContent({ ...content, longitude: e.target.value })} placeholder="Longitude" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.name || ""} onChange={(e) => setContent({ ...content, name: e.target.value })} placeholder="Nome do local" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.address || ""} onChange={(e) => setContent({ ...content, address: e.target.value })} placeholder="Endereço" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
+              <Input value={content?.latitude || ""} onChange={(e) => setContent({ ...content, latitude: e.target.value })} placeholder="Latitude" className={inputClasses} />
+              <Input value={content?.longitude || ""} onChange={(e) => setContent({ ...content, longitude: e.target.value })} placeholder="Longitude" className={inputClasses} />
+              <Input value={content?.name || ""} onChange={(e) => setContent({ ...content, name: e.target.value })} placeholder="Nome do local" className={inputClasses} />
+              <Input value={content?.address || ""} onChange={(e) => setContent({ ...content, address: e.target.value })} placeholder="Endereço" className={inputClasses} />
             </div>
           )}
 
           {messageType === "poll" && (
             <div className="space-y-2">
-              <Input value={content?.question || ""} onChange={(e) => setContent({ ...content, question: e.target.value })} placeholder="Pergunta da enquete" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
+              <Input value={content?.question || ""} onChange={(e) => setContent({ ...content, question: e.target.value })} placeholder="Pergunta da enquete" className={inputClasses} />
               {(content?.options || ["", ""]).map((opt: string, oi: number) => (
                 <div key={oi} className="flex items-center gap-1.5">
-                  <Input
-                    value={opt}
-                    onChange={(e) => {
-                      const opts = [...(content?.options || ["", ""])];
-                      opts[oi] = e.target.value;
-                      setContent({ ...content, options: opts });
-                    }}
-                    placeholder={`Opção ${oi + 1}`}
-                    className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50"
-                  />
+                  <Input value={opt} onChange={(e) => {
+                    const opts = [...(content?.options || ["", ""])];
+                    opts[oi] = e.target.value;
+                    setContent({ ...content, options: opts });
+                  }} placeholder={`Opção ${oi + 1}`} className={inputClasses} />
                   {(content?.options || []).length > 2 && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-destructive shrink-0"
-                      onClick={() => {
-                        const opts = [...(content?.options || [])];
-                        opts.splice(oi, 1);
-                        setContent({ ...content, options: opts });
-                      }}
-                    >
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
+                      const opts = [...(content?.options || [])];
+                      opts.splice(oi, 1);
+                      setContent({ ...content, options: opts });
+                    }}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   )}
                 </div>
               ))}
-              <Button size="sm" variant="ghost" className="h-7 text-[11px] text-[#c5a55a] hover:text-[#c5a55a]" onClick={() => setContent({ ...content, options: [...(content?.options || []), ""] })}>
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] text-primary hover:text-primary" onClick={() => setContent({ ...content, options: [...(content?.options || []), ""] })}>
                 <Plus className="h-3 w-3 mr-1" /> Adicionar opção
               </Button>
               <div className="flex items-center gap-2">
-                <Label className="text-[11px] text-[#8696a0]">Selecionáveis:</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={(content?.options || []).length}
-                  value={content?.selectableCount || 1}
-                  onChange={(e) => setContent({ ...content, selectableCount: parseInt(e.target.value) || 1 })}
-                  className="h-7 w-16 text-xs bg-[#2a3942] border-white/5 focus:border-[#c5a55a]/50"
-                />
+                <Label className="text-[11px] text-muted-foreground">Selecionáveis:</Label>
+                <Input type="number" min={1} max={(content?.options || []).length} value={content?.selectableCount || 1} onChange={(e) => setContent({ ...content, selectableCount: parseInt(e.target.value) || 1 })} className="h-7 w-16 text-xs bg-secondary border-border focus:border-primary/50" />
               </div>
             </div>
           )}
 
           {messageType === "list" && (
             <div className="space-y-2">
-              <Input value={content?.title || ""} onChange={(e) => setContent({ ...content, title: e.target.value })} placeholder="Título da lista" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.description || ""} onChange={(e) => setContent({ ...content, description: e.target.value })} placeholder="Descrição" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.buttonText || ""} onChange={(e) => setContent({ ...content, buttonText: e.target.value })} placeholder="Texto do botão" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
-              <Input value={content?.footer || ""} onChange={(e) => setContent({ ...content, footer: e.target.value })} placeholder="Rodapé (opcional)" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
+              <Input value={content?.title || ""} onChange={(e) => setContent({ ...content, title: e.target.value })} placeholder="Título da lista" className={inputClasses} />
+              <Input value={content?.description || ""} onChange={(e) => setContent({ ...content, description: e.target.value })} placeholder="Descrição" className={inputClasses} />
+              <Input value={content?.buttonText || ""} onChange={(e) => setContent({ ...content, buttonText: e.target.value })} placeholder="Texto do botão" className={inputClasses} />
+              <Input value={content?.footer || ""} onChange={(e) => setContent({ ...content, footer: e.target.value })} placeholder="Rodapé (opcional)" className={inputClasses} />
             </div>
           )}
         </div>
 
         {/* Schedule */}
-        <div className="space-y-3 border-t border-white/5 pt-4">
-          <Label className="text-xs font-medium text-[#8696a0] flex items-center gap-1.5">
-            <Clock className="h-3 w-3" />
-            Agendamento
+        <div className="space-y-3 border-t border-border pt-4">
+          <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <Clock className="h-3 w-3" /> Agendamento
           </Label>
 
           {scheduleType === "once" && (
             <div className="flex gap-2">
-              <Input type="date" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-40 focus:border-[#c5a55a]/50" />
-              <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-28 focus:border-[#c5a55a]/50" />
+              <Input type="date" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={cn(inputClasses, "w-40")} />
+              <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className={cn(inputClasses, "w-28")} />
             </div>
           )}
 
           {scheduleType === "daily" && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#8696a0]">Enviar todo dia às</span>
-              <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-28 focus:border-[#c5a55a]/50" />
+              <span className="text-xs text-muted-foreground">Enviar todo dia às</span>
+              <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className={cn(inputClasses, "w-28")} />
             </div>
           )}
 
@@ -330,15 +291,12 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
             <div className="space-y-2">
               <div className="flex gap-1">
                 {WEEKDAYS.map(d => (
-                  <button
-                    key={d.value}
-                    type="button"
-                    onClick={() => toggleWeekday(d.value)}
+                  <button key={d.value} type="button" onClick={() => toggleWeekday(d.value)}
                     className={cn(
                       "h-8 w-10 rounded-md text-xs font-medium transition-all border",
                       weekdays.includes(d.value)
-                        ? "bg-[#c5a55a] text-[#0b141a] border-[#c5a55a] font-semibold"
-                        : "bg-[#2a3942] border-white/5 text-[#8696a0] hover:border-[#c5a55a]/30"
+                        ? "bg-primary text-primary-foreground border-primary font-semibold"
+                        : "bg-secondary border-border text-muted-foreground hover:border-primary/30"
                     )}
                   >
                     {d.label}
@@ -346,43 +304,36 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#8696a0]">às</span>
-                <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-28 focus:border-[#c5a55a]/50" />
+                <span className="text-xs text-muted-foreground">às</span>
+                <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className={cn(inputClasses, "w-28")} />
               </div>
             </div>
           )}
 
           {scheduleType === "monthly" && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#8696a0]">Dia</span>
-              <Input type="number" min={1} max={31} value={monthDay} onChange={(e) => setMonthDay(parseInt(e.target.value) || 1)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-16 focus:border-[#c5a55a]/50" />
-              <span className="text-xs text-[#8696a0]">às</span>
-              <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-28 focus:border-[#c5a55a]/50" />
+              <span className="text-xs text-muted-foreground">Dia</span>
+              <Input type="number" min={1} max={31} value={monthDay} onChange={(e) => setMonthDay(parseInt(e.target.value) || 1)} className={cn(inputClasses, "w-16")} />
+              <span className="text-xs text-muted-foreground">às</span>
+              <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className={cn(inputClasses, "w-28")} />
             </div>
           )}
 
           {scheduleType === "custom" && (
             <div className="space-y-2">
-              <Input value={customDays} onChange={(e) => setCustomDays(e.target.value)} placeholder="Dias do mês (ex: 1,5,10,15,20)" className="h-9 text-sm bg-[#2a3942] border-white/5 placeholder:text-[#8696a0]/50 focus:border-[#c5a55a]/50" />
+              <Input value={customDays} onChange={(e) => setCustomDays(e.target.value)} placeholder="Dias do mês (ex: 1,5,10,15,20)" className={inputClasses} />
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#8696a0]">às</span>
-                <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className="h-9 text-sm bg-[#2a3942] border-white/5 w-28 focus:border-[#c5a55a]/50" />
+                <span className="text-xs text-muted-foreground">às</span>
+                <Input type="time" value={timeValue} onChange={(e) => setTimeValue(e.target.value)} className={cn(inputClasses, "w-28")} />
               </div>
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
-          <Button variant="outline" size="sm" onClick={onCancel} className="border-white/10 text-[#8696a0] hover:text-[#e9edef]">
-            Cancelar
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="bg-[#c5a55a] text-[#0b141a] hover:bg-[#d4b66a] font-semibold"
-          >
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <Button variant="outline" size="sm" onClick={onCancel}>Cancelar</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={isPending}>
             <Save className="h-3.5 w-3.5 mr-1" />
             {editData ? "Atualizar" : "Salvar"}
           </Button>
@@ -391,12 +342,7 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
 
       {/* Right: Preview */}
       <div className="hidden lg:block h-[500px]">
-        <WhatsAppPreview
-          messageType={messageType}
-          content={content}
-          mentionAll={mentionAll}
-          forceLinkPreview={forceLinkPreview}
-        />
+        <WhatsAppPreview messageType={messageType} content={content} mentionAll={mentionAll} forceLinkPreview={forceLinkPreview} />
       </div>
     </div>
   );
