@@ -21,6 +21,7 @@ const allSections = [
   { key: "ai", label: "IA", icon: Brain, minRole: "admin" },
   { key: "api", label: "API", icon: Code, minRole: "admin" },
   { key: "email", label: "E-mail", icon: Mail, minRole: "operator" },
+  { key: "fees", label: "Taxas", icon: Percent, minRole: "admin" },
   { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
 ];
 
