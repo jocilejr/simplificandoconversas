@@ -4,6 +4,7 @@ import { FinancialStatCard } from "./FinancialStatCard";
 import { RevenueChart } from "./RevenueChart";
 import { PaymentMethodsChart } from "./PaymentMethodsChart";
 import { useTransactions } from "@/hooks/useTransactions";
+import { useFinancialSettings } from "@/hooks/useFinancialSettings";
 import { QrCode, FileText, CreditCard, DollarSign, Wallet } from "lucide-react";
 
 export function FinancialReport() {
@@ -14,8 +15,8 @@ export function FinancialReport() {
     dateFilter.endDate
   );
 
-  // All transactions for the chart (no date filter, fetched with wide range)
   const { data: allTransactions = [] } = useTransactions();
+  const { settings: feeSettings } = useFinancialSettings();
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -37,21 +38,33 @@ export function FinancialReport() {
     const pedidosCartao = transactions.filter((t) => t.type === "cartao" && t.status !== "aprovado").length;
     const cartaoPago = transactions.filter((t) => t.type === "cartao" && t.status === "aprovado").length;
 
-    const totalRevenue = transactions
-      .filter((t) => t.status === "aprovado")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+    const approved = transactions.filter((t) => t.status === "aprovado");
+    const totalRevenue = approved.reduce((sum, t) => sum + Number(t.amount), 0);
+
+    // Calculate fees
+    let totalFees = 0;
+    let totalTax = 0;
+    if (feeSettings) {
+      for (const t of approved) {
+        const amount = Number(t.amount);
+        let feeType: "fixed" | "percent" = "fixed";
+        let feeValue = 0;
+
+        if (t.type === "boleto") { feeType = feeSettings.boleto_fee_type; feeValue = feeSettings.boleto_fee_value; }
+        else if (t.type === "pix") { feeType = feeSettings.pix_fee_type; feeValue = feeSettings.pix_fee_value; }
+        else if (t.type === "cartao") { feeType = feeSettings.cartao_fee_type; feeValue = feeSettings.cartao_fee_value; }
+
+        totalFees += feeType === "percent" ? amount * (feeValue / 100) : feeValue;
+        totalTax += feeSettings.tax_type === "percent" ? amount * (feeSettings.tax_value / 100) : feeSettings.tax_value;
+      }
+    }
 
     return {
-      pixGerado,
-      pixPago,
-      boletosGerados,
-      boletosPagos,
-      boletosPendentesOuPagos,
-      pedidosCartao,
-      cartaoPago,
-      totalRevenue,
+      pixGerado, pixPago, boletosGerados, boletosPagos, boletosPendentesOuPagos,
+      pedidosCartao, cartaoPago, totalRevenue,
+      netRevenue: totalRevenue - totalFees - totalTax,
     };
-  }, [transactions]);
+  }, [transactions, feeSettings]);
 
   return (
     <div className="space-y-4">
@@ -81,7 +94,7 @@ export function FinancialReport() {
       {/* Row 3: Revenue */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4">
         <FinancialStatCard title="Faturamento" value={formatCurrency(stats.totalRevenue)} subtitle="Pedidos pagos" icon={DollarSign} variant="info" delay={300} isLoading={isLoading} />
-        <FinancialStatCard title="Líquido" value={formatCurrency(stats.totalRevenue)} subtitle="Receita total" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
+        <FinancialStatCard title="Líquido" value={formatCurrency(stats.netRevenue)} subtitle="Após taxas e impostos" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
       </div>
 
       {/* Charts */}

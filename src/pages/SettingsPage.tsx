@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users } from "lucide-react";
+import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users, Percent } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
@@ -10,6 +10,7 @@ import { IntegrationApiSection } from "@/components/settings/IntegrationApiSecti
 import { EmailSettingsSection } from "@/components/settings/EmailSettingsSection";
 import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
 import { TeamSection } from "@/components/settings/TeamSection";
+import { FeesSection } from "@/components/settings/FeesSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const allSections = [
@@ -20,6 +21,7 @@ const allSections = [
   { key: "ai", label: "IA", icon: Brain, minRole: "admin" },
   { key: "api", label: "API", icon: Code, minRole: "admin" },
   { key: "email", label: "E-mail", icon: Mail, minRole: "operator" },
+  { key: "fees", label: "Taxas", icon: Percent, minRole: "admin" },
   { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
 ];
 
@@ -42,6 +44,7 @@ const SettingsPage = () => {
       case "ai": return <AISection />;
       case "api": return <IntegrationApiSection />;
       case "email": return <EmailSettingsSection />;
+      case "fees": return <FeesSection />;
       case "app": return <AppSection />;
       default: return null;
     }
