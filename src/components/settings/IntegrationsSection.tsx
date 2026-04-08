@@ -414,15 +414,14 @@ export function IntegrationsSection() {
                   <pre className="bg-muted rounded p-2 text-[10px] font-mono whitespace-pre overflow-x-auto">{`{
   "event": "order.paid",
   "workspace_id": "${workspaceId || "seu-workspace-id"}",
-  "user_id": "${user?.id || "seu-user-id"}",
   "resource": {
-    "number": 12345,
     "value_total": 149.90,
     "customer": {
       "data": {
         "name": "João Silva",
         "email": "joao@email.com",
-        "phone": { "full_number": "11999998888" }
+        "phone": { "full_number": "11999998888" },
+        "cpf": "12345678900"
       }
     }
   }
