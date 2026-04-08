@@ -12,6 +12,7 @@ import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 export function AutoRecoveryToggle() {
   const { settings, isLoading, upsert } = useRecoverySettings();
