@@ -103,49 +103,39 @@ export function FinancialReport() {
         <FinancialStatCard title="Cartão Pago" value={stats.cartaoPago.toLocaleString('pt-BR')} subtitle="No período" icon={CreditCard} variant="success" delay={250} isLoading={isLoading} />
       </div>
 
-      {/* Row 3: Revenue */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4">
+      {/* Row 3: Revenue + Deductions */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
         <FinancialStatCard title="Faturamento" value={formatCurrency(stats.totalRevenue)} subtitle="Pedidos pagos" icon={DollarSign} variant="info" delay={300} isLoading={isLoading} />
-        <FinancialStatCard title="Líquido" value={formatCurrency(stats.netRevenue)} subtitle="Após taxas e impostos" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
-      </div>
-
-      {/* Fees & Taxes Card */}
-      <Card className="rounded-xl border-border">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-primary" />
-            Deduções
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!feeSettings ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              Nenhuma taxa configurada. Acesse Configurações → Taxas para definir.
-            </p>
-          ) : (
-            <div className="space-y-3">
+        
+        {/* Compact deductions card */}
+        <div className="bg-card/60 border border-border/30 rounded-xl p-4 lg:p-5 animate-slide-up" style={{ animationDelay: '325ms' }}>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <p className="text-[11px] lg:text-xs font-medium text-muted-foreground uppercase tracking-wide">Deduções</p>
+            <div className="p-2 lg:p-2.5 rounded-lg shrink-0 bg-destructive/10 text-destructive">
+              <Receipt className="h-4 w-4 lg:h-5 lg:w-5" />
+            </div>
+          </div>
+          {feeSettings ? (
+            <div className="space-y-1">
               {[
-                { label: "Taxa Boleto", value: stats.boletoFees },
-                { label: "Taxa PIX", value: stats.pixFees },
-                { label: "Taxa Cartão", value: stats.cartaoFees },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                  <span className="text-sm font-medium">{item.label}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    - {formatCurrency(item.value)}
-                  </Badge>
+                { label: "Boleto", value: stats.boletoFees },
+                { label: "PIX", value: stats.pixFees },
+                { label: "Cartão", value: stats.cartaoFees },
+                { label: feeSettings.tax_name, value: stats.totalTax },
+              ].filter(i => i.value > 0).map((item) => (
+                <div key={item.label} className="flex items-center justify-between">
+                  <span className="text-[10px] lg:text-[11px] text-muted-foreground">{item.label}</span>
+                  <span className="text-[10px] lg:text-[11px] font-medium text-destructive">- {formatCurrency(item.value)}</span>
                 </div>
               ))}
-              <div className="flex items-center justify-between py-1.5 border-t border-border">
-                <span className="text-sm font-medium">{feeSettings.tax_name}</span>
-                <Badge variant="outline" className="text-xs">
-                  - {formatCurrency(stats.totalTax)}
-                </Badge>
-              </div>
             </div>
+          ) : (
+            <p className="text-[10px] text-muted-foreground">Sem taxas configuradas</p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        <FinancialStatCard title="Líquido" value={formatCurrency(stats.netRevenue)} subtitle="Após taxas e impostos" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
+      </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
