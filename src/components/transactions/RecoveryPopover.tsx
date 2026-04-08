@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { MessageSquare, Copy, Send, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Transaction } from "@/hooks/useTransactions";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 interface RecoveryPopoverProps {
   transaction: Transaction;
@@ -114,7 +115,7 @@ export function RecoveryPopover({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {transaction.customer_name || "Cliente"} • {transaction.customer_phone?.replace(/\D/g, "") || "Sem telefone"}
+            {transaction.customer_name || "Cliente"} • {normalizePhone(transaction.customer_phone) === "-" ? "Sem telefone" : normalizePhone(transaction.customer_phone)}
           </p>
         </div>
 

@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import type { Transaction } from "@/hooks/useTransactions";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 const statusColors: Record<string, string> = {
   aprovado: "bg-green-500/10 text-green-600 border-green-500/30",
@@ -71,7 +72,7 @@ export function TransactionDetailDialog({ transaction, open, onClose }: Transact
         <div className="divide-y">
           <InfoRow icon={User} label="Nome completo" value={transaction.customer_name} />
           <InfoRow icon={FileText} label="CPF / Documento" value={transaction.customer_document} />
-          <InfoRow icon={Phone} label="Telefone" value={transaction.customer_phone?.replace(/\D/g, "") || null} />
+          <InfoRow icon={Phone} label="Telefone" value={normalizePhone(transaction.customer_phone) === "-" ? null : normalizePhone(transaction.customer_phone)} />
           <InfoRow icon={Mail} label="Email" value={transaction.customer_email?.toLowerCase() === "businessvivaorigem@gmail.com" ? null : transaction.customer_email} />
           <InfoRow
             icon={Calendar}
