@@ -1,0 +1,1 @@
+ALTER TABLE public.followup_settings ADD COLUMN IF NOT EXISTS max_messages_per_phone_per_day integer NOT NULL DEFAULT 1;

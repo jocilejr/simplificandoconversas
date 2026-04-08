@@ -124,16 +124,18 @@ async function processWorkspace(
   workspaceId: string,
   userId: string,
   instanceName: string,
+  maxMessagesPerPhone: number,
 ) {
   const today = getTodayBrasilia();
   console.log(`[followup-daily] Processing workspace ${workspaceId} for ${today}`);
 
-  // 1. Load active rules
+  // 1. Load active rules (exclude "immediate" rules — those are for instant dispatch only)
   const { data: rules } = await sb
     .from("boleto_recovery_rules")
     .select("id, rule_type, days, message, media_blocks, priority")
     .eq("workspace_id", workspaceId)
     .eq("is_active", true)
+    .neq("rule_type", "immediate")
     .order("priority", { ascending: true });
 
   if (!rules || rules.length === 0) {
@@ -166,8 +168,8 @@ async function processWorkspace(
   console.log(`[followup-daily] ${boletos.length} pending boletos, ${rules.length} active rules`);
 
   // 4. Load today's recovery contacts (to avoid duplicates)
-  const todayStart = `${today}T00:00:00.000Z`;
-  const todayEnd = `${today}T23:59:59.999Z`;
+  const todayStart = `${today}T00:00:00-03:00`;
+  const todayEnd = `${today}T23:59:59-03:00`;
   const { data: todayContacts } = await sb
     .from("boleto_recovery_contacts")
     .select("transaction_id, rule_id")
@@ -203,6 +205,9 @@ async function processWorkspace(
   const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
   const evoApiKey = process.env.EVOLUTION_API_KEY || "";
 
+  // Phone-level dedup: track how many messages each phone received today
+  const phoneSendCount = new Map<string, number>();
+
   let sent = 0;
   let skipped = 0;
 
@@ -230,6 +235,15 @@ async function processWorkspace(
     const phone = normalizePhone(boleto.customer_phone);
     if (!phone || phone.length < 12) {
       console.log(`[followup-daily] Invalid phone for boleto ${boleto.id}: ${boleto.customer_phone}`);
+      skipped++;
+      continue;
+    }
+
+    // Phone-level dedup: limit messages per phone per day
+    const phoneKey = phone.slice(-8);
+    const currentCount = phoneSendCount.get(phoneKey) || 0;
+    if (currentCount >= maxMessagesPerPhone) {
+      console.log(`[followup-daily] Phone ${phoneKey} already received ${currentCount} msg(s) today, skipping boleto ${boleto.id}`);
       skipped++;
       continue;
     }
@@ -387,6 +401,7 @@ async function processWorkspace(
       });
 
     sent++;
+    phoneSendCount.set(phoneKey, currentCount + 1);
   }
 
   console.log(`[followup-daily] Workspace ${workspaceId}: enqueued=${sent}, skipped=${skipped}`);
@@ -401,7 +416,7 @@ export async function processFollowUpDaily() {
 
   const { data: allSettings } = await sb
     .from("followup_settings")
-    .select("workspace_id, user_id, instance_name, send_at_hour, enabled")
+    .select("workspace_id, user_id, instance_name, send_at_hour, enabled, max_messages_per_phone_per_day")
     .eq("enabled", true);
 
   if (!allSettings || allSettings.length === 0) {
@@ -417,12 +432,15 @@ export async function processFollowUpDaily() {
       continue;
     }
 
+    const maxPerPhone = (setting as any).max_messages_per_phone_per_day ?? 1;
+
     try {
       const result = await processWorkspace(
         sb,
         setting.workspace_id,
         setting.user_id,
         setting.instance_name,
+        maxPerPhone,
       );
       if (result) {
         totalSent += result.sent;
