@@ -356,6 +356,9 @@ export function ConnectionsSection() {
                   <Star className="h-3.5 w-3.5 mr-1" /> Ativar
                 </Button>
               )}
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => setQueueDialogInstance(inst.instance_name)}>
+                <Inbox className="h-3.5 w-3.5 mr-1" /> Fila
+              </Button>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="sm" className="text-xs">
