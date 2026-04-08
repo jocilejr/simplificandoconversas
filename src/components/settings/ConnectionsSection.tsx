@@ -74,6 +74,7 @@ export function ConnectionsSection() {
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const { configs: queueConfigs, upsertConfig } = useMessageQueueConfig();
+  const { data: queueStatuses = [] } = useQueueStatus();
   const [queueLocal, setQueueLocal] = useState<Record<string, { delay?: string; pauseSends?: string; pauseMin?: string }>>({});
 
   const handleCreateInstance = async () => {
