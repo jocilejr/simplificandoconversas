@@ -76,7 +76,7 @@ async function sendBlock(
   if (block.type === "text") {
     const text = replaceVariables(block.content, vars);
     console.log(`[recovery-dispatch] Sending TEXT block to ${phone}`);
-    const resp = await fetch(`${evoBaseUrl}/message/sendText/${instanceName}`, {
+    const resp = await fetch(`${evoBaseUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({ number: phone, text }),
