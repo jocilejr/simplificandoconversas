@@ -81,7 +81,8 @@ export function ConnectionsSection() {
   const { configs: queueConfigs, upsertConfig } = useMessageQueueConfig();
   const { data: queueStatuses = [] } = useQueueStatus();
   const [queueLocal, setQueueLocal] = useState<Record<string, { delay?: string; pauseSends?: string; pauseMin?: string }>>({});
-
+  const [queueDialogInstance, setQueueDialogInstance] = useState<string | null>(null);
+  const clearHistory = useClearQueueHistory();
   const handleCreateInstance = async () => {
     if (!newName.trim()) return;
     await createInstance.mutateAsync(newName.trim());
