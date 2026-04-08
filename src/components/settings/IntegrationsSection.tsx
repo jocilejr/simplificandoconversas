@@ -352,6 +352,110 @@ export function IntegrationsSection() {
               </div>
             )}
 
+            {/* Mini documentação para Yampi (via n8n) */}
+            {configDialog?.id === "yampi" && (
+              <div className="space-y-3 pt-3 border-t">
+                <label className="text-xs font-semibold">📄 Documentação — Webhook via n8n</label>
+
+                <p className="text-[11px] text-muted-foreground">
+                  Configure o n8n para receber os eventos da Yampi e repassar para esta URL com o payload abaixo.
+                </p>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Método</p>
+                  <code className="block text-[11px] bg-muted rounded px-2 py-1 font-mono">POST</code>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Seu Workspace ID</p>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={workspaceId || ""}
+                      className="font-mono text-[11px] bg-muted"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(workspaceId || "");
+                        toast({ title: "Workspace ID copiado!" });
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Seu User ID</p>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={user?.id || ""}
+                      className="font-mono text-[11px] bg-muted"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(user?.id || "");
+                        toast({ title: "User ID copiado!" });
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Campos obrigatórios</p>
+                  <div className="bg-muted rounded p-2 space-y-0.5">
+                    <p className="text-[11px] font-mono"><span className="text-primary">event</span> — evento original da Yampi</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">workspace_id</span> — UUID do workspace</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">user_id</span> — UUID do usuário</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">resource</span> — objeto original da Yampi</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Eventos suportados</p>
+                  <div className="bg-muted rounded p-2 space-y-0.5">
+                    <p className="text-[11px] font-mono"><span className="text-primary">order.paid</span> → aprovado</p>
+                    <p className="text-[11px] font-mono"><span className="text-destructive">transaction.payment.refused</span> → rejeitado</p>
+                    <p className="text-[11px] font-mono"><span className="text-accent-foreground">cart.reminder</span> → carrinho abandonado</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">Exemplo de payload (configurar no n8n)</p>
+                  <pre className="bg-muted rounded p-2 text-[10px] font-mono whitespace-pre overflow-x-auto">{`{
+  "event": "order.paid",
+  "workspace_id": "${workspaceId || "seu-workspace-id"}",
+  "user_id": "${user?.id || "seu-user-id"}",
+  "resource": {
+    "number": 12345,
+    "value_total": 149.90,
+    "customer": {
+      "data": {
+        "name": "João Silva",
+        "email": "joao@email.com",
+        "phone": { "full_number": "11999998888" }
+      }
+    }
+  }
+}`}</pre>
+                  <p className="text-[10px] text-muted-foreground">
+                    O campo <code className="text-[10px]">resource</code> deve conter o objeto original que a Yampi envia. No n8n, basta mapear o body inteiro da Yampi para este campo.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Mini documentação para webhook manual */}
             {configDialog?.id === "manual_payment" && (
               <div className="space-y-3 pt-3 border-t">
