@@ -1251,6 +1251,34 @@ router.post("/generate-payment", async (req, res) => {
 
     logApiRequest(userId, workspaceId, req, 200, `Payment created: ${tx?.id}`);
 
+    // Check WhatsApp number validity and save to DB
+    if (tx?.id && customer_phone) {
+      try {
+        const normalizedPhone = (await import("../lib/normalize-phone")).normalizePhone(customer_phone);
+        if (normalizedPhone && normalizedPhone.length >= 12) {
+          const { data: recSettings } = await sb
+            .from("recovery_settings")
+            .select("instance_boleto, instance_pix, instance_name")
+            .eq("workspace_id", workspaceId)
+            .maybeSingle();
+
+          const instanceName = paymentType === "boleto"
+            ? (recSettings as any)?.instance_boleto || (recSettings as any)?.instance_name
+            : (recSettings as any)?.instance_pix || (recSettings as any)?.instance_name;
+
+          if (instanceName) {
+            const isValid = await checkWhatsAppNumber(normalizedPhone, instanceName);
+            if (isValid !== null) {
+              await sb.from("transactions").update({ whatsapp_valid: isValid } as any).eq("id", tx.id);
+              console.log(`[platform/generate-payment] WhatsApp check for ${normalizedPhone}: ${isValid}`);
+            }
+          }
+        }
+      } catch (waErr: any) {
+        console.warn("[platform/generate-payment] WhatsApp check error:", waErr.message);
+      }
+    }
+
     // Auto-recovery: enqueue if pending and has phone
     if (tx?.id && customer_phone && (result.status === "pendente")) {
       try {
