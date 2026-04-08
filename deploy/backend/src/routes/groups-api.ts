@@ -59,8 +59,8 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
 
     res.json(groups);
   } catch (err: any) {
-    console.error("[groups-api] fetch-groups error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] fetch-groups error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
@@ -85,8 +85,8 @@ router.post("/select-groups", async (req: Request, res: Response) => {
     if (error) throw error;
     res.json(data);
   } catch (err: any) {
-    console.error("[groups-api] select-groups error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] select-groups error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
@@ -163,8 +163,8 @@ router.post("/campaigns", async (req: Request, res: Response) => {
 
     res.json(campaign);
   } catch (err: any) {
-    console.error("[groups-api] create campaign error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] create campaign error:", JSON.stringify(err, null, 2));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || JSON.stringify(err) });
   }
 });
 
@@ -251,8 +251,8 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
 
     res.json({ enqueued: queueItems.length, batch });
   } catch (err: any) {
-    console.error("[groups-api] enqueue error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] enqueue error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
@@ -297,8 +297,8 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
     if (error) throw error;
     res.json(data);
   } catch (err: any) {
-    console.error("[groups-api] create message error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
@@ -450,8 +450,8 @@ router.post("/queue/process", async (req: Request, res: Response) => {
 
     res.json({ processed: pending.length, sent, failed });
   } catch (err: any) {
-    console.error("[groups-api] queue/process error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] queue/process error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 

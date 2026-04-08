@@ -94,7 +94,9 @@ DECLARE _t text;
     'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
-    'tracked_links','transactions','whatsapp_instances'
+    'tracked_links','transactions','whatsapp_instances',
+    'group_selected','group_campaigns','group_scheduled_messages',
+    'group_message_queue','group_participant_events'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
@@ -120,7 +122,9 @@ DECLARE _rec RECORD; _ws_id uuid;
     'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
-    'tracked_links','transactions','whatsapp_instances'
+    'tracked_links','transactions','whatsapp_instances',
+    'group_selected','group_campaigns','group_scheduled_messages',
+    'group_message_queue','group_participant_events'
   ]; _t text;
 BEGIN
   FOR _rec IN
@@ -164,7 +168,9 @@ DECLARE _t text; _cnt bigint; _total bigint := 0;
     'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
-    'tracked_links','transactions','whatsapp_instances'
+    'tracked_links','transactions','whatsapp_instances',
+    'group_selected','group_campaigns','group_scheduled_messages',
+    'group_message_queue','group_participant_events'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
@@ -198,7 +204,9 @@ DECLARE _t text; _cnt bigint;
     'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
-    'tracked_links','transactions','whatsapp_instances'
+    'tracked_links','transactions','whatsapp_instances',
+    'group_selected','group_campaigns','group_scheduled_messages',
+    'group_message_queue','group_participant_events'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
@@ -247,7 +255,9 @@ DECLARE _t text;
     'message_queue_config','meta_pixels',
     'platform_connections','quick_replies','recovery_queue','recovery_settings',
     'reminders','smtp_config',
-    'tracked_links','transactions','whatsapp_instances'
+    'tracked_links','transactions','whatsapp_instances',
+    'group_selected','group_campaigns','group_scheduled_messages',
+    'group_message_queue','group_participant_events'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
