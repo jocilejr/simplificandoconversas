@@ -297,8 +297,8 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
     if (error) throw error;
     res.json(data);
   } catch (err: any) {
-    console.error("[groups-api] create message error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
