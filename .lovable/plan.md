@@ -1,37 +1,62 @@
 
 
-# Fix: Tabela `followup_settings` não existe na VPS
+# Yampi Webhook: user_id automático + ID interno + CPF no exemplo
 
-## Causa raiz
+## Resumo
 
-A tabela `followup_settings` foi criada apenas nas migrations do Lovable Cloud (arquivo `20260407151222_...sql`). O script `update.sh` da VPS, que cria todas as tabelas via SQL inline, **nunca incluiu o `CREATE TABLE` para `followup_settings`**. Quando o `migrate-workspace.sql` roda, ele tenta adicionar `workspace_id` e RLS a uma tabela que não existe — mas usa `IF NOT EXISTS` em tudo, então falha silenciosamente.
+Três mudanças:
+1. **`user_id` automático** — derivado do `workspace_id` (busca `created_by` na tabela `workspaces`), igual ao `manual-payment-webhook.ts`
+2. **`external_id` gerado internamente** — quando `resource.number` ou `resource.id` não vierem no payload, o sistema gera um UUID como fallback, garantindo deduplicação sem exigir dados do usuário
+3. **CPF no exemplo** — adicionado ao payload de exemplo na UI
 
-## Solução
+## Alterações
 
-### Arquivo: `deploy/update.sh`
+### 1. `deploy/backend/src/routes/yampi-webhook.ts`
 
-Adicionar o bloco `CREATE TABLE IF NOT EXISTS public.followup_settings` na seção de "base schema updates", **antes** do `migrate-workspace.sql`. A tabela precisa ter:
+- Remover `user_id` do body e da validação obrigatória (linhas 62, 72-75)
+- Após validar `workspaceId`, buscar workspace no banco para obter `created_by`:
+  ```ts
+  const { data: ws } = await sb.from("workspaces")
+    .select("id, created_by").eq("id", workspaceId).maybeSingle();
+  if (!ws) return res.status(404).json({ error: "Workspace not found" });
+  const userId = body.user_id || ws.created_by;
+  ```
+- Para `external_id`, usar fallback com crypto randomUUID quando `number`/`id` não vierem:
+  ```ts
+  const orderNumber = String(order.number || order.id || crypto.randomUUID());
+  ```
+- Mesma lógica para `transaction.payment.refused` e `cart.reminder`
+- Atualizar JSDoc do topo do arquivo
 
-- `id uuid PRIMARY KEY DEFAULT gen_random_uuid()`
-- `workspace_id uuid NOT NULL UNIQUE` (UNIQUE é obrigatório para o upsert funcionar)
-- `user_id uuid NOT NULL`
-- `instance_name text`
-- `enabled boolean NOT NULL DEFAULT false`
-- `send_after_minutes integer NOT NULL DEFAULT 5`
-- `send_at_hour text NOT NULL DEFAULT '09:00'`
-- `max_messages_per_phone_per_day integer NOT NULL DEFAULT 1`
-- `created_at timestamptz NOT NULL DEFAULT now()`
-- `updated_at timestamptz NOT NULL DEFAULT now()`
+### 2. `src/components/settings/IntegrationsSection.tsx`
 
-Incluir RLS + policies + GRANT, seguindo o padrão das outras tabelas no mesmo bloco.
+- **Remover** bloco "Seu User ID" (linhas 392-413)
+- **Remover** `user_id` da lista de campos obrigatórios (linha 420)
+- **Atualizar** exemplo de payload JSON (linhas 436-451):
+  - Remover `"user_id"`
+  - Remover `"number": 12345`
+  - Adicionar `"cpf": "12345678900"` dentro de `customer.data`
 
-### Resultado
-
-Após o próximo `update.sh`:
-1. A tabela será criada
-2. O `migrate-workspace.sql` adicionará as policies de workspace
-3. O frontend conseguirá fazer upsert sem erro
+Payload final exibido na UI:
+```json
+{
+  "event": "order.paid",
+  "workspace_id": "seu-workspace-id",
+  "resource": {
+    "value_total": 149.90,
+    "customer": {
+      "data": {
+        "name": "João Silva",
+        "email": "joao@email.com",
+        "phone": { "full_number": "11999998888" },
+        "cpf": "12345678900"
+      }
+    }
+  }
+}
+```
 
 ## Arquivos alterados
-1. `deploy/update.sh` — Adicionar CREATE TABLE para followup_settings
+1. `deploy/backend/src/routes/yampi-webhook.ts`
+2. `src/components/settings/IntegrationsSection.tsx`
 
