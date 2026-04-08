@@ -58,14 +58,11 @@ const INTEGRATIONS: Integration[] = [
   {
     id: "yampi",
     name: "Yampi",
-    description: "Pagamentos aprovados e carrinho abandonado",
+    description: "Pagamentos e carrinho abandonado via n8n",
     platform: "yampi",
     icon: "🛒",
     available: true,
-    fields: [
-      { key: "secret_key", label: "Webhook Secret", placeholder: "whsec_...", type: "password" },
-      { key: "alias", label: "Alias da Loja", placeholder: "minha-loja" },
-    ],
+    fields: [],
     webhookPath: "/functions/v1/yampi-webhook",
   },
   {
