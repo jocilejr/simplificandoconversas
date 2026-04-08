@@ -91,6 +91,59 @@ async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: st
   return "";
 }
 
+/* ─── POST /debug-groups (temporário) ─── */
+router.post("/debug-groups", async (req: Request, res: Response) => {
+  try {
+    const { instanceName, workspaceId } = req.body;
+    if (!instanceName || !workspaceId) return res.status(400).json({ error: "instanceName and workspaceId required" });
+
+    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const encoded = encodeURIComponent(instanceName);
+    const result: any = { instanceName, baseUrl };
+
+    // 1. fetchAllGroups raw
+    try {
+      const r = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=false`, { headers: { apikey: apiKey } });
+      result.rawFetchAllGroups = r.ok ? await r.json() : { status: r.status, body: await r.text() };
+    } catch (e: any) { result.rawFetchAllGroups = { error: e.message }; }
+
+    // 2. fetchInstances raw
+    try {
+      const r = await fetch(`${baseUrl}/instance/fetchInstances`, { headers: { apikey: apiKey } });
+      result.rawFetchInstances = r.ok ? await r.json() : { status: r.status, body: await r.text() };
+    } catch (e: any) { result.rawFetchInstances = { error: e.message }; }
+
+    // 3. connectionState raw
+    try {
+      const r = await fetch(`${baseUrl}/instance/connectionState/${encoded}`, { headers: { apikey: apiKey } });
+      result.rawConnectionState = r.ok ? await r.json() : { status: r.status, body: await r.text() };
+    } catch (e: any) { result.rawConnectionState = { error: e.message }; }
+
+    // 4. findGroupInfos for each @g.us group
+    const rawList = Array.isArray(result.rawFetchAllGroups) ? result.rawFetchAllGroups : (result.rawFetchAllGroups?.groups || []);
+    const gus = rawList.filter((g: any) => {
+      const jid = g.id || g.jid || g.groupJid || "";
+      return jid.endsWith("@g.us");
+    });
+
+    result.rawFindGroupInfos = [];
+    for (const g of gus) {
+      const jid = g.id || g.jid || g.groupJid || "";
+      try {
+        const r = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(jid)}`, { headers: { apikey: apiKey } });
+        const body = r.ok ? await r.json() : { status: r.status, body: await r.text() };
+        result.rawFindGroupInfos.push({ jid, ...body });
+      } catch (e: any) {
+        result.rawFindGroupInfos.push({ jid, error: e.message });
+      }
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
 /* ─── POST /fetch-groups ─── */
 router.post("/fetch-groups", async (req: Request, res: Response) => {
   try {
