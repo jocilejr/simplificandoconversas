@@ -216,6 +216,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Yampi webhook — exact match to avoid 301
+    location = /functions/v1/yampi-webhook {
+        proxy_pass http://backend:3001/api/yampi-webhook;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Edge Functions compatibility → Backend Express
     location /functions/v1/ {
         if ($request_method = 'OPTIONS') {
