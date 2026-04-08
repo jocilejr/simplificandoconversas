@@ -43,7 +43,7 @@ export default function GroupQueueTab() {
           <Play className="h-4 w-4 mr-1" />
           Processar Fila ({stats.pending})
         </Button>
-        {batches.map((b) => (
+      {batches.map((b: string) => (
           <Button key={b} variant="outline" size="sm" onClick={() => cancelBatch.mutate(b)}>
             <XCircle className="h-4 w-4 mr-1" /> Cancelar batch
           </Button>
