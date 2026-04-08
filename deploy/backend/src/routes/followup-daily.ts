@@ -168,8 +168,8 @@ async function processWorkspace(
   console.log(`[followup-daily] ${boletos.length} pending boletos, ${rules.length} active rules`);
 
   // 4. Load today's recovery contacts (to avoid duplicates)
-  const todayStart = `${today}T00:00:00.000Z`;
-  const todayEnd = `${today}T23:59:59.999Z`;
+  const todayStart = `${today}T00:00:00-03:00`;
+  const todayEnd = `${today}T23:59:59-03:00`;
   const { data: todayContacts } = await sb
     .from("boleto_recovery_contacts")
     .select("transaction_id, rule_id")
