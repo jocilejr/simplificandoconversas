@@ -78,9 +78,7 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
         const groups: RemoteGroup[] = await resp.json();
         if (!cancelled) {
           setRemoteGroups(groups);
-          // If editing, keep existing selections; if new, auto-select none
-          if (!editData) {
-            setGroupJids(new Set());
+          setGroupJids(new Set());
           }
         }
       } catch (err: any) {
