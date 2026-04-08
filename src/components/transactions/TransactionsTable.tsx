@@ -37,6 +37,7 @@ import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
 import { BoletoQuickRecovery } from "./BoletoQuickRecovery";
 import { AutoRecoveryToggle } from "./AutoRecoveryConfig";
 import { normalizePhone } from "@/lib/normalizePhone";
+import { useUnseenTransactions } from "@/hooks/useUnseenTransactions";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -112,7 +113,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
   const [quickRecoveryTx, setQuickRecoveryTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
-
+  const { hasUnseen, markSeen } = useUnseenTransactions();
   // Recovery hooks
   const { profile } = useProfile();
   const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
@@ -152,6 +153,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   useEffect(() => {
     setVisibleCount(15);
   }, [activeTab]);
+
 
   const handleDatePreset = (type: DatePreset) => {
     const now = getBrazilNow();
@@ -224,7 +226,15 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Tab stats
+  // Mark transactions as seen when tab changes
+  useEffect(() => {
+    const currentTxs = tabTransactions[activeTab] || [];
+    const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
+    if (unseenIds.length > 0) {
+      markSeen(unseenIds);
+    }
+  }, [activeTab, tabTransactions, markSeen]);
+
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
     const totalAmount = current.reduce((sum, t) => sum + Number(t.amount), 0);
@@ -392,17 +402,21 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
           <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Aprovados ({tabTransactions.aprovados.length})
+              {hasUnseen("aprovados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Boletos ({tabTransactions["boletos-gerados"].length})
+              {hasUnseen("boletos-gerados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
+              {hasUnseen("pix-cartao-pendentes") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Rejeitados ({tabTransactions.rejeitados.length})
+              {hasUnseen("rejeitados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
           </TabsList>
         </Tabs>

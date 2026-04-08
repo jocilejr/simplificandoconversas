@@ -2347,6 +2347,7 @@ export type Database = {
           status: string
           type: string
           user_id: string
+          viewed_at: string | null
           whatsapp_valid: boolean | null
           workspace_id: string
         }
@@ -2367,6 +2368,7 @@ export type Database = {
           status?: string
           type?: string
           user_id: string
+          viewed_at?: string | null
           whatsapp_valid?: boolean | null
           workspace_id: string
         }
@@ -2387,6 +2389,7 @@ export type Database = {
           status?: string
           type?: string
           user_id?: string
+          viewed_at?: string | null
           whatsapp_valid?: boolean | null
           workspace_id?: string
         }

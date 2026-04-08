@@ -19,13 +19,14 @@ import {
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useWorkspace, PermissionKey } from "@/hooks/useWorkspace";
+import { useUnseenTransactions } from "@/hooks/useUnseenTransactions";
 import {
   Sidebar,
   SidebarContent,
@@ -69,11 +70,12 @@ const financeItems: MenuItem[] = [
   { title: "Follow Up", url: "/follow-up", icon: PhoneForwarded, permKey: "recuperacao" },
 ];
 
-function MenuGroup({ label, items, collapsed, isActive }: {
+function MenuGroup({ label, items, collapsed, isActive, dotUrls }: {
   label: string;
   items: MenuItem[];
   collapsed: boolean;
   isActive: (path: string) => boolean;
+  dotUrls?: Set<string>;
 }) {
   return (
     <SidebarGroup>
@@ -92,11 +94,14 @@ function MenuGroup({ label, items, collapsed, isActive }: {
                 <NavLink
                   to={item.url}
                   end
-                  className="hover:bg-sidebar-accent/80"
+                  className="hover:bg-sidebar-accent/80 relative"
                   activeClassName="bg-sidebar-accent text-primary font-medium"
                 >
                   <item.icon className="h-4 w-4" />
                   {!collapsed && <span className="text-xs">{item.title}</span>}
+                  {dotUrls?.has(item.url) && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  )}
                 </NavLink>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -118,6 +123,7 @@ export function AppSidebar() {
   const { user } = useAuth();
   const { profile } = useProfile();
   const { hasPermission } = useWorkspace();
+  const { hasAnyUnseen } = useUnseenTransactions();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -132,6 +138,12 @@ export function AppSidebar() {
   const visibleFinance = financeItems.filter((i) => hasPermission(i.permKey));
   const canTriggerFlow = hasPermission("disparar_fluxo");
   const canSettings = hasPermission("settings");
+
+  const financeDotUrls = useMemo(() => {
+    const set = new Set<string>();
+    if (hasAnyUnseen()) set.add("/transacoes");
+    return set;
+  }, [hasAnyUnseen]);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -155,7 +167,7 @@ export function AppSidebar() {
         {visibleFinance.length > 0 && (
           <>
             <Separator className="my-1 opacity-40" />
-            <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} />
+            <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} dotUrls={financeDotUrls} />
           </>
         )}
 

@@ -22,6 +22,7 @@ export interface Transaction {
   paid_at: string | null;
   created_at: string;
   whatsapp_valid: boolean | null;
+  viewed_at: string | null;
 }
 
 export function useTransactions(startDate?: Date, endDate?: Date) {
