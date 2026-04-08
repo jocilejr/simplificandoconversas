@@ -5,14 +5,11 @@
  * Uses the global MessageQueue for anti-ban serialization.
  * Writes audit trail to recovery_queue.
  *
- * RULES:
- * - Template is ABSOLUTE. Only the default template (is_default=true) is used.
- * - NO fallback to profiles, NO fallback to other templates.
- * - Each block is sent exactly as its type defines:
- *   - text: sends text with variable replacement
- *   - pdf: sends the boleto PDF as a document
- *   - image: converts the boleto PDF to JPG and sends as image
- * - Delay between blocks uses the instance's configured delay_seconds.
+ * RULES — Each transaction type is INDEPENDENT:
+ * - Boleto: Uses multi-block template from boleto_recovery_templates (is_default=true). NO fallback.
+ * - PIX/Cartão: Uses single text message from profiles.recovery_message_pix.
+ * - Rejeitado/Abandonado: Uses single text message from profiles.recovery_message_abandoned.
+ * - No type ever reads the other's configuration.
  */
 
 import { getServiceClient } from "./supabase";
