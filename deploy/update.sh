@@ -425,6 +425,27 @@ CREATE TABLE IF NOT EXISTS public.boleto_recovery_templates (
 );
 ALTER TABLE public.boleto_recovery_templates ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.boleto_recovery_templates TO anon, authenticated, service_role;
+
+-- Follow Up Settings
+CREATE TABLE IF NOT EXISTS public.followup_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL UNIQUE,
+  instance_name text,
+  enabled boolean NOT NULL DEFAULT false,
+  send_after_minutes integer NOT NULL DEFAULT 5,
+  send_at_hour text NOT NULL DEFAULT '09:00',
+  max_messages_per_phone_per_day integer NOT NULL DEFAULT 1,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.followup_settings ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'followup_settings' AND policyname = 'Users can manage own followup settings') THEN
+    CREATE POLICY "Users can manage own followup settings" ON public.followup_settings FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  END IF;
+END $$;
+GRANT ALL ON public.followup_settings TO anon, authenticated, service_role;
 EOSQL
 echo "✓ Base schema updates concluídos"
 
