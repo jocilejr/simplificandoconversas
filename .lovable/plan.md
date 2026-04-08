@@ -1,47 +1,25 @@
 
 
-# Comparação: Finance Hub vs. Follow-Up Daily atual
+# Fix: Erro ao salvar configurações do Follow Up
 
-## Análise da lógica
+## Causa raiz
 
-Após revisar detalhadamente o [Finance Hub](/projects/d89d7fe0-aec2-4559-ab78-93b0f65c21d2), a **lógica da régua no `followup-daily.ts` já está correta** e alinhada com o Finance Hub. Os pontos essenciais coincidem:
+O hook usa `as any` desnecessariamente (a tabela `followup_settings` já existe nos tipos gerados). Além disso, o fluxo insert/update depende de `settings?.id` que pode estar desatualizado — se já existe um registro mas `settings` ainda não carregou, tenta INSERT e falha por UNIQUE constraint em `workspace_id`.
 
-| Aspecto | Finance Hub | Seu backend (`followup-daily.ts`) |
-|---|---|---|
-| Cálculo de dias | `calcDaysSince()` com timezone Brasil | `daysBetween()` com timezone Brasil |
-| Matching de regras | `days_after_generation`, `days_before_due`, `days_after_due` | Mesma lógica, mesma ordem por priority |
-| Dedup por transaction+rule | `sentTodayKeys` Set | `alreadyContacted` Set |
-| Template variables | `{saudação}`, `{primeiro_nome}`, `{valor}`, `{vencimento}`, `{codigo_barras}` | Idêntico |
-| Blocos de mídia | PDF + Image via template blocks | PDF + Image com conversão local |
-| Anti-ban | Delay + batch pause via settings | MessageQueue com delay + cooldown |
+## Solução
 
-## Diferenças encontradas (melhorias do Finance Hub que faltam)
+### Arquivo: `src/hooks/useFollowUpSettings.ts`
 
-### 1. Dedup por telefone (evitar spam ao mesmo número)
-O Finance Hub tem uma proteção extra: rastreia quantas mensagens cada **telefone** já recebeu hoje e respeita um limite `max_messages_per_person_per_day`. Seu backend não tem isso — se o mesmo cliente tiver 2 boletos com regras diferentes, recebe 2 mensagens.
+1. **Remover todos os `as any`** — usar a tabela tipada diretamente: `.from("followup_settings")`
+2. **Usar UPSERT nativo** — substituir a lógica condicional insert/update por `.upsert()` com `onConflict: "workspace_id"`, eliminando a race condition
+3. **Incluir `workspace_id` e `user_id` no payload do upsert** para que funcione tanto como insert quanto update
 
-### 2. Re-check de status antes do envio
-Seu `followup-daily.ts` **já faz** re-check (`tx.status !== "pendente"` antes de enviar). Correto.
+### Arquivo: `src/components/followup/FollowUpSettingsDialog.tsx`
 
-### 3. Filtro `neq('rule_type', 'immediate')`
-O Finance Hub exclui regras do tipo `immediate` da busca diária (essas são usadas só no envio instantâneo). Suas tabelas não têm regras `immediate`, mas seria uma boa proteção futura.
+4. **Remover o cast `as any`** do `upsert.mutate()` — o tipo do payload agora bate com a interface
 
-## Plano de melhorias
-
-### 1. Adicionar dedup por telefone (`followup-daily.ts`)
-- Antes de processar boletos, construir um `Map<string, number>` com os últimos 8 dígitos dos telefones já contactados hoje
-- Pular envio se o telefone já atingiu o limite (default: 1 msg/dia)
-- Adicionar campo `max_messages_per_phone_per_day` na tabela `followup_settings` (migration)
-
-### 2. Filtrar regras `immediate` (`followup-daily.ts`)
-- Adicionar `.neq("rule_type", "immediate")` na query de regras para não enviar regras de disparo instantâneo no cron diário
-
-### 3. Corrigir timezone na query de dedup
-O código atual usa `todayStart = ${today}T00:00:00.000Z` (UTC). Deveria usar offset `-03:00` para Brasília, como o frontend faz: `${todayStr}T00:00:00-03:00`.
-
-## Arquivos alterados
-1. `deploy/backend/src/routes/followup-daily.ts` — Dedup por telefone, filtro `immediate`, fix timezone
-
-## Escopo
-Não há necessidade de reescrever a lógica — apenas 3 ajustes pontuais. A estrutura está correta.
+## Resultado
+- Salvar sempre funciona (insert na primeira vez, update nas seguintes)
+- Sem race condition entre query e mutation
+- Tipos corretos sem casts
 
