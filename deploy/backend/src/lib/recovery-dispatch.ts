@@ -296,34 +296,62 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  // 6. Load ONLY the default template — NO FALLBACK
-  const { data: defaultTemplate } = await sb
-    .from("boleto_recovery_templates")
-    .select("blocks")
-    .eq("workspace_id", opts.workspaceId)
-    .eq("is_default", true)
-    .maybeSingle();
+  // 6. Load template/message based on transaction type — EACH TYPE IS INDEPENDENT
+  let blocks: RecoveryBlock[] = [];
 
-  const blocks: RecoveryBlock[] =
-    defaultTemplate && Array.isArray(defaultTemplate.blocks) && defaultTemplate.blocks.length > 0
-      ? (defaultTemplate.blocks as RecoveryBlock[])
-      : [];
+  if (txType === "boleto") {
+    // Boleto: use multi-block template from boleto_recovery_templates (absolute, no fallback)
+    const { data: defaultTemplate } = await sb
+      .from("boleto_recovery_templates")
+      .select("blocks")
+      .eq("workspace_id", opts.workspaceId)
+      .eq("is_default", true)
+      .maybeSingle();
 
-  if (blocks.length === 0) {
-    console.log(`[recovery-dispatch] FAIL — No default template found for workspace ${opts.workspaceId}. Template is absolute, no fallback.`);
-    await sb.from("recovery_queue").insert({
-      workspace_id: opts.workspaceId,
-      user_id: opts.userId,
-      transaction_id: opts.transactionId,
-      customer_phone: normalizedPhone,
-      customer_name: opts.customerName || null,
-      amount: opts.amount,
-      transaction_type: txType,
-      status: "failed",
-      error_message: "Nenhum template padrão configurado. Configure um template com is_default=true.",
-      scheduled_at: new Date().toISOString(),
-    });
-    return;
+    blocks =
+      defaultTemplate && Array.isArray(defaultTemplate.blocks) && defaultTemplate.blocks.length > 0
+        ? (defaultTemplate.blocks as RecoveryBlock[])
+        : [];
+
+    if (blocks.length === 0) {
+      console.log(`[recovery-dispatch] FAIL — No default boleto template for workspace ${opts.workspaceId}.`);
+      await sb.from("recovery_queue").insert({
+        workspace_id: opts.workspaceId,
+        user_id: opts.userId,
+        transaction_id: opts.transactionId,
+        customer_phone: normalizedPhone,
+        customer_name: opts.customerName || null,
+        amount: opts.amount,
+        transaction_type: txType,
+        status: "failed",
+        error_message: "Nenhum template padrão de boleto configurado. Configure um template com is_default=true.",
+        scheduled_at: new Date().toISOString(),
+      });
+      return;
+    }
+  } else {
+    // PIX/Cartão or Rejected/Abandoned: load single text message from profiles
+    const fieldKey = (txType === "yampi_cart" || txType === "yampi")
+      ? "recovery_message_abandoned"
+      : "recovery_message_pix";
+
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("recovery_message_pix, recovery_message_abandoned")
+      .eq("user_id", opts.userId)
+      .maybeSingle();
+
+    const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+    const DEFAULT_ABANDONED_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?\n\nSe já resolveu, pode desconsiderar! 🙏`;
+
+    const defaultMsg = fieldKey === "recovery_message_pix" ? DEFAULT_PIX_MSG : DEFAULT_ABANDONED_MSG;
+    const message = (profile as any)?.[fieldKey] || defaultMsg;
+
+    blocks = [{ id: "profile-text", type: "text", content: message }];
+
+    if (!message || message === defaultMsg) {
+      console.log(`[recovery-dispatch] Using default ${fieldKey} message (no custom message configured)`);
+    }
   }
 
   console.log(`[recovery-dispatch] Default template loaded: ${blocks.length} block(s) [${blocks.map(b => b.type).join(", ")}]`);
