@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS recovery_message_abandoned text DEFAULT NULL;

@@ -1558,6 +1558,7 @@ export type Database = {
           full_name: string | null
           id: string
           openai_api_key: string | null
+          recovery_message_abandoned: string | null
           recovery_message_boleto: string | null
           recovery_message_pix: string | null
           updated_at: string
@@ -1570,6 +1571,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           openai_api_key?: string | null
+          recovery_message_abandoned?: string | null
           recovery_message_boleto?: string | null
           recovery_message_pix?: string | null
           updated_at?: string
@@ -1582,6 +1584,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           openai_api_key?: string | null
+          recovery_message_abandoned?: string | null
           recovery_message_boleto?: string | null
           recovery_message_pix?: string | null
           updated_at?: string

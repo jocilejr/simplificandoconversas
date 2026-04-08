@@ -45,7 +45,7 @@ interface TransactionsTableProps {
   dateEnd?: Date;
 }
 
-type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "yampi-abandonados";
+type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "rejeitados";
 type SortField = "created_at" | "amount" | "customer_name";
 type SortDirection = "asc" | "desc";
 type DatePreset = "today" | "yesterday" | "7days" | "30days" | "custom";
@@ -125,12 +125,16 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
 
   const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
   const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+  const DEFAULT_ABANDONED_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?\n\nSe já resolveu, pode desconsiderar! 🙏`;
 
   const getRecoveryMessage = (tab: TabKey) => {
     if (tab === "boletos-gerados") {
       return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
     }
-    return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+    if (tab === "pix-cartao-pendentes") {
+      return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+    }
+    return (profile as any)?.recovery_message_abandoned || DEFAULT_ABANDONED_MSG;
   };
 
   const handleRowClick = (tx: Transaction) => {
@@ -214,7 +218,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     "pix-cartao-pendentes": transactions.filter(
       (t) => (t.type === "pix" || t.type === "cartao" || t.type === "card") && t.status === "pendente"
     ),
-    "yampi-abandonados": transactions.filter(
+    rejeitados: transactions.filter(
       (t) => (t.type === "yampi_cart" && t.status === "abandonado") || t.status === "rejeitado"
     ),
   }), [transactions]);
@@ -396,8 +400,8 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
             <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
             </TabsTrigger>
-            <TabsTrigger value="yampi-abandonados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
-              Carrinhos ({tabTransactions["yampi-abandonados"].length})
+            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+              Rejeitados ({tabTransactions.rejeitados.length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -422,6 +426,9 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
         )}
         {activeTab === "pix-cartao-pendentes" && (
           <RecoverySettingsDialog type="pix" />
+        )}
+        {activeTab === "rejeitados" && (
+          <RecoverySettingsDialog type="abandoned" />
         )}
       </div>
 

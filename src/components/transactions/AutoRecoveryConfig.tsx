@@ -132,7 +132,7 @@ function AutoRecoveryConfigDialog({ open, onOpenChange }: { open: boolean; onOpe
   const typeRows = [
     { label: "Boletos", value: instanceBoleto, setter: setInstanceBoleto, enabled: enabledBoleto, setEnabled: setEnabledBoleto },
     { label: "PIX / Cartão", value: instancePix, setter: setInstancePix, enabled: enabledPix, setEnabled: setEnabledPix },
-    { label: "Carrinhos Yampi", value: instanceYampi, setter: setInstanceYampi, enabled: enabledYampi, setEnabled: setEnabledYampi },
+    { label: "Rejeitados/Abandonados", value: instanceYampi, setter: setInstanceYampi, enabled: enabledYampi, setEnabled: setEnabledYampi },
   ];
 
   return (

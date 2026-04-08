@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 
 interface RecoverySettingsDialogProps {
-  type: "boleto" | "pix";
+  type: "boleto" | "pix" | "abandoned";
 }
 
 const VARIABLES = [
@@ -27,15 +27,16 @@ const VARIABLES = [
 
 const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
 const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+const DEFAULT_ABANDONED_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?\n\nSe já resolveu, pode desconsiderar! 🙏`;
 
 export function RecoverySettingsDialog({ type }: RecoverySettingsDialogProps) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const { profile, updateProfile } = useProfile();
 
-  const fieldKey = type === "boleto" ? "recovery_message_boleto" : "recovery_message_pix";
-  const defaultMsg = type === "boleto" ? DEFAULT_BOLETO_MSG : DEFAULT_PIX_MSG;
-  const title = type === "boleto" ? "Mensagem de Recuperação - Boletos" : "Mensagem de Recuperação - PIX/Cartão";
+  const fieldKey = type === "boleto" ? "recovery_message_boleto" : type === "pix" ? "recovery_message_pix" : "recovery_message_abandoned";
+  const defaultMsg = type === "boleto" ? DEFAULT_BOLETO_MSG : type === "pix" ? DEFAULT_PIX_MSG : DEFAULT_ABANDONED_MSG;
+  const title = type === "boleto" ? "Mensagem de Recuperação - Boletos" : type === "pix" ? "Mensagem de Recuperação - PIX/Cartão" : "Mensagem de Recuperação - Rejeitados/Abandonados";
 
   useEffect(() => {
     if (open && profile) {
