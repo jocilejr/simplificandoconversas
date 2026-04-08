@@ -123,6 +123,7 @@ export function AppSidebar() {
   const { user } = useAuth();
   const { profile } = useProfile();
   const { hasPermission } = useWorkspace();
+  const { hasAnyUnseen } = useUnseenTransactions();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -137,6 +138,12 @@ export function AppSidebar() {
   const visibleFinance = financeItems.filter((i) => hasPermission(i.permKey));
   const canTriggerFlow = hasPermission("disparar_fluxo");
   const canSettings = hasPermission("settings");
+
+  const financeDotUrls = useMemo(() => {
+    const set = new Set<string>();
+    if (hasAnyUnseen()) set.add("/transacoes");
+    return set;
+  }, [hasAnyUnseen]);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
