@@ -1,95 +1,95 @@
 
 
-# Separar completamente a recuperação por tipo de transação
+# Corrigir recuperação: coluna inexistente + mensagem não persistida
 
-## Problema atual
-1. O backend (`recovery-dispatch.ts`) usa **uma única tabela** (`boleto_recovery_templates`) para TODOS os tipos — PIX/Cartão recebe 3 blocos (text+pdf+image) quando deveria receber apenas 1 texto
-2. A aba "Carrinhos" diz "yampi-abandonados" mas recebe rejeitados de qualquer origem (Mercado Pago, etc.), não só Yampi
-3. A aba "Carrinhos" não tem ⚙️ para configurar mensagem de recuperação
-4. O `getRecoveryMessage()` no frontend trata tudo que não é boleto como PIX — sem mensagem própria para carrinhos/rejeitados
-5. O `encodeURIComponent` não é aplicado no nome da instância, causando 404 na Evolution API
+## Problemas confirmados na VPS
+
+1. **`recovery_message_abandoned` NÃO EXISTE** na tabela `profiles` do VPS — a migração do Lovable Cloud não foi aplicada lá
+2. **`recovery_message_pix` está NULL** no banco — o modal exibe um texto padrão visual (`DEFAULT_PIX_MSG`) mas nunca o salvou no banco
+3. O backend busca `recovery_message_pix` no banco, encontra NULL, e marca como `failed`
+
+**Causa raiz**: O modal mostra uma mensagem "fake" via fallback visual (`|| defaultMsg`) mas só persiste quando o usuário clica "Salvar". Como nunca foi salvo, o banco está vazio.
 
 ## Solução
 
-### 1. Migração SQL — adicionar `recovery_message_abandoned` na tabela `profiles`
+### 1. Migração SQL — adicionar coluna + backfill
 
 ```sql
+-- Adicionar coluna que falta
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS recovery_message_abandoned text DEFAULT NULL;
+
+-- Backfill: preencher campos NULL com as mensagens padrão
+UPDATE profiles 
+SET recovery_message_pix = '{saudação}, {primeiro_nome}! 😊
+
+Notei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?
+
+Se já realizou o pagamento, por favor desconsidere! 🙏'
+WHERE recovery_message_pix IS NULL;
+
+UPDATE profiles 
+SET recovery_message_abandoned = '{saudação}, {primeiro_nome}! 😊
+
+Vi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?
+
+Se já resolveu, pode desconsiderar! 🙏'
+WHERE recovery_message_abandoned IS NULL;
+
+UPDATE profiles 
+SET recovery_message_boleto = '{saudação}, {primeiro_nome}! 😊
+
+Vi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?
+
+Caso já tenha pago, pode desconsiderar essa mensagem! 🙏'
+WHERE recovery_message_boleto IS NULL;
 ```
 
-Novo campo para a mensagem da aba de Rejeitados/Abandonados, independente das outras.
+### 2. Trigger `handle_new_user` — novos usuários já nascem com mensagens
 
-### 2. Renomear aba "Carrinhos" → "Rejeitados" no frontend
+Atualizar a função para inserir os 3 campos com valores padrão no `INSERT INTO profiles`.
 
-**`src/components/transactions/TransactionsTable.tsx`**:
-- Tipo `TabKey`: renomear `yampi-abandonados` → `rejeitados` (ou manter a key e só trocar o label)
-- Label da tab: "Carrinhos" → "Rejeitados/Abandonados"
-- Adicionar ⚙️ `RecoverySettingsDialog` com `type="abandoned"` para essa aba
+### 3. Frontend `RecoverySettingsDialog.tsx` — sem mudança
 
-### 3. Expandir `RecoverySettingsDialog` para 3 tipos
+O modal já funciona corretamente: mostra o fallback se NULL e salva quando o usuário clica "Salvar". Após o backfill, o banco terá valores reais e o fallback nunca será acionado.
 
-**`src/components/transactions/RecoverySettingsDialog.tsx`**:
-- Props `type`: `"boleto" | "pix" | "abandoned"`
-- Mapear `abandoned` → campo `recovery_message_abandoned` na `profiles`
-- Mensagem padrão para abandonados: texto genérico de carrinho abandonado
-- Cada tipo lê/salva em seu campo exclusivo na `profiles`
+### 4. Backend `recovery-dispatch.ts` — sem mudança
 
-### 4. Backend: cada tipo busca sua própria mensagem
+Já está correto: lê do banco sem fallback. Após o backfill, encontrará a mensagem.
 
-**`deploy/backend/src/lib/recovery-dispatch.ts`** — refatorar o passo 6 (carregamento de template):
+## Verificação na VPS após deploy
 
-```text
-if (txType === "boleto") {
-  // Manter: carrega boleto_recovery_templates com is_default=true
-  // Blocos: text, pdf, image — como hoje
-} else {
-  // PIX/Cartão ou Yampi/Rejeitado: carrega mensagem da profiles
-  const fieldKey = (txType === "yampi_cart" || txType === "yampi") 
-    ? "recovery_message_abandoned" 
-    : "recovery_message_pix";
-  
-  const { data: profile } = await sb
-    .from("profiles")
-    .select(fieldKey)
-    .eq("user_id", opts.userId)
-    .maybeSingle();
-  
-  const message = profile?.[fieldKey] || DEFAULT_MESSAGE;
-  blocks = [{ id: "profile-text", type: "text", content: message }];
-}
+```bash
+cd ~/simplificandoconversas/deploy
+
+# 1. Aplicar migração manualmente (a do Lovable Cloud não roda na VPS)
+docker compose exec -T postgres psql -U postgres -d postgres -c "
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS recovery_message_abandoned text DEFAULT NULL;
+"
+
+# 2. Backfill
+docker compose exec -T postgres psql -U postgres -d postgres -c "
+UPDATE profiles SET recovery_message_pix = E'{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏' WHERE recovery_message_pix IS NULL;
+UPDATE profiles SET recovery_message_abandoned = E'{saudação}, {primeiro_nome}! 😊\n\nVi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?\n\nSe já resolveu, pode desconsiderar! 🙏' WHERE recovery_message_abandoned IS NULL;
+UPDATE profiles SET recovery_message_boleto = E'{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏' WHERE recovery_message_boleto IS NULL;
+"
+
+# 3. Notificar PostgREST do novo schema
+docker compose exec -T postgres psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+docker compose restart postgrest
+
+# 4. Rebuild backend
+docker compose up -d --build backend
+
+# 5. Verificar
+docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT user_id, length(recovery_message_pix) as pix_len, length(recovery_message_abandoned) as abandoned_len, length(recovery_message_boleto) as boleto_len FROM profiles;"
 ```
-
-Resultado: **Boleto** usa template multi-bloco. **PIX/Cartão** usa `recovery_message_pix`. **Abandonado/Rejeitado** usa `recovery_message_abandoned`. Nenhum tipo interfere no outro.
-
-### 5. Fix `encodeURIComponent` na Evolution API
-
-**`deploy/backend/src/lib/recovery-dispatch.ts`** — nos 3 `fetch()` dentro de `sendBlock()`:
-- `sendText/${encodeURIComponent(instanceName)}`
-- `sendMedia/${encodeURIComponent(instanceName)}` (pdf)
-- `sendMedia/${encodeURIComponent(instanceName)}` (image)
-
-### 6. Frontend: `getRecoveryMessage()` com 3 caminhos
-
-```text
-if (tab === "boletos-gerados") → recovery_message_boleto
-if (tab === "pix-cartao-pendentes") → recovery_message_pix  
-if (tab === "rejeitados") → recovery_message_abandoned
-```
-
-### 7. `AutoRecoveryConfig.tsx` — renomear label
-
-"Carrinhos Yampi" → "Rejeitados/Abandonados"
 
 ## Arquivos alterados
-1. **Migração SQL** — `ALTER TABLE profiles ADD COLUMN recovery_message_abandoned`
-2. **`src/components/transactions/RecoverySettingsDialog.tsx`** — suportar type `abandoned`
-3. **`src/components/transactions/TransactionsTable.tsx`** — renomear aba, adicionar ⚙️, ajustar `getRecoveryMessage`
-4. **`src/components/transactions/AutoRecoveryConfig.tsx`** — renomear label
-5. **`src/hooks/useProfile.ts`** — incluir novo campo no type (se necessário)
-6. **`deploy/backend/src/lib/recovery-dispatch.ts`** — lógica de template por tipo + encodeURIComponent
+1. **Migração SQL** — adicionar `recovery_message_abandoned` + backfill dos 3 campos
+2. **Função `handle_new_user`** — incluir mensagens padrão na criação de perfil
 
-## Deploy
-```bash
-cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
-```
+## Resultado
+- Todas as mensagens já estarão salvas no banco
+- O backend encontrará a mensagem e enviará corretamente
+- O modal continuará funcionando como antes, mas agora refletindo dados reais
 
