@@ -124,6 +124,7 @@ async function processWorkspace(
   workspaceId: string,
   userId: string,
   instanceName: string,
+  maxMessagesPerPhone: number,
 ) {
   const today = getTodayBrasilia();
   console.log(`[followup-daily] Processing workspace ${workspaceId} for ${today}`);
