@@ -155,9 +155,26 @@ router.post("/", async (req, res) => {
                     .update({ status })
                     .eq("workspace_id", workspaceId)
                     .eq("instance_name", name);
-                  return { name, status, profileName: "" };
+
+                  // Fetch instance metadata (ownerJid, profileName, profilePicUrl)
+                  let ownerJid = "";
+                  let profileName = "";
+                  let profilePicUrl = "";
+                  try {
+                    const fetchResult = await evolutionRequest(
+                      `/instance/fetchInstances?instanceName=${encodeURIComponent(name)}`, "GET"
+                    );
+                    const instData = Array.isArray(fetchResult) ? fetchResult[0] : fetchResult;
+                    ownerJid = instData?.ownerJid || "";
+                    profileName = instData?.profileName || "";
+                    profilePicUrl = instData?.profilePicUrl || "";
+                  } catch (e: any) {
+                    console.log(`[fetch-instances] Could not fetch metadata for ${name}:`, e.message);
+                  }
+
+                  return { name, status, ownerJid, profileName, profilePicUrl };
                 } catch {
-                  return { name, status: "close", profileName: "" };
+                  return { name, status: "close", ownerJid: "", profileName: "", profilePicUrl: "" };
                 }
               })
             )

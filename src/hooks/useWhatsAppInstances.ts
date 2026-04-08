@@ -19,6 +19,8 @@ export interface RemoteInstance {
   name: string;
   status: string;
   profileName?: string;
+  ownerJid?: string;
+  profilePicUrl?: string;
 }
 
 function parseRemoteInstance(ri: any): RemoteInstance {
@@ -26,6 +28,8 @@ function parseRemoteInstance(ri: any): RemoteInstance {
     name: ri.name || ri.instanceName || ri.instance?.instanceName || "unknown",
     status: ri.status || ri.connectionStatus || ri.instance?.state || ri.state || "close",
     profileName: ri.profileName || "",
+    ownerJid: ri.ownerJid || "",
+    profilePicUrl: ri.profilePicUrl || "",
   };
 }
 
@@ -93,6 +97,8 @@ export function useWhatsAppInstances() {
       ...inst,
       status: remote?.status || inst.status,
       profileName: remote?.profileName || "",
+      ownerJid: remote?.ownerJid || "",
+      profilePicUrl: remote?.profilePicUrl || "",
     };
   });
 
