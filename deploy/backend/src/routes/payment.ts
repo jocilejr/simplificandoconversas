@@ -150,7 +150,7 @@ router.post("/create", async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ error: "Não autenticado" });
     }
-    const workspaceId = await resolveWorkspaceId(userId);
+    const workspaceId = await resolveWorkspaceIdFromRequest(req.body, userId);
 
     const token = await getMPTokenForUser(userId);
     if (!token) {

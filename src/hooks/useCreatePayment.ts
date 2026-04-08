@@ -27,6 +27,7 @@ export interface PaymentResult {
 
 export function useCreatePayment() {
   const queryClient = useQueryClient();
+  const { workspaceId } = useWorkspace();
 
   return useMutation({
     mutationFn: async (input: CreatePaymentInput): Promise<PaymentResult> => {
@@ -39,7 +40,7 @@ export function useCreatePayment() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, workspaceId }),
       });
 
       if (!resp.ok) {
