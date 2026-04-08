@@ -125,12 +125,16 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
 
   const DEFAULT_BOLETO_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que seu boleto no valor de {valor} ainda está em aberto. Posso te ajudar com algo?\n\nCaso já tenha pago, pode desconsiderar essa mensagem! 🙏`;
   const DEFAULT_PIX_MSG = `{saudação}, {primeiro_nome}! 😊\n\nNotei que seu pagamento de {valor} via PIX/Cartão está pendente. Precisa de ajuda para finalizar?\n\nSe já realizou o pagamento, por favor desconsidere! 🙏`;
+  const DEFAULT_ABANDONED_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que você teve um problema com seu pagamento de {valor}. Posso te ajudar a finalizar?\n\nSe já resolveu, pode desconsiderar! 🙏`;
 
   const getRecoveryMessage = (tab: TabKey) => {
     if (tab === "boletos-gerados") {
       return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
     }
-    return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+    if (tab === "pix-cartao-pendentes") {
+      return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+    }
+    return (profile as any)?.recovery_message_abandoned || DEFAULT_ABANDONED_MSG;
   };
 
   const handleRowClick = (tx: Transaction) => {
