@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { getServiceClient } from "../lib/supabase";
 import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
@@ -9,13 +10,13 @@ const router = Router();
  * Yampi Webhook Handler (via n8n)
  *
  * O n8n recebe os eventos da Yampi e repassa para esta rota
- * com workspace_id e user_id já definidos no body.
+ * com workspace_id já definido no body. O user_id é derivado
+ * automaticamente do workspace (created_by).
  *
  * Payload esperado:
  * {
  *   "event": "order.paid" | "transaction.payment.refused" | "cart.reminder",
  *   "workspace_id": "uuid",
- *   "user_id": "uuid",
  *   "resource": { ... }
  * }
  */
@@ -59,7 +60,6 @@ router.post("/", async (req, res) => {
     const event = body?.event;
     const resource = body?.resource;
     const workspaceId = body?.workspace_id;
-    const userId = body?.user_id;
 
     const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
     console.log(`[yampi-webhook] Incoming request — event: ${event || "none"}, ip: ${clientIp}`);
@@ -69,19 +69,27 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Missing event or resource" });
     }
 
-    if (!workspaceId || !userId) {
-      console.log("[yampi-webhook] Missing workspace_id or user_id, returning 400");
-      return res.status(400).json({ error: "Missing workspace_id or user_id" });
+    if (!workspaceId) {
+      console.log("[yampi-webhook] Missing workspace_id, returning 400");
+      return res.status(400).json({ error: "Missing workspace_id" });
     }
 
     const sb = getServiceClient();
+
+    // Derive userId from workspace
+    const { data: ws } = await sb.from("workspaces").select("id, created_by").eq("id", workspaceId).maybeSingle();
+    if (!ws) {
+      console.log("[yampi-webhook] Workspace not found, returning 404");
+      return res.status(404).json({ error: "Workspace not found" });
+    }
+    const userId = body.user_id || ws.created_by;
 
     // ─── order.paid ───
     if (event === "order.paid") {
       const order = resource;
       const customer = extractCustomer(order.customer);
       const amount = Number(order.value_total || order.buyer_value_total || 0);
-      const orderNumber = String(order.number || order.id || "");
+      const orderNumber = String(order.number || order.id || randomUUID());
       const externalId = `yampi_order_${orderNumber}`;
 
       // Payment type from first transaction
@@ -148,7 +156,7 @@ router.post("/", async (req, res) => {
       const tx = resource;
       const customer = extractCustomer(tx.customer);
       const amount = Number(tx.amount || 0);
-      const txId = String(tx.id || "");
+      const txId = String(tx.id || randomUUID());
       const externalId = `yampi_refused_${txId}`;
 
       const paymentAlias = tx.payment?.data?.alias;
@@ -215,7 +223,7 @@ router.post("/", async (req, res) => {
       const customer = extractCustomer(cart.customer);
       const totalizers = cart.totalizers || {};
       const amount = Number(totalizers.total || 0);
-      const cartId = String(cart.id || "");
+      const cartId = String(cart.id || randomUUID());
       const externalId = `yampi_cart_${cartId}`;
 
       // Dedup

@@ -389,35 +389,13 @@ export function IntegrationsSection() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-foreground">Seu User ID</p>
-                  <div className="flex gap-2">
-                    <Input
-                      readOnly
-                      value={user?.id || ""}
-                      className="font-mono text-[11px] bg-muted"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(user?.id || "");
-                        toast({ title: "User ID copiado!" });
-                      }}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
 
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-foreground">Campos obrigatórios</p>
                   <div className="bg-muted rounded p-2 space-y-0.5">
                     <p className="text-[11px] font-mono"><span className="text-primary">event</span> — evento original da Yampi</p>
                     <p className="text-[11px] font-mono"><span className="text-primary">workspace_id</span> — UUID do workspace</p>
-                    <p className="text-[11px] font-mono"><span className="text-primary">user_id</span> — UUID do usuário</p>
+                    <p className="text-[11px] font-mono"><span className="text-primary">resource</span> — objeto original da Yampi (com CPF)</p>
                     <p className="text-[11px] font-mono"><span className="text-primary">resource</span> — objeto original da Yampi</p>
                   </div>
                 </div>
@@ -436,15 +414,14 @@ export function IntegrationsSection() {
                   <pre className="bg-muted rounded p-2 text-[10px] font-mono whitespace-pre overflow-x-auto">{`{
   "event": "order.paid",
   "workspace_id": "${workspaceId || "seu-workspace-id"}",
-  "user_id": "${user?.id || "seu-user-id"}",
   "resource": {
-    "number": 12345,
     "value_total": 149.90,
     "customer": {
       "data": {
         "name": "João Silva",
         "email": "joao@email.com",
-        "phone": { "full_number": "11999998888" }
+        "phone": { "full_number": "11999998888" },
+        "cpf": "12345678900"
       }
     }
   }
