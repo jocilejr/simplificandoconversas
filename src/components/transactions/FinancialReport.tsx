@@ -4,6 +4,7 @@ import { FinancialStatCard } from "./FinancialStatCard";
 import { RevenueChart } from "./RevenueChart";
 import { PaymentMethodsChart } from "./PaymentMethodsChart";
 import { useTransactions } from "@/hooks/useTransactions";
+import { useFinancialSettings } from "@/hooks/useFinancialSettings";
 import { QrCode, FileText, CreditCard, DollarSign, Wallet } from "lucide-react";
 
 export function FinancialReport() {
