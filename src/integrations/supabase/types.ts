@@ -1297,6 +1297,7 @@ export type Database = {
           enabled: boolean
           id: string
           instance_name: string | null
+          max_messages_per_phone_per_day: number
           send_after_minutes: number
           send_at_hour: string
           updated_at: string
@@ -1308,6 +1309,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           instance_name?: string | null
+          max_messages_per_phone_per_day?: number
           send_after_minutes?: number
           send_at_hour?: string
           updated_at?: string
@@ -1319,6 +1321,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           instance_name?: string | null
+          max_messages_per_phone_per_day?: number
           send_after_minutes?: number
           send_at_hour?: string
           updated_at?: string
