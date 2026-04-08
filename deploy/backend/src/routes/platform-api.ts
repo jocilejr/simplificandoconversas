@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
-import { dispatchRecovery } from "../lib/recovery-dispatch";
+import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
