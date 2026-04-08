@@ -636,6 +636,114 @@ export function ConnectionsSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Queue Detail Dialog */}
+      <Dialog open={!!queueDialogInstance} onOpenChange={(open) => !open && setQueueDialogInstance(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Inbox className="h-5 w-5" />
+              Fila — {queueDialogInstance}
+            </DialogTitle>
+            <DialogDescription>Visualize mensagens pendentes e histórico de envios</DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const qs = queueStatuses.find((q: QueueStatus) => q.instanceName === queueDialogInstance);
+            return (
+              <Tabs defaultValue="pending" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="pending" className="flex-1">
+                    Pendentes {qs && (qs.queueSize > 0 || qs.processing) && (
+                      <Badge variant="secondary" className="ml-1.5 text-[10px]">{qs.queueSize + (qs.processing ? 1 : 0)}</Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="history" className="flex-1">
+                    Histórico {qs && qs.history?.length > 0 && (
+                      <Badge variant="secondary" className="ml-1.5 text-[10px]">{qs.history.length}</Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="pending">
+                  <ScrollArea className="h-[300px]">
+                    {!qs || (qs.queueSize === 0 && !qs.processing) ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <CheckCircle2 className="h-8 w-8 mb-2 opacity-40" />
+                        <p className="text-sm">Fila vazia</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 pr-3">
+                        {qs.processing && qs.currentLabel && (
+                          <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+                            <span className="text-xs truncate flex-1">{qs.currentLabel}</span>
+                            <Badge className="text-[10px] bg-primary/20 text-primary border-primary/30 shrink-0">Enviando</Badge>
+                          </div>
+                        )}
+                        {qs.pendingLabels.map((label, i) => (
+                          <div key={i} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs truncate flex-1">{label}</span>
+                            <Badge variant="outline" className="text-[10px] shrink-0">#{i + 1}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="history">
+                  <div className="flex items-center justify-end mb-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-muted-foreground"
+                      disabled={!qs?.history?.length}
+                      onClick={async () => {
+                        if (queueDialogInstance) {
+                          await clearHistory(queueDialogInstance);
+                          toast({ title: "Histórico limpo" });
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" /> Limpar histórico
+                    </Button>
+                  </div>
+                  <ScrollArea className="h-[280px]">
+                    {!qs?.history?.length ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <Inbox className="h-8 w-8 mb-2 opacity-40" />
+                        <p className="text-sm">Nenhum envio registrado</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 pr-3">
+                        {[...qs.history].reverse().map((item: QueueHistoryItem, i: number) => (
+                          <div key={i} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                            {item.status === "sent" ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                            ) : (
+                              <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs truncate">{item.label}</p>
+                              {item.error && (
+                                <p className="text-[10px] text-destructive truncate">{item.error}</p>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {new Date(item.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
