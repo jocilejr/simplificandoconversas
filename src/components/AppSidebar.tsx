@@ -167,7 +167,7 @@ export function AppSidebar() {
         {visibleFinance.length > 0 && (
           <>
             <Separator className="my-1 opacity-40" />
-            <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} />
+            <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} dotUrls={financeDotUrls} />
           </>
         )}
 
