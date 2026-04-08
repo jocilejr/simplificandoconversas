@@ -389,28 +389,32 @@ export async function dispatchRecovery(opts: {
 
   // 8. Load message_queue_config for delay
   let configDelaySeconds = 30;
+  let configPauseAfterSends: number | null = null;
+  let configPauseMinutes: number | null = null;
   try {
     const { data: queueConfig, error: queueConfigError } = await sb
       .from("message_queue_config")
-      .select("delay_seconds")
+      .select("delay_seconds, pause_after_sends, pause_minutes")
       .eq("workspace_id", opts.workspaceId)
       .eq("instance_name", instanceName)
       .maybeSingle();
 
     if (queueConfigError) {
       console.warn(`[recovery-dispatch] message_queue_config query error: ${queueConfigError.message} — using default 30s`);
-    } else if (queueConfig?.delay_seconds) {
-      configDelaySeconds = queueConfig.delay_seconds;
+    } else if (queueConfig) {
+      if (queueConfig.delay_seconds) configDelaySeconds = queueConfig.delay_seconds;
+      configPauseAfterSends = queueConfig.pause_after_sends ?? null;
+      configPauseMinutes = queueConfig.pause_minutes ?? null;
     }
   } catch (err: any) {
     console.warn(`[recovery-dispatch] message_queue_config query failed: ${err.message} — using default 30s`);
   }
 
   const delayMs = Math.max(configDelaySeconds, 5) * 1000;
-  console.log(`[recovery-dispatch] Queue delay: ${delayMs}ms (config: ${configDelaySeconds}s) for instance: ${instanceName}`);
+  console.log(`[recovery-dispatch] Queue delay: ${delayMs}ms (config: ${configDelaySeconds}s), cooldown: after=${configPauseAfterSends} pause=${configPauseMinutes}min for instance: ${instanceName}`);
 
   // 9. Enqueue into the global message queue for this instance
-  const queue = getMessageQueue(instanceName, delayMs);
+  const queue = getMessageQueue(instanceName, delayMs, configPauseAfterSends, configPauseMinutes);
 
   const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
   const evoApiKey = process.env.EVOLUTION_API_KEY || "";
