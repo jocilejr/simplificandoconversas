@@ -50,8 +50,9 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
       return res.status(resp.status).json({ error: txt });
     }
 
-    const raw = await resp.json();
-    const groups = (Array.isArray(raw) ? raw : raw?.groups || []).map((g: any) => ({
+    const raw: any = await resp.json();
+    const list = Array.isArray(raw) ? raw : (raw?.groups || []);
+    const groups = list.map((g: any) => ({
       jid: g.id || g.jid || g.groupJid,
       name: g.subject || g.name || "Sem nome",
       memberCount: g.participants?.length || g.size || 0,
