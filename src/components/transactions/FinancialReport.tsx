@@ -94,7 +94,7 @@ export function FinancialReport() {
       {/* Row 3: Revenue */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4">
         <FinancialStatCard title="Faturamento" value={formatCurrency(stats.totalRevenue)} subtitle="Pedidos pagos" icon={DollarSign} variant="info" delay={300} isLoading={isLoading} />
-        <FinancialStatCard title="Líquido" value={formatCurrency(stats.totalRevenue)} subtitle="Receita total" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
+        <FinancialStatCard title="Líquido" value={formatCurrency(stats.netRevenue)} subtitle="Após taxas e impostos" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
       </div>
 
       {/* Charts */}

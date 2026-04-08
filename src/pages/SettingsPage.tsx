@@ -44,6 +44,7 @@ const SettingsPage = () => {
       case "ai": return <AISection />;
       case "api": return <IntegrationApiSection />;
       case "email": return <EmailSettingsSection />;
+      case "fees": return <FeesSection />;
       case "app": return <AppSection />;
       default: return null;
     }
