@@ -22,6 +22,7 @@ import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl } from "@/lib/api";
 import type { Transaction } from "@/hooks/useTransactions";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 interface BoletoQuickRecoveryProps {
   open: boolean;
