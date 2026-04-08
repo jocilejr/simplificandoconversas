@@ -36,6 +36,7 @@ import { RecoverySettingsDialog } from "./RecoverySettingsDialog";
 import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
 import { BoletoQuickRecovery } from "./BoletoQuickRecovery";
 import { AutoRecoveryToggle } from "./AutoRecoveryConfig";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
