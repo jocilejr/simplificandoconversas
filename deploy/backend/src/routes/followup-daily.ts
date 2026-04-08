@@ -205,6 +205,9 @@ async function processWorkspace(
   const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
   const evoApiKey = process.env.EVOLUTION_API_KEY || "";
 
+  // Phone-level dedup: track how many messages each phone received today
+  const phoneSendCount = new Map<string, number>();
+
   let sent = 0;
   let skipped = 0;
 
