@@ -29,6 +29,7 @@ const Dashboard = () => {
   const [tempTo, setTempTo] = useState<Date | undefined>();
 
   const { profile } = useProfile();
+  const { settings: feeSettings, isLoading: feesLoading } = useFinancialSettings();
   const stats = useDashboardStats(period, customRange);
 
   const firstName = profile?.full_name?.split(" ")[0] || "";
