@@ -1,40 +1,95 @@
 
 
-# Refatorar Yampi: webhook via n8n + mini documentação
+# Separar completamente a recuperação por tipo de transação
 
-## Resumo
+## Problema atual
+1. O backend (`recovery-dispatch.ts`) usa **uma única tabela** (`boleto_recovery_templates`) para TODOS os tipos — PIX/Cartão recebe 3 blocos (text+pdf+image) quando deveria receber apenas 1 texto
+2. A aba "Carrinhos" diz "yampi-abandonados" mas recebe rejeitados de qualquer origem (Mercado Pago, etc.), não só Yampi
+3. A aba "Carrinhos" não tem ⚙️ para configurar mensagem de recuperação
+4. O `getRecoveryMessage()` no frontend trata tudo que não é boleto como PIX — sem mensagem própria para carrinhos/rejeitados
+5. O `encodeURIComponent` não é aplicado no nome da instância, causando 404 na Evolution API
 
-Simplificar o webhook Yampi para receber eventos pré-processados via n8n (removendo HMAC, busca de connections e matching por alias). Adicionar mini documentação inline no card de integração.
+## Solução
 
-## Mudanças
+### 1. Migração SQL — adicionar `recovery_message_abandoned` na tabela `profiles`
 
-### 1. `deploy/backend/src/routes/yampi-webhook.ts`
-- Remover import de `crypto`
-- Remover toda lógica de busca em `platform_connections` (linhas 78-92)
-- Remover validação HMAC (linhas 95-116)
-- Receber `workspace_id` e `user_id` diretamente do body (enviados pelo n8n)
-- Validar que ambos existem no body, retornar 400 se ausentes
-- Manter toda a lógica de negócio (extractCustomer, mapPaymentType, dedup, insert, dispatchRecovery)
+```sql
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS recovery_message_abandoned text DEFAULT NULL;
+```
 
-### 2. `deploy/backend/src/index.ts`
-- Remover o bloco `verify` do `express.json()` que salva `rawBody` (não mais necessário)
+Novo campo para a mensagem da aba de Rejeitados/Abandonados, independente das outras.
 
-### 3. `src/components/settings/IntegrationsSection.tsx`
-- Remover campos `secret_key` e `alias` da integração Yampi (fields vazio)
-- Atualizar descrição para "Pagamentos e carrinho abandonado via n8n"
-- Adicionar bloco de mini documentação (similar ao `manual_payment` e `mercadopago`) com:
-  - Método: POST
-  - Campos obrigatórios: `event`, `workspace_id`, `user_id`, `resource`
-  - Eventos suportados: `order.paid`, `transaction.payment.refused`, `cart.reminder`
-  - Exemplo de payload JSON
-  - Nota explicando que o n8n recebe da Yampi e repassa para esta URL
+### 2. Renomear aba "Carrinhos" → "Rejeitados" no frontend
 
-### 4. `deploy/nginx/default.conf.template`
-- Adicionar `location = /functions/v1/yampi-webhook` (sem trailing slash) no APP_DOMAIN antes do bloco existente
-- Adicionar blocos equivalentes (com e sem trailing slash) no API_DOMAIN antes do catch-all `/functions/v1/`
+**`src/components/transactions/TransactionsTable.tsx`**:
+- Tipo `TabKey`: renomear `yampi-abandonados` → `rejeitados` (ou manter a key e só trocar o label)
+- Label da tab: "Carrinhos" → "Rejeitados/Abandonados"
+- Adicionar ⚙️ `RecoverySettingsDialog` com `type="abandoned"` para essa aba
+
+### 3. Expandir `RecoverySettingsDialog` para 3 tipos
+
+**`src/components/transactions/RecoverySettingsDialog.tsx`**:
+- Props `type`: `"boleto" | "pix" | "abandoned"`
+- Mapear `abandoned` → campo `recovery_message_abandoned` na `profiles`
+- Mensagem padrão para abandonados: texto genérico de carrinho abandonado
+- Cada tipo lê/salva em seu campo exclusivo na `profiles`
+
+### 4. Backend: cada tipo busca sua própria mensagem
+
+**`deploy/backend/src/lib/recovery-dispatch.ts`** — refatorar o passo 6 (carregamento de template):
+
+```text
+if (txType === "boleto") {
+  // Manter: carrega boleto_recovery_templates com is_default=true
+  // Blocos: text, pdf, image — como hoje
+} else {
+  // PIX/Cartão ou Yampi/Rejeitado: carrega mensagem da profiles
+  const fieldKey = (txType === "yampi_cart" || txType === "yampi") 
+    ? "recovery_message_abandoned" 
+    : "recovery_message_pix";
+  
+  const { data: profile } = await sb
+    .from("profiles")
+    .select(fieldKey)
+    .eq("user_id", opts.userId)
+    .maybeSingle();
+  
+  const message = profile?.[fieldKey] || DEFAULT_MESSAGE;
+  blocks = [{ id: "profile-text", type: "text", content: message }];
+}
+```
+
+Resultado: **Boleto** usa template multi-bloco. **PIX/Cartão** usa `recovery_message_pix`. **Abandonado/Rejeitado** usa `recovery_message_abandoned`. Nenhum tipo interfere no outro.
+
+### 5. Fix `encodeURIComponent` na Evolution API
+
+**`deploy/backend/src/lib/recovery-dispatch.ts`** — nos 3 `fetch()` dentro de `sendBlock()`:
+- `sendText/${encodeURIComponent(instanceName)}`
+- `sendMedia/${encodeURIComponent(instanceName)}` (pdf)
+- `sendMedia/${encodeURIComponent(instanceName)}` (image)
+
+### 6. Frontend: `getRecoveryMessage()` com 3 caminhos
+
+```text
+if (tab === "boletos-gerados") → recovery_message_boleto
+if (tab === "pix-cartao-pendentes") → recovery_message_pix  
+if (tab === "rejeitados") → recovery_message_abandoned
+```
+
+### 7. `AutoRecoveryConfig.tsx` — renomear label
+
+"Carrinhos Yampi" → "Rejeitados/Abandonados"
+
+## Arquivos alterados
+1. **Migração SQL** — `ALTER TABLE profiles ADD COLUMN recovery_message_abandoned`
+2. **`src/components/transactions/RecoverySettingsDialog.tsx`** — suportar type `abandoned`
+3. **`src/components/transactions/TransactionsTable.tsx`** — renomear aba, adicionar ⚙️, ajustar `getRecoveryMessage`
+4. **`src/components/transactions/AutoRecoveryConfig.tsx`** — renomear label
+5. **`src/hooks/useProfile.ts`** — incluir novo campo no type (se necessário)
+6. **`deploy/backend/src/lib/recovery-dispatch.ts`** — lógica de template por tipo + encodeURIComponent
 
 ## Deploy
 ```bash
-cd ~/simplificandoconversas/deploy && docker compose up -d --build backend --force-recreate nginx
+cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
 ```
 
