@@ -10,6 +10,7 @@ import {
   Receipt,
   RefreshCw,
   FileText,
+  BarChart3,
   UsersRound,
   Crown,
   Package,
