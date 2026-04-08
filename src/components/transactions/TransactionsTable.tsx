@@ -427,6 +427,9 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
         {activeTab === "pix-cartao-pendentes" && (
           <RecoverySettingsDialog type="pix" />
         )}
+        {activeTab === "rejeitados" && (
+          <RecoverySettingsDialog type="abandoned" />
+        )}
       </div>
 
       {/* Quick Stats Bar */}

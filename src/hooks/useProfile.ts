@@ -43,6 +43,7 @@ export function useProfile() {
       app_public_url?: string;
       recovery_message_boleto?: string;
       recovery_message_pix?: string;
+      recovery_message_abandoned?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");

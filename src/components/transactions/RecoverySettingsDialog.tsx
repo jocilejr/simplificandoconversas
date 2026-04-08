@@ -34,9 +34,9 @@ export function RecoverySettingsDialog({ type }: RecoverySettingsDialogProps) {
   const [message, setMessage] = useState("");
   const { profile, updateProfile } = useProfile();
 
-  const fieldKey = type === "boleto" ? "recovery_message_boleto" : "recovery_message_pix";
-  const defaultMsg = type === "boleto" ? DEFAULT_BOLETO_MSG : DEFAULT_PIX_MSG;
-  const title = type === "boleto" ? "Mensagem de Recuperação - Boletos" : "Mensagem de Recuperação - PIX/Cartão";
+  const fieldKey = type === "boleto" ? "recovery_message_boleto" : type === "pix" ? "recovery_message_pix" : "recovery_message_abandoned";
+  const defaultMsg = type === "boleto" ? DEFAULT_BOLETO_MSG : type === "pix" ? DEFAULT_PIX_MSG : DEFAULT_ABANDONED_MSG;
+  const title = type === "boleto" ? "Mensagem de Recuperação - Boletos" : type === "pix" ? "Mensagem de Recuperação - PIX/Cartão" : "Mensagem de Recuperação - Rejeitados/Abandonados";
 
   useEffect(() => {
     if (open && profile) {
