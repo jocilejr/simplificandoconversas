@@ -402,17 +402,21 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
           <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Aprovados ({tabTransactions.aprovados.length})
+              {hasUnseen("aprovados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Boletos ({tabTransactions["boletos-gerados"].length})
+              {hasUnseen("boletos-gerados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
+              {hasUnseen("pix-cartao-pendentes") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2">
+            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Rejeitados ({tabTransactions.rejeitados.length})
+              {hasUnseen("rejeitados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
           </TabsList>
         </Tabs>
