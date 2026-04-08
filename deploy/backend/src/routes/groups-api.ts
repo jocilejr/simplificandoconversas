@@ -51,11 +51,16 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
 
     const raw: any = await resp.json();
     const list = Array.isArray(raw) ? raw : (raw?.groups || []);
-    const groups = list.map((g: any) => ({
-      jid: g.id || g.jid || g.groupJid,
-      name: g.subject || g.name || "Sem nome",
-      memberCount: g.participants?.length || g.size || 0,
-    }));
+    const groups = list
+      .filter((g: any) => {
+        const jid = g.id || g.jid || g.groupJid || "";
+        return jid.endsWith("@g.us");
+      })
+      .map((g: any) => ({
+        jid: g.id || g.jid || g.groupJid,
+        name: g.subject || g.name || "Sem nome",
+        memberCount: g.participants?.length || g.size || 0,
+      }));
 
     res.json(groups);
   } catch (err: any) {
