@@ -29,6 +29,68 @@ async function validateInstanceOwnership(instanceName: string, workspaceId: stri
   return !!data;
 }
 
+/* ─── helpers: normalização de JID ─── */
+const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
+
+/* ─── helper: resolver ownerJid com fallback em camadas ─── */
+async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: string): Promise<string> {
+  const encoded = encodeURIComponent(instanceName);
+
+  // Camada 1: fetchInstances → instance.owner
+  try {
+    const resp = await fetch(`${baseUrl}/instance/fetchInstances`, {
+      headers: { apikey: apiKey },
+    });
+    if (resp.ok) {
+      const instances = (await resp.json()) as any[];
+      const thisInst = instances.find((i: any) => i.instance?.instanceName === instanceName);
+      const owner = thisInst?.instance?.owner || "";
+      if (owner) {
+        console.log("[groups-api] ownerJid via fetchInstances:", owner);
+        return owner;
+      }
+    }
+  } catch (e: any) {
+    console.warn("[groups-api] fetchInstances failed:", e?.message);
+  }
+
+  // Camada 2: connectionState → instance.wuid
+  try {
+    const resp = await fetch(`${baseUrl}/instance/connectionState/${encoded}`, {
+      headers: { apikey: apiKey },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const wuid = data?.instance?.wuid || data?.wuid || "";
+      if (wuid) {
+        console.log("[groups-api] ownerJid via connectionState:", wuid);
+        return wuid;
+      }
+    }
+  } catch (e: any) {
+    console.warn("[groups-api] connectionState failed:", e?.message);
+  }
+
+  // Camada 3: connect → number (alguns builds da Evolution)
+  try {
+    const resp = await fetch(`${baseUrl}/instance/connect/${encoded}`, {
+      headers: { apikey: apiKey },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const num = data?.instance?.owner || data?.number || data?.wuid || "";
+      if (num) {
+        console.log("[groups-api] ownerJid via connect:", num);
+        return num;
+      }
+    }
+  } catch (e: any) {
+    console.warn("[groups-api] connect fallback failed:", e?.message);
+  }
+
+  return "";
+}
+
 /* ─── POST /fetch-groups ─── */
 router.post("/fetch-groups", async (req: Request, res: Response) => {
   try {
@@ -40,7 +102,9 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
 
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
-    const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=true`, {
+
+    // 1. Buscar lista inicial de grupos
+    const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=false`, {
       headers: { apikey: apiKey },
     });
 
@@ -52,71 +116,75 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     const raw: any = await resp.json();
     const list = Array.isArray(raw) ? raw : (raw?.groups || []);
 
-    // Buscar o JID do dono da instância
-    let ownerJid = "";
-    try {
-      const instResp = await fetch(`${baseUrl}/instance/fetchInstances`, {
-        headers: { apikey: apiKey },
-      });
-      const instances = (await instResp.json()) as any[];
-      const thisInst = instances.find((i: any) => i.instance?.instanceName === instanceName);
-      ownerJid = thisInst?.instance?.owner || "";
-      console.log("[groups-api] ownerJid resolved:", ownerJid);
-    } catch (e: any) {
-      console.warn("[groups-api] Could not fetch ownerJid:", e?.message);
-    }
-
-    // Normalizar ownerJid para comparação (remover sufixos como :XX)
-    const normalizeJid = (jid: string) => jid?.split(":")[0]?.split("@")[0] || "";
-    const ownerNorm = normalizeJid(ownerJid);
-
     const gusOnly = list.filter((g: any) => {
       const jid = g.id || g.jid || g.groupJid || "";
       return jid.endsWith("@g.us");
     });
 
-    console.log(`[groups-api] Total raw: ${list.length}, @g.us: ${gusOnly.length}, ownerJid: "${ownerJid}", ownerNorm: "${ownerNorm}"`);
+    console.log(`[groups-api] Total raw: ${list.length}, @g.us candidates: ${gusOnly.length}`);
 
-    // Se não conseguiu resolver ownerJid, não retorna nenhum grupo (segurança)
-    if (!ownerJid || !ownerNorm) {
-      console.warn("[groups-api] ownerJid not resolved — returning empty list");
-      return res.json([]);
-    }
+    // 2. Resolver ownerJid com fallback em camadas
+    const ownerJid = await resolveOwnerJid(baseUrl, apiKey, instanceName);
+    const ownerNorm = normalizeJid(ownerJid);
+    const hasOwner = !!ownerNorm;
 
+    console.log(`[groups-api] ownerJid resolved: "${ownerJid}", ownerNorm: "${ownerNorm}", hasOwner: ${hasOwner}`);
+
+    // 3. Validar cada grupo individualmente via findGroupInfos
     const groups: any[] = [];
     const discarded: string[] = [];
 
     for (const g of gusOnly) {
       const jid = g.id || g.jid || g.groupJid || "";
-      const participants = g.participants || [];
 
-      // Sem participantes = dado histórico/incompleto — descartar
-      if (!Array.isArray(participants) || participants.length === 0) {
-        discarded.push(`${jid} (no participants)`);
-        continue;
+      try {
+        // Buscar info real do grupo
+        const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(jid)}`, {
+          headers: { apikey: apiKey },
+        });
+
+        if (!infoResp.ok) {
+          discarded.push(`${jid} (findGroupInfos failed: ${infoResp.status})`);
+          continue;
+        }
+
+        const info: any = await infoResp.json();
+        const participants = info?.participants || [];
+        const subject = info?.subject || info?.name || g.subject || g.name || "";
+
+        // Sem participantes = grupo inacessível
+        if (!Array.isArray(participants) || participants.length === 0) {
+          discarded.push(`${jid} (no participants in real-time info)`);
+          continue;
+        }
+
+        // Se temos ownerJid, exigir que esteja nos participantes
+        if (hasOwner) {
+          const found = participants.some((p: any) => {
+            const pJid = typeof p === "string" ? p : (p.id || p.jid || "");
+            return normalizeJid(pJid) === ownerNorm;
+          });
+
+          if (!found) {
+            discarded.push(`${jid} (owner not in participants)`);
+            continue;
+          }
+        }
+
+        // Grupo válido
+        groups.push({
+          jid,
+          name: subject || "Sem nome",
+          memberCount: participants.length || info?.size || 0,
+        });
+      } catch (e: any) {
+        discarded.push(`${jid} (error: ${e?.message})`);
       }
-
-      // Verificar se o owner está nos participantes
-      const found = participants.some((p: any) => {
-        const pJid = typeof p === "string" ? p : (p.id || p.jid || "");
-        return normalizeJid(pJid) === ownerNorm;
-      });
-
-      if (!found) {
-        discarded.push(`${jid} (owner not in participants)`);
-        continue;
-      }
-
-      groups.push({
-        jid,
-        name: g.subject || g.name || "Sem nome",
-        memberCount: participants.length || g.size || 0,
-      });
     }
 
-    console.log(`[groups-api] Active groups: ${groups.length}, Discarded: ${discarded.length}`);
+    console.log(`[groups-api] Active groups: ${groups.length}, Discarded: ${discarded.length}, mode: ${hasOwner ? "owner-validated" : "fallback-metadata"}`);
     if (discarded.length > 0) {
-      console.log(`[groups-api] Discarded JIDs (first 10):`, discarded.slice(0, 10));
+      console.log(`[groups-api] Discarded (first 10):`, discarded.slice(0, 10));
     }
 
     res.json(groups);
