@@ -380,7 +380,7 @@ async function processWorkspace(
           notes: `followup-daily: ${matchingRule.rule_type} ${matchingRule.days}d`,
         });
 
-        console.log(`[followup-daily] ✅ Sent follow-up for boleto ${boletoId} (rule: ${matchingRule.name})`);
+        console.log(`[followup-daily] ✅ Sent follow-up for boleto ${boletoId} (rule: ${matchingRule.rule_type} ${matchingRule.days}d)`);
       }, `followup:${boletoId}:${ruleId}`)
       .catch((err: any) => {
         console.error(`[followup-daily] ❌ Failed follow-up for boleto ${boletoId}: ${err.message}`);
