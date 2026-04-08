@@ -47,6 +47,9 @@ export function FinancialReport() {
     // Calculate fees
     let totalFees = 0;
     let totalTax = 0;
+    let boletoFees = 0;
+    let pixFees = 0;
+    let cartaoFees = 0;
     if (feeSettings) {
       for (const t of approved) {
         const amount = Number(t.amount);
@@ -57,7 +60,12 @@ export function FinancialReport() {
         else if (t.type === "pix") { feeType = feeSettings.pix_fee_type; feeValue = feeSettings.pix_fee_value; }
         else if (t.type === "cartao") { feeType = feeSettings.cartao_fee_type; feeValue = feeSettings.cartao_fee_value; }
 
-        totalFees += feeType === "percent" ? amount * (feeValue / 100) : feeValue;
+        const fee = feeType === "percent" ? amount * (feeValue / 100) : feeValue;
+        totalFees += fee;
+        if (t.type === "boleto") boletoFees += fee;
+        else if (t.type === "pix") pixFees += fee;
+        else if (t.type === "cartao") cartaoFees += fee;
+
         totalTax += feeSettings.tax_type === "percent" ? amount * (feeSettings.tax_value / 100) : feeSettings.tax_value;
       }
     }
@@ -66,6 +74,7 @@ export function FinancialReport() {
       pixGerado, pixPago, boletosGerados, boletosPagos, boletosPendentesOuPagos,
       pedidosCartao, cartaoPago, totalRevenue,
       netRevenue: totalRevenue - totalFees - totalTax,
+      boletoFees, pixFees, cartaoFees, totalTax,
     };
   }, [transactions, feeSettings]);
 
@@ -105,7 +114,7 @@ export function FinancialReport() {
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <Receipt className="h-4 w-4 text-primary" />
-            Taxas e Impostos
+            Deduções
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -116,21 +125,21 @@ export function FinancialReport() {
           ) : (
             <div className="space-y-3">
               {[
-                { label: "Boleto", type: feeSettings.boleto_fee_type, value: feeSettings.boleto_fee_value },
-                { label: "PIX", type: feeSettings.pix_fee_type, value: feeSettings.pix_fee_value },
-                { label: "Cartão", type: feeSettings.cartao_fee_type, value: feeSettings.cartao_fee_value },
-              ].map((fee) => (
-                <div key={fee.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                  <span className="text-sm font-medium">{fee.label}</span>
+                { label: "Taxa Boleto", value: stats.boletoFees },
+                { label: "Taxa PIX", value: stats.pixFees },
+                { label: "Taxa Cartão", value: stats.cartaoFees },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                  <span className="text-sm font-medium">{item.label}</span>
                   <Badge variant="secondary" className="text-xs">
-                    {fee.type === "percent" ? `${fee.value}%` : `R$ ${fee.value.toFixed(2)}`}
+                    - {formatCurrency(item.value)}
                   </Badge>
                 </div>
               ))}
               <div className="flex items-center justify-between py-1.5 border-t border-border">
                 <span className="text-sm font-medium">{feeSettings.tax_name}</span>
                 <Badge variant="outline" className="text-xs">
-                  {feeSettings.tax_type === "percent" ? `${feeSettings.tax_value}%` : `R$ ${feeSettings.tax_value.toFixed(2)}`}
+                  - {formatCurrency(stats.totalTax)}
                 </Badge>
               </div>
             </div>
