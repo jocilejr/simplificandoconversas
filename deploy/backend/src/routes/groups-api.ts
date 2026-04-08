@@ -58,7 +58,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
       const instResp = await fetch(`${baseUrl}/instance/fetchInstances`, {
         headers: { apikey: apiKey },
       });
-      const instances = await instResp.json();
+      const instances: any[] = await instResp.json();
       const thisInst = instances?.find((i: any) => i.instance?.instanceName === instanceName);
       ownerJid = thisInst?.instance?.owner || "";
       console.log("[groups-api] ownerJid resolved:", ownerJid);
