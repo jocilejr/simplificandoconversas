@@ -38,21 +38,33 @@ export function FinancialReport() {
     const pedidosCartao = transactions.filter((t) => t.type === "cartao" && t.status !== "aprovado").length;
     const cartaoPago = transactions.filter((t) => t.type === "cartao" && t.status === "aprovado").length;
 
-    const totalRevenue = transactions
-      .filter((t) => t.status === "aprovado")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+    const approved = transactions.filter((t) => t.status === "aprovado");
+    const totalRevenue = approved.reduce((sum, t) => sum + Number(t.amount), 0);
+
+    // Calculate fees
+    let totalFees = 0;
+    let totalTax = 0;
+    if (feeSettings) {
+      for (const t of approved) {
+        const amount = Number(t.amount);
+        let feeType: "fixed" | "percent" = "fixed";
+        let feeValue = 0;
+
+        if (t.type === "boleto") { feeType = feeSettings.boleto_fee_type; feeValue = feeSettings.boleto_fee_value; }
+        else if (t.type === "pix") { feeType = feeSettings.pix_fee_type; feeValue = feeSettings.pix_fee_value; }
+        else if (t.type === "cartao") { feeType = feeSettings.cartao_fee_type; feeValue = feeSettings.cartao_fee_value; }
+
+        totalFees += feeType === "percent" ? amount * (feeValue / 100) : feeValue;
+        totalTax += feeSettings.tax_type === "percent" ? amount * (feeSettings.tax_value / 100) : feeSettings.tax_value;
+      }
+    }
 
     return {
-      pixGerado,
-      pixPago,
-      boletosGerados,
-      boletosPagos,
-      boletosPendentesOuPagos,
-      pedidosCartao,
-      cartaoPago,
-      totalRevenue,
+      pixGerado, pixPago, boletosGerados, boletosPagos, boletosPendentesOuPagos,
+      pedidosCartao, cartaoPago, totalRevenue,
+      netRevenue: totalRevenue - totalFees - totalTax,
     };
-  }, [transactions]);
+  }, [transactions, feeSettings]);
 
   return (
     <div className="space-y-4">
