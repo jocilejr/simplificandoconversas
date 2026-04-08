@@ -47,6 +47,9 @@ export function FinancialReport() {
     // Calculate fees
     let totalFees = 0;
     let totalTax = 0;
+    let boletoFees = 0;
+    let pixFees = 0;
+    let cartaoFees = 0;
     if (feeSettings) {
       for (const t of approved) {
         const amount = Number(t.amount);
@@ -57,7 +60,12 @@ export function FinancialReport() {
         else if (t.type === "pix") { feeType = feeSettings.pix_fee_type; feeValue = feeSettings.pix_fee_value; }
         else if (t.type === "cartao") { feeType = feeSettings.cartao_fee_type; feeValue = feeSettings.cartao_fee_value; }
 
-        totalFees += feeType === "percent" ? amount * (feeValue / 100) : feeValue;
+        const fee = feeType === "percent" ? amount * (feeValue / 100) : feeValue;
+        totalFees += fee;
+        if (t.type === "boleto") boletoFees += fee;
+        else if (t.type === "pix") pixFees += fee;
+        else if (t.type === "cartao") cartaoFees += fee;
+
         totalTax += feeSettings.tax_type === "percent" ? amount * (feeSettings.tax_value / 100) : feeSettings.tax_value;
       }
     }
@@ -66,6 +74,7 @@ export function FinancialReport() {
       pixGerado, pixPago, boletosGerados, boletosPagos, boletosPendentesOuPagos,
       pedidosCartao, cartaoPago, totalRevenue,
       netRevenue: totalRevenue - totalFees - totalTax,
+      boletoFees, pixFees, cartaoFees, totalTax,
     };
   }, [transactions, feeSettings]);
 
