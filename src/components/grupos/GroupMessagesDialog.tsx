@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CalendarClock, Plus, Pencil, Trash2, MessageSquare, Image, Video, Mic, FileText, Sticker, MapPin, Contact, BarChart3, List } from "lucide-react";
+import { CalendarClock, Plus, Pencil, Trash2, MessageSquare, Image, Video, Mic, FileText, Sticker, MapPin, Contact, BarChart3, List, AtSign } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,8 +45,8 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
   const getPreview = (msg: any) => {
     const c = msg.content || {};
-    if (msg.message_type === "text") return c.text?.slice(0, 60) || "Sem texto";
-    if (msg.message_type === "poll") return c.question?.slice(0, 60) || "Enquete";
+    if (msg.message_type === "text") return c.text?.slice(0, 80) || "Sem texto";
+    if (msg.message_type === "poll") return c.question?.slice(0, 80) || "Enquete";
     if (msg.message_type === "contact") return c.contactName || "Contato";
     if (msg.message_type === "location") return c.name || "Localização";
     if (msg.message_type === "list") return c.title || "Lista";
@@ -85,24 +85,28 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto bg-[#111b21] border-white/10">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4 text-primary" />
+          <DialogTitle className="flex items-center gap-2 text-[#e9edef]">
+            <CalendarClock className="h-4 w-4 text-[#c5a55a]" />
             Programação — {campaign.name}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-[#8696a0]">
             Gerencie as mensagens agendadas desta campanha.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setShowForm(false); setEditMsg(null); }}>
-          <TabsList className="w-full grid grid-cols-5">
+          <TabsList className="w-full grid grid-cols-5 bg-[#202c33] border border-white/5">
             {SCHEDULE_TABS.map(t => (
-              <TabsTrigger key={t.value} value={t.value} className="text-xs">
+              <TabsTrigger
+                key={t.value}
+                value={t.value}
+                className="text-xs data-[state=active]:bg-[#c5a55a]/15 data-[state=active]:text-[#c5a55a] text-[#8696a0]"
+              >
                 {t.label}
                 {messages.filter((m: any) => m.schedule_type === t.value).length > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 text-[9px] px-1">
+                  <Badge variant="secondary" className="ml-1.5 h-4 text-[9px] px-1 bg-[#c5a55a]/20 text-[#c5a55a] border-0">
                     {messages.filter((m: any) => m.schedule_type === t.value).length}
                   </Badge>
                 )}
@@ -111,58 +115,71 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
           </TabsList>
 
           {SCHEDULE_TABS.map(tab => (
-            <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-3">
+            <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">{tab.desc}</p>
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleAdd}>
+                <p className="text-xs text-[#8696a0]">{tab.desc}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-[#c5a55a]/30 text-[#c5a55a] hover:bg-[#c5a55a]/10 hover:text-[#c5a55a]"
+                  onClick={handleAdd}
+                >
                   <Plus className="h-3 w-3 mr-1" /> Adicionar
                 </Button>
               </div>
 
               {/* Message list */}
               {filteredMessages.length === 0 && !showForm && (
-                <div className="border border-dashed border-border/50 rounded-lg p-8 text-center">
-                  <CalendarClock className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">Nenhuma mensagem {tab.label.toLowerCase()} configurada.</p>
+                <div className="border border-dashed border-white/10 rounded-xl p-10 text-center bg-[#0b141a]/40">
+                  <CalendarClock className="h-8 w-8 text-[#8696a0]/20 mx-auto mb-2" />
+                  <p className="text-xs text-[#8696a0]/60">Nenhuma mensagem {tab.label.toLowerCase()} configurada.</p>
                 </div>
               )}
 
               {filteredMessages.map((msg: any) => {
                 const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
+                const hasMention = msg.content?.mentionAll;
                 return (
-                  <div key={msg.id} className="flex items-center gap-3 p-3 border border-border/50 rounded-lg bg-background/30 hover:bg-muted/20 transition-colors">
-                    <div className="h-8 w-8 rounded-md bg-muted/50 flex items-center justify-center shrink-0">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
+                  <div key={msg.id} className="flex items-center gap-3 p-3 border border-white/5 rounded-xl bg-[#0b141a]/60 hover:bg-[#202c33]/40 transition-colors group">
+                    <div className="h-9 w-9 rounded-lg bg-[#202c33] flex items-center justify-center shrink-0 border border-white/5">
+                      <Icon className="h-4 w-4 text-[#c5a55a]" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px] h-5">{TYPE_LABELS[msg.message_type] || msg.message_type}</Badge>
-                        <span className="text-[10px] text-muted-foreground">{getTimeLabel(msg)}</span>
+                        <Badge variant="outline" className="text-[10px] h-5 border-white/10 text-[#e9edef]">
+                          {TYPE_LABELS[msg.message_type] || msg.message_type}
+                        </Badge>
+                        {hasMention && (
+                          <Badge variant="outline" className="text-[10px] h-5 border-[#c5a55a]/30 text-[#c5a55a] gap-0.5">
+                            <AtSign className="h-2.5 w-2.5" /> todos
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-[#8696a0]">{getTimeLabel(msg)}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{getPreview(msg)}</p>
+                      <p className="text-xs text-[#8696a0] truncate mt-0.5">{getPreview(msg)}</p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Switch
                         checked={msg.is_active}
                         onCheckedChange={() => toggleMessage.mutate(msg.id)}
-                        className="scale-75"
+                        className="scale-75 data-[state=checked]:bg-[#00a884]"
                       />
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(msg)}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-[#8696a0] hover:text-[#e9edef] opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleEdit(msg)}>
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent>
+                        <AlertDialogContent className="bg-[#111b21] border-white/10">
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir mensagem?</AlertDialogTitle>
-                            <AlertDialogDescription>Esta mensagem agendada será removida permanentemente.</AlertDialogDescription>
+                            <AlertDialogTitle className="text-[#e9edef]">Excluir mensagem?</AlertDialogTitle>
+                            <AlertDialogDescription className="text-[#8696a0]">Esta mensagem agendada será removida permanentemente.</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogCancel className="border-white/10 text-[#8696a0]">Cancelar</AlertDialogCancel>
                             <AlertDialogAction onClick={() => deleteMessage.mutate(msg.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                               Excluir
                             </AlertDialogAction>
