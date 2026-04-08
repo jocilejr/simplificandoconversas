@@ -226,7 +226,15 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Tab stats
+  // Mark transactions as seen when tab changes
+  useEffect(() => {
+    const currentTxs = tabTransactions[activeTab] || [];
+    const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
+    if (unseenIds.length > 0) {
+      markSeen(unseenIds);
+    }
+  }, [activeTab, tabTransactions, markSeen]);
+
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
     const totalAmount = current.reduce((sum, t) => sum + Number(t.amount), 0);
