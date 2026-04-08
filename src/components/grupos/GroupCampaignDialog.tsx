@@ -85,7 +85,11 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
         }
       } catch (err: any) {
         if (!cancelled) {
-          toast({ title: "Erro ao buscar grupos", description: err.message, variant: "destructive" });
+          const msg = err.message || "";
+          const description = msg.includes("403")
+            ? "Instância não pertence a este workspace"
+            : "Não foi possível validar os grupos da instância. Verifique a conexão.";
+          toast({ title: "Erro ao buscar grupos", description, variant: "destructive" });
           setRemoteGroups([]);
         }
       } finally {
