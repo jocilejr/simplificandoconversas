@@ -12,6 +12,13 @@ interface QueueItem {
   label: string;
 }
 
+interface HistoryItem {
+  label: string;
+  status: "sent" | "failed";
+  timestamp: string;
+  error?: string;
+}
+
 class MessageQueue {
   private queue: QueueItem[] = [];
   private processing = false;
@@ -22,6 +29,8 @@ class MessageQueue {
   private pauseAfterSends: number | null;
   private pauseMinutes: number | null;
   private sendCount = 0;
+  private history: HistoryItem[] = [];
+  private static MAX_HISTORY = 200;
 
   constructor(
     instanceName: string,
@@ -68,7 +77,12 @@ class MessageQueue {
       delayMs: this.delayMs,
       pauseAfterSends: this.pauseAfterSends,
       pauseMinutes: this.pauseMinutes,
+      history: this.history,
     };
+  }
+
+  clearHistory() {
+    this.history = [];
   }
 
   private async processNext() {
@@ -104,9 +118,16 @@ class MessageQueue {
       console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
       const result = await item.fn();
       item.resolve(result);
-    } catch (err) {
+      this.history.push({ label: item.label, status: "sent", timestamp: new Date().toISOString() });
+    } catch (err: any) {
       console.error(`[queue:${this.instanceName}] error ${item.label}:`, err);
       item.reject(err);
+      this.history.push({ label: item.label, status: "failed", timestamp: new Date().toISOString(), error: err?.message || String(err) });
+    }
+
+    // Trim history
+    if (this.history.length > MessageQueue.MAX_HISTORY) {
+      this.history = this.history.slice(-MessageQueue.MAX_HISTORY);
     }
 
     this.sendCount++;
@@ -147,4 +168,9 @@ export function getAllQueuesStatus() {
     result.push(q.getStatus());
   }
   return result;
+}
+
+export function clearQueueHistory(instanceName: string) {
+  const q = queues.get(instanceName);
+  if (q) q.clearHistory();
 }

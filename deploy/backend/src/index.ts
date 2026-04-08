@@ -22,7 +22,7 @@ import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
-import { getAllQueuesStatus } from "./lib/message-queue";
+import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
 const app = express();
 app.use(cors());
@@ -47,6 +47,14 @@ app.use("/api/auto-recovery", autoRecoveryRouter);
 
 // Queue status (no auth — internal)
 app.get("/api/queue-status", (_, res) => res.json(getAllQueuesStatus()));
+
+// Clear queue history
+app.post("/api/queue-clear-history", (req, res) => {
+  const { instanceName } = req.body || {};
+  if (!instanceName) return res.status(400).json({ error: "instanceName required" });
+  clearQueueHistory(instanceName);
+  res.json({ ok: true });
+});
 
 // Health
 app.use("/api/health", healthDbRouter);
