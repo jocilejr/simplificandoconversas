@@ -76,12 +76,20 @@ router.post("/", async (req, res) => {
 
     const sb = getServiceClient();
 
+    // Derive userId from workspace
+    const { data: ws } = await sb.from("workspaces").select("id, created_by").eq("id", workspaceId).maybeSingle();
+    if (!ws) {
+      console.log("[yampi-webhook] Workspace not found, returning 404");
+      return res.status(404).json({ error: "Workspace not found" });
+    }
+    const userId = body.user_id || ws.created_by;
+
     // ─── order.paid ───
     if (event === "order.paid") {
       const order = resource;
       const customer = extractCustomer(order.customer);
       const amount = Number(order.value_total || order.buyer_value_total || 0);
-      const orderNumber = String(order.number || order.id || "");
+      const orderNumber = String(order.number || order.id || randomUUID());
       const externalId = `yampi_order_${orderNumber}`;
 
       // Payment type from first transaction
