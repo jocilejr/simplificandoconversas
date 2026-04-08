@@ -448,6 +448,52 @@ export function ConnectionsSection() {
               </Button>
             </div>
           </div>
+
+          {/* Queue Status */}
+          {(() => {
+            const qs = queueStatuses.find((q: QueueStatus) => q.instanceName === inst.instance_name);
+            if (!qs) return null;
+            const isEmpty = qs.queueSize === 0 && !qs.processing;
+            const progressValue = qs.pauseAfterSends && qs.pauseAfterSends > 0
+              ? Math.min(100, (qs.sendCount / qs.pauseAfterSends) * 100)
+              : 0;
+            return (
+              <div className="mt-3 rounded-lg border border-border/50 bg-muted/30 px-3 py-2 space-y-1.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <Inbox className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="font-medium text-foreground">Fila</span>
+                  {isEmpty && (
+                    <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-500 border-green-500/30 ml-auto">
+                      Vazia
+                    </Badge>
+                  )}
+                  {qs.inCooldown && (
+                    <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/30 ml-auto">
+                      <Pause className="h-3 w-3 mr-0.5" /> Cooldown
+                    </Badge>
+                  )}
+                  {!isEmpty && !qs.inCooldown && qs.processing && (
+                    <Badge variant="outline" className="text-[10px] bg-yellow-500/10 text-yellow-400 border-yellow-500/30 ml-auto">
+                      <Send className="h-3 w-3 mr-0.5" /> {qs.queueSize + 1} pendente{qs.queueSize > 0 ? "s" : ""}
+                    </Badge>
+                  )}
+                </div>
+                {qs.currentLabel && qs.processing && (
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    Enviando: <span className="text-foreground">{qs.currentLabel}</span>
+                  </p>
+                )}
+                {qs.pauseAfterSends && qs.pauseAfterSends > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Progress value={progressValue} className="h-1.5 flex-1" />
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {qs.sendCount}/{qs.pauseAfterSends}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       ))}
 
