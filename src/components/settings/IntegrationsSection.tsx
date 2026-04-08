@@ -389,28 +389,6 @@ export function IntegrationsSection() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-foreground">Seu User ID</p>
-                  <div className="flex gap-2">
-                    <Input
-                      readOnly
-                      value={user?.id || ""}
-                      className="font-mono text-[11px] bg-muted"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(user?.id || "");
-                        toast({ title: "User ID copiado!" });
-                      }}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
 
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-foreground">Campos obrigatórios</p>
