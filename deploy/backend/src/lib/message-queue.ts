@@ -12,6 +12,13 @@ interface QueueItem {
   label: string;
 }
 
+interface HistoryItem {
+  label: string;
+  status: "sent" | "failed";
+  timestamp: string;
+  error?: string;
+}
+
 class MessageQueue {
   private queue: QueueItem[] = [];
   private processing = false;
