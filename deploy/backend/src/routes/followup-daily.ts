@@ -401,6 +401,7 @@ async function processWorkspace(
       });
 
     sent++;
+    phoneSendCount.set(phoneKey, currentCount + 1);
   }
 
   console.log(`[followup-daily] Workspace ${workspaceId}: enqueued=${sent}, skipped=${skipped}`);
