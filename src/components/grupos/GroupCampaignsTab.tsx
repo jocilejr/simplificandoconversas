@@ -79,9 +79,6 @@ export default function GroupCampaignsTab() {
                         <CalendarClock className="h-3.5 w-3.5" />
                         Programação
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" title="Enviar Agora" onClick={() => enqueueCampaign.mutate(c.id)}>
-                        <Play className="h-3.5 w-3.5 text-green-500" />
-                      </Button>
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleEdit(c)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
