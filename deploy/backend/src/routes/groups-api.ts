@@ -66,23 +66,58 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
       console.warn("[groups-api] Could not fetch ownerJid:", e?.message);
     }
 
-    const groups = list
-      .filter((g: any) => {
-        const jid = g.id || g.jid || g.groupJid || "";
-        if (!jid.endsWith("@g.us")) return false;
-        // Filtrar apenas grupos onde o dono da instância está nos participantes
-        const participants = g.participants || [];
-        if (participants.length === 0 || !ownerJid) return true;
-        return participants.some((p: any) => {
-          const pJid = p.id || p.jid || "";
-          return pJid === ownerJid;
-        });
-      })
-      .map((g: any) => ({
-        jid: g.id || g.jid || g.groupJid,
+    // Normalizar ownerJid para comparação (remover sufixos como :XX)
+    const normalizeJid = (jid: string) => jid?.split(":")[0]?.split("@")[0] || "";
+    const ownerNorm = normalizeJid(ownerJid);
+
+    const gusOnly = list.filter((g: any) => {
+      const jid = g.id || g.jid || g.groupJid || "";
+      return jid.endsWith("@g.us");
+    });
+
+    console.log(`[groups-api] Total raw: ${list.length}, @g.us: ${gusOnly.length}, ownerJid: "${ownerJid}", ownerNorm: "${ownerNorm}"`);
+
+    // Se não conseguiu resolver ownerJid, não retorna nenhum grupo (segurança)
+    if (!ownerJid || !ownerNorm) {
+      console.warn("[groups-api] ownerJid not resolved — returning empty list");
+      return res.json([]);
+    }
+
+    const groups: any[] = [];
+    const discarded: string[] = [];
+
+    for (const g of gusOnly) {
+      const jid = g.id || g.jid || g.groupJid || "";
+      const participants = g.participants || [];
+
+      // Sem participantes = dado histórico/incompleto — descartar
+      if (!Array.isArray(participants) || participants.length === 0) {
+        discarded.push(`${jid} (no participants)`);
+        continue;
+      }
+
+      // Verificar se o owner está nos participantes
+      const found = participants.some((p: any) => {
+        const pJid = typeof p === "string" ? p : (p.id || p.jid || "");
+        return normalizeJid(pJid) === ownerNorm;
+      });
+
+      if (!found) {
+        discarded.push(`${jid} (owner not in participants)`);
+        continue;
+      }
+
+      groups.push({
+        jid,
         name: g.subject || g.name || "Sem nome",
-        memberCount: g.participants?.length || g.size || 0,
-      }));
+        memberCount: participants.length || g.size || 0,
+      });
+    }
+
+    console.log(`[groups-api] Active groups: ${groups.length}, Discarded: ${discarded.length}`);
+    if (discarded.length > 0) {
+      console.log(`[groups-api] Discarded JIDs (first 10):`, discarded.slice(0, 10));
+    }
 
     res.json(groups);
   } catch (err: any) {
