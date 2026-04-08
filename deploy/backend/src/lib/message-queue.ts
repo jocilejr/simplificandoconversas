@@ -63,18 +63,7 @@ class MessageQueue {
     this.processing = true;
     const item = this.queue.shift()!;
 
-    try {
-      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
-      const result = await item.fn();
-      item.resolve(result);
-    } catch (err) {
-      console.error(`[queue:${this.instanceName}] error ${item.label}:`, err);
-      item.reject(err);
-    }
-
-    this.sendCount++;
-
-    // Check cooldown: if we've sent N messages, pause for M minutes
+    // Check cooldown BEFORE sending: if we've sent N messages, pause for M minutes
     if (
       this.pauseAfterSends &&
       this.pauseAfterSends > 0 &&
@@ -87,9 +76,21 @@ class MessageQueue {
       this.sendCount = 0;
       await new Promise((r) => setTimeout(r, cooldownMs));
     } else {
-      // Normal delay between messages
+      // Normal delay BEFORE sending (including the first message)
+      console.log(`[queue:${this.instanceName}] waiting ${this.delayMs}ms before sending ${item.label}...`);
       await new Promise((r) => setTimeout(r, this.delayMs));
     }
+
+    try {
+      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length})`);
+      const result = await item.fn();
+      item.resolve(result);
+    } catch (err) {
+      console.error(`[queue:${this.instanceName}] error ${item.label}:`, err);
+      item.reject(err);
+    }
+
+    this.sendCount++;
 
     this.processNext();
   }
