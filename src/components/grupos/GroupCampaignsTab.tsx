@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Plus, Play, Trash2, Pencil, Power, PowerOff } from "lucide-react";
+import { Plus, Pencil, Trash2, Play, Radio, Zap, ZapOff, Users, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import GroupCampaignDialog from "./GroupCampaignDialog";
 import { format } from "date-fns";
@@ -20,67 +22,121 @@ export default function GroupCampaignsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Campanhas de Grupo</h3>
-        <Button onClick={() => { setEditCampaign(null); setDialogOpen(true); }}>
+        <div>
+          <h3 className="text-sm font-semibold">Campanhas</h3>
+          <p className="text-xs text-muted-foreground">{campaigns.length} campanha(s) criada(s)</p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => { setEditCampaign(null); setDialogOpen(true); }}
+          className="shadow-[0_0_12px_hsl(var(--primary)/0.3)]"
+        >
           <Plus className="h-4 w-4 mr-1" /> Nova Campanha
         </Button>
       </div>
 
       {campaigns.length === 0 && !isLoading ? (
         <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground text-center">Nenhuma campanha criada. Clique em "Nova Campanha" para começar.</p>
+          <CardContent className="py-12 text-center">
+            <Zap className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Nenhuma campanha criada.</p>
+            <p className="text-xs text-muted-foreground mt-1">Clique em "Nova Campanha" para começar.</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="grid gap-3">
           {campaigns.map((c: any) => (
-            <Card key={c.id}>
-              <CardContent className="pt-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold">{c.name}</h4>
-                      <Badge variant={c.is_active ? "default" : "secondary"}>
+            <Card
+              key={c.id}
+              className={`overflow-hidden transition-all ${c.is_active ? "shadow-[0_0_16px_hsl(var(--primary)/0.15)]" : ""}`}
+            >
+              {/* Gradient top bar */}
+              <div className={`h-[2px] ${c.is_active ? "bg-gradient-to-r from-primary/80 via-primary to-primary/80" : "bg-border/50"}`} />
+
+              <CardContent className="p-4">
+                <div className="flex items-start gap-4">
+                  {/* Left: info */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-semibold text-sm">{c.name}</h4>
+                      <Badge variant="outline" className="gap-1 text-xs">
+                        {c.is_active ? <Zap className="h-3 w-3 text-green-500" /> : <ZapOff className="h-3 w-3 text-muted-foreground" />}
                         {c.is_active ? "Ativa" : "Inativa"}
                       </Badge>
+                      <Badge variant="secondary" className="gap-1 text-xs">
+                        <Radio className="h-3 w-3" />
+                        {c.instance_name}
+                      </Badge>
                     </div>
-                    {c.description && <p className="text-sm text-muted-foreground mt-1">{c.description}</p>}
-                    <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
-                      <span>Instância: {c.instance_name}</span>
-                      <span>Grupos: {c.group_jids?.length || 0}</span>
-                      <span>Mensagens: {c.group_scheduled_messages?.length || 0}</span>
-                      <span>Criada: {format(new Date(c.created_at), "dd/MM/yyyy")}</span>
+
+                    {c.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
+                    )}
+
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        {c.group_jids?.length || 0} grupos
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        {c.group_scheduled_messages?.length || 0} msgs
+                      </span>
+                      <span>{format(new Date(c.created_at), "dd/MM/yyyy")}</span>
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title={c.is_active ? "Desativar" : "Ativar"}
-                      onClick={() => updateCampaign.mutate({ id: c.id, isActive: !c.is_active })}
-                    >
-                      {c.is_active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="Enviar Agora"
-                      onClick={() => enqueueCampaign.mutate(c.id)}
-                    >
-                      <Play className="h-4 w-4 text-green-500" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={() => handleEdit(c)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="text-destructive"
-                      onClick={() => deleteCampaign.mutate(c.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+
+                  {/* Right: actions */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Switch
+                      checked={c.is_active}
+                      onCheckedChange={(checked) => updateCampaign.mutate({ id: c.id, isActive: checked })}
+                    />
+
+                    <div className="flex gap-1 border-l border-border/50 pl-2 ml-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        title="Enviar Agora"
+                        onClick={() => enqueueCampaign.mutate(c.id)}
+                      >
+                        <Play className="h-3.5 w-3.5 text-green-500" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => handleEdit(c)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              A campanha "{c.name}" e suas mensagens agendadas serão removidas permanentemente.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteCampaign.mutate(c.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </div>
               </CardContent>
