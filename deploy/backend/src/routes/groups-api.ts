@@ -251,8 +251,8 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
 
     res.json({ enqueued: queueItems.length, batch });
   } catch (err: any) {
-    console.error("[groups-api] enqueue error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] enqueue error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
   }
 });
 
