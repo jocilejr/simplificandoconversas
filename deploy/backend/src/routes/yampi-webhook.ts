@@ -1,5 +1,4 @@
 import { Router } from "express";
-import crypto from "crypto";
 import { getServiceClient } from "../lib/supabase";
 import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
@@ -7,19 +6,17 @@ import { normalizePhone } from "../lib/normalize-phone";
 const router = Router();
 
 /**
- * Yampi Webhook Handler
- * 
- * Events handled:
- * - order.paid: Pedido aprovado (PIX, Cartão, Boleto)
- * - transaction.payment.refused: Pagamento recusado
- * - cart.reminder: Carrinho abandonado
- * 
- * Payload structure (from Yampi docs):
+ * Yampi Webhook Handler (via n8n)
+ *
+ * O n8n recebe os eventos da Yampi e repassa para esta rota
+ * com workspace_id e user_id já definidos no body.
+ *
+ * Payload esperado:
  * {
- *   event: string,
- *   time: string,
- *   merchant: { id, alias },
- *   resource: { ... }  // varies by event
+ *   "event": "order.paid" | "transaction.payment.refused" | "cart.reminder",
+ *   "workspace_id": "uuid",
+ *   "user_id": "uuid",
+ *   "resource": { ... }
  * }
  */
 
@@ -61,62 +58,23 @@ router.post("/", async (req, res) => {
     const body = req.body;
     const event = body?.event;
     const resource = body?.resource;
-    const merchant = body?.merchant;
+    const workspaceId = body?.workspace_id;
+    const userId = body?.user_id;
 
     const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
-    console.log(`[yampi-webhook] Incoming request — event: ${event || "none"}, merchant: ${merchant?.alias || "unknown"}, ip: ${clientIp}`);
+    console.log(`[yampi-webhook] Incoming request — event: ${event || "none"}, ip: ${clientIp}`);
 
     if (!event || !resource) {
       console.log("[yampi-webhook] Missing event or resource, returning 400");
       return res.status(400).json({ error: "Missing event or resource" });
     }
 
-    const storeAlias = merchant?.alias || null;
+    if (!workspaceId || !userId) {
+      console.log("[yampi-webhook] Missing workspace_id or user_id, returning 400");
+      return res.status(400).json({ error: "Missing workspace_id or user_id" });
+    }
+
     const sb = getServiceClient();
-
-    // Find workspace by yampi connection
-    const { data: connections } = await sb
-      .from("platform_connections")
-      .select("*")
-      .eq("platform", "yampi")
-      .eq("enabled", true);
-
-    if (!connections || connections.length === 0) {
-      console.log("[yampi-webhook] No yampi connections found");
-      return res.status(200).json({ ok: true, skipped: "no_connection" });
-    }
-
-    // Match by alias or use first connection
-    let connection = connections.find(
-      (c: any) => c.credentials?.alias && storeAlias && c.credentials.alias === storeAlias
-    );
-    if (!connection) connection = connections[0];
-
-    const secretKey = (connection.credentials as any)?.secret_key;
-
-    // Validate HMAC signature if secret_key is configured
-    const hmacHeader = req.headers["x-yampi-hmac-sha256"] as string | undefined;
-    if (secretKey && hmacHeader) {
-      const rawBody = (req as any).rawBody as Buffer | undefined;
-      if (!rawBody) {
-        console.log("[yampi-webhook] No raw body available for HMAC validation, skipping HMAC check");
-      } else {
-        const computed = crypto
-          .createHmac("sha256", secretKey)
-          .update(rawBody)
-          .digest("hex");
-        if (computed !== hmacHeader) {
-          console.log(`[yampi-webhook] HMAC mismatch — event: ${event}, computed: ${computed}, received: ${hmacHeader}`);
-          return res.status(401).json({ error: "Invalid signature" });
-        }
-        console.log("[yampi-webhook] HMAC validated OK");
-      }
-    } else if (secretKey && !hmacHeader) {
-      console.log(`[yampi-webhook] Secret key configured but no HMAC header received — event: ${event}`);
-    }
-
-    const userId = connection.user_id;
-    const workspaceId = connection.workspace_id;
 
     // ─── order.paid ───
     if (event === "order.paid") {
@@ -186,7 +144,6 @@ router.post("/", async (req, res) => {
       console.log(`[yampi-webhook] Order #${orderNumber} saved as approved (${type})`);
 
     // ─── transaction.payment.refused ───
-    // Note: approved orders don't need recovery
     } else if (event === "transaction.payment.refused") {
       const tx = resource;
       const customer = extractCustomer(tx.customer);
