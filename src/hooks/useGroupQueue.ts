@@ -19,25 +19,6 @@ export function useGroupQueue() {
     },
   });
 
-  const processQueue = useMutation({
-    mutationFn: async () => {
-      const resp = await fetch(apiUrl("groups/queue/process"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      return resp.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["group-queue"] });
-      toast({ title: `Processado: ${data.sent} enviados, ${data.failed} falhas` });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erro ao processar fila", description: err.message, variant: "destructive" });
-    },
-  });
-
   const cancelBatch = useMutation({
     mutationFn: async (batch: string) => {
       const resp = await fetch(apiUrl("groups/queue/cancel-batch"), {
@@ -63,5 +44,50 @@ export function useGroupQueue() {
     failed: queueItems.filter((i: any) => i.status === "failed").length,
   };
 
-  return { queueItems, isLoading, processQueue, cancelBatch, stats };
+  return { queueItems, isLoading, cancelBatch, stats };
+}
+
+export function useSpamConfig() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { workspaceId } = useWorkspace();
+
+  const { data: config, isLoading } = useQuery({
+    queryKey: ["spam-config", workspaceId],
+    enabled: !!workspaceId,
+    queryFn: async () => {
+      const resp = await fetch(apiUrl(`groups/spam-config?workspaceId=${workspaceId}`));
+      if (!resp.ok) throw new Error(await resp.text());
+      return resp.json();
+    },
+  });
+
+  const updateConfig = useMutation({
+    mutationFn: async (params: {
+      maxMessagesPerGroup?: number;
+      perMinutes?: number;
+      delayBetweenSendsMs?: number;
+    }) => {
+      const resp = await fetch(apiUrl("groups/spam-config"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, ...params }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      return resp.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["spam-config", workspaceId] });
+      toast({ title: "Configuração anti-spam salva!" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return {
+    config: config || { max_messages_per_group: 3, per_minutes: 60, delay_between_sends_ms: 3000 },
+    isLoading,
+    updateConfig,
+  };
 }
