@@ -601,10 +601,10 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                     </td>
                     <td className="py-3.5 px-4 hidden xl:table-cell">
                       <div className="flex items-center gap-1.5">
-                        {(tx as any).whatsapp_valid === true && (
+                        {tx.whatsapp_valid === true && (
                           <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="WhatsApp válido" />
                         )}
-                        {(tx as any).whatsapp_valid === false && (
+                        {tx.whatsapp_valid === false && (
                           <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="WhatsApp inválido" />
                         )}
                         <span className="text-sm text-muted-foreground font-mono">
