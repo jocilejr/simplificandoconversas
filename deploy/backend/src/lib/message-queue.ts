@@ -77,7 +77,12 @@ class MessageQueue {
       delayMs: this.delayMs,
       pauseAfterSends: this.pauseAfterSends,
       pauseMinutes: this.pauseMinutes,
+      history: this.history,
     };
+  }
+
+  clearHistory() {
+    this.history = [];
   }
 
   private async processNext() {
