@@ -17,6 +17,7 @@ import EmailPage from "./pages/EmailPage";
 import LinkRedirect from "./pages/LinkRedirect";
 import NotFound from "./pages/NotFound";
 import Transacoes from "./pages/Transacoes";
+import RelatorioFinanceiro from "./pages/RelatorioFinanceiro";
 
 import GerarBoleto from "./pages/GerarBoleto";
 import GruposPage from "./pages/GruposPage";
