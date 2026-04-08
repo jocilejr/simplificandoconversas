@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { resolveWorkspaceId } from "../lib/workspace";
+import { resolveWorkspaceIdFromRequest } from "../lib/workspace";
 import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
 import { getRandomCep } from "../lib/random-ceps";
