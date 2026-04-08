@@ -70,11 +70,12 @@ const financeItems: MenuItem[] = [
   { title: "Follow Up", url: "/follow-up", icon: PhoneForwarded, permKey: "recuperacao" },
 ];
 
-function MenuGroup({ label, items, collapsed, isActive }: {
+function MenuGroup({ label, items, collapsed, isActive, dotUrls }: {
   label: string;
   items: MenuItem[];
   collapsed: boolean;
   isActive: (path: string) => boolean;
+  dotUrls?: Set<string>;
 }) {
   return (
     <SidebarGroup>
@@ -93,11 +94,14 @@ function MenuGroup({ label, items, collapsed, isActive }: {
                 <NavLink
                   to={item.url}
                   end
-                  className="hover:bg-sidebar-accent/80"
+                  className="hover:bg-sidebar-accent/80 relative"
                   activeClassName="bg-sidebar-accent text-primary font-medium"
                 >
                   <item.icon className="h-4 w-4" />
                   {!collapsed && <span className="text-xs">{item.title}</span>}
+                  {dotUrls?.has(item.url) && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  )}
                 </NavLink>
               </SidebarMenuButton>
             </SidebarMenuItem>
