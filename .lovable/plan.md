@@ -1,50 +1,26 @@
 
 
-# Indicadores visuais no botão de recuperação
+# Fix: Dashboard da extensão Chrome filtrado por workspace
 
-## O que será feito
+## Problema
+O endpoint `GET /api/ext/dashboard` no backend (`deploy/backend/src/routes/extension-api.ts`) ignora o parâmetro `workspaceId` enviado pela extensão. Todas as queries filtram por `user_id`, mostrando dados de todos os workspaces misturados.
 
-### 1. Contador de mensagens enviadas (manual + automático)
-O contador no botão de recuperação (badge) atualmente conta apenas cliques manuais via `recovery_clicks`. Será alterado para **também contar envios automáticos** da `recovery_queue` (status = "sent").
+A extensão já envia `workspaceId` corretamente (linha 304 do `background.js`), mas o backend não o utiliza.
 
-**Mudança no frontend:**
-- `useRecoveryClicks.ts`: Além de buscar `recovery_clicks`, também buscar `recovery_queue` com `status = 'sent'` para os mesmos `transaction_ids`. Combinar as contagens.
-- O badge no `RecoveryPopover` já exibe `clickCount` — apenas a fonte de dados muda.
+## Solução
 
-### 2. Indicador visual de número válido no WhatsApp
-Verificar na **criação da transação** (backend) se o número existe no WhatsApp e salvar o resultado no banco.
+**Arquivo:** `deploy/backend/src/routes/extension-api.ts` (linhas 91-167)
 
-**Migração SQL:**
-```sql
-ALTER TABLE transactions ADD COLUMN whatsapp_valid boolean DEFAULT null;
-```
+1. Ler `workspaceId` do query param (`req.query.workspaceId`) com fallback para `resolveWorkspaceId(userId)`
+2. Substituir todos os `.eq("user_id", userId)` por `.eq("workspace_id", workspaceId)` nas 6 queries paralelas e nas queries de enriquecimento
 
-**Backend — `deploy/backend/src/routes/platform-api.ts` e `payment.ts`:**
-Após salvar a transação com telefone, chamar a Evolution API para verificar:
-```
-POST /chat/whatsappNumbers/{instanceName}
-body: { numbers: ["5511999999999"] }
-```
-Salvar o resultado (`true`/`false`) na coluna `whatsapp_valid` da transação.
+Queries afetadas:
+- `chatbot_flows` → filtrar por `workspace_id`
+- `conversations` → filtrar por `workspace_id`
+- `flow_executions` (count + recent) → filtrar por `workspace_id`
+- `whatsapp_instances` → filtrar por `workspace_id`
+- `reminders` → filtrar por `workspace_id`
+- Lookup de `conversations` para enriquecimento → filtrar por `workspace_id`
 
-**Frontend — `TransactionsTable.tsx`:**
-Na coluna de contato (telefone), exibir um ícone pequeno:
-- ● verde se `whatsapp_valid === true`
-- ● vermelho se `whatsapp_valid === false`  
-- Sem ícone se `null` (transações antigas sem verificação)
-
-### 3. Instância para verificação
-Usará a instância configurada em `recovery_settings` (a mesma usada para envio), determinada pelo tipo da transação (`instance_boleto`, `instance_pix`, etc.).
-
-## Arquivos alterados
-
-| Arquivo | Mudança |
-|---------|---------|
-| Migração SQL | Adicionar coluna `whatsapp_valid` na tabela `transactions` |
-| `deploy/backend/src/routes/platform-api.ts` | Verificar número no WhatsApp após criar transação |
-| `deploy/backend/src/routes/payment.ts` | Verificar número no WhatsApp após criar transação |
-| `deploy/backend/src/lib/recovery-dispatch.ts` | Extrair função de verificação de número para reutilização |
-| `src/hooks/useRecoveryClicks.ts` | Combinar contagem de `recovery_clicks` + `recovery_queue` (sent) |
-| `src/components/transactions/TransactionsTable.tsx` | Exibir indicador visual de WhatsApp válido na coluna de contato |
-| `src/hooks/useTransactions.ts` | Interface `Transaction` já inclui novos campos via types auto-gerado |
+Nenhuma mudança na extensão Chrome é necessária — ela já envia o `workspaceId` correto.
 
