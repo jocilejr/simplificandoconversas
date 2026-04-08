@@ -179,7 +179,7 @@ async function sendBlock(
     const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
 
     console.log(`[recovery-dispatch] Sending IMAGE block from ${jpgPath} (${imgBase64.length} chars base64)`);
-    const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${instanceName}`, {
+    const resp = await fetch(`${evoBaseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evoApiKey },
       body: JSON.stringify({
