@@ -239,6 +239,15 @@ async function processWorkspace(
       continue;
     }
 
+    // Phone-level dedup: limit messages per phone per day
+    const phoneKey = phone.slice(-8);
+    const currentCount = phoneSendCount.get(phoneKey) || 0;
+    if (currentCount >= maxMessagesPerPhone) {
+      console.log(`[followup-daily] Phone ${phoneKey} already received ${currentCount} msg(s) today, skipping boleto ${boleto.id}`);
+      skipped++;
+      continue;
+    }
+
     const meta = (boleto.metadata as any) || {};
     const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
 
