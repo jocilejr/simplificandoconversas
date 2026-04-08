@@ -163,8 +163,8 @@ router.post("/campaigns", async (req: Request, res: Response) => {
 
     res.json(campaign);
   } catch (err: any) {
-    console.error("[groups-api] create campaign error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[groups-api] create campaign error:", JSON.stringify(err, null, 2));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || JSON.stringify(err) });
   }
 });
 
