@@ -1154,16 +1154,33 @@ router.post("/generate-payment", async (req, res) => {
         ? `${errorCause.code || ""} - ${errorCause.description || mpData.message || "Unknown"}`.trim()
         : mpData?.message || "Unknown error";
 
-      // Save rejected transaction
-      await sb.from("transactions").insert({
-        user_id: userId, workspace_id: workspaceId,
-        amount: Number(amount), type: paymentType,
-        status: "rejeitado", source: "mercadopago",
-        customer_name, customer_phone: customer_phone || null,
-        customer_email: resolvedEmail, customer_document: customer_document || null,
-        description: description || null,
-        metadata: { error_reason: errorReason, mp_error: mpData },
-      });
+      // Dedup: skip insert if identical rejected transaction exists in last 5 min
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: existingRejected } = await sb
+        .from("transactions")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("customer_phone", customer_phone || "")
+        .eq("amount", Number(amount))
+        .eq("type", paymentType)
+        .eq("status", "rejeitado")
+        .gte("created_at", fiveMinAgo)
+        .limit(1)
+        .maybeSingle();
+
+      if (!existingRejected) {
+        await sb.from("transactions").insert({
+          user_id: userId, workspace_id: workspaceId,
+          amount: Number(amount), type: paymentType,
+          status: "rejeitado", source: "mercadopago",
+          customer_name, customer_phone: customer_phone || null,
+          customer_email: resolvedEmail, customer_document: customer_document || null,
+          description: description || null,
+          metadata: { error_reason: errorReason, mp_error: mpData },
+        });
+      } else {
+        console.log("[platform/generate-payment] Skipped duplicate rejected transaction");
+      }
 
       logApiRequest(userId, workspaceId, req, mpResp.status, errorReason);
       return res.status(mpResp.status).json({ error: "Mercado Pago error", details: mpData });
