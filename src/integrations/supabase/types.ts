@@ -2288,6 +2288,7 @@ export type Database = {
           status: string
           type: string
           user_id: string
+          whatsapp_valid: boolean | null
           workspace_id: string
         }
         Insert: {
@@ -2307,6 +2308,7 @@ export type Database = {
           status?: string
           type?: string
           user_id: string
+          whatsapp_valid?: boolean | null
           workspace_id: string
         }
         Update: {
@@ -2326,6 +2328,7 @@ export type Database = {
           status?: string
           type?: string
           user_id?: string
+          whatsapp_valid?: boolean | null
           workspace_id?: string
         }
         Relationships: [
