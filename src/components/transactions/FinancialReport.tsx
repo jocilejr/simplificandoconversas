@@ -5,7 +5,10 @@ import { RevenueChart } from "./RevenueChart";
 import { PaymentMethodsChart } from "./PaymentMethodsChart";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useFinancialSettings } from "@/hooks/useFinancialSettings";
-import { QrCode, FileText, CreditCard, DollarSign, Wallet } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QrCode, FileText, CreditCard, DollarSign, Wallet, Receipt } from "lucide-react";
 
 export function FinancialReport() {
   const [dateFilter, setDateFilter] = useState<DateFilterValue>(getDefaultDateFilter);
@@ -96,6 +99,44 @@ export function FinancialReport() {
         <FinancialStatCard title="Faturamento" value={formatCurrency(stats.totalRevenue)} subtitle="Pedidos pagos" icon={DollarSign} variant="info" delay={300} isLoading={isLoading} />
         <FinancialStatCard title="Líquido" value={formatCurrency(stats.netRevenue)} subtitle="Após taxas e impostos" icon={Wallet} variant="success" delay={350} isLoading={isLoading} />
       </div>
+
+      {/* Fees & Taxes Card */}
+      <Card className="rounded-xl border-border">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-primary" />
+            Taxas e Impostos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!feeSettings ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Nenhuma taxa configurada. Acesse Configurações → Taxas para definir.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {[
+                { label: "Boleto", type: feeSettings.boleto_fee_type, value: feeSettings.boleto_fee_value },
+                { label: "PIX", type: feeSettings.pix_fee_type, value: feeSettings.pix_fee_value },
+                { label: "Cartão", type: feeSettings.cartao_fee_type, value: feeSettings.cartao_fee_value },
+              ].map((fee) => (
+                <div key={fee.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                  <span className="text-sm font-medium">{fee.label}</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {fee.type === "percent" ? `${fee.value}%` : `R$ ${fee.value.toFixed(2)}`}
+                  </Badge>
+                </div>
+              ))}
+              <div className="flex items-center justify-between py-1.5 border-t border-border">
+                <span className="text-sm font-medium">{feeSettings.tax_name}</span>
+                <Badge variant="outline" className="text-xs">
+                  {feeSettings.tax_type === "percent" ? `${feeSettings.tax_value}%` : `R$ ${feeSettings.tax_value.toFixed(2)}`}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
