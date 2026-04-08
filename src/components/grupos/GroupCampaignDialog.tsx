@@ -12,7 +12,6 @@ import { Separator } from "@/components/ui/separator";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
-import GroupMessageEditor from "./GroupMessageEditor";
 
 interface Props {
   open: boolean;
@@ -29,7 +28,6 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
   const [description, setDescription] = useState("");
   const [instanceName, setInstanceName] = useState("");
   const [groupJids, setGroupJids] = useState<Set<string>>(new Set());
-  const [messages, setMessages] = useState<any[]>([{ messageType: "text", content: { text: "" }, scheduleType: "once" }]);
 
   useEffect(() => {
     if (editData) {
@@ -42,7 +40,6 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
       setDescription("");
       setInstanceName("");
       setGroupJids(new Set());
-      setMessages([{ messageType: "text", content: { text: "" }, scheduleType: "once" }]);
     }
   }, [editData, open]);
 
@@ -55,22 +52,16 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
     });
   };
 
-  const selectAll = () => {
-    setGroupJids(new Set(selectedGroups.map(g => g.group_jid)));
-  };
-
-  const deselectAll = () => {
-    setGroupJids(new Set());
-  };
+  const selectAll = () => setGroupJids(new Set(selectedGroups.map(g => g.group_jid)));
+  const deselectAll = () => setGroupJids(new Set());
 
   const handleSave = async () => {
     if (!name || !instanceName) return;
     const jids = Array.from(groupJids);
-
     if (editData) {
       await updateCampaign.mutateAsync({ id: editData.id, name, description, instanceName, groupJids: jids });
     } else {
-      await createCampaign.mutateAsync({ name, description, instanceName, groupJids: jids, messages });
+      await createCampaign.mutateAsync({ name, description, instanceName, groupJids: jids });
     }
     onOpenChange(false);
   };
@@ -91,19 +82,13 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* Basic info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <Megaphone className="h-3 w-3 text-muted-foreground" />
                 Nome
               </Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Boas-vindas"
-                className="bg-background/50 border-border/50 focus:border-primary/50"
-              />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Boas-vindas" className="bg-background/50 border-border/50 focus:border-primary/50" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
@@ -130,18 +115,11 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
 
           <div className="space-y-1.5">
             <Label className="text-xs">Descrição (opcional)</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="bg-background/50 border-border/50 focus:border-primary/50 resize-none"
-              placeholder="Descreva o objetivo desta campanha..."
-            />
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="bg-background/50 border-border/50 focus:border-primary/50 resize-none" placeholder="Descreva o objetivo desta campanha..." />
           </div>
 
           <Separator />
 
-          {/* Group selection */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs flex items-center gap-1.5">
@@ -150,12 +128,8 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
                 <Badge variant="secondary" className="text-[10px] h-5">{groupJids.size}</Badge>
               </Label>
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={selectAll}>
-                  Todos
-                </Button>
-                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={deselectAll}>
-                  Nenhum
-                </Button>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={selectAll}>Todos</Button>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={deselectAll}>Nenhum</Button>
               </div>
             </div>
             <div className="max-h-[180px] overflow-y-auto border border-border/50 rounded-md p-1.5 space-y-0.5 bg-background/30">
@@ -163,15 +137,8 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
                 <p className="text-xs text-muted-foreground text-center py-4">Adicione grupos na aba "Seleção" primeiro.</p>
               ) : (
                 selectedGroups.map((g) => (
-                  <div
-                    key={g.group_jid}
-                    className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => toggleGroup(g.group_jid)}
-                  >
-                    <Checkbox
-                      checked={groupJids.has(g.group_jid)}
-                      onCheckedChange={() => toggleGroup(g.group_jid)}
-                    />
+                  <div key={g.group_jid} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => toggleGroup(g.group_jid)}>
+                    <Checkbox checked={groupJids.has(g.group_jid)} onCheckedChange={() => toggleGroup(g.group_jid)} />
                     <span className="text-sm flex-1 truncate">{g.group_name}</span>
                     <span className="text-[10px] text-muted-foreground">{g.member_count}</span>
                   </div>
@@ -179,13 +146,6 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
               )}
             </div>
           </div>
-
-          <Separator />
-
-          {/* Messages (only for new campaigns) */}
-          {!editData && (
-            <GroupMessageEditor messages={messages} onChange={setMessages} />
-          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>

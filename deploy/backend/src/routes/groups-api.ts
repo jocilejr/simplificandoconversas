@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { resolveWorkspaceIdFromRequest } from "../lib/workspace";
 
 const router = Router();
 
@@ -142,7 +141,7 @@ router.get("/campaigns", async (req: Request, res: Response) => {
 
 router.post("/campaigns", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, userId, name, description, instanceName, groupJids, messages } = req.body;
+    const { workspaceId, userId, name, description, instanceName, groupJids } = req.body;
     if (!workspaceId || !userId || !name || !instanceName)
       return res.status(400).json({ error: "Missing fields" });
 
@@ -161,23 +160,6 @@ router.post("/campaigns", async (req: Request, res: Response) => {
       .select()
       .single();
     if (error) throw error;
-
-    // Insert scheduled messages if provided
-    if (Array.isArray(messages) && messages.length > 0) {
-      const msgRows = messages.map((m: any) => ({
-        workspace_id: workspaceId,
-        user_id: userId,
-        campaign_id: campaign.id,
-        message_type: m.messageType || "text",
-        content: m.content || {},
-        schedule_type: m.scheduleType || "once",
-        cron_expression: m.cronExpression || null,
-        interval_minutes: m.intervalMinutes || null,
-        scheduled_at: m.scheduledAt || null,
-        is_active: true,
-      }));
-      await sb.from("group_scheduled_messages").insert(msgRows);
-    }
 
     res.json(campaign);
   } catch (err: any) {
@@ -239,7 +221,6 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
     for (const msg of messages) {
       if (!msg.is_active) continue;
       for (const jid of campaign.group_jids) {
-        // Find group name from selected groups
         const { data: sg } = await sb
           .from("group_selected")
           .select("group_name")
@@ -271,6 +252,116 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
     res.json({ enqueued: queueItems.length, batch });
   } catch (err: any) {
     console.error("[groups-api] enqueue error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ─── Scheduled Messages CRUD ─── */
+router.get("/campaigns/:id/messages", async (req: Request, res: Response) => {
+  try {
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("group_scheduled_messages")
+      .select("*")
+      .eq("campaign_id", req.params.id)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, userId, messageType, content, scheduleType, scheduledAt, cronExpression, intervalMinutes } = req.body;
+    if (!workspaceId || !userId) return res.status(400).json({ error: "Missing fields" });
+
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("group_scheduled_messages")
+      .insert({
+        campaign_id: req.params.id,
+        workspace_id: workspaceId,
+        user_id: userId,
+        message_type: messageType || "text",
+        content: content || {},
+        schedule_type: scheduleType || "once",
+        scheduled_at: scheduledAt || null,
+        cron_expression: cronExpression || null,
+        interval_minutes: intervalMinutes || null,
+        is_active: true,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    console.error("[groups-api] create message error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response) => {
+  try {
+    const { messageType, content, scheduleType, scheduledAt, cronExpression, intervalMinutes } = req.body;
+    const update: any = {};
+    if (messageType !== undefined) update.message_type = messageType;
+    if (content !== undefined) update.content = content;
+    if (scheduleType !== undefined) update.schedule_type = scheduleType;
+    if (scheduledAt !== undefined) update.scheduled_at = scheduledAt;
+    if (cronExpression !== undefined) update.cron_expression = cronExpression;
+    if (intervalMinutes !== undefined) update.interval_minutes = intervalMinutes;
+
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("group_scheduled_messages")
+      .update(update)
+      .eq("id", req.params.msgId)
+      .eq("campaign_id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/campaigns/:id/messages/:msgId", async (req: Request, res: Response) => {
+  try {
+    const sb = getServiceClient();
+    const { error } = await sb
+      .from("group_scheduled_messages")
+      .delete()
+      .eq("id", req.params.msgId)
+      .eq("campaign_id", req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch("/campaigns/:id/messages/:msgId/toggle", async (req: Request, res: Response) => {
+  try {
+    const sb = getServiceClient();
+    const { data: msg, error: fErr } = await sb
+      .from("group_scheduled_messages")
+      .select("is_active")
+      .eq("id", req.params.msgId)
+      .single();
+    if (fErr || !msg) return res.status(404).json({ error: "Message not found" });
+
+    const { data, error } = await sb
+      .from("group_scheduled_messages")
+      .update({ is_active: !msg.is_active })
+      .eq("id", req.params.msgId)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -319,7 +410,6 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     let failed = 0;
 
     for (const item of pending) {
-      // Mark as processing
       await sb.from("group_message_queue").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", item.id);
 
       try {
@@ -334,7 +424,6 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           });
           if (!r.ok) throw new Error(await r.text());
         } else {
-          // media types
           const r = await fetch(`${baseUrl}/message/sendMedia/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
@@ -356,7 +445,6 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         failed++;
       }
 
-      // Delay between sends (2s default)
       await new Promise((r) => setTimeout(r, 2000));
     }
 
