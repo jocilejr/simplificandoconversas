@@ -5,8 +5,6 @@ import { RevenueChart } from "./RevenueChart";
 import { PaymentMethodsChart } from "./PaymentMethodsChart";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useFinancialSettings } from "@/hooks/useFinancialSettings";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QrCode, FileText, CreditCard, DollarSign, Wallet, Receipt } from "lucide-react";
 
