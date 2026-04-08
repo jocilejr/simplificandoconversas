@@ -156,7 +156,7 @@ router.post("/", async (req, res) => {
       const tx = resource;
       const customer = extractCustomer(tx.customer);
       const amount = Number(tx.amount || 0);
-      const txId = String(tx.id || "");
+      const txId = String(tx.id || randomUUID());
       const externalId = `yampi_refused_${txId}`;
 
       const paymentAlias = tx.payment?.data?.alias;
