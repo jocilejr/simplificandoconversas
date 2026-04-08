@@ -1,76 +1,54 @@
 
 
-# Reestruturar Campanhas — Separar Criação de Programação
+# Corrigir log de erro e garantir funcionamento da criação de campanha
 
-## Conceito
+## Diagnóstico
 
-Atualmente o `GroupCampaignDialog` mistura criação da campanha com editor de mensagens. O novo fluxo separa em dois momentos:
+As 5 tabelas existem na VPS. O schema está correto. O erro `undefined` indica que o objeto de erro retornado pelo Supabase client não tem `.message` — provavelmente é um objeto `{ code, details, hint, message }` onde `message` pode estar vazio, ou o PostgREST retorna erro em formato diferente.
 
-1. **Criar Campanha** (dialog simples): Nome, Descrição, Instância, Grupos-alvo — salva
-2. **Programação** (botão no card da campanha): Abre modal dedicado com abas por tipo de agendamento (Único, Diário, Semanal, Mensal, Avançado), onde se cria/edita mensagens agendadas individualmente
+## Correções
 
-Replica exatamente o padrão do `whats-grupos`: `CampaignDialog` + `CampaignMessagesDialog` + `ScheduledMessageForm`.
+### 1. `deploy/backend/src/routes/groups-api.ts` — Melhorar logging de erro
 
----
-
-## Fluxo do usuário
-
-```text
-Aba Campanhas
-  → "Nova Campanha" → Dialog (Nome, Instância, Grupos) → Salvar
-  → Card da campanha com botões:
-      [Programação] [Editar] [▶ Enviar] [🗑 Excluir]
-  → "Programação" → Modal com abas:
-      [Único] [Diário] [Semanal] [Mensal] [Avançado]
-      → Cada aba: lista de mensagens + "Adicionar Mensagem"
-      → Form: tipo (grid de ícones), conteúdo, horário → Salvar
+No `POST /campaigns` (linha 166), trocar:
+```ts
+console.error("[groups-api] create campaign error:", err.message);
+res.status(500).json({ error: err.message });
+```
+por:
+```ts
+console.error("[groups-api] create campaign error:", JSON.stringify(err, null, 2));
+res.status(500).json({ error: err?.message || err?.details || err?.hint || JSON.stringify(err) });
 ```
 
----
+Aplicar o mesmo padrão em todos os catches do arquivo que usam `err.message`.
 
-## Alterações técnicas
+### 2. `deploy/init-db.sql` — Adicionar as 5 tabelas de grupos
 
-### 1. `GroupCampaignDialog.tsx` — Simplificar
-Remover `GroupMessageEditor`, state `messages`, e a seção de mensagens. Manter apenas Nome, Instância, Descrição, Grupos-alvo.
+Garantir que próximos deploys criem as tabelas automaticamente. Adicionar ao final do arquivo:
+- `group_selected`
+- `group_campaigns`
+- `group_scheduled_messages`
+- `group_message_queue`
+- `group_participant_events`
 
-### 2. `GroupCampaignsTab.tsx` — Botão "Programação"
-Adicionar botão `CalendarClock` no card de cada campanha. Ao clicar abre o novo `GroupMessagesDialog`.
+### 3. `deploy/migrate-workspace.sql` — Registrar tabelas nos arrays `_tables`
 
-### 3. CRIAR `GroupMessagesDialog.tsx` — Modal de Programação
-- Abas: **Único**, **Diário**, **Semanal**, **Mensal**, **Avançado**
-- Cada aba: header com descrição, botão "Adicionar Mensagem", lista de mensagens filtradas
-- Aba Semanal: filtro por dia da semana (Dom-Sáb)
-- Cada mensagem: ícone do tipo, preview, horário, Switch ativo/inativo, Editar/Excluir
-- Usa `useGroupScheduledMessages(campaignId)`
+Adicionar as 5 tabelas em todos os arrays `_tables` do script para garantir:
+- Coluna `workspace_id`
+- Políticas RLS workspace-based
+- Índices de workspace
+- Backfill automático
 
-### 4. CRIAR `GroupScheduledMessageForm.tsx` — Form de Mensagem
-Baseado no `ScheduledMessageForm` do whats-grupos:
-- Grid de tipos com ícones (Texto, Imagem, Vídeo, Áudio, Documento, Figurinha, Localização, Contato, Enquete, Lista)
-- Campos dinâmicos por tipo
-- Agendamento por tipo: Calendário+hora (único), hora (diário), dias da semana+hora (semanal), dia do mês+hora (mensal), dias personalizados+hora (avançado)
-- Opções: mentionAll, linkPreview
-- Cálculo automático de `next_run_at` (BRT)
+### Instrução para VPS
 
-### 5. CRIAR `useGroupScheduledMessages.ts` — Hook
-- Query: `GET /campaigns/:id/messages`
-- Mutations: criar, editar, excluir, toggle ativo
+Após o deploy do código atualizado:
+1. `docker compose exec -T postgres psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"`
+2. `docker compose restart postgrest`
+3. `docker compose up -d --build backend`
 
-### 6. Backend `groups-api.ts` — 5 novas rotas
-- `GET /campaigns/:id/messages`
-- `POST /campaigns/:id/messages`
-- `PUT /campaigns/:id/messages/:msgId`
-- `DELETE /campaigns/:id/messages/:msgId`
-- `PATCH /campaigns/:id/messages/:msgId/toggle`
-
-### 7. Remover `GroupMessageEditor.tsx`
-
-### 8. `useGroupCampaigns.ts` — Remover `messages` do payload de criação
-
----
-
-## Arquivos
-
-**Criados:** `GroupMessagesDialog.tsx`, `GroupScheduledMessageForm.tsx`, `useGroupScheduledMessages.ts`
-**Alterados:** `GroupCampaignDialog.tsx`, `GroupCampaignsTab.tsx`, `groups-api.ts`, `useGroupCampaigns.ts`
-**Removidos:** `GroupMessageEditor.tsx`
+## Arquivos alterados
+1. `deploy/backend/src/routes/groups-api.ts`
+2. `deploy/init-db.sql`
+3. `deploy/migrate-workspace.sql`
 
