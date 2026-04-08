@@ -92,24 +92,28 @@ router.get("/dashboard", async (req, res) => {
   const start = Date.now();
   const userId = await requireAuth(req, res);
   if (!userId) return;
-  const workspaceId = await resolveWorkspaceId(userId);
+  const wsParam = typeof req.query.workspaceId === "string" ? req.query.workspaceId : null;
+  const workspaceId = wsParam || await resolveWorkspaceId(userId);
+  if (!workspaceId) {
+    return res.status(400).json({ error: "Workspace não encontrado" });
+  }
 
   try {
     const sb = getServiceClient();
 
     const [flowsRes, contactsRes, execRes, instancesRes, recentRes, remindersRes] = await Promise.all([
-      sb.from("chatbot_flows").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("active", true),
-      sb.from("conversations").select("id", { count: "exact", head: true }).eq("user_id", userId),
-      sb.from("flow_executions").select("id", { count: "exact", head: true }).eq("user_id", userId).in("status", ["running", "waiting", "waiting_click", "waiting_reply"]),
-      sb.from("whatsapp_instances").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("is_active", true),
+      sb.from("chatbot_flows").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("active", true),
+      sb.from("conversations").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
+      sb.from("flow_executions").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).in("status", ["running", "waiting", "waiting_click", "waiting_reply"]),
+      sb.from("whatsapp_instances").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("is_active", true),
       sb.from("flow_executions")
         .select("id, flow_id, status, remote_jid, created_at, instance_name")
-        .eq("user_id", userId)
+        .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false })
         .limit(10),
       sb.from("reminders")
         .select("id, title, description, due_date, completed, contact_name, phone_number")
-        .eq("user_id", userId)
+        .eq("workspace_id", workspaceId)
         .eq("completed", false)
         .order("due_date", { ascending: true })
         .limit(15),
@@ -123,7 +127,7 @@ router.get("/dashboard", async (req, res) => {
 
       const [flowsLookup, convsLookup] = await Promise.all([
         flowIds.length > 0 ? sb.from("chatbot_flows").select("id, name").in("id", flowIds) : { data: [] },
-        jids.length > 0 ? sb.from("conversations").select("remote_jid, contact_name, phone_number").eq("user_id", userId).in("remote_jid", jids) : { data: [] },
+        jids.length > 0 ? sb.from("conversations").select("remote_jid, contact_name, phone_number").eq("workspace_id", workspaceId).in("remote_jid", jids) : { data: [] },
       ]);
 
       const flowMap = new Map((flowsLookup.data || []).map((f: any) => [f.id, f.name]));
