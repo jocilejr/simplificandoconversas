@@ -1,78 +1,47 @@
 
 
-# Follow Up Automático via Fila de Mensagens
+# Comparação: Finance Hub vs. Follow-Up Daily atual
 
-## Problemas identificados
+## Análise da lógica
 
-1. **Nenhum backend para follow-up diário** -- A tabela `followup_settings` existe com `send_at_hour`, `instance_name` e `enabled`, mas **nenhum cron job ou endpoint** no backend processa o envio automático diário.
-2. **Erro ao salvar configurações** -- O hook `useFollowUpSettings` usa `as any` casts e pode estar falhando por incompatibilidade de tipos ou RLS.
+Após revisar detalhadamente o [Finance Hub](/projects/d89d7fe0-aec2-4559-ab78-93b0f65c21d2), a **lógica da régua no `followup-daily.ts` já está correta** e alinhada com o Finance Hub. Os pontos essenciais coincidem:
 
-## Solução
+| Aspecto | Finance Hub | Seu backend (`followup-daily.ts`) |
+|---|---|---|
+| Cálculo de dias | `calcDaysSince()` com timezone Brasil | `daysBetween()` com timezone Brasil |
+| Matching de regras | `days_after_generation`, `days_before_due`, `days_after_due` | Mesma lógica, mesma ordem por priority |
+| Dedup por transaction+rule | `sentTodayKeys` Set | `alreadyContacted` Set |
+| Template variables | `{saudação}`, `{primeiro_nome}`, `{valor}`, `{vencimento}`, `{codigo_barras}` | Idêntico |
+| Blocos de mídia | PDF + Image via template blocks | PDF + Image com conversão local |
+| Anti-ban | Delay + batch pause via settings | MessageQueue com delay + cooldown |
 
-### 1. Backend: Criar endpoint e cron para follow-up diário
-**Arquivo novo: `deploy/backend/src/routes/followup-daily.ts`**
+## Diferenças encontradas (melhorias do Finance Hub que faltam)
 
-Endpoint `POST /api/followup-daily/process`:
-- Busca todos os `followup_settings` onde `enabled = true`
-- Para cada workspace com follow-up ativo:
-  - Carrega todos os boletos pendentes (`transactions` where `type=boleto`, `status=pendente`)
-  - Carrega as `boleto_recovery_rules` ativas do workspace
-  - Carrega o `boleto_settings` (para calcular `dueDate`)
-  - Para cada boleto, calcula qual regra se aplica HOJE (mesma lógica do frontend: `days_after_generation`, `days_before_due`, `days_after_due`)
-  - Verifica se já foi contactado hoje para essa regra (tabela `boleto_recovery_contacts`)
-  - Se não foi contactado e tem regra aplicável:
-    - Monta a mensagem usando o template da regra (com variáveis `{saudação}`, `{primeiro_nome}`, `{valor}`, `{vencimento}`, `{codigo_barras}`)
-    - Carrega `message_queue_config` da instância para delay/cooldown
-    - Enfileira na `MessageQueue` da instância configurada
-    - Ao enviar com sucesso, registra em `boleto_recovery_contacts` (para marcar como "enviado hoje")
-  - Também suporta `media_blocks` (PDF e imagem do boleto) na régua
+### 1. Dedup por telefone (evitar spam ao mesmo número)
+O Finance Hub tem uma proteção extra: rastreia quantas mensagens cada **telefone** já recebeu hoje e respeita um limite `max_messages_per_person_per_day`. Seu backend não tem isso — se o mesmo cliente tiver 2 boletos com regras diferentes, recebe 2 mensagens.
 
-### 2. Backend: Registrar cron no `index.ts`
-**Arquivo: `deploy/backend/src/index.ts`**
+### 2. Re-check de status antes do envio
+Seu `followup-daily.ts` **já faz** re-check (`tx.status !== "pendente"` antes de enviar). Correto.
 
-Adicionar cron que roda a cada minuto e compara o horário atual (Brasília) com `send_at_hour`:
-```
-cron.schedule("* * * * *", async () => {
-  // Verifica se algum workspace tem send_at_hour == hora atual de Brasília
-  // Se sim, chama processFollowUpDaily() para esse workspace
-});
-```
-Também registrar a rota `app.use("/api/followup-daily", followupDailyRouter)`.
+### 3. Filtro `neq('rule_type', 'immediate')`
+O Finance Hub exclui regras do tipo `immediate` da busca diária (essas são usadas só no envio instantâneo). Suas tabelas não têm regras `immediate`, mas seria uma boa proteção futura.
 
-### 3. Frontend: Corrigir erros ao salvar `FollowUpSettingsDialog`
-**Arquivo: `src/hooks/useFollowUpSettings.ts`**
+## Plano de melhorias
 
-O problema provável é que o `update` não inclui `updated_at` ou o tipo do `send_at_hour` não bate. Vou:
-- Adicionar `updated_at: new Date().toISOString()` ao update
-- Garantir que os campos enviados correspondem exatamente às colunas da tabela
-- Adicionar tratamento de erro com log para debug
+### 1. Adicionar dedup por telefone (`followup-daily.ts`)
+- Antes de processar boletos, construir um `Map<string, number>` com os últimos 8 dígitos dos telefones já contactados hoje
+- Pular envio se o telefone já atingiu o limite (default: 1 msg/dia)
+- Adicionar campo `max_messages_per_phone_per_day` na tabela `followup_settings` (migration)
 
-**Arquivo: `src/components/followup/FollowUpSettingsDialog.tsx`**
-- Adicionar `onError` com `toast.error(err.message)` para mostrar o erro real ao usuário
+### 2. Filtrar regras `immediate` (`followup-daily.ts`)
+- Adicionar `.neq("rule_type", "immediate")` na query de regras para não enviar regras de disparo instantâneo no cron diário
 
-## Lógica da régua (absoluta, por contato)
-
-Cada boleto é tratado individualmente:
-1. Calcula `daysSinceGeneration` = dias entre `created_at` e hoje
-2. Calcula `dueDate` = `created_at + default_expiration_days`
-3. Calcula `daysUntilDue` e `daysAfterDue`
-4. Itera as regras ordenadas por `priority`
-5. Primeira regra que bate com o dia do contato = mensagem a enviar
-6. Se já contactado hoje para essa regra, pula
+### 3. Corrigir timezone na query de dedup
+O código atual usa `todayStart = ${today}T00:00:00.000Z` (UTC). Deveria usar offset `-03:00` para Brasília, como o frontend faz: `${todayStr}T00:00:00-03:00`.
 
 ## Arquivos alterados
-1. **`deploy/backend/src/routes/followup-daily.ts`** (novo) -- Lógica de processamento diário
-2. **`deploy/backend/src/index.ts`** -- Registrar rota + cron a cada minuto
-3. **`src/hooks/useFollowUpSettings.ts`** -- Corrigir mutation
-4. **`src/components/followup/FollowUpSettingsDialog.tsx`** -- Mostrar erro real
+1. `deploy/backend/src/routes/followup-daily.ts` — Dedup por telefone, filtro `immediate`, fix timezone
 
-## Deploy
-```bash
-cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
-```
-
-Verificar nos logs:
-```bash
-docker compose logs -f backend | grep -i "followup-daily\|follow.up"
-```
+## Escopo
+Não há necessidade de reescrever a lógica — apenas 3 ajustes pontuais. A estrutura está correta.
 
