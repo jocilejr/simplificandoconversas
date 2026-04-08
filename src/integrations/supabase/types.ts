@@ -1157,6 +1157,65 @@ export type Database = {
           },
         ]
       }
+      financial_settings: {
+        Row: {
+          boleto_fee_type: string
+          boleto_fee_value: number
+          cartao_fee_type: string
+          cartao_fee_value: number
+          created_at: string
+          id: string
+          pix_fee_type: string
+          pix_fee_value: number
+          tax_name: string
+          tax_type: string
+          tax_value: number
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          boleto_fee_type?: string
+          boleto_fee_value?: number
+          cartao_fee_type?: string
+          cartao_fee_value?: number
+          created_at?: string
+          id?: string
+          pix_fee_type?: string
+          pix_fee_value?: number
+          tax_name?: string
+          tax_type?: string
+          tax_value?: number
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          boleto_fee_type?: string
+          boleto_fee_value?: number
+          cartao_fee_type?: string
+          cartao_fee_value?: number
+          created_at?: string
+          id?: string
+          pix_fee_type?: string
+          pix_fee_value?: number
+          tax_name?: string
+          tax_type?: string
+          tax_value?: number
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flow_executions: {
         Row: {
           conversation_id: string | null
