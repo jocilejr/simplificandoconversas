@@ -10,6 +10,7 @@ export const ALL_PERMISSIONS = [
   { key: "reminders", label: "Lembretes" },
   { key: "leads", label: "Leads" },
   { key: "transacoes", label: "Transações" },
+  { key: "relatorio", label: "Relatório" },
   { key: "recuperacao", label: "Recuperação" },
   { key: "gerar_boleto", label: "Gerar Boleto" },
   { key: "grupos", label: "Grupos" },

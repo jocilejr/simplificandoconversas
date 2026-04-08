@@ -59,6 +59,7 @@ const App = () => (
                 <Route path="/reminders" element={<PermissionGate permission="reminders" redirect><Reminders /></PermissionGate>} />
                 <Route path="/settings" element={<PermissionGate permission="settings" redirect><SettingsPage /></PermissionGate>} />
                 <Route path="/transacoes" element={<PermissionGate permission="transacoes" redirect><Transacoes /></PermissionGate>} />
+                <Route path="/relatorio" element={<PermissionGate permission="relatorio" redirect><RelatorioFinanceiro /></PermissionGate>} />
                 <Route path="/recuperacao" element={<Navigate to="/transacoes" replace />} />
                 <Route path="/gerar-boleto" element={<PermissionGate permission="gerar_boleto" redirect><GerarBoleto /></PermissionGate>} />
                 <Route path="/grupos" element={<PermissionGate permission="grupos" redirect><GruposPage /></PermissionGate>} />
