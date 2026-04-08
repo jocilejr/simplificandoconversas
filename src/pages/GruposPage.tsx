@@ -7,29 +7,36 @@ import GroupQueueTab from "@/components/grupos/GroupQueueTab";
 
 const GruposPage = () => (
   <div className="space-y-6">
-    <div className="flex items-center gap-3">
-      <UsersRound className="h-7 w-7 text-primary" />
-      <h1 className="text-2xl font-bold">Grupos WhatsApp</h1>
+    <div>
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-primary/10">
+          <UsersRound className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold">Grupos</h1>
+          <p className="text-xs text-muted-foreground">Gerencie campanhas e monitore seus grupos</p>
+        </div>
+      </div>
     </div>
 
-    <Tabs defaultValue="dashboard" className="w-full">
-      <TabsList>
-        <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-        <TabsTrigger value="grupos">Grupos</TabsTrigger>
-        <TabsTrigger value="campanhas">Campanhas</TabsTrigger>
-        <TabsTrigger value="fila">Fila</TabsTrigger>
+    <Tabs defaultValue="overview" className="w-full">
+      <TabsList className="bg-muted/50">
+        <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+        <TabsTrigger value="selection">Seleção</TabsTrigger>
+        <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
+        <TabsTrigger value="queue">Fila</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="dashboard" className="mt-4">
+      <TabsContent value="overview" className="mt-4">
         <GroupDashboardTab />
       </TabsContent>
-      <TabsContent value="grupos" className="mt-4">
+      <TabsContent value="selection" className="mt-4">
         <GroupSelectorTab />
       </TabsContent>
-      <TabsContent value="campanhas" className="mt-4">
+      <TabsContent value="campaigns" className="mt-4">
         <GroupCampaignsTab />
       </TabsContent>
-      <TabsContent value="fila" className="mt-4">
+      <TabsContent value="queue" className="mt-4">
         <GroupQueueTab />
       </TabsContent>
     </Tabs>
