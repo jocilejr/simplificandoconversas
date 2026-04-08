@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
@@ -1232,6 +1233,25 @@ router.post("/generate-payment", async (req, res) => {
     };
 
     logApiRequest(userId, workspaceId, req, 200, `Payment created: ${tx?.id}`);
+
+    // Auto-recovery: enqueue if pending and has phone
+    if (tx?.id && customer_phone && (result.status === "pendente")) {
+      try {
+        await dispatchRecovery({
+          workspaceId,
+          userId,
+          transactionId: tx.id,
+          customerPhone: customer_phone,
+          customerName: customer_name || null,
+          amount: Number(amount),
+          transactionType: paymentType === "boleto" ? "boleto" : "pix",
+        });
+        console.log(`[platform/generate-payment] Recovery dispatched for tx ${tx.id} (${paymentType})`);
+      } catch (enqErr: any) {
+        console.error("[platform/generate-payment] Recovery enqueue error:", enqErr.message);
+      }
+    }
+
     res.json(result);
   } catch (err: any) {
     console.error("[platform/generate-payment] error:", err.message);
