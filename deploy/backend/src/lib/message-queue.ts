@@ -123,3 +123,11 @@ export function getMessageQueue(
   }
   return queues.get(instanceName)!;
 }
+
+export function getAllQueuesStatus() {
+  const result: ReturnType<MessageQueue["getStatus"]>[] = [];
+  for (const q of queues.values()) {
+    result.push(q.getStatus());
+  }
+  return result;
+}
