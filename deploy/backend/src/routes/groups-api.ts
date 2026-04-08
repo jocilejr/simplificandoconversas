@@ -51,10 +51,32 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
 
     const raw: any = await resp.json();
     const list = Array.isArray(raw) ? raw : (raw?.groups || []);
+
+    // Buscar o JID do dono da instância
+    let ownerJid = "";
+    try {
+      const instResp = await fetch(`${baseUrl}/instance/fetchInstances`, {
+        headers: { apikey: apiKey },
+      });
+      const instances = await instResp.json();
+      const thisInst = instances?.find((i: any) => i.instance?.instanceName === instanceName);
+      ownerJid = thisInst?.instance?.owner || "";
+      console.log("[groups-api] ownerJid resolved:", ownerJid);
+    } catch (e: any) {
+      console.warn("[groups-api] Could not fetch ownerJid:", e?.message);
+    }
+
     const groups = list
       .filter((g: any) => {
         const jid = g.id || g.jid || g.groupJid || "";
-        return jid.endsWith("@g.us");
+        if (!jid.endsWith("@g.us")) return false;
+        // Filtrar apenas grupos onde o dono da instância está nos participantes
+        const participants = g.participants || [];
+        if (participants.length === 0 || !ownerJid) return true;
+        return participants.some((p: any) => {
+          const pJid = p.id || p.jid || "";
+          return pJid === ownerJid;
+        });
       })
       .map((g: any) => ({
         jid: g.id || g.jid || g.groupJid,
