@@ -5,6 +5,7 @@ import { useWorkspace } from "./useWorkspace";
 export function useRecoveryClicks(transactionIds: string[]) {
   const { workspaceId } = useWorkspace();
 
+  // Fetch manual clicks
   const { data: clicks = [] } = useQuery({
     queryKey: ["recovery-clicks", workspaceId, transactionIds],
     enabled: !!workspaceId && transactionIds.length > 0,
@@ -16,6 +17,22 @@ export function useRecoveryClicks(transactionIds: string[]) {
         .in("transaction_id", transactionIds);
       if (error) throw error;
       return data || [];
+    },
+  });
+
+  // Fetch automatic recovery sends (status = sent)
+  const { data: queueSent = [] } = useQuery({
+    queryKey: ["recovery-queue-sent", workspaceId, transactionIds],
+    enabled: !!workspaceId && transactionIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase
+        .from("recovery_queue" as any)
+        .select("transaction_id")
+        .eq("workspace_id", workspaceId!)
+        .eq("status", "sent")
+        .in("transaction_id", transactionIds) as any);
+      if (error) throw error;
+      return (data || []) as { transaction_id: string }[];
     },
   });
 
@@ -39,8 +56,11 @@ export function useRecoveryClicks(transactionIds: string[]) {
     },
   });
 
-  const getClickCount = (transactionId: string) =>
-    clicks.filter((c) => c.transaction_id === transactionId).length;
+  const getClickCount = (transactionId: string) => {
+    const manualCount = clicks.filter((c) => c.transaction_id === transactionId).length;
+    const autoCount = queueSent.filter((q) => q.transaction_id === transactionId).length;
+    return manualCount + autoCount;
+  };
 
   return { clicks, addClick, getClickCount };
 }
