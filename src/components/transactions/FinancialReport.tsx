@@ -114,7 +114,7 @@ export function FinancialReport() {
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <Receipt className="h-4 w-4 text-primary" />
-            Taxas e Impostos
+            Deduções
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -125,21 +125,21 @@ export function FinancialReport() {
           ) : (
             <div className="space-y-3">
               {[
-                { label: "Boleto", type: feeSettings.boleto_fee_type, value: feeSettings.boleto_fee_value },
-                { label: "PIX", type: feeSettings.pix_fee_type, value: feeSettings.pix_fee_value },
-                { label: "Cartão", type: feeSettings.cartao_fee_type, value: feeSettings.cartao_fee_value },
-              ].map((fee) => (
-                <div key={fee.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                  <span className="text-sm font-medium">{fee.label}</span>
+                { label: "Taxa Boleto", value: stats.boletoFees },
+                { label: "Taxa PIX", value: stats.pixFees },
+                { label: "Taxa Cartão", value: stats.cartaoFees },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                  <span className="text-sm font-medium">{item.label}</span>
                   <Badge variant="secondary" className="text-xs">
-                    {fee.type === "percent" ? `${fee.value}%` : `R$ ${fee.value.toFixed(2)}`}
+                    - {formatCurrency(item.value)}
                   </Badge>
                 </div>
               ))}
               <div className="flex items-center justify-between py-1.5 border-t border-border">
                 <span className="text-sm font-medium">{feeSettings.tax_name}</span>
                 <Badge variant="outline" className="text-xs">
-                  {feeSettings.tax_type === "percent" ? `${feeSettings.tax_value}%` : `R$ ${feeSettings.tax_value.toFixed(2)}`}
+                  - {formatCurrency(stats.totalTax)}
                 </Badge>
               </div>
             </div>
