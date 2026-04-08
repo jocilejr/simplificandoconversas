@@ -31,10 +31,15 @@ export function useFollowUpSettings() {
     }) => {
       if (!workspaceId || !user?.id) throw new Error("No workspace");
 
+      const payload = {
+        ...values,
+        updated_at: new Date().toISOString(),
+      };
+
       if (settings?.id) {
         const { error } = await supabase
           .from("followup_settings" as any)
-          .update(values)
+          .update(payload)
           .eq("id", settings.id);
         if (error) throw error;
       } else {
@@ -43,7 +48,7 @@ export function useFollowUpSettings() {
           .insert({
             workspace_id: workspaceId,
             user_id: user.id,
-            ...values,
+            ...payload,
           });
         if (error) throw error;
       }

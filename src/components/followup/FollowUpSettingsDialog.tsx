@@ -43,7 +43,7 @@ export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
         toast.success("Configurações salvas!");
         onOpenChange(false);
       },
-      onError: () => toast.error("Erro ao salvar"),
+      onError: (err: any) => toast.error(err?.message || "Erro ao salvar configurações"),
     });
   };
 

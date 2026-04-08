@@ -22,6 +22,8 @@ import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
+import followupDailyRouter from "./routes/followup-daily";
+import { processFollowUpDaily } from "./routes/followup-daily";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
 const app = express();
@@ -44,6 +46,7 @@ app.use("/api/resolve-user-by-email", resolveUserRouter);
 app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
 app.use("/api/auto-recovery", autoRecoveryRouter);
+app.use("/api/followup-daily", followupDailyRouter);
 
 // Queue status (no auth — internal)
 app.get("/api/queue-status", (_, res) => res.json(getAllQueuesStatus()));
@@ -80,6 +83,50 @@ cron.schedule("*/5 * * * *", async () => {
 
 // Auto-recovery cron DISABLED — system is event-driven.
 // Use POST /api/auto-recovery/process for manual retries.
+
+// Follow-up daily cron — checks every minute if it's time to send
+const followupTriggeredToday = new Set<string>();
+cron.schedule("* * * * *", async () => {
+  try {
+    const now = new Date();
+    const brasiliaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const currentHour = brasiliaTime.getHours().toString().padStart(2, "0");
+    const currentMinute = brasiliaTime.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${currentHour}:${currentMinute}`;
+    const todayKey = now.toISOString().slice(0, 10);
+
+    // Reset tracking at midnight
+    if (currentTime === "00:00") {
+      followupTriggeredToday.clear();
+    }
+
+    // Check if any workspace needs processing right now
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    );
+
+    const { data: settings } = await sb
+      .from("followup_settings")
+      .select("workspace_id, send_at_hour")
+      .eq("enabled", true)
+      .eq("send_at_hour", currentTime);
+
+    if (settings && settings.length > 0) {
+      for (const s of settings) {
+        const triggerKey = `${todayKey}:${s.workspace_id}`;
+        if (followupTriggeredToday.has(triggerKey)) continue;
+        followupTriggeredToday.add(triggerKey);
+        console.log(`[cron] ⏰ Triggering follow-up daily for workspace ${s.workspace_id} at ${currentTime}`);
+      }
+      // Process all enabled workspaces that match
+      await processFollowUpDaily();
+    }
+  } catch (err: any) {
+    console.error("[cron] followup-daily error:", err.message);
+  }
+});
 
 // Process email queue every 30 seconds
 cron.schedule("*/30 * * * * *", async () => {
