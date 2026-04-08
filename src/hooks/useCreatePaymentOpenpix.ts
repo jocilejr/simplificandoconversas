@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import type { PaymentResult } from "./useCreatePayment";
+import { useWorkspace } from "./useWorkspace";
 
 interface CreatePaymentInput {
   customer_name: string;
