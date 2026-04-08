@@ -128,12 +128,13 @@ async function processWorkspace(
   const today = getTodayBrasilia();
   console.log(`[followup-daily] Processing workspace ${workspaceId} for ${today}`);
 
-  // 1. Load active rules
+  // 1. Load active rules (exclude "immediate" rules — those are for instant dispatch only)
   const { data: rules } = await sb
     .from("boleto_recovery_rules")
     .select("id, rule_type, days, message, media_blocks, priority")
     .eq("workspace_id", workspaceId)
     .eq("is_active", true)
+    .neq("rule_type", "immediate")
     .order("priority", { ascending: true });
 
   if (!rules || rules.length === 0) {
