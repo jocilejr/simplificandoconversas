@@ -29,6 +29,8 @@ class MessageQueue {
   private pauseAfterSends: number | null;
   private pauseMinutes: number | null;
   private sendCount = 0;
+  private history: HistoryItem[] = [];
+  private static MAX_HISTORY = 200;
 
   constructor(
     instanceName: string,
