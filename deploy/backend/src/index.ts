@@ -24,6 +24,8 @@ import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily } from "./routes/followup-daily";
+import groupsApiRouter from "./routes/groups-api";
+import groupsWebhookRouter from "./routes/groups-webhook";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
 const app = express();
