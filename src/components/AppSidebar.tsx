@@ -10,6 +10,7 @@ import {
   Receipt,
   RefreshCw,
   FileText,
+  BarChart3,
   UsersRound,
   Crown,
   Package,
@@ -61,6 +62,7 @@ const mainItems: MenuItem[] = [
 const financeItems: MenuItem[] = [
   { title: "Leads", url: "/leads", icon: Users, permKey: "leads" },
   { title: "Transações", url: "/transacoes", icon: Receipt, permKey: "transacoes" },
+  { title: "Relatório", url: "/relatorio", icon: BarChart3, permKey: "relatorio" },
   { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
   { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
   { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
