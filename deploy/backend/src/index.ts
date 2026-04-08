@@ -22,7 +22,7 @@ import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
-// processRecoveryQueue import removed — cron disabled
+import { getAllQueuesStatus } from "./lib/message-queue";
 
 const app = express();
 app.use(cors());
@@ -44,6 +44,9 @@ app.use("/api/resolve-user-by-email", resolveUserRouter);
 app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
 app.use("/api/auto-recovery", autoRecoveryRouter);
+
+// Queue status (no auth — internal)
+app.get("/api/queue-status", (_, res) => res.json(getAllQueuesStatus()));
 
 // Health
 app.use("/api/health", healthDbRouter);
