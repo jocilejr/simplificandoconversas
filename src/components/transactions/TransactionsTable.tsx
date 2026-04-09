@@ -226,14 +226,25 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Mark transactions as seen when tab changes
+  // Mark transactions as seen only when user manually switches tab
+  const isFirstRender = useRef(true);
+  const prevTab = useRef<TabKey>(activeTab);
+
   useEffect(() => {
-    const currentTxs = tabTransactions[activeTab] || [];
-    const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
-    if (unseenIds.length > 0) {
-      markSeen(unseenIds);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
     }
-  }, [activeTab, tabTransactions, markSeen]);
+    // Only mark seen if the tab actually changed (user clicked)
+    if (prevTab.current !== activeTab) {
+      prevTab.current = activeTab;
+      const currentTxs = tabTransactions[activeTab] || [];
+      const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
+      if (unseenIds.length > 0) {
+        markSeen(unseenIds);
+      }
+    }
+  }, [activeTab, markSeen, tabTransactions]);
 
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
