@@ -186,7 +186,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   }, [orphanTxs, leadCpf]);
   const hasMoreUnlinked = !txSearch.trim() && txLimit < totalUnlinked;
 
-  const processDelivery = useCallback(async (method: string, existingTxId?: string) => {
+  const processDelivery = useCallback(async (method: string, existingTxId?: string, alreadyCounted?: boolean) => {
     if (!workspaceId || !userId) return;
     const normalized = normalizePhone(phone);
     if (normalized === "-" || normalized.length < 10) {
@@ -274,8 +274,8 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       workspace_id: workspaceId, product_id: product.id, phone, normalized_phone: normalized, payment_method: method,
     });
 
-    // PIX: update existing transaction instead of creating new
-    if (method === "pix" && existingTxId) {
+    // PIX: only update transaction if NOT already counted (prevents double-counting)
+    if (method === "pix" && existingTxId && !alreadyCounted) {
       await supabase
         .from("transactions")
         .update({
@@ -298,7 +298,13 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     qc.invalidateQueries({ queryKey: ["conversations"] });
 
     setStep("result");
-    toast.success(method === "pix" ? "Acesso liberado + PIX vinculado" : "Acesso liberado");
+    toast.success(
+      method === "pix"
+        ? alreadyCounted
+          ? "Acesso liberado (transação já contabilizada no lead)"
+          : "Acesso liberado + PIX vinculado"
+        : "Acesso liberado"
+    );
   }, [workspaceId, userId, phone, product, settings, qc, orphanTxs]);
 
   const handleCopy = () => {
