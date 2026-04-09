@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,15 +28,13 @@ const formatPhone = (jid: string, phone?: string | null) => {
   return (phone || jid).replace("@s.whatsapp.net", "").replace(/\D/g, "");
 };
 
-type SortField = "name" | "phone" | "orders" | "total" | "reminders" | "status";
-type SortDir = "asc" | "desc";
-
 const Leads = () => {
   const {
     leads, allLeads, totalLeads, isLoading, search, setSearch,
     tagFilter, setTagFilter, uniqueTags,
     paymentFilter, setPaymentFilter,
     page, setPage, totalPages, counts,
+    sortField, sortDir, handleSort,
     createContact, importCSV,
   } = useLeads();
 
@@ -45,47 +43,11 @@ const Leads = () => {
   const [form, setForm] = useState({ name: "", phone: "", instance_name: "" });
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const SortIcon = ({ field }: { field: string }) => {
     if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
     return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
   };
-
-  const sortedLeads = useMemo(() => {
-    if (!sortField) return leads;
-    const arr = [...leads];
-    const dir = sortDir === "asc" ? 1 : -1;
-    arr.sort((a, b) => {
-      switch (sortField) {
-        case "name":
-          return dir * (a.contact_name || "").localeCompare(b.contact_name || "");
-        case "phone":
-          return dir * formatPhone(a.remote_jid, a.phone_number).localeCompare(formatPhone(b.remote_jid, b.phone_number));
-        case "orders":
-          return dir * (a.paidOrdersCount - b.paidOrdersCount);
-        case "total":
-          return dir * (a.totalPaid - b.totalPaid);
-        case "reminders":
-          return dir * (a.remindersCount - b.remindersCount);
-        case "status":
-          return dir * (Number(a.hasPaid) - Number(b.hasPaid));
-        default:
-          return 0;
-      }
-    });
-    return arr;
-  }, [leads, sortField, sortDir]);
 
   const handleCreate = () => {
     if (!form.phone.trim()) return;
@@ -180,7 +142,7 @@ const Leads = () => {
       {/* Table List */}
       {isLoading ? (
         <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
-      ) : sortedLeads.length === 0 ? (
+      ) : leads.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <Users className="h-12 w-12 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
@@ -215,7 +177,7 @@ const Leads = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedLeads.map((l) => (
+              {leads.map((l) => (
                 <TableRow
                   key={l.remote_jid}
                   className="cursor-pointer hover:bg-muted/50"

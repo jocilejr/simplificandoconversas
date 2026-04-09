@@ -2,8 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import type { Transaction } from "@/hooks/useTransactions";
+
+type SortField = "name" | "phone" | "orders" | "total" | "reminders" | "status";
+type SortDir = "asc" | "desc";
 
 export interface LeadInstance {
   instance_name: string | null;
@@ -49,6 +52,8 @@ export function useLeads() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">("all");
   const [page, setPage] = useState(1);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const perPage = 50;
 
   const { data: rawConversations = [], isLoading: isLoadingConvos } = useQuery({
@@ -211,8 +216,45 @@ export function useLeads() {
     return list;
   }, [leads, search, tagFilter, paymentFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  const sorted = useMemo(() => {
+    if (!sortField) return filtered;
+    const arr = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortField) {
+        case "name":
+          return dir * (a.contact_name || "").localeCompare(b.contact_name || "");
+        case "phone":
+          return dir * (a.phone_number || "").localeCompare(b.phone_number || "");
+        case "orders":
+          return dir * (a.paidOrdersCount - b.paidOrdersCount);
+        case "total":
+          return dir * (a.totalPaid - b.totalPaid);
+        case "reminders":
+          return dir * (a.remindersCount - b.remindersCount);
+        case "status":
+          return dir * (Number(a.hasPaid) - Number(b.hasPaid));
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [filtered, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+  const paginated = sorted.slice((page - 1) * perPage, page * perPage);
+
+  const handleSort = useCallback((field: SortField) => {
+    setSortField((prev) => {
+      if (prev === field) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return field;
+      }
+      setSortDir("asc");
+      return field;
+    });
+    setPage(1);
+  }, []);
 
   const counts = useMemo(() => ({
     all: leads.length,
@@ -272,7 +314,7 @@ export function useLeads() {
   return {
     leads: paginated,
     allLeads: filtered,
-    totalLeads: filtered.length,
+    totalLeads: sorted.length,
     isLoading: isLoadingConvos || isLoadingTags || isLoadingTx,
     search, setSearch,
     tagFilter, setTagFilter,
@@ -281,6 +323,7 @@ export function useLeads() {
     page, setPage,
     totalPages,
     counts,
+    sortField, sortDir, handleSort,
     createContact,
     importCSV,
   };
