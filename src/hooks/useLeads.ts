@@ -30,8 +30,16 @@ export interface Lead {
   instances: LeadInstance[];
 }
 
-const normalizePhone = (phone: string | null | undefined) =>
+const matchKey = (phone: string | null | undefined) =>
   phone ? phone.replace(/\D/g, "").slice(-8) : "";
+
+const displayPhone = (raw: string | null | undefined): string | null => {
+  if (!raw) return null;
+  let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55"))
+    phone = "55" + phone;
+  return phone || null;
+};
 
 export function useLeads() {
   const { toast } = useToast();
