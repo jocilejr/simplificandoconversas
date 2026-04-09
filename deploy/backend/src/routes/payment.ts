@@ -3,6 +3,7 @@ import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId, resolveWorkspaceFromPhone } from "../lib/workspace";
 import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
+import { resolvePhoneByCpf } from "../lib/resolve-phone-by-cpf";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
@@ -479,13 +480,24 @@ router.post("/webhook", async (req: Request, res: Response) => {
         updateData.paid_at = mpData.date_approved || new Date().toISOString();
       }
 
-      await supabase
+      const { data: updatedTx } = await supabase
         .from("transactions")
         .update(updateData)
         .eq("external_id", String(paymentId))
-        .eq("source", "mercadopago");
+        .eq("source", "mercadopago")
+        .select("id, customer_phone, customer_document, workspace_id")
+        .maybeSingle();
 
       console.log(`[payment webhook] Updated payment ${paymentId} → ${newStatus}`);
+
+      // Auto-resolve phone by CPF if orphan and approved
+      if (mpData.status === "approved" && updatedTx && !updatedTx.customer_phone && updatedTx.customer_document) {
+        const resolvedPhone = await resolvePhoneByCpf(updatedTx.customer_document, updatedTx.workspace_id);
+        if (resolvedPhone) {
+          await supabase.from("transactions").update({ customer_phone: resolvedPhone }).eq("id", updatedTx.id);
+          console.log(`[payment webhook] Auto-linked phone ${resolvedPhone} via CPF ${updatedTx.customer_document}`);
+        }
+      }
     }
 
     return res.sendStatus(200);

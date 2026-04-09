@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
+import { resolvePhoneByCpf } from "../lib/resolve-phone-by-cpf";
 
 const router = Router();
 
@@ -153,6 +154,15 @@ router.post("/webhook", async (req, res) => {
     }
 
     console.log(`[manual-payment] Created ${newTx?.id} (${paymentType} ${txStatus})`);
+
+    // Auto-resolve phone by CPF if orphan and approved
+    if (newTx?.id && !cleanPhone && customer_document && txStatus === "aprovado") {
+      const resolvedPhone = await resolvePhoneByCpf(customer_document, workspaceId);
+      if (resolvedPhone) {
+        await sb.from("transactions").update({ customer_phone: resolvedPhone }).eq("id", newTx.id);
+        console.log(`[manual-payment] Auto-linked phone ${resolvedPhone} via CPF ${customer_document}`);
+      }
+    }
 
     // Enqueue for recovery if pending/rejected
     if (newTx?.id && (txStatus === "pendente" || txStatus === "rejeitado")) {
