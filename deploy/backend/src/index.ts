@@ -10,7 +10,7 @@ import whatsappProxyRouter from "./routes/whatsapp-proxy";
 import linkRedirectRouter from "./routes/link-redirect";
 import healthDbRouter from "./routes/health-db";
 import { processTimeouts } from "./routes/check-timeouts";
-import { lightSync } from "./routes/light-sync";
+
 import extensionApiRouter from "./routes/extension-api";
 import platformApiRouter from "./routes/platform-api";
 import externalWebhookRouter from "./routes/external-webhook";
