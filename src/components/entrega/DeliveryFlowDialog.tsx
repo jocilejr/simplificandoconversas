@@ -146,7 +146,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       .eq("workspace_id", workspaceId)
       .eq("type", "pix")
       .eq("status", "aprovado")
-      .order("created_at", { ascending: false });
+      .order("paid_at", { ascending: false, nullsFirst: false });
     setLoadingTxs(false);
 
     if (error) {
@@ -168,22 +168,29 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
 
   const filteredTxs = useMemo(() => {
     const normalized = normalizePhone(phone);
+    const classifyTx = (tx: OrphanTx) => {
+      if (!tx.customer_phone) return "orphan";
+      const txPhoneNorm = normalizePhone(tx.customer_phone);
+      const isCurrentLead = txPhoneNorm === normalized ||
+        (txPhoneNorm !== "-" && normalized !== "-" && txPhoneNorm.slice(-8) === normalized.slice(-8));
+      if (isCurrentLead) return "current_lead";
+      return "other_lead";
+    };
+
     if (!txSearch.trim()) {
-      // No search: show orphans + already counted (CPF match, including backend-linked to current lead)
-      const relevant = orphanTxs.filter((tx) => {
-        if (!tx.customer_phone) return true; // orphan
-        // Backend auto-linked to current lead via CPF
-        if (leadCpf && tx.customer_document === leadCpf) {
-          const txPhoneNorm = normalizePhone(tx.customer_phone);
-          const isCurrentLead = txPhoneNorm === normalized ||
-            (txPhoneNorm !== "-" && normalized !== "-" && txPhoneNorm.slice(-8) === normalized.slice(-8));
-          return isCurrentLead;
-        }
-        return false;
-      });
-      return relevant.slice(0, txLimit);
+      // No search: show ALL transactions — orphans first, then current lead, then other leads
+      const orphans: OrphanTx[] = [];
+      const currentLead: OrphanTx[] = [];
+      const otherLead: OrphanTx[] = [];
+      for (const tx of orphanTxs) {
+        const cat = classifyTx(tx);
+        if (cat === "orphan") orphans.push(tx);
+        else if (cat === "current_lead") currentLead.push(tx);
+        else otherLead.push(tx);
+      }
+      return [...orphans, ...currentLead, ...otherLead].slice(0, txLimit);
     }
-    // Search: filter all txs (linked + unlinked)
+    // Search: filter all txs
     const q = txSearch.toLowerCase();
     return orphanTxs.filter(
       (tx) =>
@@ -192,20 +199,8 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     );
   }, [orphanTxs, txSearch, txLimit, leadCpf, phone]);
 
-  const totalUnlinked = useMemo(() => {
-    const normalized = normalizePhone(phone);
-    return orphanTxs.filter((tx) => {
-      if (!tx.customer_phone) return true;
-      if (leadCpf && tx.customer_document === leadCpf) {
-        const txPhoneNorm = normalizePhone(tx.customer_phone);
-        const isCurrentLead = txPhoneNorm === normalized ||
-          (txPhoneNorm !== "-" && normalized !== "-" && txPhoneNorm.slice(-8) === normalized.slice(-8));
-        return isCurrentLead;
-      }
-      return false;
-    }).length;
-  }, [orphanTxs, leadCpf, phone]);
-  const hasMoreUnlinked = !txSearch.trim() && txLimit < totalUnlinked;
+  const totalVisible = useMemo(() => orphanTxs.length, [orphanTxs]);
+  const hasMoreVisible = !txSearch.trim() && txLimit < totalVisible;
 
   const processDelivery = useCallback(async (method: string, existingTxId?: string, alreadyCounted?: boolean) => {
     try {
@@ -516,7 +511,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
               <p className="text-[10px] text-muted-foreground">
                 {txSearch.trim()
                   ? `${filteredTxs.length} transações encontradas`
-                  : `${totalUnlinked} transações sem vínculo`}
+                  : `${totalVisible} transações disponíveis`}
               </p>
 
               <ScrollArea className="max-h-[400px]">
@@ -603,7 +598,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                     );
                   })}
 
-                  {hasMoreUnlinked && (
+                  {hasMoreVisible && (
                     <Button
                       variant="ghost"
                       size="sm"
