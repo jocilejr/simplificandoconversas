@@ -226,18 +226,31 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Mark transactions as seen when tab is active (including initial render)
+  // Mark transactions as seen when tab is active
   const prevTab = useRef<TabKey | null>(null);
+  const initialDone = useRef(false);
 
-  useEffect(() => {
-    if (prevTab.current === activeTab) return;
-    prevTab.current = activeTab;
-    const currentTxs = tabTransactions[activeTab] || [];
+  const markTabAsSeen = useCallback((tab: TabKey) => {
+    const currentTxs = tabTransactions[tab] || [];
     const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
     if (unseenIds.length > 0) {
       markSeen(unseenIds);
     }
-  }, [activeTab, markSeen, tabTransactions]);
+  }, [tabTransactions, markSeen]);
+
+  // On tab change
+  useEffect(() => {
+    if (prevTab.current === activeTab) return;
+    prevTab.current = activeTab;
+    markTabAsSeen(activeTab);
+  }, [activeTab, markTabAsSeen]);
+
+  // On initial data load
+  useEffect(() => {
+    if (isLoading || initialDone.current) return;
+    initialDone.current = true;
+    markTabAsSeen(activeTab);
+  }, [isLoading, activeTab, markTabAsSeen]);
 
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
