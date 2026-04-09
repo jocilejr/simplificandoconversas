@@ -1,49 +1,72 @@
 
 
-# Fix: markSeen não funciona — solução simples via backend
+# Fix: JPG do boleto não corresponde ao PDF original
 
 ## Problema
 
-O `markSeen` atual faz `supabase.from("transactions").update(...)` direto pelo client JS do frontend. Na VPS, o PostgREST provavelmente rejeita esse update silenciosamente (RLS ou cast do `as any`), então `viewed_at` nunca é gravado.
+O sistema cacheia o JPG convertido no disco. Se um JPG antigo/corrompido já existe para aquele boleto, ele é reutilizado sem nunca reconverter do PDF atual. A lógica é:
+
+1. Tenta `access(jpgPath)` — se existe, usa direto
+2. Só converte do PDF se o JPG **não** existe
+
+Se o JPG foi criado a partir de um PDF antigo, ou se houve erro na primeira conversão, o JPG errado fica sendo enviado para sempre.
 
 ## Solução
 
-Criar um endpoint `POST /mark-seen` no backend (que usa service role, sem RLS) e fazer o frontend chamar esse endpoint.
+**Sempre reconverter o PDF para JPG** antes de enviar, removendo o cache. Isso garante que o JPG sempre reflete o PDF atual. O custo de `pdftoppm` é desprezível (< 1s por arquivo).
 
 ## Alterações
 
-### 1. Backend — `deploy/backend/src/routes/platform-api.ts`
+### 1. `deploy/backend/src/routes/followup-daily.ts` (linhas 344-359)
 
-Adicionar rota simples no final do router:
+No bloco `image`, remover o check de cache (`access(jpgPath)`). Sempre converter:
 
 ```typescript
-router.post("/mark-seen", async (req, res) => {
-  const { ids, workspaceId } = req.body;
-  if (!ids?.length || !workspaceId) return res.json({ updated: 0 });
-
-  const sb = getServiceClient();
-  const { data, error } = await sb
-    .from("transactions")
-    .update({ viewed_at: new Date().toISOString() })
-    .in("id", ids)
-    .eq("workspace_id", workspaceId)
-    .is("viewed_at", null)
-    .select("id");
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ updated: data?.length || 0 });
-});
+} else if (block.type === "image") {
+  const boletoFile = meta.boleto_file as string | undefined;
+  if (boletoFile) {
+    const fsModule = await import("fs/promises");
+    const fsPath = boletoFile.replace("/media/", "/media-files/");
+    const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
+    try {
+      // Verificar se o PDF existe
+      await fsModule.access(fsPath);
+      // Sempre reconverter para garantir que o JPG corresponde ao PDF
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execPromise = promisify(exec);
+      const prefix = jpgPath.replace(/\.jpg$/i, "");
+      await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+      // ... resto igual (ler, enviar)
 ```
 
-### 2. Frontend — `src/hooks/useUnseenTransactions.ts`
+### 2. `deploy/backend/src/lib/recovery-dispatch.ts` (linhas 154-173)
 
-Substituir o `markSeen` para chamar o backend via `apiUrl("mark-seen")` com fetch, passando `ids` e `workspaceId`. Após sucesso, invalidar `["unseen-transactions"]` e `["transactions"]`. Adicionar `console.error` se falhar para facilitar debug futuro.
+Mesma mudança: remover o cache hit. Sempre converter do PDF:
 
-### 3. Frontend — `src/components/transactions/TransactionsTable.tsx`
+```typescript
+// Verificar se PDF existe
+try {
+  await fsModule.access(fsPath);
+} catch {
+  console.log(`[recovery-dispatch] PDF not found: ${fsPath}`);
+  return;
+}
+// Sempre reconverter PDF → JPG
+const { exec } = await import("child_process");
+const { promisify } = await import("util");
+const execPromise = promisify(exec);
+const prefix = jpgPath.replace(/\.jpg$/i, "");
+await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+```
 
-Manter a lógica atual do `useEffect` com `prevTab` (que já funciona corretamente para detectar a aba). O problema não era a detecção — era o `markSeen` que não gravava. Com o backend funcionando, a lógica atual resolve.
+### 3. Limpeza imediata dos JPGs antigos (opcional mas recomendado)
 
-Adicionar também: quando `isLoading` muda de `true` para `false`, resetar `prevTab` para `null` para forçar re-processamento da aba ativa com os dados reais.
+Após deploy, rodar na VPS para limpar todos os JPGs cacheados:
+
+```bash
+docker exec deploy-backend-1 find /media-files -name "*.jpg" -path "*/boletos/*" -delete
+```
 
 ### 4. Deploy
 
