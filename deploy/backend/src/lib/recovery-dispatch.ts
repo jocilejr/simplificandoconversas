@@ -158,13 +158,9 @@ async function sendBlock(
       console.log(`[recovery-dispatch] PDF not found on disk: ${fsPath}, skipping IMAGE block`);
       return;
     }
-    // Always convert PDF → JPG (no cache) to ensure JPG matches current PDF
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execPromise = promisify(exec);
-    const prefix = jpgPath.replace(/\.jpg$/i, "");
-    console.log(`[recovery-dispatch] Converting PDF→JPG: pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
-    await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+    // Convert PDF → JPG using mupdf (high-fidelity rendering)
+    const { convertPdfToJpg } = await import("./pdf-to-image");
+    await convertPdfToJpg(fsPath, jpgPath);
 
     const imgBuffer = await fsModule.readFile(jpgPath);
     const imgBase64 = cleanBase64(imgBuffer.toString("base64"));

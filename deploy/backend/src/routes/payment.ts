@@ -877,16 +877,12 @@ router.get("/boleto-image/:transactionId", async (req: Request, res: Response) =
       return res.status(404).json({ error: "PDF do boleto não encontrado no disco" });
     }
 
-    // Convert PDF to JPG using pdftoppm
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execPromise = promisify(exec);
-
-    const outputPrefix = jpgPath.replace(/\.jpg$/i, "");
+    // Convert PDF to JPG using mupdf (high-fidelity rendering)
     try {
-      await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${outputPrefix}"`);
+      const { convertPdfToJpg } = await import("../lib/pdf-to-image");
+      await convertPdfToJpg(fsPath, jpgPath);
     } catch (convErr: any) {
-      console.error(`[payment] pdftoppm conversion error:`, convErr.message);
+      console.error(`[payment] mupdf conversion error:`, convErr.message);
       return res.status(500).json({ error: "Falha ao converter PDF para imagem" });
     }
 
