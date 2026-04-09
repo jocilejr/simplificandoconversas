@@ -179,12 +179,10 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
       const phone = lead!.phone_number || formatPhone(lead!.remote_jid);
       const variations = generatePhoneVariations(phone);
       if (!variations.length) return [];
-      const { data } = await supabase
-        .from("member_products")
-        .select("id, normalized_phone, is_active, product_id, delivery_products(name)")
-        .eq("workspace_id", workspaceId!)
-        .in("normalized_phone", variations);
-      return data || [];
+      const { apiUrl, safeJsonResponse } = await import("@/lib/api");
+      const res = await fetch(apiUrl(`platform/member-products?phones=${variations.join(",")}&workspace_id=${workspaceId}`));
+      const data = await safeJsonResponse(res);
+      return Array.isArray(data) ? data : [];
     },
     enabled: open && !!lead && !!workspaceId,
   });

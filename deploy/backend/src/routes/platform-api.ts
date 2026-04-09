@@ -1393,4 +1393,26 @@ router.post("/mark-tab-seen", async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /member-products — list member products by phone variations ──
+router.get("/member-products", async (req: Request, res: Response) => {
+  try {
+    const phones = (req.query.phones as string || "").split(",").filter(Boolean);
+    const workspace_id = req.query.workspace_id as string;
+    if (!phones.length || !workspace_id) {
+      return res.status(400).json({ error: "phones and workspace_id required" });
+    }
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("member_products")
+      .select("id, normalized_phone, is_active, product_id, delivery_products(name)")
+      .eq("workspace_id", workspace_id)
+      .in("normalized_phone", phones);
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err: any) {
+    console.error("[member-products] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
