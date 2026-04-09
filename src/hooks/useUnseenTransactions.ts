@@ -102,5 +102,29 @@ export function useUnseenTransactions() {
     [workspaceId, queryClient]
   );
 
-  return { hasUnseen, hasAnyUnseen, markSeen, counts };
+  const markTabSeen = useCallback(
+    async (tab: TabKey) => {
+      if (!workspaceId) return;
+      try {
+        const resp = await fetch(apiUrl("mark-tab-seen"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId, tab }),
+        });
+        const result = await resp.json();
+        if (result.error) {
+          console.error("[markTabSeen] backend error:", result.error);
+          return;
+        }
+        console.log("[markTabSeen] updated:", result.updated, "tab:", tab);
+        queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      } catch (err) {
+        console.error("[markTabSeen] fetch error:", err);
+      }
+    },
+    [workspaceId, queryClient]
+  );
+
+  return { hasUnseen, hasAnyUnseen, markSeen, markTabSeen, counts };
 }

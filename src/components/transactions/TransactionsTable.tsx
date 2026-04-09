@@ -113,7 +113,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
   const [quickRecoveryTx, setQuickRecoveryTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
-  const { hasUnseen, markSeen } = useUnseenTransactions();
+  const { hasUnseen, markSeen, markTabSeen } = useUnseenTransactions();
   // Recovery hooks
   const { profile } = useProfile();
   const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
@@ -226,17 +226,15 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Mark transactions as seen when tab is active
+  // Mark transactions as seen when tab is active (calls backend for ALL unseen in category)
   const prevTab = useRef<TabKey | null>(null);
   const initialDone = useRef(false);
 
   const markTabAsSeen = useCallback((tab: TabKey) => {
-    const currentTxs = tabTransactions[tab] || [];
-    const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
-    if (unseenIds.length > 0) {
-      markSeen(unseenIds);
+    if (hasUnseen(tab)) {
+      markTabSeen(tab);
     }
-  }, [tabTransactions, markSeen]);
+  }, [hasUnseen, markTabSeen]);
 
   // On tab change
   useEffect(() => {
