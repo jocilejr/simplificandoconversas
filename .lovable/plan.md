@@ -1,41 +1,60 @@
-# Fixes: Performance, Erro ao Criar Produto, Auto-Slug
 
-## Problemas Identificados
 
-1. **Lentidão**: Queries sem `staleTime` recarregam a cada render. AccessesTab e ProductsTab disparam queries simultaneamente mesmo quando a aba não está visível.
-2. **Erro ao criar produto**: O `payload` envia `workspace_id` duas vezes (uma no spread, outra explícita), e o `value` pode ser `0` quando não preenchido. Precisa garantir que `workspace_id` está presente.
-3. **Slug automático**: Ao digitar o nome, o slug deve ser gerado automaticamente (slugify).  
-4. ao digitar o valor, deve ser formatado corretamente para o real, com R$ no inicio e formatação correta, com os primeiros digitos iniciando a direita e passando para a esquerda. Tudo bem profissional e refinado
+# Fix: Tabelas de Entrega Digital não existem na VPS
 
-## Alterações
+## Problema raiz
 
-### 1. ProductForm — Auto-slug + fix do erro (`src/components/entrega/ProductForm.tsx`)
+As tabelas `delivery_products`, `member_products`, `delivery_settings`, `delivery_accesses`, `delivery_link_generations`, `delivery_pixels`, `global_delivery_pixels`, `member_area_settings`, `member_area_offers`, `member_product_categories`, `member_product_materials`, `member_sessions` **nunca foram criadas na VPS**. Elas existem apenas como migrações do Lovable Cloud (que você não usa), mas não estão no `init-db.sql` nem no `migrate-workspace.sql`.
 
-- Adicionar `watch("name")` e `useEffect` para gerar slug automaticamente ao digitar o nome (apenas na criação, não na edição)
-- Função slugify: `name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")`
-- Flag `slugManuallyEdited` para não sobrescrever se o usuário editou o slug manualmente
-- Fix: remover `workspace_id` duplicado no insert, garantir que `workspace_id` é verificado antes de submeter
+Por isso: erro ao salvar produto e lentidão (queries ficam em loop tentando acessar tabelas inexistentes via PostgREST).
 
-### 2. ProductsTab — Performance (`src/components/entrega/ProductsTab.tsx`)
+## Solução
 
-- Adicionar `staleTime: 30_000` na query de produtos para evitar refetch desnecessário
-- Adicionar `refetchOnWindowFocus: false`
+Duas ações necessárias:
 
-### 3. AccessesTab — Performance (`src/components/entrega/AccessesTab.tsx`)
+### 1. Adicionar as tabelas ao `deploy/init-db.sql`
 
-- Adicionar `staleTime: 30_000` nas queries
-- Adicionar `refetchOnWindowFocus: false`
+Consolidar todo o SQL das migrações `20260409035234` e `20260409041813` (+ coluna `delivery_message` da migração posterior) no `init-db.sql`, garantindo que novas instalações já criem tudo.
 
-### 4. LinkGenerator — Performance (`src/components/entrega/LinkGenerator.tsx`)
+### 2. Adicionar as tabelas ao `deploy/migrate-workspace.sql`
 
-- Adicionar `staleTime: 60_000` na query de `delivery-settings`
+Registrar as novas tabelas nos arrays `_tables` para que recebam `workspace_id` e políticas RLS automaticamente.
+
+### 3. Script SQL para executar na VPS agora
+
+Você precisará executar o SQL completo na VPS para criar as tabelas que faltam. Vou gerar um script consolidado que você roda com:
+
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres < /tmp/fix-delivery.sql
+```
+
+O script conterá todas as tabelas na ordem correta (respeitando foreign keys):
+1. `delivery_products` (base)
+2. `member_products`
+3. `member_area_settings`
+4. `member_area_offers`
+5. `member_product_categories`
+6. `member_product_materials`
+7. `member_sessions`
+8. `delivery_pixels`
+9. `delivery_accesses`
+10. `delivery_settings` (com coluna `delivery_message`)
+11. `delivery_link_generations`
+12. `global_delivery_pixels`
+
+Cada tabela terá RLS + políticas workspace + triggers `updated_at` + índices.
+
+Após criar as tabelas, o script executa `NOTIFY pgrst, 'reload schema'` para o PostgREST reconhecer tudo imediatamente.
 
 ## Arquivos alterados
 
+| Arquivo | Mudança |
+|---------|---------|
+| `deploy/init-db.sql` | Adicionar todas as 12 tabelas de delivery/membros |
+| `deploy/migrate-workspace.sql` | Registrar tabelas nos arrays `_tables` |
+| `deploy/update.sh` | Registrar tabelas na lista de validação |
 
-| Arquivo                                    | Mudança                                     |
-| ------------------------------------------ | ------------------------------------------- |
-| `src/components/entrega/ProductForm.tsx`   | Auto-slug ao digitar nome + fix payload     |
-| `src/components/entrega/ProductsTab.tsx`   | `staleTime` + `refetchOnWindowFocus: false` |
-| `src/components/entrega/AccessesTab.tsx`   | `staleTime` + `refetchOnWindowFocus: false` |
-| `src/components/entrega/LinkGenerator.tsx` | `staleTime` na query de settings            |
+## Sobre a lentidão
+
+A lentidão desaparece automaticamente após criar as tabelas — o PostgREST atualmente retorna erro 404/timeout para cada query a tabelas inexistentes, causando retries no frontend.
+
