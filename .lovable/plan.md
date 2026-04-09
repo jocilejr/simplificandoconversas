@@ -1,53 +1,40 @@
 
 
-# Redesign do DeliveryFlowDialog — Refinado e Minimalista
+# Fix: Transações em tempo real na VPS (polling)
 
-## Mudanças
+## Problema
 
-### 1. `src/components/entrega/DeliveryFlowDialog.tsx` — Reescrever completo
+O hook `useTransactions` usa `supabase.channel()` (Realtime via WebSocket) para detectar novas transações. Na VPS não existe o serviço Supabase Realtime, então novas transações nunca aparecem automaticamente.
 
-**Etapa 1 — Dados do cliente (simplificado):**
-- Remover campo "Nome do Cliente" (não é necessário para liberação)
-- Apenas campo "Telefone" com placeholder elegante
-- Botão "Continuar" compacto (`size="sm"`, sem `w-full`)
-- Layout limpo, sem labels pesados — usar placeholder inline
+## Solução
 
-**Etapa 2 — Método de pagamento (cards refinados):**
-- Cards compactos e elegantes em vez de blocos grandes
-- Ícones pequenos (h-4 w-4) dentro de círculos sutis (h-9 w-9, bg-muted)
-- Texto em uma linha: título + descrição lado a lado
-- Hover com `border-primary/40` e transição suave
-- Sem sombras exageradas, sem `h-14 w-14`
-- Botão "Voltar" como texto link, não como ghost button
+Substituir a subscription Realtime por **polling a cada 15 segundos** usando `refetchInterval` do React Query — mesmo padrão já usado em outras partes do sistema (ex: Member Area usa 15s).
 
-**Etapa 3 — Processing:**
-- Loader menor (h-5 w-5), texto discreto
+## Mudança
 
-**Etapa 4 — Resultado (card de lead no padrão InfoRow existente):**
-- Usar o padrão `InfoRow` do projeto (ícone h-4 + label uppercase 10px + valor 13px)
-- Layout em grid 2 colunas para telefone/email/cpf
-- Produtos com badges `variant="secondary"` pequenas
-- Link em `bg-muted/50` com `rounded-md`, fonte mono 13px
-- Botão "Copiar" compacto (`size="sm"`)
-- Botão "Gerar outro" como `variant="ghost" size="sm"` em vez de outline full-width
+### `src/hooks/useTransactions.ts`
 
-**Header do dialog:**
-- Título com ícone menor (h-4 w-4)
-- Badge de preço mais discreto
-- `DialogDescription` para acessibilidade
+1. **Adicionar `refetchInterval: 15_000`** nas duas queries (`createdQuery` e `paidQuery`)
+2. **Remover todo o `useEffect`** que cria o channel Realtime (linhas 85-100)
+3. Remover imports não mais necessários (`useEffect`, `useQueryClient`)
 
-### 2. Lógica ajustada
+```typescript
+// createdQuery
+const createdQuery = useQuery({
+  queryKey: [...],
+  queryFn: async () => { ... },
+  enabled: !!user && !!workspaceId,
+  refetchInterval: 15_000,
+});
 
-- Remover estado `customerName` e seu uso
-- Na criação de conversa (quando lead não encontrado), usar string vazia ou o nome encontrado
-- Na transação PIX, `customer_name` vem do lead encontrado (não do input removido)
-- Validação: apenas telefone é obrigatório
+// paidQuery
+const paidQuery = useQuery({
+  queryKey: [...],
+  queryFn: async () => { ... },
+  enabled: !!user && !!workspaceId && !!startDate && !!endDate,
+  refetchInterval: 15_000,
+});
+```
 
-### Arquivos
-
-| Arquivo | Mudança |
-|---------|---------|
-| `src/components/entrega/DeliveryFlowDialog.tsx` | Reescrita completa com design refinado |
-
-Nenhum outro arquivo precisa ser alterado — `ProductsTab.tsx` já está correto.
+Resultado: a cada 15 segundos as transações são recarregadas automaticamente, sem depender de WebSocket.
 
