@@ -35,27 +35,37 @@ interface Props {
   onClose: () => void;
 }
 
-const InfoRow = ({ icon: Icon, label, value }: { icon: any; label: string; value: string | null | undefined }) => (
-  <div className="flex items-start gap-3 py-2.5 px-1">
-    <Icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-    <div className="min-w-0">
-      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{label}</p>
-      <p className="text-sm font-medium break-all">{value || "Não informado"}</p>
-    </div>
-  </div>
-);
-
-function SectionHeader({ icon: Icon, title, count, sticky = false }: {
-  icon: any; title: string; count?: number; sticky?: boolean;
-}) {
+function InfoRow({ icon: Icon, label, value, copyable = false }: { icon: any; label: string; value: string | null | undefined; copyable?: boolean }) {
   return (
-    <div className={`flex items-center gap-2.5 py-2.5 px-1 ${sticky ? "sticky top-0 z-10 bg-background/95 backdrop-blur-sm" : ""}`}>
-      <div className="flex items-center justify-center h-7 w-7 rounded-md bg-primary/10">
+    <div className="flex items-center gap-3 px-3 py-2.5 group">
+      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">{label}</p>
+        <p className="text-sm font-medium break-all leading-snug">{value || "-"}</p>
+      </div>
+      {copyable && value && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          onClick={() => { navigator.clipboard.writeText(value); toast.success("Copiado!"); }}
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function SectionDivider({ icon: Icon, title, count }: { icon: any; title: string; count?: number }) {
+  return (
+    <div className="flex items-center gap-2.5 pt-5 pb-2 px-1">
+      <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
         <Icon className="h-3.5 w-3.5 text-primary" />
       </div>
-      <span className="text-sm font-semibold flex-1">{title}</span>
+      <h3 className="text-sm font-semibold flex-1">{title}</h3>
       {count !== undefined && (
-        <Badge variant="secondary" className="text-xs font-mono px-2">{count}</Badge>
+        <span className="text-xs font-mono text-muted-foreground bg-muted rounded-full px-2.5 py-0.5">{count}</span>
       )}
     </div>
   );
@@ -67,17 +77,17 @@ function CollapsibleSection({ icon: Icon, title, count, children, defaultOpen = 
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2.5 w-full py-2.5 hover:bg-muted/50 rounded-md px-1 transition-colors">
-        {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-        <div className="flex items-center justify-center h-7 w-7 rounded-md bg-primary/10">
+      <CollapsibleTrigger className="flex items-center gap-2.5 w-full py-3 px-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+        {open ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
           <Icon className="h-3.5 w-3.5 text-primary" />
         </div>
         <span className="text-sm font-semibold flex-1 text-left">{title}</span>
         {count !== undefined && (
-          <Badge variant="secondary" className="text-xs font-mono px-2">{count}</Badge>
+          <span className="text-xs font-mono text-muted-foreground bg-muted rounded-full px-2.5 py-0.5">{count}</span>
         )}
       </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2 pl-1">{children}</CollapsibleContent>
+      <CollapsibleContent className="pt-3 pl-2">{children}</CollapsibleContent>
     </Collapsible>
   );
 }
@@ -167,16 +177,16 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); } }}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
-        {/* Fixed header */}
-        <div className="px-6 pt-6 pb-4 border-b bg-background">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
+        {/* ─── Header fixo ─── */}
+        <div className="shrink-0 px-6 pt-6 pb-4 border-b">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
               {lead.contact_name || "Lead sem nome"}
             </DialogTitle>
-            <DialogDescription>
-              <span className="flex items-center gap-2 mt-1">
+            <DialogDescription asChild>
+              <div className="flex items-center gap-2 mt-1">
                 {lead.hasPaid ? (
                   <Badge className="bg-green-500/10 text-green-600 border-green-500/30" variant="outline">✅ Pagou</Badge>
                 ) : (
@@ -187,197 +197,193 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                     {formatCurrency(lead.totalPaid)}
                   </span>
                 )}
-              </span>
+              </div>
             </DialogDescription>
           </DialogHeader>
         </div>
 
-        {/* Scrollable body */}
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="px-6 py-4 space-y-1">
+        {/* ─── Corpo scrollável ─── */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 space-y-1">
 
-            {/* ── Seção: Dados Pessoais ── */}
-            <SectionHeader icon={User} title="Dados Pessoais" />
-            <div className="rounded-lg border bg-card divide-y">
-              <InfoRow icon={User} label="Nome" value={lead.contact_name} />
-              <InfoRow icon={Phone} label="Telefone" value={lead.phone_number || formatPhone(lead.remote_jid)} />
-              <InfoRow icon={FileText} label="CPF / Documento" value={lead.customer_document} />
-              <InfoRow icon={Mail} label="Email" value={lead.customer_email} />
-              {lead.tags.length > 0 && (
-                <div className="flex items-start gap-3 py-2.5 px-1">
-                  <Tag className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Tags</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {lead.tags.map((t) => (
-                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+          {/* Dados Pessoais */}
+          <SectionDivider icon={User} title="Dados Pessoais" />
+          <div className="rounded-xl border divide-y overflow-hidden">
+            <InfoRow icon={User} label="Nome" value={lead.contact_name} />
+            <InfoRow icon={Phone} label="Telefone" value={lead.phone_number || formatPhone(lead.remote_jid)} copyable />
+            <InfoRow icon={FileText} label="CPF / Documento" value={lead.customer_document} copyable />
+            <InfoRow icon={Mail} label="Email" value={lead.customer_email} copyable />
+            {lead.tags.length > 0 && (
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Tags</p>
+                  <div className="flex flex-wrap gap-1">
+                    {lead.tags.map((t) => (
+                      <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Resumo Financeiro */}
+          <SectionDivider icon={CreditCard} title="Resumo Financeiro" />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl border p-3 text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Total Pago</p>
+              <p className="text-base font-bold font-mono text-green-600 mt-0.5">{formatCurrency(lead.totalPaid)}</p>
+            </div>
+            <div className="rounded-xl border p-3 text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Pedidos Pagos</p>
+              <p className="text-base font-bold text-foreground mt-0.5">{paidTxs.length}</p>
+            </div>
+            <div className="rounded-xl border p-3 text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Não Pagos</p>
+              <p className="text-base font-bold text-yellow-600 mt-0.5">{unpaidTxs.length}</p>
+            </div>
+          </div>
+
+          {/* Pagamentos */}
+          {(paidTxs.length > 0 || unpaidTxs.length > 0) && (
+            <div className="pt-3">
+              <CollapsibleSection icon={CreditCard} title="Pagamentos" count={paidTxs.length + unpaidTxs.length}>
+                {paidTxs.length > 0 && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                      <p className="text-xs font-semibold text-green-600">Pagas ({paidTxs.length})</p>
+                    </div>
+                    <div className="space-y-2">
+                      {paidTxs.map((tx) => (
+                        <div key={tx.id} className="rounded-lg border p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">{typeLabels[tx.type] || tx.type}</Badge>
+                              <Badge className={statusColors[tx.status] || ""} variant="outline" >{tx.status}</Badge>
+                            </div>
+                            <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {tx.description && ` — ${tx.description}`}
+                          </p>
+                        </div>
                       ))}
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── Seção: Resumo Financeiro ── */}
-            <div className="pt-3">
-              <SectionHeader icon={CreditCard} title="Resumo Financeiro" />
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg border bg-card p-3 text-center">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Total Pago</p>
-                  <p className="text-lg font-bold font-mono text-green-600">{formatCurrency(lead.totalPaid)}</p>
-                </div>
-                <div className="rounded-lg border bg-card p-3 text-center">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Pedidos Pagos</p>
-                  <p className="text-lg font-bold text-green-600">{paidTxs.length}</p>
-                </div>
-                <div className="rounded-lg border bg-card p-3 text-center">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Não Pagos</p>
-                  <p className="text-lg font-bold text-yellow-600">{unpaidTxs.length}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Seção: Pagamentos ── */}
-            {(paidTxs.length > 0 || unpaidTxs.length > 0) && (
-              <div className="pt-3">
-                <CollapsibleSection icon={CreditCard} title="Pagamentos" count={paidTxs.length + unpaidTxs.length}>
-                  {paidTxs.length > 0 && (
-                    <div className="mb-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                        <p className="text-xs font-medium text-green-600">Pagas ({paidTxs.length})</p>
-                      </div>
-                      <div className="space-y-2">
-                        {paidTxs.map((tx) => (
-                          <div key={tx.id} className="rounded-lg border bg-card p-3 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
-                                <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
-                              </div>
-                              <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                              {tx.description && ` — ${tx.description}`}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
+                )}
+                {unpaidTxs.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <XCircle className="h-3.5 w-3.5 text-yellow-500" />
+                      <p className="text-xs font-semibold text-yellow-600">Pendentes/Rejeitadas ({unpaidTxs.length})</p>
                     </div>
-                  )}
-                  {unpaidTxs.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <XCircle className="h-3.5 w-3.5 text-yellow-500" />
-                        <p className="text-xs font-medium text-yellow-600">Pendentes/Rejeitadas ({unpaidTxs.length})</p>
-                      </div>
-                      <div className="space-y-2">
-                        {unpaidTxs.map((tx) => (
-                          <div key={tx.id} className="rounded-lg border bg-card p-3 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
-                                <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
-                              </div>
-                              <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
+                    <div className="space-y-2">
+                      {unpaidTxs.map((tx) => (
+                        <div key={tx.id} className="rounded-lg border p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">{typeLabels[tx.type] || tx.type}</Badge>
+                              <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                              {tx.description && ` — ${tx.description}`}
-                            </p>
-                            {tx.payment_url && (
-                              <div className="flex gap-2 pt-1">
-                                <Button size="sm" variant="outline" asChild>
-                                  <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
-                                    <Download className="h-3 w-3 mr-1" /> PDF
-                                  </a>
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => {
-                                  navigator.clipboard.writeText(tx.payment_url!);
-                                  toast.success("Link copiado!");
-                                }}>
-                                  <Copy className="h-3 w-3 mr-1" /> Link
-                                </Button>
-                              </div>
-                            )}
+                            <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CollapsibleSection>
-              </div>
-            )}
-
-            {/* ── Seção: Agendamentos ── */}
-            {reminders.length > 0 && (
-              <div className="pt-3">
-                <CollapsibleSection icon={Bell} title="Agendamentos" count={reminders.length}>
-                  <div className="space-y-2">
-                    {reminders.map((r) => (
-                      <div key={r.id} className="rounded-lg border bg-card p-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">{r.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(r.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {tx.description && ` — ${tx.description}`}
                           </p>
-                          {r.description && <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>}
-                        </div>
-                        <Badge variant={r.completed ? "secondary" : "outline"} className="text-xs shrink-0">
-                          {r.completed ? "Concluído" : "Pendente"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              </div>
-            )}
-
-            {/* ── Seção: Histórico de Conversas ── */}
-            {instances.length > 0 && (
-              <div className="pt-3">
-                <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={instances.length} defaultOpen>
-                  <div className="space-y-2">
-                    {instances.map((inst) => {
-                      const isSelected = selectedConversationId === inst.conversation_id;
-                      const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
-                      return (
-                        <div key={inst.conversation_id}>
-                          <button
-                            className={`w-full rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50 ${
-                              isSelected ? "border-primary bg-primary/5" : ""
-                            }`}
-                            onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
-                          >
-                            <div className="flex items-center gap-3">
-                              <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {msgCount} mensagen{msgCount !== 1 ? "s" : ""}
-                                  {inst.last_message_at && ` · Última: ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
-                                </p>
-                              </div>
-                              {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                            </div>
-                          </button>
-                          {isSelected && (
-                            <div className="mt-2">
-                              <InstanceMessageHistory conversationId={inst.conversation_id} />
+                          {tx.payment_url && (
+                            <div className="flex gap-2 pt-2">
+                              <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
+                                <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
+                                  <Download className="h-3 w-3 mr-1" /> PDF
+                                </a>
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => {
+                                navigator.clipboard.writeText(tx.payment_url!);
+                                toast.success("Link copiado!");
+                              }}>
+                                <Copy className="h-3 w-3 mr-1" /> Link
+                              </Button>
                             </div>
                           )}
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                </CollapsibleSection>
-              </div>
-            )}
+                )}
+              </CollapsibleSection>
+            </div>
+          )}
 
-            <div className="h-4" />
-          </div>
-        </ScrollArea>
+          {/* Agendamentos */}
+          {reminders.length > 0 && (
+            <div className="pt-3">
+              <CollapsibleSection icon={Bell} title="Agendamentos" count={reminders.length}>
+                <div className="space-y-2">
+                  {reminders.map((r) => (
+                    <div key={r.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{r.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(r.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </p>
+                        {r.description && <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>}
+                      </div>
+                      <Badge variant={r.completed ? "secondary" : "outline"} className="text-xs shrink-0">
+                        {r.completed ? "Concluído" : "Pendente"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleSection>
+            </div>
+          )}
+
+          {/* Histórico de Conversas */}
+          {instances.length > 0 && (
+            <div className="pt-3">
+              <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={instances.length} defaultOpen>
+                <div className="space-y-2">
+                  {instances.map((inst) => {
+                    const isSelected = selectedConversationId === inst.conversation_id;
+                    const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
+                    return (
+                      <div key={inst.conversation_id}>
+                        <button
+                          className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${
+                            isSelected ? "border-primary bg-primary/5" : ""
+                          }`}
+                          onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {msgCount} mensagen{msgCount !== 1 ? "s" : ""}
+                                {inst.last_message_at && ` · Última: ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
+                              </p>
+                            </div>
+                            {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+                        {isSelected && (
+                          <div className="mt-2">
+                            <InstanceMessageHistory conversationId={inst.conversation_id} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CollapsibleSection>
+            </div>
+          )}
+
+          <div className="h-6" />
+        </div>
       </DialogContent>
     </Dialog>
   );
