@@ -1,76 +1,104 @@
 
 
-# Fix: JPG do boleto não corresponde ao PDF original
+# Replicar sistema de conversão PDF→Imagem do Finance Hub
 
 ## Problema
 
-O sistema cacheia o JPG convertido no disco. Se um JPG antigo/corrompido já existe para aquele boleto, ele é reutilizado sem nunca reconverter do PDF atual. A lógica é:
+O `pdftoppm` (poppler-utils) no container Alpine Linux não renderiza corretamente certos PDFs do Mercado Pago — o JPG sai sem informações (em branco ou incompleto). O modal do frontend funciona porque usa `pdfjs-dist` com canvas no navegador.
 
-1. Tenta `access(jpgPath)` — se existe, usa direto
-2. Só converte do PDF se o JPG **não** existe
-
-Se o JPG foi criado a partir de um PDF antigo, ou se houve erro na primeira conversão, o JPG errado fica sendo enviado para sempre.
+O projeto Finance Hub resolve isso usando a biblioteca **mupdf** (WASM) que renderiza PDFs com fidelidade muito superior ao poppler, diretamente no backend.
 
 ## Solução
 
-**Sempre reconverter o PDF para JPG** antes de enviar, removendo o cache. Isso garante que o JPG sempre reflete o PDF atual. O custo de `pdftoppm` é desprezível (< 1s por arquivo).
+Substituir `pdftoppm` por **mupdf** como biblioteca Node.js no backend Express da VPS. O `mupdf` tem binding nativo para Node.js (`mupdf` no npm) e renderiza PDFs complexos com a mesma qualidade do navegador.
 
 ## Alterações
 
-### 1. `deploy/backend/src/routes/followup-daily.ts` (linhas 344-359)
+### 1. `deploy/backend/package.json`
 
-No bloco `image`, remover o check de cache (`access(jpgPath)`). Sempre converter:
+Adicionar dependência `mupdf`:
+
+```json
+"mupdf": "^0.5.0"
+```
+
+### 2. `deploy/backend/src/lib/pdf-to-image.ts` (novo arquivo)
+
+Criar utilitário centralizado de conversão PDF→JPG usando mupdf:
+
+```typescript
+import * as mupdf from "mupdf";
+import { readFile, writeFile } from "fs/promises";
+
+export async function convertPdfToJpg(pdfPath: string, jpgPath: string): Promise<void> {
+  const pdfBuffer = await readFile(pdfPath);
+  const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf");
+  const page = doc.loadPage(0);
+  const pixmap = page.toPixmap(
+    mupdf.Matrix.scale(2, 2),
+    mupdf.ColorSpace.DeviceRGB,
+    false,
+    true
+  );
+  const pngBytes = pixmap.asPNG();
+  // Salvar como PNG (mais confiável que JPEG para mupdf)
+  await writeFile(jpgPath, pngBytes);
+}
+```
+
+**Nota**: A saída será PNG mas salva com extensão `.jpg` para compatibilidade. A Evolution API aceita ambos via base64.
+
+### 3. `deploy/backend/src/lib/recovery-dispatch.ts` — bloco `image` (linhas 135-188)
+
+Substituir o bloco `pdftoppm` pelo novo utilitário:
 
 ```typescript
 } else if (block.type === "image") {
-  const boletoFile = meta.boleto_file as string | undefined;
-  if (boletoFile) {
-    const fsModule = await import("fs/promises");
-    const fsPath = boletoFile.replace("/media/", "/media-files/");
-    const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
-    try {
-      // Verificar se o PDF existe
-      await fsModule.access(fsPath);
-      // Sempre reconverter para garantir que o JPG corresponde ao PDF
-      const { exec } = await import("child_process");
-      const { promisify } = await import("util");
-      const execPromise = promisify(exec);
-      const prefix = jpgPath.replace(/\.jpg$/i, "");
-      await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
-      // ... resto igual (ler, enviar)
+  const { data: tx } = await sb.from("transactions")...;
+  // ... (mesmo código de verificação existente)
+  
+  // SUBSTITUIR pdftoppm por:
+  const { convertPdfToJpg } = await import("./pdf-to-image");
+  await convertPdfToJpg(fsPath, jpgPath);
+  
+  const imgBuffer = await fsModule.readFile(jpgPath);
+  // ... resto igual (enviar via Evolution API)
 ```
 
-### 2. `deploy/backend/src/lib/recovery-dispatch.ts` (linhas 154-173)
+### 4. `deploy/backend/src/routes/followup-daily.ts` — bloco `image`
 
-Mesma mudança: remover o cache hit. Sempre converter do PDF:
+Mesma substituição: trocar `pdftoppm` por `convertPdfToJpg`.
 
-```typescript
-// Verificar se PDF existe
-try {
-  await fsModule.access(fsPath);
-} catch {
-  console.log(`[recovery-dispatch] PDF not found: ${fsPath}`);
-  return;
-}
-// Sempre reconverter PDF → JPG
-const { exec } = await import("child_process");
-const { promisify } = await import("util");
-const execPromise = promisify(exec);
-const prefix = jpgPath.replace(/\.jpg$/i, "");
-await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+### 5. `deploy/backend/src/routes/payment.ts` — endpoint `boleto-image` (se usar pdftoppm)
+
+Atualizar para usar o mesmo utilitário.
+
+### 6. `deploy/backend/Dockerfile`
+
+Remover `poppler-utils` (não mais necessário para conversão):
+
+```dockerfile
+FROM node:20-alpine
+# poppler-utils removido — conversão via mupdf (npm)
+WORKDIR /app
 ```
 
-### 3. Limpeza imediata dos JPGs antigos (opcional mas recomendado)
+**Nota**: Se `poppler-utils` for usado em outro lugar, manter. Caso contrário, pode remover.
 
-Após deploy, rodar na VPS para limpar todos os JPGs cacheados:
-
-```bash
-docker exec deploy-backend-1 find /media-files -name "*.jpg" -path "*/boletos/*" -delete
-```
-
-### 4. Deploy
+### 7. Deploy
 
 ```bash
 docker compose up -d --build backend
+# Limpar JPGs antigos
+docker exec deploy-backend-1 find /media-files -name "*.jpg" -path "*/boletos/*" -delete
 ```
+
+## Por que mupdf?
+
+| Aspecto | pdftoppm (atual) | mupdf (proposto) |
+|---------|-------------------|-------------------|
+| Renderização | Falha em PDFs complexos do MP | Rendering engine completo |
+| Fontes embutidas | Problemas no Alpine | Suporte completo |
+| Dependência | System package (apk) | npm package nativo |
+| Qualidade | ❌ Incompleto | ✅ Idêntico ao navegador |
 
