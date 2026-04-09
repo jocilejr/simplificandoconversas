@@ -218,9 +218,9 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const tabTransactions = useMemo(() => ({
     aprovados: transactions.filter((t) => {
       if (t.status !== "aprovado") return false;
-      if (!t.paid_at || !dateStart || !dateEnd) return true;
-      const pd = new Date(t.paid_at);
-      return pd >= dateStart && pd <= dateEnd;
+      if (!dateStart || !dateEnd) return true;
+      const relevantDate = new Date(t.paid_at || t.created_at);
+      return relevantDate >= dateStart && relevantDate <= dateEnd;
     }),
     "boletos-gerados": transactions.filter((t) => t.type === "boleto" && t.status === "pendente"),
     "pix-cartao-pendentes": transactions.filter(
@@ -229,7 +229,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     rejeitados: transactions.filter(
       (t) => (t.type === "yampi_cart" && t.status === "abandonado") || t.status === "rejeitado"
     ),
-  }), [transactions]);
+  }), [transactions, dateStart, dateEnd]);
 
   // Mark transactions as seen when tab is active (calls backend for ALL unseen in category)
   const prevTab = useRef<TabKey | null>(null);
