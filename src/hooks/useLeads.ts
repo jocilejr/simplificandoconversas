@@ -109,7 +109,7 @@ export function useLeads() {
   const txByPhone = useMemo(() => {
     const map = new Map<string, Transaction[]>();
     for (const tx of allTransactions) {
-      const key = normalizePhone(tx.customer_phone);
+      const key = matchKey(tx.customer_phone);
       if (!key) continue;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(tx);
@@ -117,10 +117,12 @@ export function useLeads() {
     return map;
   }, [allTransactions]);
 
-  const remindersByJid = useMemo(() => {
+  const remindersByKey = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of allReminders) {
-      map.set(r.remote_jid, (map.get(r.remote_jid) || 0) + 1);
+      const key = matchKey(r.remote_jid);
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + 1);
     }
     return map;
   }, [allReminders]);
