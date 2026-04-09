@@ -1,28 +1,50 @@
 
 
-# Fix: Scroll e botão "Ver mais" na seleção de transação PIX
+# Adicionar produtos liberados e link de acesso ao card do Lead
 
-## Problema
-O conteúdo do step `select-tx` ultrapassa a altura do dialog. O container pai (linha 379) não tem `overflow` nem altura máxima, então:
-1. O botão "Ver mais" fica fora da área visível
-2. Não há scroll no container geral do step
+## O que muda
 
-## Solução
+No `LeadDetailDialog.tsx`, adicionar uma nova seção "Produtos Liberados" entre os dados pessoais e o resumo financeiro, que:
 
-### Arquivo: `src/components/entrega/DeliveryFlowDialog.tsx`
+1. **Busca produtos liberados** via query na tabela `member_products` filtrando pelo telefone do lead (usando `generatePhoneVariations` como já feito no `MemberClientCard`)
+2. **Lista cada produto** com nome, status (ativo/inativo) e badge visual
+3. **Link de acesso copiável** — gera o link `/membros/{phone}` e exibe um botão "Copiar link de acesso" no topo da seção, igual ao padrão do `MemberClientCard`
 
-1. **Adicionar `overflow-y-auto` e `max-h` ao container de conteúdo** (linha 379) para que todo o conteúdo do step seja scrollável quando exceder a altura do dialog.
+## Arquivo: `src/components/leads/LeadDetailDialog.tsx`
 
-2. **Mover o botão "Ver mais" para DENTRO do `ScrollArea`** (após a lista de transações, dentro do `div.space-y-2`), para que fique acessível via scroll.
+### Mudanças:
+- Importar `generatePhoneVariations` de `@/lib/phoneNormalization`
+- Importar `Package` ou `ShoppingBag` de lucide-react
+- Adicionar `useQuery` para buscar `member_products` com join em `delivery_products` para o nome, filtrando por variações de telefone do lead e `workspace_id`
+- Nova seção `CollapsibleSection` com icon `ShoppingBag`, título "Produtos Liberados", contendo:
+  - Botão "Copiar link de acesso" no topo (com feedback visual de "Copiado")
+  - Lista de produtos com badge ativo/inativo
+  - Estado vazio "Nenhum produto liberado"
 
-3. Alterar o container de conteúdo de:
+### Posição no layout:
+Após "Dados Pessoais", antes de "Resumo Financeiro" (entre linhas ~229 e ~232)
+
+### Query:
+```typescript
+const { data: memberProducts = [] } = useQuery({
+  queryKey: ["lead-member-products", lead?.remote_jid, workspaceId],
+  queryFn: async () => {
+    const phone = lead!.phone_number || formatPhone(lead!.remote_jid);
+    const variations = generatePhoneVariations(phone);
+    if (!variations.length) return [];
+    const { data } = await supabase
+      .from("member_products")
+      .select("id, normalized_phone, is_active, delivery_products(name)")
+      .eq("workspace_id", workspaceId!)
+      .in("normalized_phone", variations);
+    return data || [];
+  },
+  enabled: open && !!lead && !!workspaceId,
+});
 ```
-<div className="px-6 py-5 min-h-[220px]">
-```
-para:
-```
-<div className="px-6 py-5 min-h-[220px] max-h-[calc(90vh-120px)] overflow-y-auto">
-```
 
-4. Remover o `max-h-[240px]` do `ScrollArea` interno (linha 501) pois o scroll agora é controlado pelo container pai — ou aumentar para `max-h-[400px]` para dar mais espaço às transações.
+### UI da seção:
+- `CollapsibleSection` com contagem de produtos
+- Botão copiável com o link `/membros/{phone}`
+- Chips/badges para cada produto com nome e status
 
