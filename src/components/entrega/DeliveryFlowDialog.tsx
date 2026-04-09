@@ -160,9 +160,13 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
 
   const filteredTxs = useMemo(() => {
     if (!txSearch.trim()) {
-      // No search: show only unlinked, paginated
-      const unlinked = orphanTxs.filter((tx) => !tx.customer_phone);
-      return unlinked.slice(0, txLimit);
+      // No search: show only unlinked + alreadyCounted (CPF match), paginated
+      const relevant = orphanTxs.filter((tx) => {
+        if (!tx.customer_phone) return true; // orphan
+        if (leadCpf && tx.customer_document === leadCpf) return true; // already counted (linked via CPF)
+        return false;
+      });
+      return relevant.slice(0, txLimit);
     }
     // Search: filter all txs (linked + unlinked)
     const q = txSearch.toLowerCase();
@@ -171,9 +175,15 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         tx.customer_name?.toLowerCase().includes(q) ||
         tx.customer_document?.includes(q)
     );
-  }, [orphanTxs, txSearch, txLimit]);
+  }, [orphanTxs, txSearch, txLimit, leadCpf]);
 
-  const totalUnlinked = useMemo(() => orphanTxs.filter((tx) => !tx.customer_phone).length, [orphanTxs]);
+  const totalUnlinked = useMemo(() => {
+    return orphanTxs.filter((tx) => {
+      if (!tx.customer_phone) return true;
+      if (leadCpf && tx.customer_document === leadCpf) return true;
+      return false;
+    }).length;
+  }, [orphanTxs, leadCpf]);
   const hasMoreUnlinked = !txSearch.trim() && txLimit < totalUnlinked;
 
   const processDelivery = useCallback(async (method: string, existingTxId?: string) => {
