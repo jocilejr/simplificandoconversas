@@ -1,77 +1,59 @@
 
 
-# Melhorias na Página de Leads
+# Fix: Agrupar leads por últimos 8 dígitos + normalizar exibição
 
-## 1. Ordenação por colunas na tabela
+## Problema
 
-Adicionar ordenação crescente/decrescente ao clicar nos cabeçalhos da tabela (Nome, Telefone, Pedidos, Total Pago, Agend., Status).
+O código atual agrupa leads por `remote_jid` exato e filtra números com < 12 dígitos. Isso causa:
+- Leads duplicados (`5524992011394` vs `24992011394`)
+- Contatos válidos descartados
+- Transações de boleto não vinculadas ao lead correto
 
-- Clicar uma vez: ordem crescente
-- Clicar novamente: ordem decrescente
-- Ícone de seta indicando direção atual
-- Estado controlado via `useState` no componente `Leads.tsx`
-- A ordenação é aplicada no array `filtered` já existente no hook, ou localmente no componente
+## Solução — Arquivo único: `src/hooks/useLeads.ts`
 
-**Arquivo:** `src/pages/Leads.tsx`
+### 1. Duas funções de normalização
 
-## 2. Redesign do LeadDetailDialog com cards por instância
+```typescript
+// Match: últimos 8 dígitos (para junção de dados)
+const matchKey = (phone: string | null | undefined) =>
+  phone ? phone.replace(/\D/g, "").slice(-8) : "";
 
-Substituir a seção confusa de "Últimas Mensagens" por um layout com cards organizados por seção:
-
-### Estrutura do dialog redesenhado:
-
-```text
-┌─────────────────────────────────────────┐
-│ 👤 Nome do Lead                         │
-│ Status: ✅ Pagou | R$ 1.500,00          │
-├─────────────────────────────────────────┤
-│ Dados Pessoais (nome, tel, doc, email)  │
-├─────────────────────────────────────────┤
-│ 💳 Pagamentos         (card expansível) │
-│   Transações pagas e pendentes          │
-├─────────────────────────────────────────┤
-│ 🔔 Agendamentos       (card expansível) │
-│   Lista de reminders                    │
-├─────────────────────────────────────────┤
-│ 💬 Histórico de Conversas              │
-│  ┌──────────┐ ┌──────────┐             │
-│  │ Instance1│ │ Instance2│  (cards)     │
-│  └──────────┘ └──────────┘             │
-│                                         │
-│  Ao clicar em um card de instância:     │
-│  ┌─────────────────────────────────┐    │
-│  │ ScrollArea com TODAS as msgs    │    │
-│  │ daquela instância (scroll)     │    │
-│  │ ...                            │    │
-│  └─────────────────────────────────┘    │
-└─────────────────────────────────────────┘
+// Display: normaliza para exibição (55 + DDD + número)
+const displayPhone = (raw: string | null | undefined) => {
+  if (!raw) return null;
+  let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55"))
+    phone = "55" + phone;
+  return phone || null;
+};
 ```
 
-### Como funciona:
+### 2. Mudanças na montagem dos leads (useMemo)
 
-- Buscar todas as conversations do lead (mesmo `remote_jid`) no workspace, agrupando por `instance_name`
-- Cada instância vira um card clicável mostrando: nome da instância, quantidade de mensagens, última mensagem
-- Ao clicar num card, expandir abaixo dele um `ScrollArea` com **todas** as mensagens daquela conversation (sem limite de 10), permitindo scroll com a bolinha do mouse
-- Remover o limite `.limit(10)` atual da query de mensagens -- buscar por `conversation_id` da instância selecionada
+- **Remover** filtro `jidDigits.length < 12 || > 13` — aceitar qualquer conversa `@s.whatsapp.net` com 8+ dígitos
+- **Agrupar por `matchKey`** em vez de `remote_jid`:
+  - `map.has(matchKey(remote_jid))` → adiciona instância ao lead existente
+  - `map.set(matchKey(remote_jid), lead)` → cria novo lead
+- **`phone_number` do lead** usa `displayPhone()` para exibir normalizado
+- **`remindersCount`** soma por `matchKey` em vez de `remote_jid` exato
 
-### Queries necessárias:
+### 3. Tags — match por `matchKey`
 
-1. Buscar conversations do lead: `conversations` WHERE `remote_jid = lead.remote_jid` AND `workspace_id`
-2. Buscar mensagens da conversation selecionada: `messages` WHERE `conversation_id = X` ORDER BY `created_at ASC` (sem limit, ou limit alto como 500)
+Em vez de `map.get(t.remote_jid)`, buscar por `map.get(matchKey(t.remote_jid))`.
 
-## Detalhes técnicos
+### 4. Reminders — indexar por `matchKey`
 
-### Arquivos modificados:
+Trocar `remindersByJid` para indexar por `matchKey(r.remote_jid)` e somar.
 
-1. **`src/pages/Leads.tsx`** -- Adicionar estado de ordenação (`sortField`, `sortDir`), cabeçalhos clicáveis com ícones de seta, lógica de sort no array `leads`
+### Resultado
 
-2. **`src/hooks/useLeads.ts`** -- Adicionar `instances` ao tipo `Lead` (array de `{instance_name, conversation_id}`). Coletar todas as conversations por `remote_jid` em vez de pegar só a primeira
+| Antes | Depois |
+|-------|--------|
+| Agrupado por `remote_jid` exato | Agrupado por últimos 8 dígitos |
+| Filtro rígido 12-13 dígitos | Aceita 8+ dígitos |
+| Exibição raw do banco | Normalizado com `55` |
+| Leads duplicados | Unificados |
+| Boletos não vinculados | Vinculados corretamente |
 
-3. **`src/components/leads/LeadDetailDialog.tsx`** -- Redesenhar com:
-   - Query para buscar conversations do lead (agrupadas por instância)
-   - Cards clicáveis por instância
-   - Estado `selectedConversationId` para controlar qual histórico está expandido
-   - Query de mensagens por `conversation_id` (sem limit de 10)
-   - `ScrollArea` com altura fixa (~400px) para scroll do histórico completo
-   - Manter seções de dados pessoais, pagamentos e agendamentos como cards separados
+Sem mudança em `Leads.tsx` nem `LeadDetailDialog.tsx` — a correção é toda no hook.
 
