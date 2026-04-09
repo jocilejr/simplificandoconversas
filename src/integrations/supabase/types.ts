@@ -847,6 +847,7 @@ export type Database = {
         Row: {
           created_at: string
           custom_domain: string | null
+          delivery_message: string | null
           global_redirect_url: string | null
           id: string
           link_message_template: string
@@ -856,6 +857,7 @@ export type Database = {
         Insert: {
           created_at?: string
           custom_domain?: string | null
+          delivery_message?: string | null
           global_redirect_url?: string | null
           id?: string
           link_message_template?: string
@@ -865,6 +867,7 @@ export type Database = {
         Update: {
           created_at?: string
           custom_domain?: string | null
+          delivery_message?: string | null
           global_redirect_url?: string | null
           id?: string
           link_message_template?: string
