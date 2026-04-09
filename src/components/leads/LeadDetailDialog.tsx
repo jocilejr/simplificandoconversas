@@ -345,7 +345,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
           {(() => {
             const activeInstances = instances.filter((inst) => {
               const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
-              return msgCount > 0 || inst.instance_name;
+              return msgCount > 0;
             });
             if (activeInstances.length === 0) return null;
             return (
