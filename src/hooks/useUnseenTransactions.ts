@@ -106,7 +106,7 @@ export function useUnseenTransactions() {
     async (tab: TabKey) => {
       if (!workspaceId) return;
       try {
-        const resp = await fetch(apiUrl("mark-tab-seen"), {
+        const resp = await fetch(apiUrl("platform/mark-tab-seen"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspaceId, tab }),
