@@ -232,6 +232,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
         .maybeSingle();
 
       if (existing) {
+        // Resolve userId + workspaceId for the update path too
+        const userIdForUpdate = await resolveUserId(corrId, supabase);
+        const wkIdForUpdate = userIdForUpdate ? await resolveWorkspaceId(userIdForUpdate) : "";
+
         await supabase
           .from("transactions")
           .update({
@@ -251,8 +255,8 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.log(`[openpix webhook] TRANSACTION_RECEIVED ${corrId} → UPDATE aprovado`);
 
         // Auto-resolve phone by CPF if still orphan after update
-        if (!customer.phone && customer.document) {
-          const resolvedPhone = await resolvePhoneByCpf(customer.document, workspaceId || "");
+        if (!customer.phone && customer.document && wkIdForUpdate) {
+          const resolvedPhone = await resolvePhoneByCpf(customer.document, wkIdForUpdate);
           if (resolvedPhone) {
             await supabase.from("transactions").update({ customer_phone: resolvedPhone }).eq("id", existing.id);
             console.log(`[openpix webhook] Auto-linked phone ${resolvedPhone} via CPF ${customer.document} (update path)`);
