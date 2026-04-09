@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { dispatchRecovery } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
+import { resolvePhoneByCpf } from "../lib/resolve-phone-by-cpf";
 
 const router = Router();
 

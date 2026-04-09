@@ -3,6 +3,7 @@ import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId, resolveWorkspaceFromPhone } from "../lib/workspace";
 import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
+import { resolvePhoneByCpf } from "../lib/resolve-phone-by-cpf";
 import { getRandomCep } from "../lib/random-ceps";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
