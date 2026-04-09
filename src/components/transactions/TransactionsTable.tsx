@@ -216,7 +216,12 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
 
   // Tab filtering
   const tabTransactions = useMemo(() => ({
-    aprovados: transactions.filter((t) => t.status === "aprovado"),
+    aprovados: transactions.filter((t) => {
+      if (t.status !== "aprovado") return false;
+      if (!t.paid_at || !dateStart || !dateEnd) return true;
+      const pd = new Date(t.paid_at);
+      return pd >= dateStart && pd <= dateEnd;
+    }),
     "boletos-gerados": transactions.filter((t) => t.type === "boleto" && t.status === "pendente"),
     "pix-cartao-pendentes": transactions.filter(
       (t) => (t.type === "pix" || t.type === "cartao" || t.type === "card") && t.status === "pendente"

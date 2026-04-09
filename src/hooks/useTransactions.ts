@@ -30,7 +30,8 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
 
-  const query = useQuery({
+  // Query 1: transactions by created_at range
+  const createdQuery = useQuery({
     queryKey: ["transactions", workspaceId, startDate?.toISOString(), endDate?.toISOString()],
     queryFn: async () => {
       let q = supabase
@@ -39,12 +40,8 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
         .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false });
 
-      if (startDate) {
-        q = q.gte("created_at", startDate.toISOString());
-      }
-      if (endDate) {
-        q = q.lte("created_at", endDate.toISOString());
-      }
+      if (startDate) q = q.gte("created_at", startDate.toISOString());
+      if (endDate) q = q.lte("created_at", endDate.toISOString());
 
       const { data, error } = await q;
       if (error) throw error;
@@ -52,6 +49,38 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
     },
     enabled: !!user && !!workspaceId,
   });
+
+  // Query 2: approved transactions by paid_at range (captures old boletos paid today)
+  const paidQuery = useQuery({
+    queryKey: ["transactions-paid", workspaceId, startDate?.toISOString(), endDate?.toISOString()],
+    queryFn: async () => {
+      if (!startDate || !endDate) return [] as Transaction[];
+
+      let q = supabase
+        .from("transactions")
+        .select("*")
+        .eq("workspace_id", workspaceId!)
+        .eq("status", "aprovado")
+        .gte("paid_at", startDate.toISOString())
+        .lte("paid_at", endDate.toISOString())
+        .order("paid_at", { ascending: false });
+
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data || []) as Transaction[];
+    },
+    enabled: !!user && !!workspaceId && !!startDate && !!endDate,
+  });
+
+  // Merge + dedup by id
+  const mergedData = useMemo(() => {
+    const map = new Map<string, Transaction>();
+    for (const t of createdQuery.data || []) map.set(t.id, t);
+    for (const t of paidQuery.data || []) map.set(t.id, t);
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [createdQuery.data, paidQuery.data]);
 
   useEffect(() => {
     if (!user) return;
@@ -63,6 +92,7 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
         { event: "*", schema: "public", table: "transactions" },
         () => {
           queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          queryClient.invalidateQueries({ queryKey: ["transactions-paid"] });
         }
       )
       .subscribe();
@@ -73,7 +103,7 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
   }, [user, queryClient]);
 
   const stats = useMemo(() => {
-    const txs = query.data || [];
+    const txs = mergedData;
     const total = txs.length;
     const totalAmount = txs.reduce((s, t) => s + Number(t.amount), 0);
     const paid = txs.filter((t) => t.status === "aprovado");
@@ -89,7 +119,12 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
       pendingCount: pending.length,
       pendingAmount,
     };
-  }, [query.data]);
+  }, [mergedData]);
 
-  return { ...query, stats };
+  return {
+    data: mergedData,
+    isLoading: createdQuery.isLoading || paidQuery.isLoading,
+    error: createdQuery.error || paidQuery.error,
+    stats,
+  };
 }
