@@ -1,11 +1,518 @@
-import { Crown } from "lucide-react";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { generatePhoneVariations } from "@/lib/phoneNormalization";
+import { toast } from "sonner";
+import { Crown, Plus, Search, Settings, Gift, Users, BookOpen, Edit, Activity } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Trash2 } from "lucide-react";
+import MemberClientCard from "@/components/membros/MemberClientCard";
+import ContentManagement from "@/components/membros/ContentManagement";
+import MemberActivityTab from "@/components/membros/MemberActivityTab";
 
-const AreaMembros = () => (
-  <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-    <Crown className="h-16 w-16 text-muted-foreground/40" />
-    <h1 className="text-2xl font-bold">Área de Membros</h1>
-    <p className="text-muted-foreground">Módulo em desenvolvimento.</p>
-  </div>
-);
+// ---- Member Products Tab ----
+function MemberProductsTab() {
+  const { workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const [searchPhone, setSearchPhone] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newProductId, setNewProductId] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-export default AreaMembros;
+  const { data: products } = useQuery({
+    queryKey: ["delivery-products-names", workspaceId],
+    queryFn: async () => {
+      const { data } = await supabase.from("delivery_products" as any).select("id, name").eq("workspace_id", workspaceId!).eq("is_active", true);
+      return data || [];
+    },
+    enabled: !!workspaceId,
+  });
+
+  const { data: memberProducts, isLoading } = useQuery({
+    queryKey: ["member-products", searchPhone, workspaceId],
+    queryFn: async () => {
+      let query = supabase
+        .from("member_products" as any)
+        .select("*, delivery_products(name)")
+        .eq("workspace_id", workspaceId!)
+        .order("created_at", { ascending: false });
+
+      if (searchPhone.trim()) {
+        const digits = searchPhone.replace(/\D/g, "");
+        query = query.ilike("normalized_phone", `%${digits}%`);
+      }
+
+      const allData: any[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data, error } = await query.range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (data && data.length > 0) { allData.push(...data); from += pageSize; hasMore = data.length === pageSize; }
+        else hasMore = false;
+      }
+      return allData;
+    },
+    enabled: !!workspaceId,
+  });
+
+  const uniquePhones = useMemo(() => {
+    if (!memberProducts) return [];
+    return Array.from(new Set(memberProducts.map((mp: any) => mp.normalized_phone)));
+  }, [memberProducts]);
+
+  // Get names from conversations
+  const { data: phoneNames } = useQuery({
+    queryKey: ["member-phone-names", uniquePhones, workspaceId],
+    queryFn: async () => {
+      if (!uniquePhones.length || !workspaceId) return {};
+      const { data } = await supabase
+        .from("conversations")
+        .select("phone_number, contact_name")
+        .eq("workspace_id", workspaceId)
+        .not("contact_name", "is", null);
+      if (!data) return {};
+      const map: Record<string, string> = {};
+      for (const phone of uniquePhones) {
+        const last8 = phone.replace(/\D/g, "").slice(-8);
+        const match = data.find((c: any) => c.phone_number && c.phone_number.replace(/\D/g, "").slice(-8) === last8);
+        if (match?.contact_name) map[phone] = match.contact_name;
+      }
+      return map;
+    },
+    enabled: uniquePhones.length > 0 && !!workspaceId,
+  });
+
+  const groupedByPhone = useMemo(() => {
+    if (!memberProducts) return [];
+    const map = new Map<string, { phone: string; items: any[] }>();
+    for (const mp of memberProducts) {
+      const last8 = mp.normalized_phone.slice(-8);
+      if (!map.has(last8)) map.set(last8, { phone: mp.normalized_phone, items: [] });
+      map.get(last8)!.items.push(mp);
+    }
+    return Array.from(map.values()).map(({ phone, items }) => ({ phone, products: items }));
+  }, [memberProducts]);
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const digits = newPhone.replace(/\D/g, "");
+      if (!digits || !newProductId) throw new Error("Preencha todos os campos");
+      const last8 = digits.slice(-8);
+      const { data: existing } = await supabase.from("member_products" as any).select("id, normalized_phone").eq("workspace_id", workspaceId!).eq("product_id", newProductId) as any;
+      const match = (existing as any[])?.find((mp: any) => mp.normalized_phone.slice(-8) === last8);
+      if (match) {
+        await supabase.from("member_products" as any).update({ is_active: true, granted_at: new Date().toISOString() }).eq("id", match.id);
+        toast.info("Este cliente já possui acesso a este produto.");
+        return;
+      }
+      const { error } = await supabase.from("member_products" as any).insert({ workspace_id: workspaceId, normalized_phone: digits, product_id: newProductId });
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Produto liberado!"); queryClient.invalidateQueries({ queryKey: ["member-products"] }); setNewPhone(""); setNewProductId(""); setDialogOpen(false); },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => { const { error } = await supabase.from("member_products" as any).delete().eq("id", id); if (error) throw error; },
+    onSuccess: () => { toast.success("Acesso removido"); queryClient.invalidateQueries({ queryKey: ["member-products"] }); },
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar por telefone..." value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} className="pl-10" />
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" /> Liberar Produto</Button></DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Liberar Produto para Membro</DialogTitle></DialogHeader>
+            <div className="space-y-4">
+              <div><Label>Telefone do cliente</Label><Input placeholder="Ex: 89981340810" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} /></div>
+              <div>
+                <Label>Produto</Label>
+                <Select value={newProductId} onValueChange={setNewProductId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o produto" /></SelectTrigger>
+                  <SelectContent>{products?.map((p: any) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}</SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={() => addMutation.mutate()} disabled={addMutation.isPending}>{addMutation.isPending ? "Liberando..." : "Liberar Acesso"}</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card className="px-4 py-3"><p className="text-2xl font-semibold text-primary">{groupedByPhone.length}</p><p className="text-xs text-muted-foreground">Membros</p></Card>
+        <Card className="px-4 py-3"><p className="text-2xl font-semibold text-foreground">{memberProducts?.filter((p: any) => p.is_active).length || 0}</p><p className="text-xs text-muted-foreground">Acessos Ativos</p></Card>
+        <Card className="px-4 py-3 hidden sm:block"><p className="text-2xl font-semibold text-foreground">{memberProducts?.length || 0}</p><p className="text-xs text-muted-foreground">Total Liberados</p></Card>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+      ) : !groupedByPhone.length ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+          <p>Nenhum produto liberado ainda</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {groupedByPhone.map(({ phone, products: prods }) => (
+            <MemberClientCard key={phone} phone={phone} products={prods} customerName={phoneNames?.[phone] || null} onDeleteProduct={(id) => deleteMutation.mutate(id)} onAddProduct={(p) => { setNewPhone(p); setDialogOpen(true); }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Settings Tab ----
+function MemberSettingsTab() {
+  const { workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["member-area-settings", workspaceId],
+    queryFn: async () => { const { data } = await supabase.from("member_area_settings" as any).select("*").eq("workspace_id", workspaceId!).limit(1).maybeSingle(); return data as any; },
+    enabled: !!workspaceId,
+  });
+
+  const [title, setTitle] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [welcomeMessage, setWelcomeMessage] = useState("");
+  const [themeColor, setThemeColor] = useState("#3b82f6");
+  const [aiPersonaPrompt, setAiPersonaPrompt] = useState("");
+  const [greetingPrompt, setGreetingPrompt] = useState("");
+  const [offerPrompt, setOfferPrompt] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  if (settings && !loaded) {
+    setTitle(settings.title || "Área de Membros");
+    setLogoUrl(settings.logo_url || "");
+    setWelcomeMessage(settings.welcome_message || "");
+    setThemeColor(settings.theme_color || "#3b82f6");
+    setAiPersonaPrompt(settings.ai_persona_prompt || "");
+    setGreetingPrompt(settings.greeting_prompt || "");
+    setOfferPrompt(settings.offer_prompt || "");
+    setLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload: any = { title, logo_url: logoUrl || null, welcome_message: welcomeMessage, theme_color: themeColor, ai_persona_prompt: aiPersonaPrompt || null, greeting_prompt: greetingPrompt || null, offer_prompt: offerPrompt || null };
+      if (settings?.id) {
+        const { error } = await supabase.from("member_area_settings" as any).update(payload).eq("id", settings.id);
+        if (error) throw error;
+      } else {
+        payload.workspace_id = workspaceId;
+        const { error } = await supabase.from("member_area_settings" as any).insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success("Configurações salvas!"); queryClient.invalidateQueries({ queryKey: ["member-area-settings"] }); },
+    onError: () => toast.error("Erro ao salvar"),
+  });
+
+  if (isLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
+
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-4">
+        <div><Label>Título da Área</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Área de Membros" /></div>
+        <div><Label>URL do Logo</Label><Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://..." /></div>
+        <div><Label>Mensagem de boas-vindas</Label><Textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="Bem-vindo à sua área exclusiva!" /></div>
+        <div>
+          <Label>Cor do tema</Label>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={themeColor} onChange={(e) => setThemeColor(e.target.value)} className="h-10 w-14 rounded border cursor-pointer" />
+            <Input value={themeColor} onChange={(e) => setThemeColor(e.target.value)} className="w-32" />
+          </div>
+        </div>
+        <div>
+          <Label>Personalidade da IA (persona)</Label>
+          <Textarea value={aiPersonaPrompt} onChange={(e) => setAiPersonaPrompt(e.target.value)} placeholder="Você é um assistente profissional. Fala com clareza e objetividade." rows={4} />
+          <p className="text-xs text-muted-foreground mt-1">Define como a IA se comporta no chat e nas ofertas</p>
+        </div>
+        <div className="border-t border-border pt-4 mt-4"><h3 className="text-sm font-semibold text-foreground mb-3">Prompts de IA</h3></div>
+        <div>
+          <Label>Prompt da Saudação Inicial</Label>
+          <Textarea value={greetingPrompt} onChange={(e) => setGreetingPrompt(e.target.value)} placeholder="Gere uma frase curta de boas-vindas personalizada..." rows={6} />
+          <p className="text-xs text-muted-foreground mt-1">Prompt para gerar mensagem de boas-vindas. Deixe vazio para usar o padrão.</p>
+        </div>
+        <div>
+          <Label>Prompt da Copy de Oferta</Label>
+          <Textarea value={offerPrompt} onChange={(e) => setOfferPrompt(e.target.value)} placeholder="Gere mensagens de venda naturais..." rows={8} />
+          <p className="text-xs text-muted-foreground mt-1">Prompt para gerar mensagens de venda. Deixe vazio para usar o padrão.</p>
+        </div>
+        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>{saveMutation.isPending ? "Salvando..." : "Salvar Configurações"}</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Offers Tab ----
+function MemberOffersTab() {
+  const { workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
+  const [categoryTag, setCategoryTag] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [editingOffer, setEditingOffer] = useState<any>(null);
+  const [displayType, setDisplayType] = useState("card");
+  const [pixKey, setPixKey] = useState("");
+  const [pixKeyType, setPixKeyType] = useState("telefone");
+  const [cardPaymentUrl, setCardPaymentUrl] = useState("");
+
+  const { data: products } = useQuery({
+    queryKey: ["delivery-products-for-offers", workspaceId],
+    queryFn: async () => {
+      const { data } = await supabase.from("delivery_products" as any).select("id, name, page_logo, value").eq("workspace_id", workspaceId!).eq("is_active", true);
+      return (data || []) as any[];
+    },
+    enabled: !!workspaceId,
+  });
+
+  const { data: offers, isLoading } = useQuery({
+    queryKey: ["member-area-offers", workspaceId],
+    queryFn: async () => {
+      const { data } = await supabase.from("member_area_offers" as any).select("*, delivery_products(name, page_logo)").eq("workspace_id", workspaceId!).order("sort_order");
+      return data || [];
+    },
+    enabled: !!workspaceId,
+  });
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `offers/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("member-files").upload(path, file, { contentType: file.type });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from("member-files").getPublicUrl(path);
+    return urlData.publicUrl;
+  };
+
+  const resetForm = () => {
+    setSelectedProductId(""); setDescription(""); setPrice(""); setCategoryTag(""); setImageFile(null); setEditingOffer(null); setUploading(false); setDisplayType("card"); setPixKey(""); setPixKeyType("telefone"); setCardPaymentUrl("");
+  };
+
+  const openEdit = (offer: any) => {
+    setEditingOffer(offer); setSelectedProductId(offer.product_id || ""); setDescription(offer.description || "");
+    setPrice(offer.price ? String(offer.price) : ""); setCategoryTag(offer.category_tag || "");
+    setDisplayType(offer.display_type || "card"); setPixKey(offer.pix_key || "");
+    setPixKeyType(offer.pix_key_type || "telefone"); setCardPaymentUrl(offer.card_payment_url || "");
+    setImageFile(null); setDialogOpen(true);
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingOffer && !selectedProductId) throw new Error("Selecione um produto");
+      setUploading(true);
+      const product = products?.find((p: any) => p.id === selectedProductId);
+      let imageUrl: string | null = editingOffer?.image_url || null;
+      if (imageFile) imageUrl = await uploadImage(imageFile);
+      else if (!editingOffer && product?.page_logo) imageUrl = product.page_logo;
+
+      if (editingOffer) {
+        const { error } = await supabase.from("member_area_offers" as any).update({
+          description: description || null, image_url: imageUrl, price: price ? parseFloat(price) : null,
+          category_tag: categoryTag || null, display_type: displayType,
+          pix_key: pixKey || null, pix_key_type: pixKeyType, card_payment_url: cardPaymentUrl || null,
+        }).eq("id", editingOffer.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("member_area_offers" as any).insert({
+          workspace_id: workspaceId, name: product?.name || "Oferta", product_id: selectedProductId,
+          description: description || null, image_url: imageUrl,
+          price: price ? parseFloat(price) : (product?.value || null),
+          category_tag: categoryTag || null, display_type: displayType,
+          pix_key: pixKey || null, pix_key_type: pixKeyType, card_payment_url: cardPaymentUrl || null,
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { toast.success(editingOffer ? "Oferta atualizada!" : "Oferta adicionada!"); queryClient.invalidateQueries({ queryKey: ["member-area-offers"] }); resetForm(); setDialogOpen(false); },
+    onError: (err: Error) => { toast.error(err.message); setUploading(false); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => { const { error } = await supabase.from("member_area_offers" as any).delete().eq("id", id); if (error) throw error; },
+    onSuccess: () => { toast.success("Oferta removida"); queryClient.invalidateQueries({ queryKey: ["member-area-offers"] }); },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => { const { error } = await supabase.from("member_area_offers" as any).update({ is_active: active }).eq("id", id); if (error) throw error; },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["member-area-offers"] }),
+  });
+
+  const selectedProduct = products?.find((p: any) => p.id === selectedProductId);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
+          <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" /> Nova Oferta</Button></DialogTrigger>
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>{editingOffer ? "Editar Oferta" : "Nova Oferta"}</DialogTitle></DialogHeader>
+            <div className="space-y-4">
+              {!editingOffer && (
+                <div>
+                  <Label>Produto</Label>
+                  <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o produto" /></SelectTrigger>
+                    <SelectContent>{products?.map((p: any) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              {(selectedProduct || editingOffer) && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                  {(selectedProduct?.page_logo || editingOffer?.image_url) && <img src={editingOffer?.image_url || selectedProduct?.page_logo} alt="" className="h-10 w-10 rounded-lg object-cover" />}
+                  <div>
+                    <p className="font-medium text-sm">{editingOffer?.name || selectedProduct?.name}</p>
+                    {(selectedProduct?.value || editingOffer?.price) && <p className="text-xs text-muted-foreground">R$ {Number(editingOffer?.price || selectedProduct?.value).toFixed(2).replace(".", ",")}</p>}
+                  </div>
+                </div>
+              )}
+              <div><Label>Descrição</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Por que esse produto é especial..." /></div>
+              <div>
+                <Label>Imagem {editingOffer ? "(envie para substituir)" : "(opcional)"}</Label>
+                <Input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
+              </div>
+              <div><Label>Tag de categoria</Label><Input value={categoryTag} onChange={(e) => setCategoryTag(e.target.value)} placeholder="Ex: Material complementar" /></div>
+              <div>
+                <Label>Tipo de exibição</Label>
+                <Select value={displayType} onValueChange={setDisplayType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="card">Oferta Card</SelectItem>
+                    <SelectItem value="showcase">Produto Físico (Vitrine)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo da chave PIX</Label>
+                <Select value={pixKeyType} onValueChange={setPixKeyType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="telefone">Telefone</SelectItem>
+                    <SelectItem value="cpf">CPF</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                    <SelectItem value="cnpj">CNPJ</SelectItem>
+                    <SelectItem value="aleatoria">Chave aleatória</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Chave PIX</Label><Input value={pixKey} onChange={(e) => setPixKey(e.target.value)} placeholder="Digite a chave PIX" /></div>
+              <div><Label>Link do checkout (cartão)</Label><Input value={cardPaymentUrl} onChange={(e) => setCardPaymentUrl(e.target.value)} placeholder="https://checkout.exemplo.com/..." /></div>
+              <div><Label>Preço (R$)</Label><Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={selectedProduct?.value ? String(selectedProduct.value) : "0.00"} /></div>
+              <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || uploading || (!editingOffer && !selectedProductId)}>
+                {saveMutation.isPending || uploading ? "Salvando..." : editingOffer ? "Salvar Alterações" : "Adicionar Oferta"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+      ) : !offers?.length ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Gift className="h-12 w-12 mx-auto mb-3 opacity-50" />
+          <p>Nenhuma oferta cadastrada</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {offers.map((offer: any) => {
+            const impressions = offer.total_impressions || 0;
+            const clicks = offer.total_clicks || 0;
+            const ctr = impressions > 0 ? ((clicks / impressions) * 100).toFixed(1) : "0";
+            return (
+              <Card key={offer.id} className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {offer.image_url && <img src={offer.image_url} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />}
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{offer.name}</p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                        {offer.price && <span>R$ {Number(offer.price).toFixed(2).replace(".", ",")}</span>}
+                        {offer.delivery_products?.name && <Badge variant="secondary" className="text-[10px]">{offer.delivery_products.name}</Badge>}
+                        <Badge variant="outline" className="text-[10px]">{offer.display_type === "showcase" ? "Vitrine" : "Card"}</Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>{impressions.toLocaleString("pt-BR")} views</span>
+                        <span>{clicks.toLocaleString("pt-BR")} cliques</span>
+                        <span>{ctr}% CTR</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Switch checked={offer.is_active} onCheckedChange={(checked) => toggleMutation.mutate({ id: offer.id, active: checked })} />
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(offer)}><Edit className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteMutation.mutate(offer.id)}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Main Page ----
+export default function AreaMembros() {
+  return (
+    <div className="max-w-5xl mx-auto py-8 px-4 md:px-6 space-y-8 animate-fade-in">
+      <div className="flex items-center gap-4">
+        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Crown className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Área de Membros</h1>
+          <p className="text-sm text-muted-foreground">Gerencie produtos, conteúdos e ofertas exclusivas</p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="products" className="space-y-6">
+        <TabsList className="bg-muted p-1 rounded-lg flex-wrap">
+          <TabsTrigger value="products" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
+            <Users className="h-4 w-4" /> Membros
+          </TabsTrigger>
+          <TabsTrigger value="content" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
+            <BookOpen className="h-4 w-4" /> Conteúdo
+          </TabsTrigger>
+          <TabsTrigger value="offers" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
+            <Gift className="h-4 w-4" /> Ofertas
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
+            <Activity className="h-4 w-4" /> Atividade
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
+            <Settings className="h-4 w-4" /> Configurações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="products"><MemberProductsTab /></TabsContent>
+        <TabsContent value="content"><ContentManagement /></TabsContent>
+        <TabsContent value="offers"><MemberOffersTab /></TabsContent>
+        <TabsContent value="activity"><MemberActivityTab /></TabsContent>
+        <TabsContent value="settings"><MemberSettingsTab /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
