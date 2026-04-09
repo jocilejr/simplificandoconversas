@@ -159,11 +159,18 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   }, [workspaceId, phone]);
 
   const filteredTxs = useMemo(() => {
+    const normalized = normalizePhone(phone);
     if (!txSearch.trim()) {
-      // No search: show only unlinked + alreadyCounted (CPF match), paginated
+      // No search: show orphans + already counted (CPF match, including backend-linked to current lead)
       const relevant = orphanTxs.filter((tx) => {
         if (!tx.customer_phone) return true; // orphan
-        if (leadCpf && tx.customer_document === leadCpf) return true; // already counted (linked via CPF)
+        // Backend auto-linked to current lead via CPF
+        if (leadCpf && tx.customer_document === leadCpf) {
+          const txPhoneNorm = normalizePhone(tx.customer_phone);
+          const isCurrentLead = txPhoneNorm === normalized ||
+            (txPhoneNorm !== "-" && normalized !== "-" && txPhoneNorm.slice(-8) === normalized.slice(-8));
+          return isCurrentLead;
+        }
         return false;
       });
       return relevant.slice(0, txLimit);
@@ -175,7 +182,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         tx.customer_name?.toLowerCase().includes(q) ||
         tx.customer_document?.includes(q)
     );
-  }, [orphanTxs, txSearch, txLimit, leadCpf]);
+  }, [orphanTxs, txSearch, txLimit, leadCpf, phone]);
 
   const totalUnlinked = useMemo(() => {
     return orphanTxs.filter((tx) => {
