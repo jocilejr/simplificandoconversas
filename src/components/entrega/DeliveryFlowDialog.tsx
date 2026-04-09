@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, QrCode, CreditCard, FileText, Copy, Check,
   User, Phone, Mail, FileDigit, ShoppingBag, ArrowLeft, ArrowRight,
-  Loader2, X, CircleDot,
+  Loader2, X, CircleDot, Calendar, Hash,
 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/normalizePhone";
 import { generatePhoneVariations } from "@/lib/phoneNormalization";
+import { format } from "date-fns";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Props {
   open: boolean;
@@ -22,7 +24,7 @@ interface Props {
   userId: string | undefined;
 }
 
-type Step = "phone" | "payment" | "processing" | "result";
+type Step = "phone" | "payment" | "select-tx" | "processing" | "result";
 
 interface LeadInfo {
   name: string;
@@ -30,6 +32,15 @@ interface LeadInfo {
   cpf: string | null;
   email: string | null;
   products: string[];
+}
+
+interface OrphanTx {
+  id: string;
+  amount: number;
+  customer_name: string | null;
+  customer_document: string | null;
+  created_at: string;
+  paid_at: string | null;
 }
 
 const STEPS_META = [
@@ -45,7 +56,7 @@ const PAYMENT_METHODS = [
 ] as const;
 
 function StepIndicator({ current }: { current: Step }) {
-  const idx = current === "processing" ? 2 : STEPS_META.findIndex((s) => s.key === current);
+  const idx = current === "processing" ? 2 : current === "select-tx" ? 1 : STEPS_META.findIndex((s) => s.key === current);
   return (
     <div className="flex items-center gap-1.5">
       {STEPS_META.map((s, i) => (
@@ -71,6 +82,8 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   const [link, setLink] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [orphanTxs, setOrphanTxs] = useState<OrphanTx[]>([]);
+  const [loadingTxs, setLoadingTxs] = useState(false);
 
   const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
@@ -87,7 +100,36 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     },
   });
 
-  const processDelivery = useCallback(async (method: string) => {
+  const handlePixClick = useCallback(async () => {
+    if (!workspaceId) return;
+    setLoadingTxs(true);
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, amount, customer_name, customer_document, created_at, paid_at")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "pix")
+      .eq("status", "aprovado")
+      .is("customer_phone", null)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setLoadingTxs(false);
+
+    if (error) {
+      toast.error("Erro ao buscar transações");
+      return;
+    }
+
+    const txs = (data || []) as OrphanTx[];
+    if (txs.length === 0) {
+      toast.error("Nenhuma transação PIX sem vínculo encontrada");
+      return;
+    }
+
+    setOrphanTxs(txs);
+    setStep("select-tx");
+  }, [workspaceId]);
+
+  const processDelivery = useCallback(async (method: string, existingTxId?: string) => {
     if (!workspaceId || !userId) return;
     const normalized = normalizePhone(phone);
     if (normalized === "-" || normalized.length < 10) {
@@ -129,6 +171,16 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       }
     }
 
+    // Enrich with selected orphan tx data
+    let selectedTx: OrphanTx | undefined;
+    if (method === "pix" && existingTxId) {
+      selectedTx = orphanTxs.find((t) => t.id === existingTxId);
+      if (selectedTx) {
+        if (!cpf && selectedTx.customer_document) cpf = selectedTx.customer_document;
+        if (!txName && selectedTx.customer_name) txName = selectedTx.customer_name;
+      }
+    }
+
     const allProducts = allProductsRes.data || [];
     const memberProducts = (memberRes.data || []).filter((m) => m.is_active);
     const productNames = memberProducts
@@ -165,12 +217,16 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       workspace_id: workspaceId, product_id: product.id, phone, normalized_phone: normalized, payment_method: method,
     });
 
-    if (method === "pix") {
-      await supabase.from("transactions").insert({
-        user_id: userId, workspace_id: workspaceId, type: "pix", status: "aprovado",
-        amount: product.value, customer_phone: normalized, customer_name: foundName || null,
-        source: "entrega_digital", description: product.name, paid_at: new Date().toISOString(),
-      });
+    // PIX: update existing transaction instead of creating new
+    if (method === "pix" && existingTxId) {
+      await supabase
+        .from("transactions")
+        .update({
+          customer_phone: normalized,
+          description: product.name,
+          source: "entrega_digital",
+        })
+        .eq("id", existingTxId);
     }
 
     const domain = (settings as any)?.custom_domain || window.location.origin;
@@ -185,8 +241,8 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     qc.invalidateQueries({ queryKey: ["conversations"] });
 
     setStep("result");
-    toast.success(method === "pix" ? "Acesso liberado + PIX registrado" : "Acesso liberado");
-  }, [workspaceId, userId, phone, product, settings, qc]);
+    toast.success(method === "pix" ? "Acesso liberado + PIX vinculado" : "Acesso liberado");
+  }, [workspaceId, userId, phone, product, settings, qc, orphanTxs]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message);
@@ -207,6 +263,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     setLink("");
     setMessage("");
     setCopied(false);
+    setOrphanTxs([]);
   };
 
   return (
@@ -298,11 +355,22 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                 {PAYMENT_METHODS.map((pm) => (
                   <button
                     key={pm.id}
-                    onClick={() => processDelivery(pm.id)}
-                    className="group relative flex flex-col items-center gap-2.5 rounded-xl border border-border/50 bg-card p-5 text-center transition-all duration-200 hover:border-primary/40 hover:bg-accent/30 hover:shadow-sm active:scale-[0.98]"
+                    disabled={loadingTxs}
+                    onClick={() => {
+                      if (pm.id === "pix") {
+                        handlePixClick();
+                      } else {
+                        processDelivery(pm.id);
+                      }
+                    }}
+                    className="group relative flex flex-col items-center gap-2.5 rounded-xl border border-border/50 bg-card p-5 text-center transition-all duration-200 hover:border-primary/40 hover:bg-accent/30 hover:shadow-sm active:scale-[0.98] disabled:opacity-50"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/60 group-hover:bg-primary/10 transition-colors">
-                      <pm.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      {loadingTxs && pm.id === "pix" ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <pm.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      )}
                     </div>
                     <div>
                       <p className="text-xs font-medium">{pm.label}</p>
@@ -311,6 +379,72 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Step: Select TX */}
+          {step === "select-tx" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setStep("payment")}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-3 w-3" /> Voltar
+                </button>
+                <span className="text-[11px] text-muted-foreground font-mono">{phone}</span>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Selecionar transação PIX</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Escolha a transação que será vinculada a este contato
+                </p>
+              </div>
+
+              <ScrollArea className="max-h-[280px]">
+                <div className="space-y-2 pr-2">
+                  {orphanTxs.map((tx) => (
+                    <button
+                      key={tx.id}
+                      onClick={() => processDelivery("pix", tx.id)}
+                      className="w-full flex items-center gap-3 rounded-lg border border-border/50 bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-accent/30 active:scale-[0.99]"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 shrink-0">
+                        <QrCode className="h-4 w-4 text-emerald-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-foreground">
+                            R$ {Number(tx.amount).toFixed(2)}
+                          </p>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            ...{tx.id.slice(-8)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
+                          {tx.customer_name && (
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                              <User className="h-2.5 w-2.5 shrink-0" />
+                              {tx.customer_name}
+                            </span>
+                          )}
+                          {tx.customer_document && (
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              <FileDigit className="h-2.5 w-2.5 shrink-0" />
+                              {tx.customer_document}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1 ml-auto shrink-0">
+                            <Calendar className="h-2.5 w-2.5" />
+                            {format(new Date(tx.paid_at || tx.created_at), "dd/MM HH:mm")}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
             </div>
           )}
 
