@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, Copy, Trash2, Link2 } from "lucide-react";
+import { Plus, Search, Copy, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ProductForm } from "./ProductForm";
-import { LinkGenerator } from "./LinkGenerator";
+import { DeliveryFlowDialog } from "./DeliveryFlowDialog";
 
 export function ProductsTab() {
   const { workspaceId } = useWorkspace();
@@ -20,7 +20,7 @@ export function ProductsTab() {
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [linkProduct, setLinkProduct] = useState<any>(null);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["delivery-products", workspaceId],
@@ -93,7 +93,10 @@ export function ProductsTab() {
           {filtered.map((p) => (
             <Card key={p.id} className="hover:border-primary/30 transition-colors">
               <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex-1 min-w-0">
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => setSelectedProduct(p)}
+                >
                   <div className="flex items-center gap-2">
                     <span className="font-medium truncate">{p.name}</span>
                     <Badge variant={p.is_active ? "default" : "secondary"}>
@@ -106,16 +109,13 @@ export function ProductsTab() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => setLinkProduct(p)} title="Gerar link">
-                    <Link2 className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setFormOpen(true); }} title="Editar">
+                    <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(p); setFormOpen(true); }} title="Editar">
-                    <Search className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => duplicateMut.mutate(p)} title="Duplicar">
+                  <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); duplicateMut.mutate(p); }} title="Duplicar">
                     <Copy className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => { if (confirm("Excluir este produto?")) deleteMut.mutate(p.id); }} title="Excluir">
+                  <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); if (confirm("Excluir este produto?")) deleteMut.mutate(p.id); }} title="Excluir">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -133,11 +133,11 @@ export function ProductsTab() {
         userId={user?.id}
       />
 
-      {linkProduct && (
-        <LinkGenerator
-          open={!!linkProduct}
-          onOpenChange={(o) => !o && setLinkProduct(null)}
-          product={linkProduct}
+      {selectedProduct && (
+        <DeliveryFlowDialog
+          open={!!selectedProduct}
+          onOpenChange={(o) => !o && setSelectedProduct(null)}
+          product={selectedProduct}
           workspaceId={workspaceId}
           userId={user?.id}
         />
