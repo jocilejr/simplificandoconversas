@@ -245,6 +245,61 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             )}
           </div>
 
+          {/* Produtos Liberados */}
+          <div className="pt-3">
+            <CollapsibleSection icon={ShoppingBag} title="Produtos Liberados" count={isLoadingProducts ? undefined : memberProducts.length}>
+              {isLoadingProducts ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="rounded-lg border p-3">
+                      <Skeleton className="h-4 w-40" />
+                    </div>
+                  ))}
+                </div>
+              ) : memberProducts.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">Nenhum produto liberado</p>
+              ) : (
+                <div className="space-y-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-8 text-xs gap-1.5"
+                    onClick={() => {
+                      const phone = lead.phone_number || formatPhone(lead.remote_jid);
+                      const normalized = generatePhoneVariations(phone)[0] || phone;
+                      const link = `${window.location.origin}/membros/${normalized}`;
+                      navigator.clipboard.writeText(link);
+                      toast.success("Link de acesso copiado!");
+                    }}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Copiar link de acesso
+                  </Button>
+                  {memberProducts.map((mp: any) => {
+                    const productName = mp.delivery_products?.name || "Produto";
+                    return (
+                      <div key={mp.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-sm font-medium truncate">{productName}</span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={mp.is_active
+                            ? "bg-green-500/10 text-green-600 border-green-500/30 text-xs shrink-0"
+                            : "bg-red-500/10 text-red-600 border-red-500/30 text-xs shrink-0"
+                          }
+                        >
+                          {mp.is_active ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CollapsibleSection>
+          </div>
+
           {/* Resumo Financeiro */}
           <SectionDivider icon={CreditCard} title="Resumo Financeiro" />
           <div className="grid grid-cols-3 gap-2">
