@@ -148,7 +148,7 @@ function DominioTab() {
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const data = { custom_domain: customDomain || null, global_redirect_url: globalRedirectUrl || null, link_message_template: linkMessageTemplate };
+      const data = { custom_domain: customDomain || null, global_redirect_url: globalRedirectUrl || null, link_message_template: linkMessageTemplate, delivery_message: deliveryMessage || null } as any;
       if (settings) {
         const { error } = await supabase.from("delivery_settings").update(data).eq("id", settings.id);
         if (error) throw error;
