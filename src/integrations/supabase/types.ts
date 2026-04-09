@@ -625,44 +625,212 @@ export type Database = {
           },
         ]
       }
+      delivery_accesses: {
+        Row: {
+          accessed_at: string
+          created_at: string
+          id: string
+          phone: string | null
+          pixel_fired: boolean
+          product_id: string
+          webhook_sent: boolean
+          workspace_id: string
+        }
+        Insert: {
+          accessed_at?: string
+          created_at?: string
+          id?: string
+          phone?: string | null
+          pixel_fired?: boolean
+          product_id: string
+          webhook_sent?: boolean
+          workspace_id: string
+        }
+        Update: {
+          accessed_at?: string
+          created_at?: string
+          id?: string
+          phone?: string | null
+          pixel_fired?: boolean
+          product_id?: string
+          webhook_sent?: boolean
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_accesses_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_accesses_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_link_generations: {
+        Row: {
+          created_at: string
+          id: string
+          normalized_phone: string | null
+          payment_method: string | null
+          phone: string | null
+          product_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          normalized_phone?: string | null
+          payment_method?: string | null
+          phone?: string | null
+          product_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          normalized_phone?: string | null
+          payment_method?: string | null
+          phone?: string | null
+          product_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_link_generations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_link_generations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_pixels: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          event_name: string
+          id: string
+          is_active: boolean
+          pixel_id: string
+          platform: string
+          product_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          event_name?: string
+          id?: string
+          is_active?: boolean
+          pixel_id?: string
+          platform?: string
+          product_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          event_name?: string
+          id?: string
+          is_active?: boolean
+          pixel_id?: string
+          platform?: string
+          product_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_pixels_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_pixels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       delivery_products: {
         Row: {
           created_at: string
+          delivery_webhook_url: string | null
           id: string
           is_active: boolean
           member_cover_image: string | null
           member_description: string | null
           name: string
           page_logo: string | null
+          page_message: string
+          page_title: string
+          redirect_delay: number
+          redirect_url: string | null
           slug: string
           updated_at: string
           value: number
+          whatsapp_message: string | null
+          whatsapp_number: string | null
           workspace_id: string
         }
         Insert: {
           created_at?: string
+          delivery_webhook_url?: string | null
           id?: string
           is_active?: boolean
           member_cover_image?: string | null
           member_description?: string | null
           name: string
           page_logo?: string | null
+          page_message?: string
+          page_title?: string
+          redirect_delay?: number
+          redirect_url?: string | null
           slug: string
           updated_at?: string
           value?: number
+          whatsapp_message?: string | null
+          whatsapp_number?: string | null
           workspace_id: string
         }
         Update: {
           created_at?: string
+          delivery_webhook_url?: string | null
           id?: string
           is_active?: boolean
           member_cover_image?: string | null
           member_description?: string | null
           name?: string
           page_logo?: string | null
+          page_message?: string
+          page_title?: string
+          redirect_delay?: number
+          redirect_url?: string | null
           slug?: string
           updated_at?: string
           value?: number
+          whatsapp_message?: string | null
+          whatsapp_number?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -670,6 +838,44 @@ export type Database = {
             foreignKeyName: "delivery_products_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_settings: {
+        Row: {
+          created_at: string
+          custom_domain: string | null
+          global_redirect_url: string | null
+          id: string
+          link_message_template: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_domain?: string | null
+          global_redirect_url?: string | null
+          id?: string
+          link_message_template?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_domain?: string | null
+          global_redirect_url?: string | null
+          id?: string
+          link_message_template?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
@@ -1442,6 +1648,50 @@ export type Database = {
             foreignKeyName: "followup_settings_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      global_delivery_pixels: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          event_name: string
+          id: string
+          is_active: boolean
+          pixel_id: string
+          platform: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          event_name?: string
+          id?: string
+          is_active?: boolean
+          pixel_id?: string
+          platform?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          event_name?: string
+          id?: string
+          is_active?: boolean
+          pixel_id?: string
+          platform?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_delivery_pixels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
