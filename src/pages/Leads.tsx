@@ -145,7 +145,7 @@ const Leads = () => {
       {/* Table List */}
       {isLoading ? (
         <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
-      ) : sortedLeads.length === 0 ? (
+      ) : leads.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <Users className="h-12 w-12 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
