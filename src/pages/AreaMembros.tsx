@@ -110,8 +110,8 @@ function MemberProductsTab() {
       const digits = newPhone.replace(/\D/g, "");
       if (!digits || !newProductId) throw new Error("Preencha todos os campos");
       const last8 = digits.slice(-8);
-      const { data: existing } = await supabase.from("member_products" as any).select("id, normalized_phone").eq("workspace_id", workspaceId!).eq("product_id", newProductId);
-      const match = existing?.find((mp: any) => mp.normalized_phone.slice(-8) === last8);
+      const { data: existing } = await supabase.from("member_products" as any).select("id, normalized_phone").eq("workspace_id", workspaceId!).eq("product_id", newProductId) as any;
+      const match = (existing as any[])?.find((mp: any) => mp.normalized_phone.slice(-8) === last8);
       if (match) {
         await supabase.from("member_products" as any).update({ is_active: true, granted_at: new Date().toISOString() }).eq("id", match.id);
         toast.info("Este cliente já possui acesso a este produto.");
