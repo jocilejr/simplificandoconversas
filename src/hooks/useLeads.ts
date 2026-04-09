@@ -216,8 +216,45 @@ export function useLeads() {
     return list;
   }, [leads, search, tagFilter, paymentFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  const sorted = useMemo(() => {
+    if (!sortField) return filtered;
+    const arr = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortField) {
+        case "name":
+          return dir * (a.contact_name || "").localeCompare(b.contact_name || "");
+        case "phone":
+          return dir * (a.phone_number || "").localeCompare(b.phone_number || "");
+        case "orders":
+          return dir * (a.paidOrdersCount - b.paidOrdersCount);
+        case "total":
+          return dir * (a.totalPaid - b.totalPaid);
+        case "reminders":
+          return dir * (a.remindersCount - b.remindersCount);
+        case "status":
+          return dir * (Number(a.hasPaid) - Number(b.hasPaid));
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [filtered, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+  const paginated = sorted.slice((page - 1) * perPage, page * perPage);
+
+  const handleSort = useCallback((field: SortField) => {
+    setSortField((prev) => {
+      if (prev === field) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return field;
+      }
+      setSortDir("asc");
+      return field;
+    });
+    setPage(1);
+  }, []);
 
   const counts = useMemo(() => ({
     all: leads.length,
