@@ -1,62 +1,71 @@
 
-Objetivo: corrigir apenas a funcionalidade real da VPS, sem mexer em banco/RLS e sem ampliar escopo.
+Objetivo revisado: corrigir a lógica que continua quebrada mesmo com a build certa. Pela leitura do código, o problema mais provável não é mais deploy, e sim regra de escrita/links ainda incorreta no frontend.
 
-O que as verificações já provaram:
-1. A tabela `member_products` da VPS está correta e usa `phone`, não `normalized_phone`.
-2. O banco aceita insert normalmente.
-3. Já existe registro real em `member_products`, então o fluxo não está “100% sem insert”; o problema restante é frontend/código legado.
-4. O frontend self-hosted é servido pelo `deploy-nginx-1` a partir de `deploy/frontend`, então só “rebuildar containers” não garante frontend atualizado.
-5. Ainda existem referências erradas a `normalized_phone` no código fonte.
+Diagnóstico do código atual:
+1. `src/pages/AreaMembros.tsx` ainda tem uma falha funcional real:
+   - o insert manual usa `phone: digits`, sem normalizar com a mesma regra usada no restante do sistema
+   - o insert manual não força `is_active: true`
+   - a reativação existente faz `update(...)` sem checar `error`
+2. `src/components/entrega/LinkGenerator.tsx` e `src/components/entrega/DeliveryFlowDialog.tsx` ignoram erros de `upsert/insert`
+   - hoje o fluxo pode falhar e mesmo assim mostrar sucesso
+3. Os links copiados apontam para `/membros/{telefone}`, mas o app atual só tem rota `/area-membros` e `/r/:code`
+   - não existe rota `/membros/:phone` no `src/App.tsx`
+   - então, mesmo com acesso salvo corretamente, o link gerado/copiado tende a não funcionar
 
-Plano de implementação:
-1. Corrigir `src/pages/AreaMembros.tsx`
-   - trocar todas as leituras/escritas de `member_products.normalized_phone` para `member_products.phone`
-   - corrigir busca por telefone (`ilike`) para usar `phone`
-   - corrigir agrupamento/listagem para usar `phone`
-   - corrigir verificação de duplicidade para selecionar `id, phone`
-   - corrigir insert manual para gravar em `phone`
-   - remover o update de `granted_at`, porque essa coluna não existe na VPS
+Plano de correção:
+1. Ajustar a liberação manual em `src/pages/AreaMembros.tsx`
+   - normalizar o telefone com a mesma função usada no fluxo de entrega
+   - trocar a lógica atual de select + update/insert por um `upsert` consistente com a VPS:
+     - `workspace_id`
+     - `product_id`
+     - `phone`
+     - `is_active: true`
+     - `onConflict: "product_id,phone"`
+   - validar e exibir qualquer erro real antes de mostrar sucesso
 
-2. Corrigir `src/components/membros/MemberClientCard.tsx`
-   - ajustar a tipagem local de `MemberProduct` para `phone`
-   - corrigir o histórico de compras para buscar transações por `customer_phone` em vez de `normalized_phone`
-   - manter o restante do comportamento igual
+2. Endurecer os fluxos que liberam acesso fora da Área de Membros
+   - revisar `src/components/entrega/LinkGenerator.tsx`
+   - revisar `src/components/entrega/DeliveryFlowDialog.tsx`
+   - em ambos:
+     - checar `error` em cada `insert`, `upsert`, `update` e `single`
+     - abortar o fluxo se qualquer etapa falhar
+     - só mostrar toast de sucesso quando a gravação realmente acontecer
 
-3. Não alterar
-   - `DeliveryFlowDialog.tsx` se ele já estiver usando `phone`
-   - banco, migrations, RLS, backend Express e rotas
+3. Corrigir o problema do link de acesso
+   - como hoje não existe rota `/membros/:phone`, decidir a implementação correta:
+     - ou criar a rota/página pública do membro
+     - ou parar de gerar `/membros/{phone}` e usar apenas um link que já exista de verdade
+   - sem isso, “copiar link” continuará quebrado mesmo com `member_products` correto
+
+4. Não mexer agora
+   - banco/RLS
+   - migrations
+   - `src/integrations/supabase/client.ts`
    - `src/integrations/supabase/types.ts`
 
-4. Publicação correta para a VPS
-   - gerar novo build do frontend
-   - copiar o novo `dist` para `deploy/frontend`
-   - só depois reiniciar/atualizar os containers do deploy
-   - se vocês usam o script do projeto, aproveitar o fluxo já existente em `deploy/update.sh`, porque ele builda e copia o frontend antes do `docker compose up`
-
-Verificações na VPS depois da implementação:
+Verificações na VPS antes/depois da implementação:
 ```bash
-# 1) Confirmar que o nginx realmente está servindo os assets atualizados
-docker exec deploy-nginx-1 sh -lc 'ls -lah /usr/share/nginx/html/assets'
+cd ~/simplificandoconversas
 
-# 2) Confirmar que o build servido não contém mais a referência antiga
-docker exec deploy-nginx-1 sh -lc 'grep -R "normalized_phone" /usr/share/nginx/html/assets || true'
+# 1) Provar que hoje não existe rota pública /membros
+grep -n 'path="/membros' src/App.tsx || echo "SEM ROTA /membros"
+grep -n 'path="/area-membros"' src/App.tsx
 
-# 3) Testar o fluxo manual da Área de Membros e depois conferir os últimos registros
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "SELECT id, product_id, phone, is_active, created_at FROM member_products ORDER BY created_at DESC LIMIT 10;"
+# 2) Provar que o link copiado aponta para uma rota inexistente
+grep -n '/membros/' src/components/membros/MemberClientCard.tsx
+grep -n '/membros/' src/components/leads/LeadDetailDialog.tsx
 
-# 4) Se quiser validar também o histórico exibido no card
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "SELECT id, customer_phone, description, status, created_at FROM transactions WHERE customer_phone IS NOT NULL ORDER BY created_at DESC LIMIT 10;"
+# 3) Verificar a lógica atual da liberação manual
+grep -n 'phone: digits' src/pages/AreaMembros.tsx
+grep -n 'is_active: true' src/pages/AreaMembros.tsx
+
+# 4) Verificar pontos onde o código grava sem checar erro
+grep -n 'from("member_products").upsert' src/components/entrega/LinkGenerator.tsx
+grep -n 'from("member_products").upsert' src/components/entrega/DeliveryFlowDialog.tsx
 ```
 
-Detalhes técnicos importantes:
-- O erro `grep: /usr/share/nginx/html/assets/*.js: No such file or directory` aconteceu porque o wildcard não foi expandido dentro do `docker exec`; o formato certo é com `sh -lc '...'`.
-- O ponto mais crítico agora não é mais a tabela, e sim referências antigas no frontend:
-  - `AreaMembros.tsx` ainda trata `member_products` como se tivesse `normalized_phone`
-  - `MemberClientCard.tsx` ainda consulta `transactions.normalized_phone`, mas a tabela `transactions` usa `customer_phone`
-- Como o `docker-compose.yml` monta `./frontend` no nginx, atualizar só containers pode deixar o JS antigo sendo servido se `deploy/frontend` não for regenerado.
-
-Resultado esperado após aplicar o plano:
-- liberar produto manualmente volta a inserir/reativar corretamente na VPS
-- a listagem da Área de Membros volta a enxergar os registros existentes
-- o card do membro volta a exibir histórico de compras
-- sem mexer em banco e sem mudanças desnecessárias fora da funcionalidade
+Resultado esperado após a correção:
+- liberar produto manualmente grava no formato certo e ativo de verdade
+- o fluxo deixa de “fingir sucesso” quando houver erro
+- o acesso do membro passa a depender de um link real, e não de uma rota inexistente
+- se ainda restar problema, ele aparecerá como erro concreto e não mais como falha silenciosa
