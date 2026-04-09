@@ -1,14 +1,14 @@
 import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Package, QrCode, CreditCard, FileText, Copy, Check,
-  User, Phone, Mail, FileDigit, ShoppingBag, ArrowLeft, Loader2,
+  User, Phone, Mail, FileDigit, ShoppingBag, ArrowLeft, ArrowRight,
+  Loader2, X, CircleDot,
 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/normalizePhone";
@@ -32,11 +32,36 @@ interface LeadInfo {
   products: string[];
 }
 
+const STEPS_META = [
+  { key: "phone", label: "Telefone" },
+  { key: "payment", label: "Pagamento" },
+  { key: "result", label: "Resultado" },
+] as const;
+
 const PAYMENT_METHODS = [
   { id: "pix", label: "PIX", desc: "Instantâneo", icon: QrCode },
   { id: "cartao", label: "Cartão", desc: "Crédito / Parcelado", icon: CreditCard },
   { id: "boleto", label: "Boleto", desc: "3 dias úteis", icon: FileText },
 ] as const;
+
+function StepIndicator({ current }: { current: Step }) {
+  const idx = current === "processing" ? 2 : STEPS_META.findIndex((s) => s.key === current);
+  return (
+    <div className="flex items-center gap-1.5">
+      {STEPS_META.map((s, i) => (
+        <div key={s.key} className="flex items-center gap-1.5">
+          <div
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              i <= idx
+                ? "w-6 bg-primary"
+                : "w-1.5 bg-muted-foreground/20"
+            }`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, userId }: Props) {
   const qc = useQueryClient();
@@ -186,72 +211,102 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md gap-0 p-0 overflow-hidden">
-        {/* Header */}
-        <DialogHeader className="px-5 pt-5 pb-3">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2 text-sm font-medium">
-              <Package className="h-4 w-4 text-muted-foreground" />
-              {product.name}
-            </DialogTitle>
-            <Badge variant="outline" className="text-[11px] font-normal tracking-wide">
-              R$ {Number(product.value).toFixed(2)}
-            </Badge>
+      <DialogContent className="sm:max-w-[640px] p-0 gap-0 overflow-hidden rounded-xl border-border/60 [&>button]:hidden">
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-border/40">
+          <div className="space-y-1.5 min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+                <Package className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <h2 className="text-sm font-semibold tracking-tight truncate">{product.name}</h2>
+            </div>
+            <div className="flex items-center gap-3 pl-9">
+              <span className="text-[11px] text-muted-foreground font-mono">/{product.slug}</span>
+              <StepIndicator current={step} />
+            </div>
           </div>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Liberar acesso ao produto
-          </DialogDescription>
-        </DialogHeader>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <span className="text-xs font-mono font-medium text-foreground/80 bg-muted/60 px-2.5 py-1 rounded-md">
+              R$ {Number(product.value).toFixed(2)}
+            </span>
+            <button
+              onClick={() => handleClose(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
-        <Separator />
-
-        <div className="px-5 py-4">
-          {/* Step 1: Phone */}
+        {/* ── Content ── */}
+        <div className="px-6 py-5 min-h-[220px]">
+          {/* Step: Phone */}
           {step === "phone" && (
-            <div className="space-y-4">
-              <Input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Telefone do cliente"
-                className="h-9 text-sm"
-                autoFocus
-              />
-              <div className="flex justify-end">
+            <div className="space-y-5">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Telefone do cliente</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Informe o número para liberar o acesso ao produto
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+                  <Input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="(00) 00000-0000"
+                    className="h-9 text-sm pl-9 bg-muted/30 border-border/50 focus:bg-background"
+                    autoFocus
+                  />
+                </div>
                 <Button
                   size="sm"
                   onClick={() => setStep("payment")}
                   disabled={!phone.trim()}
-                  className="text-xs px-5"
+                  className="h-9 px-4 text-xs gap-1"
                 >
                   Continuar
+                  <ArrowRight className="h-3 w-3" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* Step 2: Payment */}
+          {/* Step: Payment */}
           {step === "payment" && (
-            <div className="space-y-3">
-              <button
-                onClick={() => setStep("phone")}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ArrowLeft className="h-3 w-3" /> Voltar
-              </button>
-              <p className="text-xs text-muted-foreground">Método de pagamento utilizado:</p>
-              <div className="space-y-2">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setStep("phone")}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-3 w-3" /> Voltar
+                </button>
+                <span className="text-[11px] text-muted-foreground font-mono">{phone}</span>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Método de pagamento</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Selecione como o cliente realizou o pagamento
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
                 {PAYMENT_METHODS.map((pm) => (
                   <button
                     key={pm.id}
                     onClick={() => processDelivery(pm.id)}
-                    className="w-full flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-all hover:border-primary/40 hover:bg-accent/50 active:scale-[0.99]"
+                    className="group relative flex flex-col items-center gap-2.5 rounded-xl border border-border/50 bg-card p-5 text-center transition-all duration-200 hover:border-primary/40 hover:bg-accent/30 hover:shadow-sm active:scale-[0.98]"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <pm.icon className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/60 group-hover:bg-primary/10 transition-colors">
+                      <pm.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-medium">{pm.label}</span>
-                      <span className="text-xs text-muted-foreground">{pm.desc}</span>
+                    <div>
+                      <p className="text-xs font-medium">{pm.label}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{pm.desc}</p>
                     </div>
                   </button>
                 ))}
@@ -259,63 +314,85 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
             </div>
           )}
 
-          {/* Step 3: Processing */}
+          {/* Step: Processing */}
           {step === "processing" && (
-            <div className="flex flex-col items-center justify-center py-10 gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">Processando...</p>
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary/60" />
+              <div className="text-center space-y-0.5">
+                <p className="text-xs font-medium text-foreground/80">Processando</p>
+                <p className="text-[10px] text-muted-foreground">Buscando dados do lead e liberando acesso...</p>
+              </div>
             </div>
           )}
 
-          {/* Step 4: Result */}
+          {/* Step: Result */}
           {step === "result" && leadInfo && (
             <div className="space-y-4">
-              {/* Lead card */}
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                {leadInfo.name && (
-                  <div className="flex items-center gap-2">
-                    <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-sm font-medium">{leadInfo.name}</span>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <InfoRow icon={Phone} label="Telefone" value={leadInfo.phone} />
-                  {leadInfo.email && <InfoRow icon={Mail} label="Email" value={leadInfo.email} />}
-                  {leadInfo.cpf && <InfoRow icon={FileDigit} label="CPF" value={leadInfo.cpf} />}
+              {/* Lead info */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <CircleDot className="h-3 w-3 text-emerald-500" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-emerald-600">
+                    Acesso liberado
+                  </span>
                 </div>
+
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                  {leadInfo.name && (
+                    <InfoItem icon={User} label="Nome" value={leadInfo.name} />
+                  )}
+                  <InfoItem icon={Phone} label="Telefone" value={leadInfo.phone} />
+                  {leadInfo.email && (
+                    <InfoItem icon={Mail} label="Email" value={leadInfo.email} />
+                  )}
+                  {leadInfo.cpf && (
+                    <InfoItem icon={FileDigit} label="CPF" value={leadInfo.cpf} />
+                  )}
+                </div>
+
                 {leadInfo.products.length > 0 && (
-                  <>
-                    <Separator className="bg-border/50" />
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
-                        <ShoppingBag className="h-3 w-3" /> Produtos com acesso
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {leadInfo.products.map((name) => (
-                          <Badge key={name} variant="secondary" className="text-[10px] font-normal px-2 py-0.5">
-                            {name}
-                          </Badge>
-                        ))}
-                      </div>
+                  <div className="mt-3 pt-3 border-t border-border/30">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
+                      <ShoppingBag className="h-2.5 w-2.5" /> Produtos com acesso
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {leadInfo.products.map((name) => (
+                        <Badge key={name} variant="secondary" className="text-[10px] font-normal px-2 py-0 h-5 rounded-md">
+                          {name}
+                        </Badge>
+                      ))}
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 
-              {/* Link */}
-              <div className="rounded-md bg-muted/50 px-3 py-2.5">
+              {/* Link / message */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                  Mensagem de entrega
+                </p>
                 <p className="text-xs font-mono text-foreground/80 break-all whitespace-pre-wrap leading-relaxed">
                   {message}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button size="sm" className="text-xs gap-1.5 flex-1" onClick={handleCopy}>
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? "Copiado" : "Copiar"}
+              {/* Actions */}
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  size="sm"
+                  onClick={handleCopy}
+                  className="h-8 text-xs gap-1.5 px-4"
+                >
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? "Copiado" : "Copiar mensagem"}
                 </Button>
-                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={reset}>
-                  Gerar outro
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={reset}
+                  className="h-8 text-xs text-muted-foreground"
+                >
+                  Nova liberação
                 </Button>
               </div>
             </div>
@@ -326,12 +403,12 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   );
 }
 
-function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+function InfoItem({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2 min-w-0">
-      <Icon className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+      <Icon className="h-3 w-3 text-muted-foreground/60 mt-0.5 shrink-0" />
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground leading-none mb-0.5">{label}</p>
+        <p className="text-[10px] text-muted-foreground leading-none mb-0.5">{label}</p>
         <p className="text-xs font-medium truncate">{value}</p>
       </div>
     </div>
