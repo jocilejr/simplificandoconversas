@@ -1,104 +1,98 @@
 
 
-# Replicar sistema de conversão PDF→Imagem do Finance Hub
+# Fix: Dot persiste porque mark-seen só marca transações do filtro de data atual
 
 ## Problema
 
-O `pdftoppm` (poppler-utils) no container Alpine Linux não renderiza corretamente certos PDFs do Mercado Pago — o JPG sai sem informações (em branco ou incompleto). O modal do frontend funciona porque usa `pdfjs-dist` com canvas no navegador.
-
-O projeto Finance Hub resolve isso usando a biblioteca **mupdf** (WASM) que renderiza PDFs com fidelidade muito superior ao poppler, diretamente no backend.
+O `useUnseenTransactions` conta TODAS as transações com `viewed_at = NULL` (sem filtro de data). Mas o `markTabAsSeen` só marca as transações visíveis na lista atual (filtrada por data). Transações de dias anteriores nunca são marcadas, e o dot nunca desaparece.
 
 ## Solução
 
-Substituir `pdftoppm` por **mupdf** como biblioteca Node.js no backend Express da VPS. O `mupdf` tem binding nativo para Node.js (`mupdf` no npm) e renderiza PDFs complexos com a mesma qualidade do navegador.
+Criar um endpoint backend `POST /mark-tab-seen` que recebe `workspaceId` + `tab` e marca TODAS as transações daquela categoria com `viewed_at = NULL`, sem filtro de data. Cada aba marca independentemente ao ser selecionada.
 
 ## Alterações
 
-### 1. `deploy/backend/package.json`
+### 1. Backend: `deploy/backend/src/routes/platform-api.ts`
 
-Adicionar dependência `mupdf`:
-
-```json
-"mupdf": "^0.5.0"
-```
-
-### 2. `deploy/backend/src/lib/pdf-to-image.ts` (novo arquivo)
-
-Criar utilitário centralizado de conversão PDF→JPG usando mupdf:
+Novo endpoint `POST /mark-tab-seen`:
 
 ```typescript
-import * as mupdf from "mupdf";
-import { readFile, writeFile } from "fs/promises";
+router.post("/mark-tab-seen", async (req, res) => {
+  const { workspaceId, tab } = req.body;
+  if (!workspaceId || !tab) return res.json({ updated: 0 });
 
-export async function convertPdfToJpg(pdfPath: string, jpgPath: string): Promise<void> {
-  const pdfBuffer = await readFile(pdfPath);
-  const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf");
-  const page = doc.loadPage(0);
-  const pixmap = page.toPixmap(
-    mupdf.Matrix.scale(2, 2),
-    mupdf.ColorSpace.DeviceRGB,
-    false,
-    true
-  );
-  const pngBytes = pixmap.asPNG();
-  // Salvar como PNG (mais confiável que JPEG para mupdf)
-  await writeFile(jpgPath, pngBytes);
-}
+  const sb = getServiceClient();
+  let query = sb
+    .from("transactions")
+    .update({ viewed_at: new Date().toISOString() })
+    .eq("workspace_id", workspaceId)
+    .is("viewed_at", null);
+
+  // Filtrar pela mesma lógica de categorização das abas
+  switch (tab) {
+    case "aprovados":
+      query = query.eq("status", "aprovado");
+      break;
+    case "boletos-gerados":
+      query = query.eq("type", "boleto").eq("status", "pendente");
+      break;
+    case "pix-cartao-pendentes":
+      query = query.in("type", ["pix", "cartao", "card"]).eq("status", "pendente");
+      break;
+    case "rejeitados":
+      // rejeitados = status rejeitado OR (yampi_cart + abandonado)
+      // Supabase doesn't support OR in update easily, so two updates
+      break;
+  }
+
+  // Para "rejeitados" precisa de tratamento especial (OR condition)
+  // Executar update e retornar
+});
 ```
 
-**Nota**: A saída será PNG mas salva com extensão `.jpg` para compatibilidade. A Evolution API aceita ambos via base64.
+O caso `rejeitados` requer 2 updates separados (status=rejeitado e type=yampi_cart+status=abandonado).
 
-### 3. `deploy/backend/src/lib/recovery-dispatch.ts` — bloco `image` (linhas 135-188)
+### 2. Frontend: `src/hooks/useUnseenTransactions.ts`
 
-Substituir o bloco `pdftoppm` pelo novo utilitário:
+Substituir `markSeen(ids)` por `markTabSeen(tab)`:
 
 ```typescript
-} else if (block.type === "image") {
-  const { data: tx } = await sb.from("transactions")...;
-  // ... (mesmo código de verificação existente)
-  
-  // SUBSTITUIR pdftoppm por:
-  const { convertPdfToJpg } = await import("./pdf-to-image");
-  await convertPdfToJpg(fsPath, jpgPath);
-  
-  const imgBuffer = await fsModule.readFile(jpgPath);
-  // ... resto igual (enviar via Evolution API)
+const markTabSeen = useCallback(async (tab: TabKey) => {
+  if (!workspaceId) return;
+  await fetch(apiUrl("mark-tab-seen"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspaceId, tab }),
+  });
+  queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
+  queryClient.invalidateQueries({ queryKey: ["transactions"] });
+}, [workspaceId, queryClient]);
 ```
 
-### 4. `deploy/backend/src/routes/followup-daily.ts` — bloco `image`
+### 3. Frontend: `src/components/transactions/TransactionsTable.tsx`
 
-Mesma substituição: trocar `pdftoppm` por `convertPdfToJpg`.
+Simplificar `markTabAsSeen` para chamar `markTabSeen(tab)` diretamente (sem filtrar IDs localmente):
 
-### 5. `deploy/backend/src/routes/payment.ts` — endpoint `boleto-image` (se usar pdftoppm)
-
-Atualizar para usar o mesmo utilitário.
-
-### 6. `deploy/backend/Dockerfile`
-
-Remover `poppler-utils` (não mais necessário para conversão):
-
-```dockerfile
-FROM node:20-alpine
-# poppler-utils removido — conversão via mupdf (npm)
-WORKDIR /app
+```typescript
+const markTabAsSeen = useCallback((tab: TabKey) => {
+  if (hasUnseen(tab)) {
+    markTabSeen(tab);
+  }
+}, [hasUnseen, markTabSeen]);
 ```
 
-**Nota**: Se `poppler-utils` for usado em outro lugar, manter. Caso contrário, pode remover.
+Manter os dois `useEffect` existentes (tab change + initial load) que chamam `markTabAsSeen`.
 
-### 7. Deploy
+### 4. Manter endpoint `mark-seen` antigo
 
-```bash
-docker compose up -d --build backend
-# Limpar JPGs antigos
-docker exec deploy-backend-1 find /media-files -name "*.jpg" -path "*/boletos/*" -delete
-```
+Não remover -- pode ser usado em outros lugares. Apenas adicionar o novo `mark-tab-seen`.
 
-## Por que mupdf?
+## Resumo do fluxo
 
-| Aspecto | pdftoppm (atual) | mupdf (proposto) |
-|---------|-------------------|-------------------|
-| Renderização | Falha em PDFs complexos do MP | Rendering engine completo |
-| Fontes embutidas | Problemas no Alpine | Suporte completo |
-| Dependência | System package (apk) | npm package nativo |
-| Qualidade | ❌ Incompleto | ✅ Idêntico ao navegador |
+1. Usuário abre `/transacoes` -- aba default "aprovados" ativa
+2. `useEffect` chama `markTabSeen("aprovados")` -- backend marca TODAS com status=aprovado e viewed_at=NULL
+3. Dot some apenas de "aprovados"
+4. Usuário clica aba "boletos-gerados" -- `markTabSeen("boletos-gerados")` marca todas dessa categoria
+5. Dot some de "boletos-gerados"
+6. Nova transação chega -- viewed_at=NULL -- dot reaparece na aba correspondente
 
