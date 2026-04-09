@@ -1,66 +1,53 @@
 
 
-# Redesign da aba Entrega Digital — Fluxo integrado no card do produto
+# Redesign do DeliveryFlowDialog — Refinado e Minimalista
 
-## Resumo
+## Mudanças
 
-Ao clicar no card do produto, abre um painel/dialog com fluxo em etapas:
-1. **Nome do cliente** + telefone → botão "Continuar"
-2. **3 cards visuais grandes** para selecionar método de pagamento (PIX, Cartão, Boleto)
-3. **Busca do lead** com resultado minimalista — card com informações básicas (CPF, nome, email, telefone, produtos com acesso)
-4. **Confirmação + link gerado**
+### 1. `src/components/entrega/DeliveryFlowDialog.tsx` — Reescrever completo
 
-Remove o botão separado "Gerar Link" dos cards de produto.
+**Etapa 1 — Dados do cliente (simplificado):**
+- Remover campo "Nome do Cliente" (não é necessário para liberação)
+- Apenas campo "Telefone" com placeholder elegante
+- Botão "Continuar" compacto (`size="sm"`, sem `w-full`)
+- Layout limpo, sem labels pesados — usar placeholder inline
 
-## Arquivos alterados
+**Etapa 2 — Método de pagamento (cards refinados):**
+- Cards compactos e elegantes em vez de blocos grandes
+- Ícones pequenos (h-4 w-4) dentro de círculos sutis (h-9 w-9, bg-muted)
+- Texto em uma linha: título + descrição lado a lado
+- Hover com `border-primary/40` e transição suave
+- Sem sombras exageradas, sem `h-14 w-14`
+- Botão "Voltar" como texto link, não como ghost button
 
-### 1. `src/components/entrega/ProductsTab.tsx`
-- Remover o state `linkProduct` e o componente `LinkGenerator` separado
-- Ao clicar no card do produto, abrir o novo dialog `DeliveryFlowDialog` passando o produto selecionado
-- Remover o botão de ícone `Link2` da lista de ações do card
+**Etapa 3 — Processing:**
+- Loader menor (h-5 w-5), texto discreto
 
-### 2. `src/components/entrega/LinkGenerator.tsx` → **Reescrever como `DeliveryFlowDialog.tsx`**
-- Novo componente com 4 etapas visuais:
+**Etapa 4 — Resultado (card de lead no padrão InfoRow existente):**
+- Usar o padrão `InfoRow` do projeto (ícone h-4 + label uppercase 10px + valor 13px)
+- Layout em grid 2 colunas para telefone/email/cpf
+- Produtos com badges `variant="secondary"` pequenas
+- Link em `bg-muted/50` com `rounded-md`, fonte mono 13px
+- Botão "Copiar" compacto (`size="sm"`)
+- Botão "Gerar outro" como `variant="ghost" size="sm"` em vez de outline full-width
 
-**Etapa 1 — Dados do cliente:**
-- Campo "Nome do cliente" (obrigatório)
-- Campo "Telefone" (obrigatório)
-- Botão "Continuar"
+**Header do dialog:**
+- Título com ícone menor (h-4 w-4)
+- Badge de preço mais discreto
+- `DialogDescription` para acessibilidade
 
-**Etapa 2 — Método de pagamento (3 cards grandes):**
-- Card PIX: ícone QR code, título "PIX", descrição "Pagamento instantâneo"
-- Card Cartão: ícone CreditCard, título "Cartão de Crédito", descrição "Parcelamento disponível"
-- Card Boleto: ícone FileText, título "Boleto Bancário", descrição "Vencimento em 3 dias úteis"
-- Cards com hover, borda highlight ao selecionar, estilo visual grande (h-32+)
-- Ao clicar num card, avança automaticamente para etapa 3
+### 2. Lógica ajustada
 
-**Etapa 3 — Resultado (busca lead + card de informações):**
-- Busca silenciosa do lead (sem steps visuais "buscando lead...")
-- Exibe um card minimalista com as informações encontradas:
-  - Nome completo
-  - CPF (da tabela `transactions` campo `customer_document`)
-  - Email (da tabela `conversations` campo `email`)
-  - Telefone normalizado
-  - Lista de produtos com acesso (da tabela `member_products`)
-- Se lead não encontrado, mostra card com dados parciais (só nome digitado + telefone)
-- Concede acesso automaticamente (`member_products` upsert)
-- Registra `delivery_link_generations`
-- Se PIX, cria transação aprovada
+- Remover estado `customerName` e seu uso
+- Na criação de conversa (quando lead não encontrado), usar string vazia ou o nome encontrado
+- Na transação PIX, `customer_name` vem do lead encontrado (não do input removido)
+- Validação: apenas telefone é obrigatório
 
-**Etapa 4 — Link gerado:**
-- Card com link de acesso + botão copiar
-- Botão "Gerar outro"
+### Arquivos
 
-### 3. `src/components/entrega/ProductsTab.tsx` — Ajuste no card
-- Manter botões de editar, duplicar, excluir
-- Remover botão `Link2`
-- Todo o card (área de nome/slug/valor) é clicável e abre o `DeliveryFlowDialog`
+| Arquivo | Mudança |
+|---------|---------|
+| `src/components/entrega/DeliveryFlowDialog.tsx` | Reescrita completa com design refinado |
 
-## Detalhes técnicos
-
-- A busca do lead usa `conversations` por telefone normalizado (last8 fallback) para obter nome/email
-- CPF vem de `transactions` onde `customer_phone` match com variações do telefone
-- Produtos com acesso vem de `member_products` filtrado por `normalized_phone`
-- Todas as queries são feitas em paralelo na etapa 3 para velocidade
-- O dialog usa `max-w-lg` para comportar os 3 cards lado a lado
+Nenhum outro arquivo precisa ser alterado — `ProductsTab.tsx` já está correto.
 
