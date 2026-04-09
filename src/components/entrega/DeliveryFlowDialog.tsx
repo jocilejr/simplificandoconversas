@@ -376,7 +376,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         </div>
 
         {/* ── Content ── */}
-        <div className="px-6 py-5 min-h-[220px]">
+        <div className="px-6 py-5 min-h-[220px] max-h-[calc(90vh-120px)] overflow-y-auto">
           {/* Step: Phone */}
           {step === "phone" && (
             <div className="space-y-5">
