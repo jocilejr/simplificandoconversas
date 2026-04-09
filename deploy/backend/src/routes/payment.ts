@@ -632,7 +632,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       };
 
       if (mpData.status === "approved") {
-        updateData.paid_at = mpData.date_approved || new Date().toISOString();
+        updateData.paid_at = new Date().toISOString();
       }
 
       await supabase.from("transactions").update(updateData).eq("id", tx.id);
