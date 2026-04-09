@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { resolveWorkspaceId, resolveWorkspaceIdFromRequest } from "../lib/workspace";
+import { resolveWorkspaceId, resolveWorkspaceFromPhone } from "../lib/workspace";
 import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { normalizePhone } from "../lib/normalize-phone";
 import { getRandomCep } from "../lib/random-ceps";
@@ -150,7 +150,7 @@ router.post("/create", async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ error: "Não autenticado" });
     }
-    const workspaceId = await resolveWorkspaceIdFromRequest(req.body, userId);
+    const workspaceId = await resolveWorkspaceFromPhone(userId, req.body?.customer_phone);
 
     const token = await getMPTokenForUser(userId);
     if (!token) {
