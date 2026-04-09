@@ -185,12 +185,18 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   }, [orphanTxs, txSearch, txLimit, leadCpf, phone]);
 
   const totalUnlinked = useMemo(() => {
+    const normalized = normalizePhone(phone);
     return orphanTxs.filter((tx) => {
       if (!tx.customer_phone) return true;
-      if (leadCpf && tx.customer_document === leadCpf) return true;
+      if (leadCpf && tx.customer_document === leadCpf) {
+        const txPhoneNorm = normalizePhone(tx.customer_phone);
+        const isCurrentLead = txPhoneNorm === normalized ||
+          (txPhoneNorm !== "-" && normalized !== "-" && txPhoneNorm.slice(-8) === normalized.slice(-8));
+        return isCurrentLead;
+      }
       return false;
     }).length;
-  }, [orphanTxs, leadCpf]);
+  }, [orphanTxs, leadCpf, phone]);
   const hasMoreUnlinked = !txSearch.trim() && txLimit < totalUnlinked;
 
   const processDelivery = useCallback(async (method: string, existingTxId?: string, alreadyCounted?: boolean) => {
