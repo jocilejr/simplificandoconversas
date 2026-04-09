@@ -44,6 +44,13 @@ const displayPhone = (raw: string | null | undefined): string | null => {
   return phone || null;
 };
 
+/** Clean CPF: digits only, must be 11 chars */
+const cleanCpf = (doc: string | null | undefined): string | null => {
+  if (!doc) return null;
+  const digits = doc.replace(/\D/g, "");
+  return digits.length === 11 ? digits : null;
+};
+
 export function useLeads() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -111,15 +118,23 @@ export function useLeads() {
     },
   });
 
-  const txByPhone = useMemo(() => {
-    const map = new Map<string, Transaction[]>();
+  // Index transactions by last-8-digits AND by CPF
+  const { txByPhone, txByCpf } = useMemo(() => {
+    const byPhone = new Map<string, Transaction[]>();
+    const byCpf = new Map<string, Transaction[]>();
     for (const tx of allTransactions) {
       const key = matchKey(tx.customer_phone);
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(tx);
+      if (key) {
+        if (!byPhone.has(key)) byPhone.set(key, []);
+        byPhone.get(key)!.push(tx);
+      }
+      const cpf = cleanCpf(tx.customer_document);
+      if (cpf) {
+        if (!byCpf.has(cpf)) byCpf.set(cpf, []);
+        byCpf.get(cpf)!.push(tx);
+      }
     }
-    return map;
+    return { txByPhone: byPhone, txByCpf: byCpf };
   }, [allTransactions]);
 
   const remindersByKey = useMemo(() => {
@@ -133,13 +148,30 @@ export function useLeads() {
   }, [allReminders]);
 
   const leads = useMemo(() => {
-    const map = new Map<string, Lead>();
+    // 3 indices pointing to the same Lead object
+    const cpfIndex = new Map<string, Lead>();
+    const phoneIndex = new Map<string, Lead>();
+    const last8Index = new Map<string, Lead>();
+    const allLeads: Lead[] = [];
+
+    const registerLead = (lead: Lead, cpf: string | null, phone: string | null, last8: string) => {
+      if (cpf && !cpfIndex.has(cpf)) cpfIndex.set(cpf, lead);
+      if (phone && !phoneIndex.has(phone)) phoneIndex.set(phone, lead);
+      if (last8 && !last8Index.has(last8)) last8Index.set(last8, lead);
+    };
+
     for (const c of rawConversations) {
       const jidDigits = c.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
       if (jidDigits.length < 8) continue;
 
-      const key = matchKey(c.remote_jid);
-      if (!key) continue;
+      const last8 = matchKey(c.remote_jid);
+      if (!last8) continue;
+
+      const normalizedPhone = displayPhone(c.phone_number || c.remote_jid.replace("@s.whatsapp.net", ""));
+
+      // Find transactions for this conversation to get CPF
+      const txsForConvo = txByPhone.get(last8) || [];
+      const cpf = txsForConvo.map(t => cleanCpf(t.customer_document)).find(Boolean) || null;
 
       const instance: LeadInstance = {
         instance_name: c.instance_name,
@@ -148,23 +180,42 @@ export function useLeads() {
         last_message_at: c.last_message_at,
       };
 
-      if (map.has(key)) {
-        const existing = map.get(key)!;
-        existing.instances.push(instance);
-        if (!existing.contact_name && c.contact_name) {
-          existing.contact_name = c.contact_name;
+      // Priority 1: CPF match
+      let existingLead = cpf ? cpfIndex.get(cpf) : undefined;
+      // Priority 2: Full normalized phone match
+      if (!existingLead && normalizedPhone) existingLead = phoneIndex.get(normalizedPhone);
+      // Priority 3: Last 8 digits match
+      if (!existingLead) existingLead = last8Index.get(last8);
+
+      if (existingLead) {
+        existingLead.instances.push(instance);
+        if (!existingLead.contact_name && c.contact_name) {
+          existingLead.contact_name = c.contact_name;
         }
+        // Register any new indices for this merged lead
+        registerLead(existingLead, cpf, normalizedPhone, last8);
         continue;
       }
 
-      const txs = txByPhone.get(key) || [];
+      // Collect all transactions: by CPF first, then by phone (deduplicated)
+      const txSet = new Set<string>();
+      const txs: Transaction[] = [];
+      if (cpf) {
+        for (const t of (txByCpf.get(cpf) || [])) {
+          if (!txSet.has(t.id)) { txSet.add(t.id); txs.push(t); }
+        }
+      }
+      for (const t of txsForConvo) {
+        if (!txSet.has(t.id)) { txSet.add(t.id); txs.push(t); }
+      }
+
       const approvedTxs = txs.filter((t) => t.status === "aprovado");
       const firstTxWithData = txs.find((t) => t.customer_email || t.customer_document);
 
-      map.set(key, {
+      const lead: Lead = {
         remote_jid: c.remote_jid,
         contact_name: c.contact_name,
-        phone_number: displayPhone(c.phone_number || c.remote_jid.replace("@s.whatsapp.net", "")),
+        phone_number: normalizedPhone,
         instance_name: c.instance_name,
         last_message: c.last_message,
         last_message_at: c.last_message_at,
@@ -172,21 +223,28 @@ export function useLeads() {
         hasPaid: approvedTxs.length > 0,
         totalPaid: approvedTxs.reduce((s, t) => s + Number(t.amount), 0),
         paidOrdersCount: approvedTxs.length,
-        remindersCount: remindersByKey.get(key) || 0,
+        remindersCount: remindersByKey.get(last8) || 0,
         transactions: txs,
         customer_email: firstTxWithData?.customer_email || null,
         customer_document: firstTxWithData?.customer_document || null,
         instances: [instance],
-      });
+      };
+
+      allLeads.push(lead);
+      registerLead(lead, cpf, normalizedPhone, last8);
     }
+
+    // Attach tags
     for (const t of allTags) {
-      const lead = map.get(matchKey(t.remote_jid));
+      const key = matchKey(t.remote_jid);
+      const lead = last8Index.get(key) || phoneIndex.get(displayPhone(t.remote_jid) || "");
       if (lead && !lead.tags.includes(t.tag_name)) {
         lead.tags.push(t.tag_name);
       }
     }
-    return Array.from(map.values());
-  }, [rawConversations, allTags, txByPhone, remindersByKey]);
+
+    return allLeads;
+  }, [rawConversations, allTags, txByPhone, txByCpf, remindersByKey]);
 
   const uniqueTags = useMemo(() => {
     const set = new Set<string>();
