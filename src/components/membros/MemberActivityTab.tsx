@@ -92,7 +92,7 @@ export default function MemberActivityTab() {
         .gte("started_at", since)
         .order("started_at", { ascending: false })
         .limit(200);
-      return (data || []) as MemberSession[];
+      return (data || []) as unknown as MemberSession[];
     },
     enabled: !!workspaceId,
     refetchInterval: 30_000,
