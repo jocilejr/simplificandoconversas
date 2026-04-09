@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Megaphone, Radio, Users, Loader2, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -42,17 +42,21 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
 
+  const editInstanceRef = useRef("");
+
   useEffect(() => {
     if (editData) {
       setName(editData.name || "");
       setDescription(editData.description || "");
       setInstanceName(editData.instance_name || "");
       setGroupJids(new Set(editData.group_jids || []));
+      editInstanceRef.current = editData.instance_name || "";
     } else {
       setName("");
       setDescription("");
       setInstanceName("");
       setGroupJids(new Set());
+      editInstanceRef.current = "";
     }
     setRemoteGroups([]);
     setSearchFilter("");
@@ -78,7 +82,13 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
         const groups: RemoteGroup[] = await resp.json();
         if (!cancelled) {
           setRemoteGroups(groups);
-          setGroupJids(new Set());
+          // Preserve saved JIDs when opening edit for the same instance
+          if (editInstanceRef.current && instanceName === editInstanceRef.current && editData?.group_jids?.length) {
+            setGroupJids(new Set(editData.group_jids));
+            editInstanceRef.current = ""; // consume — next change is manual
+          } else {
+            setGroupJids(new Set());
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
