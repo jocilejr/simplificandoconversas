@@ -1,64 +1,30 @@
 
 
-# Corrigir Isolamento de Leads por Workspace
+# Fix: Grupos selecionados somem ao reabrir campanha
 
-## Diagnóstico
+## Problema
 
-As queries do `useLeads` já filtram por `workspace_id` nas tabelas `conversations`, `transactions`, `contact_tags` e `reminders`. Se leads estão aparecendo no workspace errado, o problema é que **os dados existentes no banco estão com `workspace_id` errado** — provavelmente conversas ou transações criadas antes da migração multi-tenant, ou instâncias sem `workspace_id` populado (causando fallback para o primeiro workspace do usuário).
+Ao abrir o diálogo de edição, dois `useEffect` competem:
+1. **Effect 1** (linha 46-59): seta `instanceName` e `groupJids` a partir do `editData`
+2. **Effect 2** (linha 62-99): dispara quando `instanceName` muda, busca grupos remotos e **limpa `groupJids` com `new Set()`** (linha 81)
 
-A correção nos hooks de pagamento (enviar `workspaceId` pelo frontend) é válida mas **não resolve o problema de leads** porque leads vêm de `conversations`, não de pagamentos. A vinculação correta deve ser feita **exclusivamente pelo backend** a partir da instância WhatsApp.
+O Effect 2 sempre roda após o Effect 1, sobrescrevendo os JIDs salvos da campanha com um Set vazio.
 
-## Alterações
+## Solução
 
-### 1. Reverter hooks de pagamento ao estado anterior
+No Effect 2 (fetch de grupos), ao invés de sempre limpar `groupJids`, preservar os JIDs que vieram do `editData` quando estiver em modo edição:
 
-**`src/hooks/useCreatePayment.ts`**
-- Remover `useWorkspace` e o envio de `workspaceId` no body
+**Arquivo:** `src/components/grupos/GroupCampaignDialog.tsx`
 
-**`src/hooks/useCreatePaymentOpenpix.ts`**
-- Remover `useWorkspace` e o envio de `workspaceId` no body
+- Remover o `setGroupJids(new Set())` de dentro do callback de fetch (linha 81)
+- Apenas limpar groupJids quando a troca de instância for manual (não vinda do editData)
+- Usar uma ref para rastrear se a instância foi setada pelo editData ou pelo usuário
 
-### 2. Backend: payment routes devem resolver workspace pela instância
+Lógica concreta:
+1. Adicionar `const editInstanceRef = useRef("")` para guardar a instância original do editData
+2. No Effect 1, setar `editInstanceRef.current = editData.instance_name`
+3. No Effect 2, após buscar grupos: se `instanceName === editInstanceRef.current` e temos `editData.group_jids`, restaurar esses JIDs; caso contrário, limpar normalmente
+4. Resetar `editInstanceRef.current = ""` após consumir
 
-**`deploy/backend/src/routes/payment.ts`**
-- Na rota `/create`, após identificar o usuário, buscar a instância ativa do workspace via a tabela `whatsapp_instances` usando o `customer_phone` para encontrar a conversa e seu `workspace_id`
-- Fallback: usar `resolveWorkspaceId(userId)` apenas se não encontrar
-
-**`deploy/backend/src/routes/payment-openpix.ts`**
-- Mesma lógica: resolver workspace a partir da conversa existente com aquele telefone
-
-### 3. Script SQL para corrigir dados existentes na VPS
-
-Fornecer um script que o usuário executa na VPS para:
-- Atualizar `conversations` com `workspace_id` errado, usando o `workspace_id` correto da tabela `whatsapp_instances` baseado no `instance_name`
-- Atualizar `transactions` com `workspace_id` errado, cruzando pelo telefone com a conversa correta
-
-```sql
--- Corrigir conversations usando workspace_id da instância vinculada
-UPDATE conversations c
-SET workspace_id = wi.workspace_id
-FROM whatsapp_instances wi
-WHERE c.instance_name = wi.instance_name
-  AND c.workspace_id != wi.workspace_id;
-
--- Corrigir transactions cruzando com conversations pelo telefone
-UPDATE transactions t
-SET workspace_id = c.workspace_id
-FROM conversations c
-WHERE c.phone_number IS NOT NULL
-  AND t.customer_phone IS NOT NULL
-  AND RIGHT(regexp_replace(c.phone_number, '\D', '', 'g'), 8) = RIGHT(regexp_replace(t.customer_phone, '\D', '', 'g'), 8)
-  AND t.workspace_id != c.workspace_id;
-```
-
-### 4. Instruções de investigação para a VPS
-
-Fornecer comandos para o usuário verificar na VPS:
-- Quantas conversas existem com workspace_id diferente do esperado
-- Quantas instâncias não têm workspace_id definido
-
-## Resumo
-- 2 arquivos frontend revertidos (hooks de pagamento)
-- 2 arquivos backend ajustados (resolver workspace sem depender do frontend)
-- Script SQL de correção de dados para rodar na VPS
+Resultado: ao abrir para editar, os grupos salvos aparecem marcados; ao trocar instância manualmente, limpa corretamente.
 
