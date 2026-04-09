@@ -1,5 +1,5 @@
 FROM node:20-alpine
-RUN apk add --no-cache poppler-utils
+RUN apk add --no-cache poppler-utils python3 make g++
 WORKDIR /app
 COPY package.json ./
 RUN npm install
