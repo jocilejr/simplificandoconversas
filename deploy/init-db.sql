@@ -630,5 +630,189 @@ CREATE TABLE IF NOT EXISTS public.group_participant_events (
 );
 GRANT ALL ON public.group_participant_events TO anon, authenticated, service_role;
 
+-- ============================================================
+-- DELIVERY DIGITAL + AREA DE MEMBROS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.delivery_products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL,
+  slug text NOT NULL,
+  value numeric NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  page_title text NOT NULL DEFAULT 'Preparando sua entrega...',
+  page_message text NOT NULL DEFAULT 'Você será redirecionado em instantes',
+  page_logo text,
+  redirect_url text,
+  redirect_delay integer NOT NULL DEFAULT 3,
+  delivery_webhook_url text,
+  whatsapp_number text,
+  whatsapp_message text,
+  member_cover_image text,
+  member_description text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.delivery_products ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.delivery_products TO anon, authenticated, service_role;
+CREATE INDEX IF NOT EXISTS idx_delivery_products_workspace ON public.delivery_products(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_products_slug ON public.delivery_products(slug);
+
+CREATE TABLE IF NOT EXISTS public.delivery_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL UNIQUE,
+  custom_domain text,
+  global_redirect_url text,
+  link_message_template text NOT NULL DEFAULT 'Olá! Aqui está seu acesso: {link}',
+  delivery_message text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.delivery_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.delivery_settings TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.delivery_accesses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  phone text,
+  accessed_at timestamptz NOT NULL DEFAULT now(),
+  pixel_fired boolean NOT NULL DEFAULT false,
+  webhook_sent boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.delivery_accesses ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.delivery_accesses TO anon, authenticated, service_role;
+CREATE INDEX IF NOT EXISTS idx_delivery_accesses_product ON public.delivery_accesses(product_id);
+
+CREATE TABLE IF NOT EXISTS public.delivery_link_generations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  phone text,
+  normalized_phone text,
+  payment_method text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.delivery_link_generations ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.delivery_link_generations TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.delivery_pixels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  platform text NOT NULL DEFAULT 'meta',
+  pixel_id text NOT NULL DEFAULT '',
+  access_token text,
+  event_name text NOT NULL DEFAULT 'Purchase',
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.delivery_pixels ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.delivery_pixels TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.global_delivery_pixels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  platform text NOT NULL DEFAULT 'meta',
+  pixel_id text NOT NULL DEFAULT '',
+  access_token text,
+  event_name text NOT NULL DEFAULT 'Purchase',
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.global_delivery_pixels ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.global_delivery_pixels TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_products (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  delivery_product_id uuid,
+  title text NOT NULL,
+  description text,
+  cover_image text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_products ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_products TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_area_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL UNIQUE,
+  brand_name text,
+  logo_url text,
+  primary_color text DEFAULT '#6366f1',
+  custom_domain text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_area_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_area_settings TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_area_offers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  member_product_id uuid,
+  title text NOT NULL,
+  description text,
+  price numeric NOT NULL DEFAULT 0,
+  cta_url text,
+  cta_text text DEFAULT 'Comprar agora',
+  is_active boolean NOT NULL DEFAULT true,
+  views integer NOT NULL DEFAULT 0,
+  clicks integer NOT NULL DEFAULT 0,
+  sales integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_area_offers ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_product_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  member_product_id uuid,
+  name text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_product_categories ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_product_categories TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_product_materials (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  category_id uuid,
+  title text NOT NULL,
+  content_type text NOT NULL DEFAULT 'video',
+  content_url text,
+  description text,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_published boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_product_materials ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_product_materials TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  member_product_id uuid,
+  phone text NOT NULL,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  last_active_at timestamptz NOT NULL DEFAULT now(),
+  ip_address text,
+  user_agent text,
+  is_active boolean NOT NULL DEFAULT true
+);
+ALTER TABLE public.member_sessions ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_sessions TO anon, authenticated, service_role;
+
 -- Done!
 SELECT 'Database initialized successfully!' AS status;

@@ -461,7 +461,7 @@ docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 
 echo "✓ Workspace migration aplicada"
 
 # Validate tables exist
-for tbl in meta_pixels api_request_logs platform_connections email_contacts workspaces workspace_members; do
+for tbl in meta_pixels api_request_logs platform_connections email_contacts workspaces workspace_members delivery_products delivery_settings delivery_accesses delivery_link_generations delivery_pixels global_delivery_pixels member_products member_area_settings member_area_offers member_product_categories member_product_materials member_sessions; do
   TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.$tbl');")
   if [ "$TABLE_EXISTS" = "" ] || [ "$TABLE_EXISTS" = " " ]; then
     echo "❌ Tabela $tbl não encontrada após migração! Abortando."
