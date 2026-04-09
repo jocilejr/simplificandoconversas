@@ -151,26 +151,20 @@ async function sendBlock(
     const fsPath = boletoFile.replace("/media/", "/media-files/");
     const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
 
-    // Check cache or convert
+    // Verify PDF exists
     try {
-      await fsModule.access(jpgPath);
-      console.log(`[recovery-dispatch] JPG cache hit: ${jpgPath}`);
+      await fsModule.access(fsPath);
     } catch {
-      // Verify PDF exists
-      try {
-        await fsModule.access(fsPath);
-      } catch {
-        console.log(`[recovery-dispatch] PDF not found on disk: ${fsPath}, skipping IMAGE block`);
-        return;
-      }
-      // Convert PDF → JPG via pdftoppm
-      const { exec } = await import("child_process");
-      const { promisify } = await import("util");
-      const execPromise = promisify(exec);
-      const prefix = jpgPath.replace(/\.jpg$/i, "");
-      console.log(`[recovery-dispatch] Converting PDF→JPG: pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
-      await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+      console.log(`[recovery-dispatch] PDF not found on disk: ${fsPath}, skipping IMAGE block`);
+      return;
     }
+    // Always convert PDF → JPG (no cache) to ensure JPG matches current PDF
+    const { exec } = await import("child_process");
+    const { promisify } = await import("util");
+    const execPromise = promisify(exec);
+    const prefix = jpgPath.replace(/\.jpg$/i, "");
+    console.log(`[recovery-dispatch] Converting PDF→JPG: pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
+    await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
 
     const imgBuffer = await fsModule.readFile(jpgPath);
     const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
