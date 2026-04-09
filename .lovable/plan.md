@@ -1,73 +1,41 @@
-# LinkGenerator — Processo Visual de Busca + Mensagem Padrão
+# Fixes: Performance, Erro ao Criar Produto, Auto-Slug
 
-## Resumo
+## Problemas Identificados
 
-Transformar o LinkGenerator para mostrar um fluxo visual step-by-step ao liberar acesso, e adicionar campo "Mensagem padrão de entrega" nas configurações.
+1. **Lentidão**: Queries sem `staleTime` recarregam a cada render. AccessesTab e ProductsTab disparam queries simultaneamente mesmo quando a aba não está visível.
+2. **Erro ao criar produto**: O `payload` envia `workspace_id` duas vezes (uma no spread, outra explícita), e o `value` pode ser `0` quando não preenchido. Precisa garantir que `workspace_id` está presente.
+3. **Slug automático**: Ao digitar o nome, o slug deve ser gerado automaticamente (slugify).  
+4. ao digitar o valor, deve ser formatado corretamente para o real, com R$ no inicio e formatação correta, com os primeiros digitos iniciando a direita e passando para a esquerda. Tudo bem profissional e refinado
 
-## 1. LinkGenerator — Fluxo visual step-by-step (`src/components/entrega/LinkGenerator.tsx`)
+## Alterações
 
-Após clicar "Liberar Acesso", em vez de rodar tudo silenciosamente, o dialog mostra cards minimalistas que vão aparecendo conforme cada etapa conclui:
+### 1. ProductForm — Auto-slug + fix do erro (`src/components/entrega/ProductForm.tsx`)
 
-```text
-Estado: phone_input → processing → done
+- Adicionar `watch("name")` e `useEffect` para gerar slug automaticamente ao digitar o nome (apenas na criação, não na edição)
+- Função slugify: `name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")`
+- Flag `slugManuallyEdited` para não sobrescrever se o usuário editou o slug manualmente
+- Fix: remover `workspace_id` duplicado no insert, garantir que `workspace_id` é verificado antes de submeter
 
-processing mostra cards sequenciais:
-  [1] 🔍 Buscando lead...          (spinner enquanto busca)
-  [2] ✅ Lead encontrado / ⚠️ Novo lead criado
-  [3] 👤 Nome: João Silva          (se contact_name existir)
-  [4] ✅ Acesso liberado
-  [5] 📋 Mensagem pronta para copiar
-```
+### 2. ProductsTab — Performance (`src/components/entrega/ProductsTab.tsx`)
 
-A mutação será quebrada em etapas com `setState` entre cada passo para atualizar a UI:
+- Adicionar `staleTime: 30_000` na query de produtos para evitar refetch desnecessário
+- Adicionar `refetchOnWindowFocus: false`
 
-- `step: "searching"` → busca conversations
-- `step: "found"` ou `step: "created"` → mostra resultado do match
-- `step: "granting"` → upsert member_products + insert transaction (se PIX)
-- `step: "done"` → mostra link + mensagem para copiar
+### 3. AccessesTab — Performance (`src/components/entrega/AccessesTab.tsx`)
 
-### Link gerado
+- Adicionar `staleTime: 30_000` nas queries
+- Adicionar `refetchOnWindowFocus: false`
 
-O link de acesso usa o domínio publico configurado para a area de membros + número normalizado:
+### 4. LinkGenerator — Performance (`src/components/entrega/LinkGenerator.tsx`)
 
-```
-https://dominio.com/5589981340810
-```
+- Adicionar `staleTime: 60_000` na query de `delivery-settings`
 
-### Mensagem final
-
-Se existe `delivery_message` em `delivery_settings` → usar essa mensagem + link na última linha.
-Se não existe → apenas o link.
-
-O botão "Copiar" copia a mensagem completa.
-
-## 2. Configurações — Adicionar "Mensagem padrão de entrega" (`delivery_settings`)
-
-### Migração SQL
-
-Adicionar coluna `delivery_message` à tabela `delivery_settings`:
-
-```sql
-ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS delivery_message text DEFAULT NULL;
-```
-
-### MemberAreaSettingsSection — Sub-aba "Ajustes"
-
-Adicionar campo "Mensagem padrão de entrega" após os prompts de IA existentes (ou em posição mais lógica, antes dos prompts):
-
-- Label: "Mensagem padrão de entrega"
-- Textarea com placeholder: "Olá! Seu acesso está liberado..."
-- Hint: "Enviada junto com o link ao liberar acesso. O link será adicionado na última linha. Deixe vazio para enviar apenas o link."
-
-Este campo será salvo na tabela `delivery_settings` (não em `member_area_settings`), então precisa de uma query separada para `delivery_settings` na aba Ajustes, ou mover o campo para a aba Domínio onde já se consulta `delivery_settings`.
-
-**Decisão**: Colocar o campo na sub-aba "Domínio" do `MemberAreaSettingsSection`, já que essa aba já consulta `delivery_settings`. Renomear a aba para "Domínio e Entrega" ou simplesmente manter em "Domínio" e adicionar o campo lá.
-
-## 3. Arquivos alterados
+## Arquivos alterados
 
 
-| Arquivo                                                 | Mudança                                                             |
-| ------------------------------------------------------- | ------------------------------------------------------------------- |
-| Migration SQL                                           | `ALTER TABLE delivery_settings ADD COLUMN delivery_message text`    |
-| `src/components/entrega/LinkGenerator.tsx`              | Fluxo visual step-by-step + link = domínio/número + mensagem padrão |
-| `src/components/settings/MemberAreaSettingsSection.tsx` | Adicionar campo "Mensagem padrão de entrega" na sub-aba Domínio     |
+| Arquivo                                    | Mudança                                     |
+| ------------------------------------------ | ------------------------------------------- |
+| `src/components/entrega/ProductForm.tsx`   | Auto-slug ao digitar nome + fix payload     |
+| `src/components/entrega/ProductsTab.tsx`   | `staleTime` + `refetchOnWindowFocus: false` |
+| `src/components/entrega/AccessesTab.tsx`   | `staleTime` + `refetchOnWindowFocus: false` |
+| `src/components/entrega/LinkGenerator.tsx` | `staleTime` na query de settings            |
