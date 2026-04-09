@@ -1,57 +1,41 @@
 
 
-# Reestruturação: Entrega Digital e Área de Membros
+# LinkGenerator — Lógica PIX com Vinculação a Leads (sem @s.whatsapp.net)
 
-## Resumo das Alterações
+## Alteração: `src/components/entrega/LinkGenerator.tsx`
 
-Simplificar a Entrega Digital (remover pixels, domínio, campos desnecessários do produto), mover configurações da Área de Membros para Configurações, e reformular os campos de settings.
+### Fluxo da mutação (reescrever `mutationFn`)
 
-## 1. Entrega Digital — Simplificar (`src/pages/EntregaDigital.tsx`)
+1. Normalizar telefone com `normalizePhone(phone)` — resultado é apenas dígitos (ex: `5589981340810`)
+2. Upsert em `member_products` — **sempre** (libera acesso na área de membros)
+3. Insert em `delivery_link_generations` — **sempre**
+4. **Se `paymentMethod === "pix"`**:
+   - Buscar todas `conversations` do workspace
+   - **Prioridade 1**: `normalizePhone(c.phone_number) === normalized` (match exato)
+   - **Fallback**: `normalizePhone(c.phone_number).slice(-8) === normalized.slice(-8)` (últimos 8 dígitos)
+   - Se nenhum match → criar novo contato em `conversations` com `remote_jid: normalized` (apenas número, sem sufixo), `phone_number: normalized`
+   - Inserir transação em `transactions`: `type: 'pix'`, `status: 'aprovado'`, `amount: product.value`, `customer_phone: normalized`, `source: 'entrega_digital'`, `description: product.name`, `paid_at: now()`
+5. Gerar link e retornar
 
-- Remover abas "Pixels" e "Domínio" — ficam apenas **Produtos** e **Acessos**
-- Remover imports de `GlobalPixelsConfig` e `DomainSettings`
+### Regras importantes
+- **NENHUM** `@s.whatsapp.net` — `remote_jid` recebe apenas o número normalizado
+- Remover opção "Manual" do select (ficam PIX, Boleto, Cartão)
+- Toast PIX: "Acesso liberado + pagamento PIX vinculado ao lead!"
+- Toast Boleto/Cartão: "Acesso liberado e link gerado!"
 
-## 2. ProductForm — Simplificar (`src/components/entrega/ProductForm.tsx`)
+### Tabela resumo
 
-- Remover campos: `delivery_webhook_url`, `redirect_url`, `whatsapp_number`, `whatsapp_message`, `page_title`, `page_message`, `redirect_delay`, `page_logo`
-- Remover a aba "Página" inteira — formulário fica flat
-- Manter apenas: **Nome**, **Slug**, **Valor (R$)**, **Ativo/Inativo**
+| Método | member_products | delivery_link_generations | transactions | conversations (match/criar) |
+|--------|:-:|:-:|:-:|:-:|
+| PIX | Sim | Sim | Sim (aprovado) | Sim |
+| Boleto | Sim | Sim | Nao | Nao |
+| Cartao | Sim | Sim | Nao | Nao |
 
-## 3. Configurações — Nova seção "Área de Membros" (`src/pages/SettingsPage.tsx`)
+## Arquivo alterado
 
-- Adicionar nova seção `member_area` no menu lateral (ícone Crown, minRole "admin")
-- Renderizar novo componente `MemberAreaSettingsSection`
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/components/entrega/LinkGenerator.tsx` | Logica PIX com match + transacao + remover Manual + sem @s.whatsapp.net |
 
-## 4. Novo componente: `src/components/settings/MemberAreaSettingsSection.tsx`
-
-Conterá 2 sub-abas internas:
-
-### Sub-aba "Ajustes"
-- **Título da página** (title) — usado como `<title>` da URL pública, não exibido na página
-- **Favicon URL** (renomeia `logo_url` para `favicon_url` no campo, mas mantém coluna `logo_url` no DB para evitar migração)
-- **Descrição** (renomeia "Mensagem de boas-vindas" para "Descrição")
-- **Remover** campo "Cor do tema"
-- Prompts de IA: persona, saudação, oferta (mantém como está)
-
-### Sub-aba "Domínio"
-- Move o conteúdo de `DomainSettings.tsx` para cá
-- Mostra o IP/URL para redirecionamento do domínio
-- Configurações de domínio personalizado, URL de redirecionamento global, template de mensagem
-
-## 5. Área de Membros — Remover aba "Configurações" (`src/pages/AreaMembros.tsx`)
-
-- Remover `MemberSettingsTab` e a aba "Configurações" do TabsList
-- Manter apenas: Membros, Conteúdo, Ofertas, Atividade
-
-## Arquivos alterados
-
-| Arquivo | Ação |
-|---------|------|
-| `src/pages/EntregaDigital.tsx` | Remover abas Pixels e Domínio |
-| `src/components/entrega/ProductForm.tsx` | Manter apenas Nome, Slug, Valor, Ativo |
-| `src/pages/SettingsPage.tsx` | Adicionar seção "Área de Membros" |
-| `src/components/settings/MemberAreaSettingsSection.tsx` | Criar com sub-abas Ajustes + Domínio |
-| `src/pages/AreaMembros.tsx` | Remover aba Configurações e `MemberSettingsTab` |
-
-Nenhuma migração de banco necessária — os campos permanecem no DB, apenas não são expostos na UI de criação de produto.
+Nenhuma migracao necessaria.
 
