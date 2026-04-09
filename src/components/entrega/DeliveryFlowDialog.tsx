@@ -489,9 +489,16 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                 <div className="space-y-2 pr-2">
                   {filteredTxs.map((tx) => {
                     const isLinked = !!tx.customer_phone;
-                    const isAlreadyCounted = !isLinked && !!leadCpf && tx.customer_document === leadCpf;
-                    const isLinkedOther = isLinked && !(leadCpf && tx.customer_document === leadCpf);
-                    const isDisabled = isLinked && !isAlreadyCounted;
+                    const normalized = normalizePhone(phone);
+                    const txPhoneNorm = normalizePhone(tx.customer_phone);
+                    const isLinkedToCurrentLead = isLinked && (
+                      txPhoneNorm === normalized ||
+                      (txPhoneNorm !== "-" && normalized !== "-" && txPhoneNorm.slice(-8) === normalized.slice(-8))
+                    );
+                    // Already counted: CPF matches AND (orphan OR linked to current lead)
+                    const isAlreadyCounted = !!leadCpf && tx.customer_document === leadCpf && (isLinkedToCurrentLead || !isLinked);
+                    // Disabled: linked to a DIFFERENT contact
+                    const isDisabled = isLinked && !isLinkedToCurrentLead;
                     return (
                       <button
                         key={tx.id}
