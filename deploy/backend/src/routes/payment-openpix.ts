@@ -362,6 +362,15 @@ router.post("/webhook", async (req: Request, res: Response) => {
         });
 
         console.log(`[openpix webhook] Charge ${correlationID} → INSERT aprovado (user ${userId})`);
+
+        // Auto-resolve phone by CPF if orphan
+        if (!customer.phone && customer.document) {
+          const resolvedPhone = await resolvePhoneByCpf(customer.document, wkId);
+          if (resolvedPhone) {
+            await supabase.from("transactions").update({ customer_phone: resolvedPhone }).eq("external_id", correlationID).eq("source", "openpix");
+            console.log(`[openpix webhook] Auto-linked phone ${resolvedPhone} via CPF ${customer.document} (charge_completed)`);
+          }
+        }
       } else {
         console.log(`[openpix webhook] Charge ${correlationID} → UPDATE aprovado`);
       }
