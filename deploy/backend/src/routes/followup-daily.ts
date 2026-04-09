@@ -348,15 +348,14 @@ async function processWorkspace(
               const fsPath = boletoFile.replace("/media/", "/media-files/");
               const jpgPath = fsPath.replace(/\.pdf$/i, ".jpg");
               try {
-                try {
-                  await fsModule.access(jpgPath);
-                } catch {
-                  const { exec } = await import("child_process");
-                  const { promisify } = await import("util");
-                  const execPromise = promisify(exec);
-                  const prefix = jpgPath.replace(/\.jpg$/i, "");
-                  await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
-                }
+                // Verify PDF exists
+                await fsModule.access(fsPath);
+                // Always convert PDF → JPG (no cache) to ensure JPG matches current PDF
+                const { exec } = await import("child_process");
+                const { promisify } = await import("util");
+                const execPromise = promisify(exec);
+                const prefix = jpgPath.replace(/\.jpg$/i, "");
+                await execPromise(`pdftoppm -jpeg -singlefile -r 200 "${fsPath}" "${prefix}"`);
                 const imgBuffer = await fsModule.readFile(jpgPath);
                 const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
                 const resp = await fetch(
