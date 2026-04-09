@@ -283,7 +283,7 @@ function MemberOffersTab() {
     queryKey: ["delivery-products-for-offers", workspaceId],
     queryFn: async () => {
       const { data } = await supabase.from("delivery_products" as any).select("id, name, page_logo, value").eq("workspace_id", workspaceId!).eq("is_active", true);
-      return data || [];
+      return (data || []) as any[];
     },
     enabled: !!workspaceId,
   });
