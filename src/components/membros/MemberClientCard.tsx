@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 interface MemberProduct {
   id: string;
@@ -39,7 +40,7 @@ export default function MemberClientCard({ phone, products, customerName, onDele
   const { workspaceId } = useWorkspace();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
-  const memberUrl = `${window.location.origin}/membros/${phone}`;
+  const memberUrl = `${window.location.origin}/${normalizePhone(phone)}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(memberUrl);

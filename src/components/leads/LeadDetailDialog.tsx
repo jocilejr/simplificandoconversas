@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { generatePhoneVariations } from "@/lib/phoneNormalization";
+import { normalizePhone } from "@/lib/normalizePhone";
 
 const statusColors: Record<string, string> = {
   aprovado: "bg-green-500/10 text-green-600 border-green-500/30",
@@ -264,8 +265,12 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                     className="w-full h-8 text-xs gap-1.5"
                     onClick={() => {
                       const phone = lead.phone_number || formatPhone(lead.remote_jid);
-                      const normalized = generatePhoneVariations(phone)[0] || phone;
-                      const link = `${window.location.origin}/membros/${normalized}`;
+                      const normalized = normalizePhone(phone);
+                      if (normalized === "-") {
+                        toast.error("Telefone inválido para gerar o link");
+                        return;
+                      }
+                      const link = `${window.location.origin}/${normalized}`;
                       navigator.clipboard.writeText(link);
                       toast.success("Link de acesso copiado!");
                     }}

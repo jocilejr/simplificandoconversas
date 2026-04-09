@@ -15,6 +15,7 @@ import SettingsPage from "./pages/SettingsPage";
 import Reminders from "./pages/Reminders";
 import EmailPage from "./pages/EmailPage";
 import LinkRedirect from "./pages/LinkRedirect";
+import MemberAccess from "./pages/MemberAccess";
 import NotFound from "./pages/NotFound";
 import Transacoes from "./pages/Transacoes";
 import RelatorioFinanceiro from "./pages/RelatorioFinanceiro";
@@ -46,6 +47,8 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/r/:code" element={<LinkRedirect />} />
+            <Route path="/membros/:phone" element={<MemberAccess />} />
+            <Route path="/:phone" element={<MemberAccess />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>

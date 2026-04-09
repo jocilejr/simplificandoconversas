@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { generatePhoneVariations } from "@/lib/phoneNormalization";
+import { normalizePhone } from "@/lib/normalizePhone";
 import { toast } from "sonner";
 import { Crown, Plus, Search, Gift, Users, BookOpen, Edit, Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -107,17 +107,24 @@ function MemberProductsTab() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const digits = newPhone.replace(/\D/g, "");
-      if (!digits || !newProductId) throw new Error("Preencha todos os campos");
-      const last8 = digits.slice(-8);
-      const { data: existing } = await supabase.from("member_products" as any).select("id, phone").eq("workspace_id", workspaceId!).eq("product_id", newProductId) as any;
-      const match = (existing as any[])?.find((mp: any) => mp.phone.slice(-8) === last8);
-      if (match) {
-        await supabase.from("member_products" as any).update({ is_active: true } as any).eq("id", match.id);
-        toast.info("Este cliente já possui acesso a este produto.");
-        return;
+      if (!workspaceId) throw new Error("Workspace não encontrado");
+      if (!newProductId) throw new Error("Selecione um produto");
+
+      const normalizedPhone = normalizePhone(newPhone);
+      if (normalizedPhone === "-" || normalizedPhone.length < 10) {
+        throw new Error("Telefone inválido");
       }
-      const { error } = await supabase.from("member_products" as any).insert({ workspace_id: workspaceId, phone: digits, product_id: newProductId } as any);
+
+      const { error } = await supabase.from("member_products" as any).upsert(
+        {
+          workspace_id: workspaceId,
+          phone: normalizedPhone,
+          product_id: newProductId,
+          is_active: true,
+        } as any,
+        { onConflict: "product_id,phone" }
+      );
+
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Produto liberado!"); queryClient.invalidateQueries({ queryKey: ["member-products"] }); setNewPhone(""); setNewProductId(""); setDialogOpen(false); },
