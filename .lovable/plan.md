@@ -1,29 +1,39 @@
 
 
-# Fix: Dot de transações não aparece na VPS
+# Fix: Dot não desaparece ao visualizar abas de transações
 
-## Causa raiz
+## Problema
 
-A coluna `viewed_at` foi criada via migração no Lovable Cloud (`supabase/migrations/20260408234316_...sql`) mas nunca foi adicionada aos scripts de deploy da VPS (`deploy/init-db.sql` e `deploy/update.sh`). Sem essa coluna, a query do `useUnseenTransactions` falha silenciosamente, retornando contadores zerados.
+O `useEffect` atual (linha 233-247) tem dois bugs:
 
-Você acabou de adicionar a coluna manualmente. Agora precisamos garantir que ela esteja nos scripts para futuras atualizações.
+1. **Ignora a aba inicial**: No primeiro render, `isFirstRender` pula o efeito. Quando o usuário abre a página de Transações, a aba "Aprovados" já está ativa mas nunca é marcada como vista.
 
-## Alterações
+2. **Só dispara quando `activeTab` muda**: Se o usuário clica na aba que já está ativa, nada acontece. E como a aba inicial nunca é processada, o dot persiste para sempre.
 
-### 1. `deploy/init-db.sql` — Adicionar `viewed_at` na definição da tabela `transactions`
+## Solução
 
-Adicionar `viewed_at timestamptz DEFAULT NULL` na lista de colunas da tabela transactions (após `created_at`).
+**Arquivo:** `src/components/transactions/TransactionsTable.tsx`
 
-### 2. `deploy/update.sh` — Adicionar `viewed_at` na definição + ALTER TABLE
+Substituir a lógica do useEffect (linhas 229-247) por:
 
-Mesma alteração na definição da tabela, e adicionar um `ALTER TABLE` idempotente logo após:
-```sql
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMPTZ DEFAULT NULL;
+1. **Remover `isFirstRender`** — a aba inicial também deve ser marcada como vista.
+2. **Marcar como visto quando `activeTab` muda** (incluindo o valor inicial).
+3. Usar `prevTab` apenas para evitar re-execuções desnecessárias quando o efeito re-roda por mudança em `tabTransactions` sem mudança de aba.
+
+Lógica nova:
+```typescript
+const prevTab = useRef<TabKey | null>(null);
+
+useEffect(() => {
+  if (prevTab.current === activeTab) return;
+  prevTab.current = activeTab;
+  const currentTxs = tabTransactions[activeTab] || [];
+  const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
+  if (unseenIds.length > 0) {
+    markSeen(unseenIds);
+  }
+}, [activeTab, markSeen, tabTransactions]);
 ```
 
-### 3. Verificação pós-fix
-
-Após o deploy, as novas transações que chegarem terão `viewed_at = NULL` e o dot verde aparecerá na sidebar e nas abas. Ao clicar na aba, o `markSeen` atualizará `viewed_at` e o dot sumirá.
-
-**Importante:** Como você já marcou todas as transações existentes como vistas (`UPDATE transactions SET viewed_at = now()`), o dot só aparecerá para transações **novas** a partir de agora.
+Inicializando `prevTab` como `null` garante que na primeira execução (`null !== "aprovados"`), o efeito processa a aba inicial e marca as transações como vistas. Nas execuções seguintes, só processa quando o usuário troca de aba.
 
