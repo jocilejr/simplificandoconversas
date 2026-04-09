@@ -438,10 +438,7 @@ export default function AreaMembros() {
           </TabsTrigger>
           <TabsTrigger value="activity" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
             <Activity className="h-4 w-4" /> Atividade
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
-            <Settings className="h-4 w-4" /> Configurações
-          </TabsTrigger>
+        </TabsList>
         </TabsList>
 
         <TabsContent value="products"><MemberProductsTab /></TabsContent>
