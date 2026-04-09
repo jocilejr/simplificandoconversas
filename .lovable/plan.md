@@ -1,89 +1,57 @@
 
 
-# Entrega Digital — Implementação Completa
+# Reestruturação: Entrega Digital e Área de Membros
 
-## Visão Geral
+## Resumo das Alterações
 
-Portar o módulo de Entrega Digital do Finance Hub, adaptando para multi-tenant (workspace_id). O módulo compartilha a tabela `delivery_products` já criada na Área de Membros, unificando produtos digitais, pixels de tracking e acessos.
+Simplificar a Entrega Digital (remover pixels, domínio, campos desnecessários do produto), mover configurações da Área de Membros para Configurações, e reformular os campos de settings.
 
-## Etapa 1 — Migração de Banco (4 novas tabelas + colunas extras)
+## 1. Entrega Digital — Simplificar (`src/pages/EntregaDigital.tsx`)
 
-### Colunas faltantes em `delivery_products`
-A tabela já existe mas faltam colunas do Finance Hub:
-- `whatsapp_number` text
-- `whatsapp_message` text
-- `delivery_webhook_url` text
-- `redirect_url` text
-- `page_title` text default 'Preparando sua entrega...'
-- `page_message` text default 'Você será redirecionado em instantes'
-- `redirect_delay` integer default 3
+- Remover abas "Pixels" e "Domínio" — ficam apenas **Produtos** e **Acessos**
+- Remover imports de `GlobalPixelsConfig` e `DomainSettings`
 
-### Novas tabelas
+## 2. ProductForm — Simplificar (`src/components/entrega/ProductForm.tsx`)
 
-1. **delivery_pixels** — Pixels por produto
-   - `id`, `workspace_id`, `product_id` (FK delivery_products), `platform`, `pixel_id`, `access_token`, `event_name`, `is_active`
+- Remover campos: `delivery_webhook_url`, `redirect_url`, `whatsapp_number`, `whatsapp_message`, `page_title`, `page_message`, `redirect_delay`, `page_logo`
+- Remover a aba "Página" inteira — formulário fica flat
+- Manter apenas: **Nome**, **Slug**, **Valor (R$)**, **Ativo/Inativo**
 
-2. **global_delivery_pixels** — Pixels globais do workspace
-   - `id`, `workspace_id`, `platform`, `pixel_id`, `access_token`, `event_name`, `is_active`
+## 3. Configurações — Nova seção "Área de Membros" (`src/pages/SettingsPage.tsx`)
 
-3. **delivery_accesses** — Registro de acessos à página pública
-   - `id`, `workspace_id`, `product_id` (FK), `phone`, `accessed_at`, `pixel_fired`, `webhook_sent`
+- Adicionar nova seção `member_area` no menu lateral (ícone Crown, minRole "admin")
+- Renderizar novo componente `MemberAreaSettingsSection`
 
-4. **delivery_settings** — Configurações de domínio/mensagem por workspace
-   - `id`, `workspace_id`, `custom_domain`, `global_redirect_url`, `link_message_template`
+## 4. Novo componente: `src/components/settings/MemberAreaSettingsSection.tsx`
 
-5. **delivery_link_generations** — Tracking de links gerados
-   - `id`, `workspace_id`, `product_id` (FK), `phone`, `normalized_phone`, `payment_method`
+Conterá 2 sub-abas internas:
 
-### RLS
-Mesmo padrão do projeto: SELECT via `is_workspace_member`, INSERT/UPDATE via `can_write_workspace`, DELETE via `has_workspace_role(..., 'admin')`.
+### Sub-aba "Ajustes"
+- **Título da página** (title) — usado como `<title>` da URL pública, não exibido na página
+- **Favicon URL** (renomeia `logo_url` para `favicon_url` no campo, mas mantém coluna `logo_url` no DB para evitar migração)
+- **Descrição** (renomeia "Mensagem de boas-vindas" para "Descrição")
+- **Remover** campo "Cor do tema"
+- Prompts de IA: persona, saudação, oferta (mantém como está)
 
-## Etapa 2 — Componentes Frontend (7 arquivos)
+### Sub-aba "Domínio"
+- Move o conteúdo de `DomainSettings.tsx` para cá
+- Mostra o IP/URL para redirecionamento do domínio
+- Configurações de domínio personalizado, URL de redirecionamento global, template de mensagem
 
-### `src/pages/EntregaDigital.tsx` — Reescrever
-4 abas: Produtos, Pixels, Acessos, Domínio
+## 5. Área de Membros — Remover aba "Configurações" (`src/pages/AreaMembros.tsx`)
 
-### `src/components/entrega/ProductsTab.tsx`
-- Lista de produtos com busca, badge ativo/inativo, slug, valor
-- CRUD via dialog (ProductForm) + duplicar + excluir
-- Clicar no produto abre LinkGenerator (liberar acesso + gerar link)
-- Queries filtradas por `workspace_id`
+- Remover `MemberSettingsTab` e a aba "Configurações" do TabsList
+- Manter apenas: Membros, Conteúdo, Ofertas, Atividade
 
-### `src/components/entrega/ProductForm.tsx`
-- Dialog com 2 abas: Básico (nome, slug, valor, webhook, ativo) e Página (logo, título, mensagem, delay)
-
-### `src/components/entrega/LinkGenerator.tsx`
-- Dialog em 2 passos: 1) informar telefone → liberar acesso em `member_products` + registrar em `delivery_link_generations`, 2) exibir link copiável com mensagem template
-- **Conexão com Área de Membros**: libera acesso direto na tabela `member_products`, unificando entrega e membros
-
-### `src/components/entrega/AccessesTab.tsx`
-- Tabela de acessos com filtro por produto e busca
-- Exibe produto, telefone, data, status do pixel e webhook
-
-### `src/components/entrega/GlobalPixelsConfig.tsx`
-- CRUD de pixels globais (Meta, TikTok, Google, Pinterest, Taboola)
-- Toggle ativo/inativo por pixel
-
-### `src/components/entrega/DomainSettings.tsx`
-- URL de redirecionamento global, mensagem do link (com placeholder `{link}`), domínio personalizado
-- Instruções de configuração DNS
-
-## Etapa 3 — Integração Unificada
-
-- **Leads**: O LinkGenerator registra `delivery_link_generations` com `normalized_phone`, permitindo que a tela de Leads exiba histórico de links gerados por contato
-- **Área de Membros**: O LinkGenerator insere em `member_products` ao liberar acesso, garantindo que o mesmo produto aparece nas duas interfaces
-- **Produtos compartilhados**: `delivery_products` é a tabela base tanto para Entrega quanto para Área de Membros — alterações em um refletem no outro
-
-## Arquivos alterados/criados
+## Arquivos alterados
 
 | Arquivo | Ação |
 |---------|------|
-| Migration SQL | ALTER delivery_products + CREATE 4 tabelas + RLS |
-| `src/pages/EntregaDigital.tsx` | Reescrever com 4 abas |
-| `src/components/entrega/ProductsTab.tsx` | Criar |
-| `src/components/entrega/ProductForm.tsx` | Criar |
-| `src/components/entrega/LinkGenerator.tsx` | Criar |
-| `src/components/entrega/AccessesTab.tsx` | Criar |
-| `src/components/entrega/GlobalPixelsConfig.tsx` | Criar |
-| `src/components/entrega/DomainSettings.tsx` | Criar |
+| `src/pages/EntregaDigital.tsx` | Remover abas Pixels e Domínio |
+| `src/components/entrega/ProductForm.tsx` | Manter apenas Nome, Slug, Valor, Ativo |
+| `src/pages/SettingsPage.tsx` | Adicionar seção "Área de Membros" |
+| `src/components/settings/MemberAreaSettingsSection.tsx` | Criar com sub-abas Ajustes + Domínio |
+| `src/pages/AreaMembros.tsx` | Remover aba Configurações e `MemberSettingsTab` |
+
+Nenhuma migração de banco necessária — os campos permanecem no DB, apenas não são expostos na UI de criação de produto.
 
