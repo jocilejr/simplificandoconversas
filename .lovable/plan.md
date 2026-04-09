@@ -1,42 +1,35 @@
 
 
-# Fix: LinkGenerator.tsx usando coluna errada no upsert
+# Fix: DeliveryFlowDialog — `normalized_phone` → `phone` no `member_products`
 
 ## Problema
+O `DeliveryFlowDialog.tsx` (o fluxo que você realmente usa) faz query e upsert em `member_products` usando a coluna `normalized_phone`, que não existe na VPS. Por isso o upsert falha silenciosamente e nenhum registro é criado.
 
-A tabela `member_products` na VPS tem a coluna `phone`, mas o `LinkGenerator.tsx` faz upsert com `normalized_phone`. O upsert falha silenciosamente e nenhum registro é criado.
+## Correção — apenas 2 linhas no arquivo `src/components/entrega/DeliveryFlowDialog.tsx`
 
-## Solução
-
-### Arquivo: `src/components/entrega/LinkGenerator.tsx`
-
-Trocar todas as referências de `normalized_phone` por `phone` no upsert de `member_products`:
-
+### Linha 217 — query de verificação
 ```typescript
-// ANTES (linha ~109)
-await supabase.from("member_products").upsert(
-  {
-    workspace_id: workspaceId,
-    product_id: product.id,
-    normalized_phone: normalized,
-    is_active: true,
-  },
-  { onConflict: "workspace_id,product_id,normalized_phone" }
-);
-
-// DEPOIS
-await supabase.from("member_products").upsert(
-  {
-    workspace_id: workspaceId,
-    product_id: product.id,
-    phone: normalized,
-    is_active: true,
-  },
-  { onConflict: "product_id,phone" }
-);
+// DE:
+.in("normalized_phone", variations)
+// PARA:
+.in("phone", variations)
 ```
 
-Mesma correção no segundo upsert (~linha 138). O `onConflict` deve usar `product_id,phone` para corresponder ao unique constraint real da VPS (`member_products_product_id_phone_key`).
+### Linhas 282-283 — upsert
+```typescript
+// DE:
+{ workspace_id: workspaceId, product_id: product.id, normalized_phone: normalized, is_active: true },
+{ onConflict: "workspace_id,product_id,normalized_phone" }
 
-Após deploy na VPS, gere um link de teste para verificar que o registro é criado em `member_products`.
+// PARA:
+{ workspace_id: workspaceId, product_id: product.id, phone: normalized, is_active: true } as any,
+{ onConflict: "product_id,phone" }
+```
+
+Nenhum outro arquivo será alterado. Só esses 2 pontos no `DeliveryFlowDialog.tsx`.
+
+## Verificação na VPS após deploy
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "SELECT * FROM member_products;"
+```
 
