@@ -173,6 +173,22 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
     enabled: open && !!lead && (lead?.instances?.length ?? 0) > 0,
   });
 
+  const { data: memberProducts = [], isLoading: isLoadingProducts } = useQuery({
+    queryKey: ["lead-member-products", lead?.remote_jid, workspaceId],
+    queryFn: async () => {
+      const phone = lead!.phone_number || formatPhone(lead!.remote_jid);
+      const variations = generatePhoneVariations(phone);
+      if (!variations.length) return [];
+      const { data } = await supabase
+        .from("member_products")
+        .select("id, normalized_phone, is_active, product_id, delivery_products(name)")
+        .eq("workspace_id", workspaceId!)
+        .in("normalized_phone", variations);
+      return data || [];
+    },
+    enabled: open && !!lead && !!workspaceId,
+  });
+
   if (!lead) return null;
 
   const instances = lead.instances || [];
