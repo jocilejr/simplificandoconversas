@@ -438,14 +438,13 @@ export default function AreaMembros() {
           </TabsTrigger>
           <TabsTrigger value="activity" className="gap-2 rounded-md data-[state=active]:bg-card data-[state=active]:shadow-sm text-sm">
             <Activity className="h-4 w-4" /> Atividade
-        </TabsList>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="products"><MemberProductsTab /></TabsContent>
         <TabsContent value="content"><ContentManagement /></TabsContent>
         <TabsContent value="offers"><MemberOffersTab /></TabsContent>
         <TabsContent value="activity"><MemberActivityTab /></TabsContent>
-        </Tabs>
       </Tabs>
     </div>
   );
