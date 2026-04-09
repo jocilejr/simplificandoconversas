@@ -49,6 +49,8 @@ export function useLeads() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">("all");
   const [page, setPage] = useState(1);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const perPage = 50;
 
   const { data: rawConversations = [], isLoading: isLoadingConvos } = useQuery({
