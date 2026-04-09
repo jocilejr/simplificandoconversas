@@ -1,30 +1,66 @@
 
 
-# Fix: Ordenação opera sobre todos os leads, não apenas a página atual
+# Match de leads com prioridade: CPF → Telefone completo → 8 dígitos
 
 ## Problema
 
-A ordenação por coluna (Agendamentos, Total Pago, etc.) acontece em `Leads.tsx` sobre o array `leads`, que já é o resultado paginado (50 itens da página atual). Ao ordenar por "Total Pago" decrescente, por exemplo, só reordena os 50 leads daquela página — os leads com valores maiores em outras páginas não aparecem.
+Atualmente o agrupamento usa apenas os últimos 8 dígitos, o que pode gerar falsos positivos (dois contatos diferentes com os mesmos 8 dígitos finais). Falta uma hierarquia de confiança no match.
 
-## Solução
+## Solução — Arquivo único: `src/hooks/useLeads.ts`
 
-Mover a lógica de ordenação para dentro do hook `useLeads.ts`, aplicando o sort **antes** da paginação. O `Leads.tsx` passa `sortField` e `sortDir` para o hook via setState.
+### Lógica de merge com 3 níveis de prioridade
 
-### Arquivo: `src/hooks/useLeads.ts`
+Ao iterar cada conversa, o sistema tenta encontrar um lead existente nesta ordem:
 
-- Adicionar estados `sortField` e `sortDir` ao hook
-- Criar um `sorted` useMemo entre `filtered` e a paginação:
-  ```
-  filtered → sorted (por sortField/sortDir) → paginated (slice)
-  ```
-- Expor `sortField`, `setSortField`, `sortDir`, `setSortDir` no retorno
-- `paginated` passa a usar `sorted` em vez de `filtered`
+1. **CPF (prioridade máxima)** — Se a conversa tem transações com `customer_document`, busca no mapa se já existe um lead com o mesmo CPF. Se sim, faz merge (adiciona instância + acumula transações). CPF é único, impossível duplicar.
 
-### Arquivo: `src/pages/Leads.tsx`
+2. **Telefone normalizado completo (segunda prioridade)** — Usa `displayPhone()` para normalizar o número e busca match exato. Exemplo: `5524992011394` bate com `5524992011394`.
 
-- Remover os estados locais `sortField` e `sortDir`
-- Remover o `useMemo` de `sortedLeads`
-- Consumir `sortField`, `setSortField`, `sortDir`, `setSortDir` do hook
-- Usar `leads` diretamente na tabela (já vem ordenado e paginado)
-- Resetar `page` para 1 ao mudar a ordenação
+3. **Últimos 8 dígitos (terceira prioridade)** — Fallback atual. Agrupa variações como `5524992011394` e `24992011394`.
+
+### Estrutura de dados interna
+
+```text
+Índices de lookup (todos apontam para o mesmo Lead):
+  cpfIndex:   Map<string, Lead>     "12345678901" → Lead
+  phoneIndex: Map<string, Lead>     "5524992011394" → Lead
+  last8Index: Map<string, Lead>     "92011394" → Lead
+```
+
+Quando um lead é criado ou encontrado por qualquer nível, todos os índices são atualizados. Assim, matches futuros por qualquer critério apontam para o mesmo lead.
+
+### Fluxo por conversa
+
+```text
+Para cada conversa C:
+  cpf = buscar CPF nas transações de C (via matchKey do telefone)
+  normalizedPhone = displayPhone(C.remote_jid)
+  last8 = matchKey(C.remote_jid)
+
+  existingLead = cpfIndex[cpf]          // prioridade 1
+                 || phoneIndex[normalizedPhone]  // prioridade 2
+                 || last8Index[last8]    // prioridade 3
+
+  SE existingLead:
+    → merge instância, acumula nome se vazio
+    → registra todos os índices novos neste lead
+  SENÃO:
+    → cria novo Lead
+    → registra nos 3 índices
+```
+
+### Transações — match também por CPF
+
+O `txByPhone` atual indexa apenas por últimos 8 dígitos. Adicionamos um `txByCpf` (Map por `customer_document`) para que transações sem telefone mas com CPF também sejam vinculadas ao lead correto.
+
+### Mudanças resumidas
+
+| Item | Antes | Depois |
+|------|-------|--------|
+| Índices | 1 (`last8Index`) | 3 (`cpfIndex`, `phoneIndex`, `last8Index`) |
+| Match de transação | Só por telefone | CPF primeiro, depois telefone |
+| Falso positivo 8 dígitos | Possível | Impedido pelo CPF/telefone completo |
+| Duplicação | Possível em edge cases | Impossível |
+
+Sem mudança em outros arquivos — toda a lógica fica no hook.
 
