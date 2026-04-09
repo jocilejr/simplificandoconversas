@@ -155,7 +155,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
     enabled: open && !!lead,
   });
 
-  const { data: conversationMsgCounts = {} } = useQuery({
+  const { data: conversationMsgCounts = {}, isLoading: isLoadingMsgCounts } = useQuery({
     queryKey: ["lead-conv-msg-counts", lead?.remote_jid, workspaceId],
     queryFn: async () => {
       const ids = lead!.instances.map((i) => i.conversation_id);
