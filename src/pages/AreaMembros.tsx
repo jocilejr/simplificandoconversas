@@ -445,7 +445,7 @@ export default function AreaMembros() {
         <TabsContent value="content"><ContentManagement /></TabsContent>
         <TabsContent value="offers"><MemberOffersTab /></TabsContent>
         <TabsContent value="activity"><MemberActivityTab /></TabsContent>
-        <TabsContent value="settings"><MemberSettingsTab /></TabsContent>
+        </Tabs>
       </Tabs>
     </div>
   );
