@@ -1,0 +1,1 @@
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS delivery_message text DEFAULT NULL;
