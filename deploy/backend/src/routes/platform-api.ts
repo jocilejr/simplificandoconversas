@@ -1331,4 +1331,66 @@ router.post("/mark-seen", async (req: Request, res: Response) => {
   }
 });
 
+// ── Mark tab seen (all transactions of a category, no date filter) ──
+router.post("/mark-tab-seen", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, tab } = req.body;
+    if (!workspaceId || !tab) return res.json({ updated: 0 });
+
+    const sb = getServiceClient();
+    const now = new Date().toISOString();
+
+    if (tab === "rejeitados") {
+      // OR condition: status=rejeitado OR (type=yampi_cart AND status=abandonado)
+      const [r1, r2] = await Promise.all([
+        sb.from("transactions")
+          .update({ viewed_at: now })
+          .eq("workspace_id", workspaceId)
+          .is("viewed_at", null)
+          .eq("status", "rejeitado")
+          .select("id"),
+        sb.from("transactions")
+          .update({ viewed_at: now })
+          .eq("workspace_id", workspaceId)
+          .is("viewed_at", null)
+          .eq("type", "yampi_cart")
+          .eq("status", "abandonado")
+          .select("id"),
+      ]);
+      const total = (r1.data?.length || 0) + (r2.data?.length || 0);
+      return res.json({ updated: total });
+    }
+
+    let query = sb
+      .from("transactions")
+      .update({ viewed_at: now })
+      .eq("workspace_id", workspaceId)
+      .is("viewed_at", null);
+
+    switch (tab) {
+      case "aprovados":
+        query = query.eq("status", "aprovado");
+        break;
+      case "boletos-gerados":
+        query = query.eq("type", "boleto").eq("status", "pendente");
+        break;
+      case "pix-cartao-pendentes":
+        query = query.in("type", ["pix", "cartao", "card"]).eq("status", "pendente");
+        break;
+      default:
+        return res.json({ updated: 0 });
+    }
+
+    const { data, error } = await query.select("id");
+    if (error) {
+      console.error("[mark-tab-seen] error:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ updated: data?.length || 0 });
+  } catch (err: any) {
+    console.error("[mark-tab-seen] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

@@ -226,17 +226,15 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Mark transactions as seen when tab is active
+  // Mark transactions as seen when tab is active (calls backend for ALL unseen in category)
   const prevTab = useRef<TabKey | null>(null);
   const initialDone = useRef(false);
 
   const markTabAsSeen = useCallback((tab: TabKey) => {
-    const currentTxs = tabTransactions[tab] || [];
-    const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
-    if (unseenIds.length > 0) {
-      markSeen(unseenIds);
+    if (hasUnseen(tab)) {
+      markTabSeen(tab);
     }
-  }, [tabTransactions, markSeen]);
+  }, [hasUnseen, markTabSeen]);
 
   // On tab change
   useEffect(() => {
