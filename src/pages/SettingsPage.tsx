@@ -11,6 +11,7 @@ import { EmailSettingsSection } from "@/components/settings/EmailSettingsSection
 import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
 import { TeamSection } from "@/components/settings/TeamSection";
 import { FeesSection } from "@/components/settings/FeesSection";
+import { MemberAreaSettingsSection } from "@/components/settings/MemberAreaSettingsSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const allSections = [
