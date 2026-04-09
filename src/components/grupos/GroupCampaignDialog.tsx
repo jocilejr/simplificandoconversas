@@ -42,17 +42,21 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
   const [fetchingGroups, setFetchingGroups] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
 
+  const editInstanceRef = useRef("");
+
   useEffect(() => {
     if (editData) {
       setName(editData.name || "");
       setDescription(editData.description || "");
       setInstanceName(editData.instance_name || "");
       setGroupJids(new Set(editData.group_jids || []));
+      editInstanceRef.current = editData.instance_name || "";
     } else {
       setName("");
       setDescription("");
       setInstanceName("");
       setGroupJids(new Set());
+      editInstanceRef.current = "";
     }
     setRemoteGroups([]);
     setSearchFilter("");
