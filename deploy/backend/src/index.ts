@@ -76,14 +76,7 @@ cron.schedule("*/30 * * * * *", async () => {
   }
 });
 
-// Light sync every 5 minutes — catches undecrypted/pending chats
-cron.schedule("*/5 * * * *", async () => {
-  try {
-    await lightSync();
-  } catch (err: any) {
-    console.error("[cron] light-sync error:", err.message);
-  }
-});
+// Light sync disabled — use manual "Sincronizar" button per instance instead.
 
 // Auto-recovery cron DISABLED — system is event-driven.
 // Use POST /api/auto-recovery/process for manual retries.
