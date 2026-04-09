@@ -14,7 +14,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface MemberProduct {
   id: string;
-  normalized_phone: string;
+  phone: string;
   is_active: boolean;
   delivery_products: { name: string } | null;
 }
@@ -58,7 +58,7 @@ export default function MemberClientCard({ phone, products, customerName, onDele
         .from("transactions" as any)
         .select("id, description, amount, status, type, created_at, paid_at")
         .eq("workspace_id", workspaceId)
-        .in("normalized_phone", variations)
+        .in("customer_phone", variations)
         .order("created_at", { ascending: false })
         .limit(20);
       return data || [];

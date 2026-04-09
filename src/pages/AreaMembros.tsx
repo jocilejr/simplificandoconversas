@@ -49,7 +49,7 @@ function MemberProductsTab() {
 
       if (searchPhone.trim()) {
         const digits = searchPhone.replace(/\D/g, "");
-        query = query.ilike("normalized_phone", `%${digits}%`);
+        query = query.ilike("phone", `%${digits}%`);
       }
 
       const allData: any[] = [];
@@ -69,7 +69,7 @@ function MemberProductsTab() {
 
   const uniquePhones = useMemo(() => {
     if (!memberProducts) return [];
-    return Array.from(new Set(memberProducts.map((mp: any) => mp.normalized_phone)));
+    return Array.from(new Set(memberProducts.map((mp: any) => mp.phone)));
   }, [memberProducts]);
 
   // Get names from conversations
@@ -98,8 +98,8 @@ function MemberProductsTab() {
     if (!memberProducts) return [];
     const map = new Map<string, { phone: string; items: any[] }>();
     for (const mp of memberProducts) {
-      const last8 = mp.normalized_phone.slice(-8);
-      if (!map.has(last8)) map.set(last8, { phone: mp.normalized_phone, items: [] });
+      const last8 = mp.phone.slice(-8);
+      if (!map.has(last8)) map.set(last8, { phone: mp.phone, items: [] });
       map.get(last8)!.items.push(mp);
     }
     return Array.from(map.values()).map(({ phone, items }) => ({ phone, products: items }));
@@ -110,14 +110,14 @@ function MemberProductsTab() {
       const digits = newPhone.replace(/\D/g, "");
       if (!digits || !newProductId) throw new Error("Preencha todos os campos");
       const last8 = digits.slice(-8);
-      const { data: existing } = await supabase.from("member_products" as any).select("id, normalized_phone").eq("workspace_id", workspaceId!).eq("product_id", newProductId) as any;
-      const match = (existing as any[])?.find((mp: any) => mp.normalized_phone.slice(-8) === last8);
+      const { data: existing } = await supabase.from("member_products" as any).select("id, phone").eq("workspace_id", workspaceId!).eq("product_id", newProductId) as any;
+      const match = (existing as any[])?.find((mp: any) => mp.phone.slice(-8) === last8);
       if (match) {
-        await supabase.from("member_products" as any).update({ is_active: true, granted_at: new Date().toISOString() }).eq("id", match.id);
+        await supabase.from("member_products" as any).update({ is_active: true } as any).eq("id", match.id);
         toast.info("Este cliente já possui acesso a este produto.");
         return;
       }
-      const { error } = await supabase.from("member_products" as any).insert({ workspace_id: workspaceId, normalized_phone: digits, product_id: newProductId });
+      const { error } = await supabase.from("member_products" as any).insert({ workspace_id: workspaceId, phone: digits, product_id: newProductId } as any);
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Produto liberado!"); queryClient.invalidateQueries({ queryKey: ["member-products"] }); setNewPhone(""); setNewProductId(""); setDialogOpen(false); },
