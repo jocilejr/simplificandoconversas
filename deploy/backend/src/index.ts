@@ -10,7 +10,7 @@ import whatsappProxyRouter from "./routes/whatsapp-proxy";
 import linkRedirectRouter from "./routes/link-redirect";
 import healthDbRouter from "./routes/health-db";
 import { processTimeouts } from "./routes/check-timeouts";
-import { lightSync } from "./routes/light-sync";
+
 import extensionApiRouter from "./routes/extension-api";
 import platformApiRouter from "./routes/platform-api";
 import externalWebhookRouter from "./routes/external-webhook";
@@ -76,14 +76,7 @@ cron.schedule("*/30 * * * * *", async () => {
   }
 });
 
-// Light sync every 5 minutes — catches undecrypted/pending chats
-cron.schedule("*/5 * * * *", async () => {
-  try {
-    await lightSync();
-  } catch (err: any) {
-    console.error("[cron] light-sync error:", err.message);
-  }
-});
+// Light sync disabled — use manual "Sincronizar" button per instance instead.
 
 // Auto-recovery cron DISABLED — system is event-driven.
 // Use POST /api/auto-recovery/process for manual retries.
