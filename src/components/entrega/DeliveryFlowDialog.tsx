@@ -376,7 +376,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         </div>
 
         {/* ── Content ── */}
-        <div className="px-6 py-5 min-h-[220px]">
+        <div className="px-6 py-5 min-h-[220px] max-h-[calc(90vh-120px)] overflow-y-auto">
           {/* Step: Phone */}
           {step === "phone" && (
             <div className="space-y-5">
@@ -498,7 +498,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                   : `${totalUnlinked} transações sem vínculo`}
               </p>
 
-              <ScrollArea className="max-h-[240px]">
+              <ScrollArea className="max-h-[400px]">
                 <div className="space-y-2 pr-2">
                   {filteredTxs.map((tx) => {
                     const isLinked = !!tx.customer_phone;
@@ -581,19 +581,19 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                       </button>
                     );
                   })}
+
+                  {hasMoreUnlinked && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTxLimit((l) => l + 5)}
+                      className="w-full h-8 text-xs text-muted-foreground"
+                    >
+                      Ver mais
+                    </Button>
+                  )}
                 </div>
               </ScrollArea>
-
-              {hasMoreUnlinked && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTxLimit((l) => l + 5)}
-                  className="w-full h-8 text-xs text-muted-foreground"
-                >
-                  Ver mais
-                </Button>
-              )}
             </div>
           )}
 
