@@ -87,6 +87,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   const [loadingTxs, setLoadingTxs] = useState(false);
   const [txSearch, setTxSearch] = useState("");
   const [txLimit, setTxLimit] = useState(5);
+  const [leadCpf, setLeadCpf] = useState<string | null>(null);
 
   const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
@@ -106,6 +107,31 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   const handlePixClick = useCallback(async () => {
     if (!workspaceId) return;
     setLoadingTxs(true);
+
+    // 1) Resolve lead's CPF from existing transactions with this phone
+    const normalized = normalizePhone(phone);
+    const last8 = normalized !== "-" ? normalized.slice(-8) : "";
+    let foundCpf: string | null = null;
+    if (normalized !== "-") {
+      const { data: phoneTxs } = await supabase
+        .from("transactions")
+        .select("customer_document, customer_phone")
+        .eq("workspace_id", workspaceId)
+        .not("customer_phone", "is", null)
+        .not("customer_document", "is", null)
+        .limit(100);
+      
+      for (const t of phoneTxs || []) {
+        const tNorm = normalizePhone(t.customer_phone);
+        if (tNorm === normalized || (tNorm !== "-" && last8 && tNorm.slice(-8) === last8)) {
+          foundCpf = t.customer_document;
+          break;
+        }
+      }
+    }
+    setLeadCpf(foundCpf);
+
+    // 2) Fetch all approved PIX transactions
     const { data, error } = await supabase
       .from("transactions")
       .select("id, amount, customer_name, customer_document, customer_phone, created_at, paid_at")
@@ -130,7 +156,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     setTxSearch("");
     setTxLimit(5);
     setStep("select-tx");
-  }, [workspaceId]);
+  }, [workspaceId, phone]);
 
   const filteredTxs = useMemo(() => {
     if (!txSearch.trim()) {
