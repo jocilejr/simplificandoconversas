@@ -625,6 +625,56 @@ export type Database = {
           },
         ]
       }
+      delivery_products: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          member_cover_image: string | null
+          member_description: string | null
+          name: string
+          page_logo: string | null
+          slug: string
+          updated_at: string
+          value: number
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          member_cover_image?: string | null
+          member_description?: string | null
+          name: string
+          page_logo?: string | null
+          slug: string
+          updated_at?: string
+          value?: number
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          member_cover_image?: string | null
+          member_description?: string | null
+          name?: string
+          page_logo?: string | null
+          slug?: string
+          updated_at?: string
+          value?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_products_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_campaigns: {
         Row: {
           auto_send: boolean
@@ -1746,6 +1796,356 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "fk_labels_workspace"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_area_offers: {
+        Row: {
+          card_payment_url: string | null
+          category_tag: string | null
+          created_at: string
+          description: string | null
+          display_type: string
+          id: string
+          image_url: string | null
+          is_active: boolean
+          name: string
+          pix_key: string | null
+          pix_key_type: string | null
+          price: number | null
+          product_id: string | null
+          purchase_url: string | null
+          sort_order: number
+          total_clicks: number
+          total_impressions: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          card_payment_url?: string | null
+          category_tag?: string | null
+          created_at?: string
+          description?: string | null
+          display_type?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          price?: number | null
+          product_id?: string | null
+          purchase_url?: string | null
+          sort_order?: number
+          total_clicks?: number
+          total_impressions?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          card_payment_url?: string | null
+          category_tag?: string | null
+          created_at?: string
+          description?: string | null
+          display_type?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          price?: number | null
+          product_id?: string | null
+          purchase_url?: string | null
+          sort_order?: number
+          total_clicks?: number
+          total_impressions?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_area_offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_area_offers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_area_settings: {
+        Row: {
+          ai_persona_prompt: string | null
+          created_at: string
+          greeting_prompt: string | null
+          id: string
+          layout_order: Json | null
+          logo_url: string | null
+          offer_prompt: string | null
+          theme_color: string | null
+          title: string
+          updated_at: string
+          welcome_message: string | null
+          workspace_id: string
+        }
+        Insert: {
+          ai_persona_prompt?: string | null
+          created_at?: string
+          greeting_prompt?: string | null
+          id?: string
+          layout_order?: Json | null
+          logo_url?: string | null
+          offer_prompt?: string | null
+          theme_color?: string | null
+          title?: string
+          updated_at?: string
+          welcome_message?: string | null
+          workspace_id: string
+        }
+        Update: {
+          ai_persona_prompt?: string | null
+          created_at?: string
+          greeting_prompt?: string | null
+          id?: string
+          layout_order?: Json | null
+          logo_url?: string | null
+          offer_prompt?: string | null
+          theme_color?: string | null
+          title?: string
+          updated_at?: string
+          welcome_message?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_area_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_product_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          product_id: string
+          sort_order: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          product_id: string
+          sort_order?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          product_id?: string
+          sort_order?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_product_categories_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_product_categories_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_product_materials: {
+        Row: {
+          button_label: string | null
+          category_id: string | null
+          content_text: string | null
+          content_type: string
+          content_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_preview: boolean
+          product_id: string
+          sort_order: number
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          button_label?: string | null
+          category_id?: string | null
+          content_text?: string | null
+          content_type?: string
+          content_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_preview?: boolean
+          product_id: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          button_label?: string | null
+          category_id?: string | null
+          content_text?: string | null
+          content_type?: string
+          content_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_preview?: boolean
+          product_id?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_product_materials_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "member_product_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_product_materials_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_product_materials_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_products: {
+        Row: {
+          created_at: string
+          granted_at: string
+          id: string
+          is_active: boolean
+          normalized_phone: string
+          product_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_at?: string
+          id?: string
+          is_active?: boolean
+          normalized_phone: string
+          product_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_at?: string
+          id?: string
+          is_active?: boolean
+          normalized_phone?: string
+          product_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_products_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_sessions: {
+        Row: {
+          created_at: string
+          current_activity: string | null
+          current_material_name: string | null
+          current_product_name: string | null
+          ended_at: string | null
+          id: string
+          last_heartbeat_at: string
+          normalized_phone: string
+          started_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_activity?: string | null
+          current_material_name?: string | null
+          current_product_name?: string | null
+          ended_at?: string | null
+          id?: string
+          last_heartbeat_at?: string
+          normalized_phone: string
+          started_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          current_activity?: string | null
+          current_material_name?: string | null
+          current_product_name?: string | null
+          ended_at?: string | null
+          id?: string
+          last_heartbeat_at?: string
+          normalized_phone?: string
+          started_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_sessions_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
