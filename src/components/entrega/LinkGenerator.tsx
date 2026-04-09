@@ -47,6 +47,14 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
   const [step, setStep] = useState<Step>({ status: "idle" });
   const [copied, setCopied] = useState(false);
 
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "object" && error && "message" in error && typeof (error as { message?: unknown }).message === "string") {
+      return (error as { message: string }).message;
+    }
+    return fallback;
+  };
+
   const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
     enabled: !!workspaceId,
@@ -63,133 +71,144 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
   });
 
   const runProcess = useCallback(async () => {
-    if (!workspaceId || !userId) throw new Error("Sem workspace");
-    const normalized = normalizePhone(phone);
-    if (normalized === "-" || normalized.length < 10) {
-      toast.error("Telefone inválido");
-      return;
-    }
-
-    // Step 1: Search lead
-    setStep({ status: "searching" });
-    await new Promise((r) => setTimeout(r, 600));
-
-    let matchedName: string | null = null;
-
-    if (paymentMethod === "pix") {
-      const { data: convos } = await supabase
-        .from("conversations")
-        .select("id, phone_number, contact_name")
-        .eq("workspace_id", workspaceId);
-
-      const last8 = normalized.slice(-8);
-
-      let matched = convos?.find((c) => normalizePhone(c.phone_number) === normalized);
-      if (!matched) {
-        matched = convos?.find((c) => {
-          const norm = normalizePhone(c.phone_number);
-          return norm !== "-" && norm.slice(-8) === last8;
-        });
+    try {
+      if (!workspaceId || !userId) throw new Error("Sem workspace");
+      const normalized = normalizePhone(phone);
+      if (normalized === "-" || normalized.length < 10) {
+        toast.error("Telefone inválido");
+        return;
       }
 
-      if (matched) {
-        matchedName = matched.contact_name || null;
-        setStep({ status: "found", name: matchedName });
-      } else {
-        // Create new contact
-        const { data: newConvo } = await supabase
+      // Step 1: Search lead
+      setStep({ status: "searching" });
+      await new Promise((r) => setTimeout(r, 600));
+
+      let matchedName: string | null = null;
+
+      if (paymentMethod === "pix") {
+        const { data: convos, error: convosError } = await supabase
           .from("conversations")
-          .insert({
-            user_id: userId,
-            workspace_id: workspaceId,
-            remote_jid: normalized,
-            phone_number: normalized,
-          })
           .select("id, phone_number, contact_name")
-          .single();
-        matched = newConvo;
-        setStep({ status: "created" });
+          .eq("workspace_id", workspaceId);
+
+        if (convosError) throw convosError;
+
+        const last8 = normalized.slice(-8);
+
+        let matched = convos?.find((c) => normalizePhone(c.phone_number) === normalized);
+        if (!matched) {
+          matched = convos?.find((c) => {
+            const norm = normalizePhone(c.phone_number);
+            return norm !== "-" && norm.slice(-8) === last8;
+          });
+        }
+
+        if (matched) {
+          matchedName = matched.contact_name || null;
+          setStep({ status: "found", name: matchedName });
+        } else {
+          const { data: newConvo, error: newConvoError } = await supabase
+            .from("conversations")
+            .insert({
+              user_id: userId,
+              workspace_id: workspaceId,
+              remote_jid: normalized,
+              phone_number: normalized,
+            })
+            .select("id, phone_number, contact_name")
+            .single();
+
+          if (newConvoError) throw newConvoError;
+
+          matched = newConvo;
+          setStep({ status: "created" });
+        }
+
+        await new Promise((r) => setTimeout(r, 800));
+
+        setStep({ status: "granting" });
+
+        const { error: memberProductError } = await supabase.from("member_products").upsert(
+          {
+            workspace_id: workspaceId,
+            product_id: product.id,
+            phone: normalized,
+            is_active: true,
+          } as any,
+          { onConflict: "product_id,phone" }
+        );
+        if (memberProductError) throw memberProductError;
+
+        const { error: generationError } = await supabase.from("delivery_link_generations").insert({
+          workspace_id: workspaceId,
+          product_id: product.id,
+          phone,
+          normalized_phone: normalized,
+          payment_method: paymentMethod,
+        });
+        if (generationError) throw generationError;
+
+        const { error: transactionError } = await supabase.from("transactions").insert({
+          user_id: userId,
+          workspace_id: workspaceId,
+          type: "pix",
+          status: "aprovado",
+          amount: product.value,
+          customer_phone: normalized,
+          source: "entrega_digital",
+          description: product.name,
+          paid_at: new Date().toISOString(),
+        });
+        if (transactionError) throw transactionError;
+      } else {
+        setStep({ status: "found", name: null });
+        await new Promise((r) => setTimeout(r, 500));
+
+        setStep({ status: "granting" });
+
+        const { error: memberProductError } = await supabase.from("member_products").upsert(
+          {
+            workspace_id: workspaceId,
+            product_id: product.id,
+            phone: normalized,
+            is_active: true,
+          } as any,
+          { onConflict: "product_id,phone" }
+        );
+        if (memberProductError) throw memberProductError;
+
+        const { error: generationError } = await supabase.from("delivery_link_generations").insert({
+          workspace_id: workspaceId,
+          product_id: product.id,
+          phone,
+          normalized_phone: normalized,
+          payment_method: paymentMethod,
+        });
+        if (generationError) throw generationError;
       }
 
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 600));
 
-      // Step 2: Grant access + transaction
-      setStep({ status: "granting" });
+      const domain = (settings as any)?.custom_domain || window.location.origin;
+      const link = `${domain.replace(/\/$/, "")}/${normalized}`;
+      const deliveryMsg = (settings as any)?.delivery_message;
+      const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${link}` : link;
 
-      await supabase.from("member_products").upsert(
-        {
-          workspace_id: workspaceId,
-          product_id: product.id,
-          phone: normalized,
-          is_active: true,
-        } as any,
-        { onConflict: "product_id,phone" }
+      setStep({ status: "done", link, message: finalMessage });
+
+      qc.invalidateQueries({ queryKey: ["delivery-link-generations"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+
+      toast.success(
+        paymentMethod === "pix"
+          ? "Acesso liberado + pagamento PIX vinculado ao lead!"
+          : "Acesso liberado e link gerado!"
       );
-
-      await supabase.from("delivery_link_generations").insert({
-        workspace_id: workspaceId,
-        product_id: product.id,
-        phone,
-        normalized_phone: normalized,
-        payment_method: paymentMethod,
-      });
-
-      await supabase.from("transactions").insert({
-        user_id: userId,
-        workspace_id: workspaceId,
-        type: "pix",
-        status: "aprovado",
-        amount: product.value,
-        customer_phone: normalized,
-        source: "entrega_digital",
-        description: product.name,
-        paid_at: new Date().toISOString(),
-      });
-    } else {
-      // Boleto/Cartão — no lead matching, just grant access
-      setStep({ status: "found", name: null });
-      await new Promise((r) => setTimeout(r, 500));
-
-      setStep({ status: "granting" });
-
-      await supabase.from("member_products").upsert(
-        {
-          workspace_id: workspaceId,
-          product_id: product.id,
-          phone: normalized,
-          is_active: true,
-        } as any,
-        { onConflict: "product_id,phone" }
-      );
-
-      await supabase.from("delivery_link_generations").insert({
-        workspace_id: workspaceId,
-        product_id: product.id,
-        phone,
-        normalized_phone: normalized,
-        payment_method: paymentMethod,
-      });
+    } catch (error) {
+      setStep({ status: "idle" });
+      toast.error(getErrorMessage(error, "Erro ao liberar acesso"));
     }
-
-    await new Promise((r) => setTimeout(r, 600));
-
-    // Step 3: Build link + message
-    const domain = (settings as any)?.custom_domain || window.location.origin;
-    const link = `${domain.replace(/\/$/, "")}/${normalized}`;
-    const deliveryMsg = (settings as any)?.delivery_message;
-    const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${link}` : link;
-
-    setStep({ status: "done", link, message: finalMessage });
-
-    qc.invalidateQueries({ queryKey: ["delivery-link-generations"] });
-    qc.invalidateQueries({ queryKey: ["transactions"] });
-    qc.invalidateQueries({ queryKey: ["conversations"] });
-
-    toast.success(
-      paymentMethod === "pix"
-        ? "Acesso liberado + pagamento PIX vinculado ao lead!"
-        : "Acesso liberado e link gerado!"
-    );
   }, [workspaceId, userId, phone, paymentMethod, product, settings, qc]);
 
   const handleCopy = () => {

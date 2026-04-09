@@ -89,6 +89,14 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   const [txLimit, setTxLimit] = useState(5);
   const [leadCpf, setLeadCpf] = useState<string | null>(null);
 
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "object" && error && "message" in error && typeof (error as { message?: unknown }).message === "string") {
+      return (error as { message: string }).message;
+    }
+    return fallback;
+  };
+
   const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
     enabled: !!workspaceId,
@@ -200,124 +208,137 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   const hasMoreUnlinked = !txSearch.trim() && txLimit < totalUnlinked;
 
   const processDelivery = useCallback(async (method: string, existingTxId?: string, alreadyCounted?: boolean) => {
-    if (!workspaceId || !userId) return;
-    const normalized = normalizePhone(phone);
-    if (normalized === "-" || normalized.length < 10) {
-      toast.error("Telefone inválido");
-      return;
-    }
-
-    setStep("processing");
-    const variations = generatePhoneVariations(phone);
-    const last8 = normalized.slice(-8);
-
-    const [convosRes, txRes, memberRes, allProductsRes] = await Promise.all([
-      supabase.from("conversations").select("id, phone_number, contact_name, email").eq("workspace_id", workspaceId),
-      supabase.from("transactions").select("customer_document, customer_name, customer_email, customer_phone").eq("workspace_id", workspaceId).not("customer_phone", "is", null),
-      supabase.from("member_products" as any).select("product_id, is_active").eq("workspace_id", workspaceId).in("phone", variations),
-      supabase.from("delivery_products").select("id, name").eq("workspace_id", workspaceId),
-    ]);
-
-    const convos = convosRes.data || [];
-    let matchedConvo = convos.find((c) => normalizePhone(c.phone_number) === normalized);
-    if (!matchedConvo) {
-      matchedConvo = convos.find((c) => {
-        const norm = normalizePhone(c.phone_number);
-        return norm !== "-" && norm.slice(-8) === last8;
-      });
-    }
-
-    const txs = txRes.data || [];
-    let cpf: string | null = null;
-    let txEmail: string | null = null;
-    let txName: string | null = null;
-    for (const tx of txs) {
-      const txNorm = normalizePhone(tx.customer_phone);
-      if (txNorm === normalized || (txNorm !== "-" && txNorm.slice(-8) === last8)) {
-        cpf = tx.customer_document || null;
-        txEmail = tx.customer_email || null;
-        txName = tx.customer_name || null;
-        break;
+    try {
+      if (!workspaceId || !userId) throw new Error("Sem workspace");
+      const normalized = normalizePhone(phone);
+      if (normalized === "-" || normalized.length < 10) {
+        toast.error("Telefone inválido");
+        return;
       }
-    }
 
-    // Enrich with selected orphan tx data
-    let selectedTx: OrphanTx | undefined;
-    if (method === "pix" && existingTxId) {
-      selectedTx = orphanTxs.find((t) => t.id === existingTxId);
-      if (selectedTx) {
-        if (!cpf && selectedTx.customer_document) cpf = selectedTx.customer_document;
-        if (!txName && selectedTx.customer_name) txName = selectedTx.customer_name;
+      setStep("processing");
+      const variations = generatePhoneVariations(phone);
+      const last8 = normalized.slice(-8);
+
+      const [convosRes, txRes, memberRes, allProductsRes] = await Promise.all([
+        supabase.from("conversations").select("id, phone_number, contact_name, email").eq("workspace_id", workspaceId),
+        supabase.from("transactions").select("customer_document, customer_name, customer_email, customer_phone").eq("workspace_id", workspaceId).not("customer_phone", "is", null),
+        supabase.from("member_products" as any).select("product_id, is_active").eq("workspace_id", workspaceId).in("phone", variations),
+        supabase.from("delivery_products").select("id, name").eq("workspace_id", workspaceId),
+      ]);
+
+      if (convosRes.error) throw convosRes.error;
+      if (txRes.error) throw txRes.error;
+      if (memberRes.error) throw memberRes.error;
+      if (allProductsRes.error) throw allProductsRes.error;
+
+      const convos = convosRes.data || [];
+      let matchedConvo = convos.find((c) => normalizePhone(c.phone_number) === normalized);
+      if (!matchedConvo) {
+        matchedConvo = convos.find((c) => {
+          const norm = normalizePhone(c.phone_number);
+          return norm !== "-" && norm.slice(-8) === last8;
+        });
       }
-    }
 
-    const allProducts = allProductsRes.data || [];
-    const memberProducts = ((memberRes.data || []) as any[]).filter((m: any) => m.is_active);
-    const productNames = memberProducts
-      .map((mp: any) => allProducts.find((p) => p.id === mp.product_id)?.name)
-      .filter(Boolean) as string[];
+      const txs = txRes.data || [];
+      let cpf: string | null = null;
+      let txEmail: string | null = null;
+      let txName: string | null = null;
+      for (const tx of txs) {
+        const txNorm = normalizePhone(tx.customer_phone);
+        if (txNorm === normalized || (txNorm !== "-" && txNorm.slice(-8) === last8)) {
+          cpf = tx.customer_document || null;
+          txEmail = tx.customer_email || null;
+          txName = tx.customer_name || null;
+          break;
+        }
+      }
 
-    const foundName = matchedConvo?.contact_name || txName || "";
+      let selectedTx: OrphanTx | undefined;
+      if (method === "pix" && existingTxId) {
+        selectedTx = orphanTxs.find((t) => t.id === existingTxId);
+        if (selectedTx) {
+          if (!cpf && selectedTx.customer_document) cpf = selectedTx.customer_document;
+          if (!txName && selectedTx.customer_name) txName = selectedTx.customer_name;
+        }
+      }
 
-    const info: LeadInfo = {
-      name: foundName,
-      phone: normalized,
-      cpf,
-      email: matchedConvo?.email || txEmail || null,
-      products: productNames,
-    };
-    setLeadInfo(info);
+      const allProducts = allProductsRes.data || [];
+      const memberProducts = ((memberRes.data || []) as any[]).filter((m: any) => m.is_active);
+      const productNames = memberProducts
+        .map((mp: any) => allProducts.find((p) => p.id === mp.product_id)?.name)
+        .filter(Boolean) as string[];
 
-    if (!matchedConvo) {
-      await supabase.from("conversations").insert({
-        user_id: userId,
-        workspace_id: workspaceId,
-        remote_jid: normalized,
-        phone_number: normalized,
-        contact_name: foundName || null,
+      const foundName = matchedConvo?.contact_name || txName || "";
+
+      const info: LeadInfo = {
+        name: foundName,
+        phone: normalized,
+        cpf,
+        email: matchedConvo?.email || txEmail || null,
+        products: productNames,
+      };
+      setLeadInfo(info);
+
+      if (!matchedConvo) {
+        const { error: conversationInsertError } = await supabase.from("conversations").insert({
+          user_id: userId,
+          workspace_id: workspaceId,
+          remote_jid: normalized,
+          phone_number: normalized,
+          contact_name: foundName || null,
+        });
+        if (conversationInsertError) throw conversationInsertError;
+      }
+
+      const { error: memberProductError } = await supabase.from("member_products").upsert(
+        { workspace_id: workspaceId, product_id: product.id, phone: normalized, is_active: true } as any,
+        { onConflict: "product_id,phone" }
+      );
+      if (memberProductError) throw memberProductError;
+
+      const { error: generationError } = await supabase.from("delivery_link_generations").insert({
+        workspace_id: workspaceId, product_id: product.id, phone, normalized_phone: normalized, payment_method: method,
       });
+      if (generationError) throw generationError;
+
+      if (method === "pix" && existingTxId && !alreadyCounted) {
+        const { error: transactionUpdateError } = await supabase
+          .from("transactions")
+          .update({
+            customer_phone: normalized,
+            description: product.name,
+            source: "entrega_digital",
+          })
+          .eq("id", existingTxId);
+
+        if (transactionUpdateError) throw transactionUpdateError;
+      }
+
+      const domain = (settings as any)?.custom_domain || window.location.origin;
+      const finalLink = `${domain.replace(/\/$/, "")}/${normalized}`;
+      const deliveryMsg = (settings as any)?.delivery_message;
+      const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
+      setLink(finalLink);
+      setMessage(finalMessage);
+
+      qc.invalidateQueries({ queryKey: ["delivery-link-generations"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+
+      setStep("result");
+      toast.success(
+        method === "pix"
+          ? alreadyCounted
+            ? "Acesso liberado (transação já contabilizada no lead)"
+            : "Acesso liberado + PIX vinculado"
+          : "Acesso liberado"
+      );
+    } catch (error) {
+      setStep(method === "pix" && existingTxId ? "select-tx" : "payment");
+      toast.error(getErrorMessage(error, "Erro ao liberar acesso"));
     }
-
-    await supabase.from("member_products").upsert(
-      { workspace_id: workspaceId, product_id: product.id, phone: normalized, is_active: true } as any,
-      { onConflict: "product_id,phone" }
-    );
-
-    await supabase.from("delivery_link_generations").insert({
-      workspace_id: workspaceId, product_id: product.id, phone, normalized_phone: normalized, payment_method: method,
-    });
-
-    // PIX: only update transaction if NOT already counted (prevents double-counting)
-    if (method === "pix" && existingTxId && !alreadyCounted) {
-      await supabase
-        .from("transactions")
-        .update({
-          customer_phone: normalized,
-          description: product.name,
-          source: "entrega_digital",
-        })
-        .eq("id", existingTxId);
-    }
-
-    const domain = (settings as any)?.custom_domain || window.location.origin;
-    const finalLink = `${domain.replace(/\/$/, "")}/${normalized}`;
-    const deliveryMsg = (settings as any)?.delivery_message;
-    const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
-    setLink(finalLink);
-    setMessage(finalMessage);
-
-    qc.invalidateQueries({ queryKey: ["delivery-link-generations"] });
-    qc.invalidateQueries({ queryKey: ["transactions"] });
-    qc.invalidateQueries({ queryKey: ["conversations"] });
-
-    setStep("result");
-    toast.success(
-      method === "pix"
-        ? alreadyCounted
-          ? "Acesso liberado (transação já contabilizada no lead)"
-          : "Acesso liberado + PIX vinculado"
-        : "Acesso liberado"
-    );
   }, [workspaceId, userId, phone, product, settings, qc, orphanTxs]);
 
   const handleCopy = () => {
