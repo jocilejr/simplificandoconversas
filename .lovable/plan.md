@@ -1,50 +1,66 @@
 
 
-# Fix: Webhook de boleto — só atualizar, nunca criar
-
-## Mudanças
-
-### 1. `deploy/backend/src/routes/payment.ts`
-
-**Step 3 (linha 635)**: Corrigir `paid_at` para usar `now()`:
-```typescript
-// Antes:
-updateData.paid_at = mpData.date_approved || new Date().toISOString();
-// Depois:
-updateData.paid_at = new Date().toISOString();
-```
-
-**Step 4 (linhas 669-831)**: Substituir todo o bloco de criação por um simples log + return:
-```typescript
-} else {
-  console.log(`[boleto-webhook] No matching transaction for MP payment ${paymentId}, ignoring (boleto not in DB)`);
-  return res.sendStatus(200);
-}
-```
-
-### 2. `src/hooks/useTransactions.ts`
-
-Adicionar segunda query buscando transações aprovadas por `paid_at` no range. Merge + dedup por `id` para que boletos criados dias atrás mas pagos hoje apareçam corretamente.
-
-### 3. `src/components/transactions/TransactionsTable.tsx`
-
-Filtrar aba "aprovados" por `paid_at` dentro do range (linha 219):
-```typescript
-aprovados: transactions.filter((t) => {
-  if (t.status !== "aprovado") return false;
-  if (!t.paid_at || !dateStart || !dateEnd) return true;
-  const pd = new Date(t.paid_at);
-  return pd >= dateStart && pd <= dateEnd;
-}),
-```
+# Redesign da aba Entrega Digital — Fluxo integrado no card do produto
 
 ## Resumo
 
-| Arquivo | Mudança |
-|---------|---------|
-| `deploy/backend/src/routes/payment.ts` | `paid_at = now()` no update + remover criação no Step 4 |
-| `src/hooks/useTransactions.ts` | Segunda query por `paid_at` + merge |
-| `src/components/transactions/TransactionsTable.tsx` | Filtro de aprovados por `paid_at` |
+Ao clicar no card do produto, abre um painel/dialog com fluxo em etapas:
+1. **Nome do cliente** + telefone → botão "Continuar"
+2. **3 cards visuais grandes** para selecionar método de pagamento (PIX, Cartão, Boleto)
+3. **Busca do lead** com resultado minimalista — card com informações básicas (CPF, nome, email, telefone, produtos com acesso)
+4. **Confirmação + link gerado**
 
-Só afeta boletos (webhook do Mercado Pago). PIX, cartão e Yampi não são alterados.
+Remove o botão separado "Gerar Link" dos cards de produto.
+
+## Arquivos alterados
+
+### 1. `src/components/entrega/ProductsTab.tsx`
+- Remover o state `linkProduct` e o componente `LinkGenerator` separado
+- Ao clicar no card do produto, abrir o novo dialog `DeliveryFlowDialog` passando o produto selecionado
+- Remover o botão de ícone `Link2` da lista de ações do card
+
+### 2. `src/components/entrega/LinkGenerator.tsx` → **Reescrever como `DeliveryFlowDialog.tsx`**
+- Novo componente com 4 etapas visuais:
+
+**Etapa 1 — Dados do cliente:**
+- Campo "Nome do cliente" (obrigatório)
+- Campo "Telefone" (obrigatório)
+- Botão "Continuar"
+
+**Etapa 2 — Método de pagamento (3 cards grandes):**
+- Card PIX: ícone QR code, título "PIX", descrição "Pagamento instantâneo"
+- Card Cartão: ícone CreditCard, título "Cartão de Crédito", descrição "Parcelamento disponível"
+- Card Boleto: ícone FileText, título "Boleto Bancário", descrição "Vencimento em 3 dias úteis"
+- Cards com hover, borda highlight ao selecionar, estilo visual grande (h-32+)
+- Ao clicar num card, avança automaticamente para etapa 3
+
+**Etapa 3 — Resultado (busca lead + card de informações):**
+- Busca silenciosa do lead (sem steps visuais "buscando lead...")
+- Exibe um card minimalista com as informações encontradas:
+  - Nome completo
+  - CPF (da tabela `transactions` campo `customer_document`)
+  - Email (da tabela `conversations` campo `email`)
+  - Telefone normalizado
+  - Lista de produtos com acesso (da tabela `member_products`)
+- Se lead não encontrado, mostra card com dados parciais (só nome digitado + telefone)
+- Concede acesso automaticamente (`member_products` upsert)
+- Registra `delivery_link_generations`
+- Se PIX, cria transação aprovada
+
+**Etapa 4 — Link gerado:**
+- Card com link de acesso + botão copiar
+- Botão "Gerar outro"
+
+### 3. `src/components/entrega/ProductsTab.tsx` — Ajuste no card
+- Manter botões de editar, duplicar, excluir
+- Remover botão `Link2`
+- Todo o card (área de nome/slug/valor) é clicável e abre o `DeliveryFlowDialog`
+
+## Detalhes técnicos
+
+- A busca do lead usa `conversations` por telefone normalizado (last8 fallback) para obter nome/email
+- CPF vem de `transactions` onde `customer_phone` match com variações do telefone
+- Produtos com acesso vem de `member_products` filtrado por `normalized_phone`
+- Todas as queries são feitas em paralelo na etapa 3 para velocidade
+- O dialog usa `max-w-lg` para comportar os 3 cards lado a lado
 
