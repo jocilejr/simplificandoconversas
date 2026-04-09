@@ -1,39 +1,43 @@
 
 
-# Melhorias na listagem de transações PIX órfãs
+# Evitar inconsistência de valores: engenharia reversa por CPF no backend + flag na entrega digital
 
-## Mudanças em `src/components/entrega/DeliveryFlowDialog.tsx`
+## Problema
+1. PIX chega via webhook com CPF mas sem telefone (órfã)
+2. `useLeads` já conta essa transação via match de CPF → valor aparece no lead
+3. Na entrega digital, ao vincular essa transação ao telefone do lead, o `customer_phone` é preenchido → `useLeads` agora também encontra a transação via telefone, mas como deduplica por `id`, **não duplica**
+4. **Porém**, o verdadeiro problema é: se o sistema no futuro ou em outro fluxo criar uma **nova** transação ao invés de vincular a existente, aí sim duplica
 
-### A) Paginação: mostrar 5 por vez com "Ver Mais"
-- Novo estado `txLimit` iniciando em 5
-- Exibir apenas `orphanTxs.slice(0, txLimit)` na lista
-- Botão "Ver Mais" ao final que incrementa `txLimit += 5`
-- Remover o `.limit(50)` da query para trazer todas as transações órfãs
+A solução real é simples e envolve duas partes:
 
-### B) Campo de busca por nome ou CPF
-- Novo estado `txSearch` (string)
-- Input com ícone Search acima da lista, placeholder "Buscar por nome ou CPF..."
-- Quando `txSearch` não está vazio: filtrar `orphanTxs` por `customer_name` ou `customer_document` contendo o texto (case-insensitive) e mostrar **todos** os resultados filtrados (sem limite de 5)
-- Quando `txSearch` está vazio: aplicar paginação normal (5 em 5)
-- Contador: "X transações encontradas"
+## Parte 1: Backend — Engenharia reversa por CPF ao receber PIX (VPS)
 
-### C) Ícone de verificado nas transações já vinculadas
-- Alterar a query `handlePixClick` para buscar **todas** as transações PIX aprovadas (não apenas `customer_phone IS NULL`), mas manter a separação visual
-- Na verdade, melhor abordagem: manter a query atual de órfãs para a lista principal, e quando o search é usado, buscar **todas** as transações PIX aprovadas (com e sem telefone) para mostrar resultados completos
-- Transações que já possuem `customer_phone` preenchido exibem um ícone `BadgeCheck` azul ao lado do nome — e ficam desabilitadas (não clicáveis)
-- Para isso, adicionar `customer_phone` ao select da query
+Nos webhooks de pagamento (`payment-openpix.ts`, `payment.ts`, `manual-payment-webhook.ts`), quando uma transação PIX é criada/aprovada **com CPF mas sem telefone**, o backend faz:
 
-### D) Ordenação
-- Manter `.order("created_at", { ascending: false })` — mais recente primeiro (já está assim)
+1. Buscar nas transações existentes do mesmo workspace se já existe alguma transação com esse `customer_document` (CPF) **que tenha** `customer_phone`
+2. Se encontrar → copiar o `customer_phone` para a nova transação (auto-vinculação)
+3. Resultado: a transação já chega vinculada ao lead, sem necessidade de intervenção manual na entrega digital
 
-## Resumo do fluxo
-1. Ao clicar PIX → busca todas transações PIX aprovadas (sem limit)
-2. Lista mostra 5 mais recentes sem telefone
-3. "Ver Mais" carrega +5
-4. Search filtra por nome/CPF em todas as transações (incluindo vinculadas)
-5. Vinculadas aparecem com ícone azul de verificado e não são clicáveis
-6. Não vinculadas são clicáveis normalmente
+Isso é feito adicionando uma função auxiliar em `deploy/backend/src/lib/resolve-phone-by-cpf.ts`.
 
-## Arquivo alterado
-- `src/components/entrega/DeliveryFlowDialog.tsx`
+## Parte 2: Frontend — Flag visual na entrega digital
+
+Em `DeliveryFlowDialog.tsx`:
+
+1. Ao abrir a lista de transações PIX, buscar o CPF do lead digitado (via transações existentes com aquele telefone)
+2. Novo estado `leadCpf`
+3. Na lista de transações:
+   - **Com `customer_phone` preenchido** → badge azul "Vinculada", desabilitada (já existe)
+   - **Sem `customer_phone` mas CPF = leadCpf** → badge verde "Já contabilizada", **clicável** mas ao processar **não** faz update no `customer_phone` da transação (só libera acesso na área de membros)
+   - **Sem `customer_phone` e CPF ≠ leadCpf** → clicável normal, faz vinculação completa
+4. No `processDelivery`, receber flag `alreadyCounted`:
+   - `true`: apenas `member_products.upsert` + `delivery_link_generations.insert` + gerar link
+   - `false`: faz tudo + `transactions.update` com `customer_phone`
+
+## Arquivos alterados
+- `deploy/backend/src/lib/resolve-phone-by-cpf.ts` — nova função auxiliar
+- `deploy/backend/src/routes/payment-openpix.ts` — chamar resolve após insert/update de transação aprovada
+- `deploy/backend/src/routes/payment.ts` — idem
+- `deploy/backend/src/routes/manual-payment-webhook.ts` — idem
+- `src/components/entrega/DeliveryFlowDialog.tsx` — flag visual + lógica condicional
 
