@@ -1,43 +1,40 @@
 
 
-# Evitar inconsistência de valores: engenharia reversa por CPF no backend + flag na entrega digital
+# Fix: Lógica de badge "Já contabilizada" para transações auto-vinculadas
 
-## Problema
-1. PIX chega via webhook com CPF mas sem telefone (órfã)
-2. `useLeads` já conta essa transação via match de CPF → valor aparece no lead
-3. Na entrega digital, ao vincular essa transação ao telefone do lead, o `customer_phone` é preenchido → `useLeads` agora também encontra a transação via telefone, mas como deduplica por `id`, **não duplica**
-4. **Porém**, o verdadeiro problema é: se o sistema no futuro ou em outro fluxo criar uma **nova** transação ao invés de vincular a existente, aí sim duplica
+## Problema atual
+O backend já faz a engenharia reversa corretamente — quando um PIX chega com CPF conhecido, ele auto-vincula o telefone do lead na transação. Porém, no `DeliveryFlowDialog`, a lógica de detecção de "já contabilizada" exige que `customer_phone` seja null (`!isLinked`). Como o backend JÁ preencheu o telefone, essas transações aparecem como "Vinculada" (azul, desabilitada) em vez de "Já contabilizada" (verde, clicável).
 
-A solução real é simples e envolve duas partes:
+## Solução
 
-## Parte 1: Backend — Engenharia reversa por CPF ao receber PIX (VPS)
+### Arquivo: `src/components/entrega/DeliveryFlowDialog.tsx`
 
-Nos webhooks de pagamento (`payment-openpix.ts`, `payment.ts`, `manual-payment-webhook.ts`), quando uma transação PIX é criada/aprovada **com CPF mas sem telefone**, o backend faz:
+**1) Corrigir `isAlreadyCounted`** — Uma transação é "já contabilizada" em dois cenários:
+- Sem telefone + CPF = leadCpf (órfã que o backend não conseguiu resolver, mas o CPF bate)
+- Com telefone = telefone do lead atual + CPF = leadCpf (backend já auto-vinculou)
 
-1. Buscar nas transações existentes do mesmo workspace se já existe alguma transação com esse `customer_document` (CPF) **que tenha** `customer_phone`
-2. Se encontrar → copiar o `customer_phone` para a nova transação (auto-vinculação)
-3. Resultado: a transação já chega vinculada ao lead, sem necessidade de intervenção manual na entrega digital
+**2) Ajustar `filteredTxs`** — Incluir na lista padrão (sem busca) as transações que já têm o telefone do lead atual (auto-vinculadas pelo backend), além das órfãs.
 
-Isso é feito adicionando uma função auxiliar em `deploy/backend/src/lib/resolve-phone-by-cpf.ts`.
+**3) Ajustar `isDisabled`** — Transações vinculadas a OUTROS contatos continuam desabilitadas (azul). Transações vinculadas ao lead ATUAL via CPF ficam clicáveis (verde).
 
-## Parte 2: Frontend — Flag visual na entrega digital
+**4) `processDelivery` sem mudanças** — A flag `alreadyCounted=true` já faz o correto: só libera acesso sem re-vincular valores.
 
-Em `DeliveryFlowDialog.tsx`:
+### Lógica corrigida (pseudocódigo):
+```text
+isLinkedToCurrentLead = tx.customer_phone matches phone do lead atual
+isAlreadyCounted = leadCpf && tx.customer_document === leadCpf && (isLinkedToCurrentLead || !tx.customer_phone)
+isDisabled = tx.customer_phone exists && !isLinkedToCurrentLead && !isAlreadyCounted
+```
 
-1. Ao abrir a lista de transações PIX, buscar o CPF do lead digitado (via transações existentes com aquele telefone)
-2. Novo estado `leadCpf`
-3. Na lista de transações:
-   - **Com `customer_phone` preenchido** → badge azul "Vinculada", desabilitada (já existe)
-   - **Sem `customer_phone` mas CPF = leadCpf** → badge verde "Já contabilizada", **clicável** mas ao processar **não** faz update no `customer_phone` da transação (só libera acesso na área de membros)
-   - **Sem `customer_phone` e CPF ≠ leadCpf** → clicável normal, faz vinculação completa
-4. No `processDelivery`, receber flag `alreadyCounted`:
-   - `true`: apenas `member_products.upsert` + `delivery_link_generations.insert` + gerar link
-   - `false`: faz tudo + `transactions.update` com `customer_phone`
+### Filtro padrão (sem busca):
+```text
+Mostrar se:
+  - Sem customer_phone (órfã) → sempre
+  - Com customer_phone = lead atual E CPF = leadCpf → já contabilizada
+  - Demais com customer_phone → esconder (a menos que busca ativa)
+```
 
-## Arquivos alterados
-- `deploy/backend/src/lib/resolve-phone-by-cpf.ts` — nova função auxiliar
-- `deploy/backend/src/routes/payment-openpix.ts` — chamar resolve após insert/update de transação aprovada
-- `deploy/backend/src/routes/payment.ts` — idem
-- `deploy/backend/src/routes/manual-payment-webhook.ts` — idem
-- `src/components/entrega/DeliveryFlowDialog.tsx` — flag visual + lógica condicional
-
+## Resultado esperado
+- PIX auto-vinculado pelo backend → aparece com badge verde "Já contabilizada" → clique só libera acesso
+- PIX órfão → aparece sem badge → clique vincula telefone + valor + libera acesso
+- PIX de outro contato → azul, desabilitado (só aparece na busca)
