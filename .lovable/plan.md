@@ -1,38 +1,73 @@
 
 
-# Fix: Transação aparecendo no período errado
+# Vincular transação PIX existente ao contato
 
-## Problema
+## Problema atual
+Ao selecionar PIX na entrega digital, o sistema **cria uma nova transação**. O correto é **buscar transações PIX aprovadas sem telefone** (órfãs vindas do webhook, que já têm `customer_name` e `customer_document` mas não têm `customer_phone`) e permitir vincular ao contato buscado pelo telefone.
 
-Dois bugs na filtragem de transações aprovadas na `TransactionsTable`:
+## Novo fluxo
 
-1. **Dependências faltando no `useMemo`**: o `tabTransactions` depende de `dateStart` e `dateEnd` mas o array de dependências só tem `[transactions]`. Quando as datas mudam mas as transações em cache não mudam imediatamente, o filtro usa valores antigos.
-
-2. **`paid_at` nulo passa no filtro**: linha 221 faz `if (!t.paid_at) return true` — se o webhook não setou `paid_at` (ou houve delay), a transação aprovada aparece em QUALQUER período, incluindo "Ontem" quando foi paga hoje.
-
-## Solução
-
-### `src/components/transactions/TransactionsTable.tsx`
-
-Duas mudanças cirúrgicas:
-
-**A) Corrigir o filtro de aprovados (linhas 219-224):**
-- Se `paid_at` existe → filtrar por `paid_at` (como já faz)
-- Se `paid_at` é null → filtrar por `created_at` como fallback (em vez de incluir cegamente)
-
-```typescript
-aprovados: transactions.filter((t) => {
-  if (t.status !== "aprovado") return false;
-  if (!dateStart || !dateEnd) return true;
-  const relevantDate = new Date(t.paid_at || t.created_at);
-  return relevantDate >= dateStart && relevantDate <= dateEnd;
-}),
+```text
+Telefone → Pagamento → [PIX] Selecionar Transação Órfã → Resultado
 ```
 
-**B) Adicionar dependências no useMemo (linha 232):**
+## Mudanças em `src/components/entrega/DeliveryFlowDialog.tsx`
+
+### A) Novo step e estados
+- Adicionar `"select-tx"` ao type `Step`
+- Novos estados: `orphanTxs` (lista de transações encontradas) e `selectedTxId`
+
+### B) Ao clicar em PIX
+Em vez de chamar `processDelivery("pix")`, buscar transações órfãs:
 ```typescript
-}), [transactions, dateStart, dateEnd]);
+// Buscar PIX aprovados SEM telefone no workspace
+const { data } = await supabase
+  .from("transactions")
+  .select("*")
+  .eq("workspace_id", workspaceId)
+  .eq("type", "pix")
+  .eq("status", "aprovado")
+  .is("customer_phone", null)
+  .order("created_at", { ascending: false });
+```
+- Se encontrou → mostrar step `"select-tx"` com a lista
+- Se não encontrou → toast "Nenhuma transação PIX sem vínculo encontrada"
+
+### C) Nova tela `select-tx`
+Lista de cards clicáveis mostrando:
+- Valor (`R$ X,XX`)
+- Nome do cliente (vindo do webhook)
+- CPF (vindo do webhook)
+- Data de pagamento
+- ID parcial
+
+Ao clicar, chama `processDelivery("pix", txId)`.
+
+### D) Alterar `processDelivery` para PIX
+Receber `existingTxId?: string`. Quando PIX + existingTxId:
+- **UPDATE** a transação existente adicionando `customer_phone` do contato buscado
+- **Não criar** transação nova
+- O `customer_name` e `customer_document` já existem (vieram do webhook)
+- Adicionar `description: product.name` e `source: "entrega_digital"` ao update
+
+```typescript
+if (method === "pix" && existingTxId) {
+  await supabase
+    .from("transactions")
+    .update({
+      customer_phone: normalized,
+      description: product.name,
+    })
+    .eq("id", existingTxId);
+}
 ```
 
-Resultado: transação paga hoje só aparece no filtro "Hoje", não em "Ontem".
+### E) Enriquecer LeadInfo com dados da transação selecionada
+Ao vincular, preencher o `leadInfo` com `customer_name` e `customer_document` da transação selecionada — integrando CPF da transação ao contato.
+
+## Arquivo alterado
+- `src/components/entrega/DeliveryFlowDialog.tsx`
+
+## Resultado
+Transação PIX de "CPF X" fica vinculada ao "Contato Y" (identificado pelo telefone). Nenhuma transação duplicada é criada.
 
