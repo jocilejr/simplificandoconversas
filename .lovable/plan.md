@@ -1,30 +1,33 @@
 
 
-# Fix: Grupos selecionados somem ao reabrir campanha
+# Fix: Green dot não aparece nas transações
 
 ## Problema
 
-Ao abrir o diálogo de edição, dois `useEffect` competem:
-1. **Effect 1** (linha 46-59): seta `instanceName` e `groupJids` a partir do `editData`
-2. **Effect 2** (linha 62-99): dispara quando `instanceName` muda, busca grupos remotos e **limpa `groupJids` com `new Set()`** (linha 81)
+O `useEffect` que chama `markSeen` (linha 230-236 do `TransactionsTable.tsx`) dispara automaticamente no mount do componente e a cada mudança de `tabTransactions`. Isso significa que quando uma nova transação chega via realtime:
 
-O Effect 2 sempre roda após o Effect 1, sobrescrevendo os JIDs salvos da campanha com um Set vazio.
+1. `useTransactions` refaz o fetch → nova transação aparece
+2. `tabTransactions` recomputa → `useEffect` dispara
+3. `markSeen` marca como visto imediatamente (milissegundos)
+4. O dot desaparece antes do usuário perceber
+
+O dot nunca fica visível porque o `markSeen` é chamado automaticamente, não apenas quando o usuário troca de aba.
 
 ## Solução
 
-No Effect 2 (fetch de grupos), ao invés de sempre limpar `groupJids`, preservar os JIDs que vieram do `editData` quando estiver em modo edição:
+**Arquivo:** `src/components/transactions/TransactionsTable.tsx`
 
-**Arquivo:** `src/components/grupos/GroupCampaignDialog.tsx`
+Mudar a lógica para que `markSeen` só seja chamado quando o usuário **manualmente troca de aba**, não no mount nem quando os dados mudam:
 
-- Remover o `setGroupJids(new Set())` de dentro do callback de fetch (linha 81)
-- Apenas limpar groupJids quando a troca de instância for manual (não vinda do editData)
-- Usar uma ref para rastrear se a instância foi setada pelo editData ou pelo usuário
+1. Adicionar um `useRef` para rastrear se é a primeira renderização e qual aba o usuário trocou
+2. Substituir o `useEffect` automático por uma chamada dentro do handler `setActiveTab`
+3. Não marcar como visto automaticamente no mount — apenas quando o usuário clica na aba
 
 Lógica concreta:
-1. Adicionar `const editInstanceRef = useRef("")` para guardar a instância original do editData
-2. No Effect 1, setar `editInstanceRef.current = editData.instance_name`
-3. No Effect 2, após buscar grupos: se `instanceName === editInstanceRef.current` e temos `editData.group_jids`, restaurar esses JIDs; caso contrário, limpar normalmente
-4. Resetar `editInstanceRef.current = ""` após consumir
+- Criar `const isFirstRender = useRef(true)` 
+- No useEffect atual, ignorar se `isFirstRender.current === true` (setar `false` após)
+- Só chamar `markSeen` quando `activeTab` mudar (não quando `tabTransactions` mudar)
+- Remover `tabTransactions` das dependências do useEffect
 
-Resultado: ao abrir para editar, os grupos salvos aparecem marcados; ao trocar instância manualmente, limpa corretamente.
+Resultado: o dot verde aparece e persiste até o usuário clicar na aba correspondente.
 
