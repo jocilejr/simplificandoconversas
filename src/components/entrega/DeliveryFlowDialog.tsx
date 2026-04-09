@@ -488,29 +488,51 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                 <div className="space-y-2 pr-2">
                   {filteredTxs.map((tx) => {
                     const isLinked = !!tx.customer_phone;
+                    const isAlreadyCounted = !isLinked && !!leadCpf && tx.customer_document === leadCpf;
+                    const isLinkedOther = isLinked && !(leadCpf && tx.customer_document === leadCpf);
+                    const isDisabled = isLinked && !isAlreadyCounted;
                     return (
                       <button
                         key={tx.id}
-                        disabled={isLinked}
-                        onClick={() => !isLinked && processDelivery("pix", tx.id)}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (isAlreadyCounted) {
+                            processDelivery("pix", tx.id, true);
+                          } else if (!isLinked) {
+                            processDelivery("pix", tx.id, false);
+                          }
+                        }}
                         className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-all active:scale-[0.99] ${
-                          isLinked
+                          isDisabled
                             ? "border-border/30 bg-muted/30 opacity-60 cursor-default"
-                            : "border-border/50 bg-card hover:border-primary/40 hover:bg-accent/30"
+                            : isAlreadyCounted
+                              ? "border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500/50 hover:bg-emerald-500/10"
+                              : "border-border/50 bg-card hover:border-primary/40 hover:bg-accent/30"
                         }`}
                       >
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${isLinked ? "bg-blue-500/10" : "bg-emerald-500/10"}`}>
-                          {isLinked ? (
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${
+                          isDisabled ? "bg-blue-500/10" : isAlreadyCounted ? "bg-emerald-500/10" : "bg-emerald-500/10"
+                        }`}>
+                          {isDisabled ? (
                             <BadgeCheck className="h-4 w-4 text-blue-500" />
+                          ) : isAlreadyCounted ? (
+                            <BadgeCheck className="h-4 w-4 text-emerald-500" />
                           ) : (
                             <QrCode className="h-4 w-4 text-emerald-500" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-foreground">
-                              R$ {Number(tx.amount).toFixed(2)}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold text-foreground">
+                                R$ {Number(tx.amount).toFixed(2)}
+                              </p>
+                              {isAlreadyCounted && (
+                                <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                                  Já contabilizada
+                                </Badge>
+                              )}
+                            </div>
                             <span className="text-[10px] text-muted-foreground font-mono">
                               ...{tx.id.slice(-8)}
                             </span>
@@ -520,7 +542,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                               <span className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
                                 <User className="h-2.5 w-2.5 shrink-0" />
                                 {tx.customer_name}
-                                {isLinked && <BadgeCheck className="h-2.5 w-2.5 text-blue-500 shrink-0" />}
+                                {isDisabled && <BadgeCheck className="h-2.5 w-2.5 text-blue-500 shrink-0" />}
                               </span>
                             )}
                             {tx.customer_document && (
