@@ -128,7 +128,7 @@ function MemberProductsTab() {
       if (error) throw error;
     },
     onSuccess: () => { toast.success("Produto liberado!"); queryClient.invalidateQueries({ queryKey: ["member-products"] }); setNewPhone(""); setNewProductId(""); setDialogOpen(false); },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: any) => { console.error("[AreaMembros] addMutation error:", JSON.stringify(err)); toast.error(err.message || "Erro ao liberar produto"); },
   });
 
   const deleteMutation = useMutation({
