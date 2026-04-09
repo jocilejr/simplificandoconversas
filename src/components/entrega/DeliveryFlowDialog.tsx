@@ -214,7 +214,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     const [convosRes, txRes, memberRes, allProductsRes] = await Promise.all([
       supabase.from("conversations").select("id, phone_number, contact_name, email").eq("workspace_id", workspaceId),
       supabase.from("transactions").select("customer_document, customer_name, customer_email, customer_phone").eq("workspace_id", workspaceId).not("customer_phone", "is", null),
-      supabase.from("member_products").select("product_id, is_active").eq("workspace_id", workspaceId).in("phone", variations),
+      supabase.from("member_products" as any).select("product_id, is_active").eq("workspace_id", workspaceId).in("phone", variations),
       supabase.from("delivery_products").select("id, name").eq("workspace_id", workspaceId),
     ]);
 
