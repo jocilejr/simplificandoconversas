@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { generatePhoneVariations } from "@/lib/phoneNormalization";
 
 const statusColors: Record<string, string> = {
   aprovado: "bg-green-500/10 text-green-600 border-green-500/30",
