@@ -47,9 +47,9 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
       await supabase.from("member_products").upsert({
         workspace_id: workspaceId,
         product_id: product.id,
-        phone: normalized,
-        status: "active",
-      }, { onConflict: "workspace_id,product_id,phone" });
+        normalized_phone: normalized,
+        is_active: true,
+      }, { onConflict: "workspace_id,product_id,normalized_phone" });
 
       // 2. Register link generation
       await supabase.from("delivery_link_generations").insert({
