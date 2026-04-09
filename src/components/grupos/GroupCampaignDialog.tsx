@@ -82,7 +82,13 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
         const groups: RemoteGroup[] = await resp.json();
         if (!cancelled) {
           setRemoteGroups(groups);
-          setGroupJids(new Set());
+          // Preserve saved JIDs when opening edit for the same instance
+          if (editInstanceRef.current && instanceName === editInstanceRef.current && editData?.group_jids?.length) {
+            setGroupJids(new Set(editData.group_jids));
+            editInstanceRef.current = ""; // consume — next change is manual
+          } else {
+            setGroupJids(new Set());
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
