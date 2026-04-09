@@ -207,6 +207,14 @@ function DominioTab() {
           </p>
         </div>
 
+        <div>
+          <Label>Mensagem padrão de entrega</Label>
+          <Textarea value={deliveryMessage} onChange={(e) => setDeliveryMessage(e.target.value)} rows={4} placeholder="Olá! Seu acesso está liberado..." />
+          <p className="text-xs text-muted-foreground mt-1">
+            Enviada junto com o link ao liberar acesso. O link será adicionado na última linha. Deixe vazio para enviar apenas o link.
+          </p>
+        </div>
+
         <Button onClick={() => saveMut.mutate()} className="w-full" disabled={saveMut.isPending}>
           {saveMut.isPending ? "Salvando..." : "Salvar Configurações"}
         </Button>
