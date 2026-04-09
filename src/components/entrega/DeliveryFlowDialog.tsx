@@ -252,9 +252,9 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     }
 
     const allProducts = allProductsRes.data || [];
-    const memberProducts = (memberRes.data || []).filter((m) => m.is_active);
+    const memberProducts = ((memberRes.data || []) as any[]).filter((m: any) => m.is_active);
     const productNames = memberProducts
-      .map((mp) => allProducts.find((p) => p.id === mp.product_id)?.name)
+      .map((mp: any) => allProducts.find((p) => p.id === mp.product_id)?.name)
       .filter(Boolean) as string[];
 
     const foundName = matchedConvo?.contact_name || txName || "";
