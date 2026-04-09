@@ -120,10 +120,10 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
         {
           workspace_id: workspaceId,
           product_id: product.id,
-          normalized_phone: normalized,
+          phone: normalized,
           is_active: true,
         },
-        { onConflict: "workspace_id,product_id,normalized_phone" }
+        { onConflict: "product_id,phone" }
       );
 
       await supabase.from("delivery_link_generations").insert({
@@ -156,10 +156,10 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
         {
           workspace_id: workspaceId,
           product_id: product.id,
-          normalized_phone: normalized,
+          phone: normalized,
           is_active: true,
         },
-        { onConflict: "workspace_id,product_id,normalized_phone" }
+        { onConflict: "product_id,phone" }
       );
 
       await supabase.from("delivery_link_generations").insert({
