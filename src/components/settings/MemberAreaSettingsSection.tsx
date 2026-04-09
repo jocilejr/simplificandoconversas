@@ -136,6 +136,7 @@ function DominioTab() {
   const [customDomain, setCustomDomain] = useState("");
   const [globalRedirectUrl, setGlobalRedirectUrl] = useState("");
   const [linkMessageTemplate, setLinkMessageTemplate] = useState("Olá! Aqui está seu acesso: {link}");
+  const [deliveryMessage, setDeliveryMessage] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   if (settings && !loaded) {
