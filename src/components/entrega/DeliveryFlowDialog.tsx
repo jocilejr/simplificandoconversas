@@ -329,6 +329,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     setOrphanTxs([]);
     setTxSearch("");
     setTxLimit(5);
+    setLeadCpf(null);
   };
 
   return (
