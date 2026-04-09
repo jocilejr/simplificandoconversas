@@ -37,6 +37,7 @@ const Leads = () => {
     tagFilter, setTagFilter, uniqueTags,
     paymentFilter, setPaymentFilter,
     page, setPage, totalPages, counts,
+    sortField, sortDir, handleSort,
     createContact, importCSV,
   } = useLeads();
 
@@ -45,47 +46,11 @@ const Leads = () => {
   const [form, setForm] = useState({ name: "", phone: "", instance_name: "" });
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const SortIcon = ({ field }: { field: string }) => {
     if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
     return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
   };
-
-  const sortedLeads = useMemo(() => {
-    if (!sortField) return leads;
-    const arr = [...leads];
-    const dir = sortDir === "asc" ? 1 : -1;
-    arr.sort((a, b) => {
-      switch (sortField) {
-        case "name":
-          return dir * (a.contact_name || "").localeCompare(b.contact_name || "");
-        case "phone":
-          return dir * formatPhone(a.remote_jid, a.phone_number).localeCompare(formatPhone(b.remote_jid, b.phone_number));
-        case "orders":
-          return dir * (a.paidOrdersCount - b.paidOrdersCount);
-        case "total":
-          return dir * (a.totalPaid - b.totalPaid);
-        case "reminders":
-          return dir * (a.remindersCount - b.remindersCount);
-        case "status":
-          return dir * (Number(a.hasPaid) - Number(b.hasPaid));
-        default:
-          return 0;
-      }
-    });
-    return arr;
-  }, [leads, sortField, sortDir]);
 
   const handleCreate = () => {
     if (!form.phone.trim()) return;
