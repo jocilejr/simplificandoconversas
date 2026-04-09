@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useWorkspace } from "./useWorkspace";
 import { useEffect, useCallback } from "react";
+import { apiUrl } from "@/lib/api";
 
 type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "rejeitados";
 
@@ -79,18 +80,26 @@ export function useUnseenTransactions() {
 
   const markSeen = useCallback(
     async (ids: string[]) => {
-      if (!ids.length) return;
-      const { error } = await supabase
-        .from("transactions")
-        .update({ viewed_at: new Date().toISOString() } as any)
-        .in("id", ids)
-        .is("viewed_at", null);
-
-      if (!error) {
+      if (!ids.length || !workspaceId) return;
+      try {
+        const resp = await fetch(apiUrl("mark-seen"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, workspaceId }),
+        });
+        const result = await resp.json();
+        if (result.error) {
+          console.error("[markSeen] backend error:", result.error);
+          return;
+        }
+        console.log("[markSeen] updated:", result.updated);
         queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      } catch (err) {
+        console.error("[markSeen] fetch error:", err);
       }
     },
-    [queryClient]
+    [workspaceId, queryClient]
   );
 
   return { hasUnseen, hasAnyUnseen, markSeen, counts };

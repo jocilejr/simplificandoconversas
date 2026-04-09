@@ -1305,4 +1305,30 @@ router.post("/generate-payment", async (req, res) => {
   }
 });
 
+// ── Mark transactions as seen ──
+router.post("/mark-seen", async (req: Request, res: Response) => {
+  try {
+    const { ids, workspaceId } = req.body;
+    if (!ids?.length || !workspaceId) return res.json({ updated: 0 });
+
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("transactions")
+      .update({ viewed_at: new Date().toISOString() })
+      .in("id", ids)
+      .eq("workspace_id", workspaceId)
+      .is("viewed_at", null)
+      .select("id");
+
+    if (error) {
+      console.error("[mark-seen] error:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ updated: data?.length || 0 });
+  } catch (err: any) {
+    console.error("[mark-seen] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

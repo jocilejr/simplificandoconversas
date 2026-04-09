@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -226,18 +226,31 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions]);
 
-  // Mark transactions as seen when tab is active (including initial render)
+  // Mark transactions as seen when tab is active
   const prevTab = useRef<TabKey | null>(null);
+  const initialDone = useRef(false);
 
-  useEffect(() => {
-    if (prevTab.current === activeTab) return;
-    prevTab.current = activeTab;
-    const currentTxs = tabTransactions[activeTab] || [];
+  const markTabAsSeen = useCallback((tab: TabKey) => {
+    const currentTxs = tabTransactions[tab] || [];
     const unseenIds = currentTxs.filter((t) => !t.viewed_at).map((t) => t.id);
     if (unseenIds.length > 0) {
       markSeen(unseenIds);
     }
-  }, [activeTab, markSeen, tabTransactions]);
+  }, [tabTransactions, markSeen]);
+
+  // On tab change
+  useEffect(() => {
+    if (prevTab.current === activeTab) return;
+    prevTab.current = activeTab;
+    markTabAsSeen(activeTab);
+  }, [activeTab, markTabAsSeen]);
+
+  // On initial data load
+  useEffect(() => {
+    if (isLoading || initialDone.current) return;
+    initialDone.current = true;
+    markTabAsSeen(activeTab);
+  }, [isLoading, activeTab, markTabAsSeen]);
 
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
@@ -406,19 +419,19 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
           <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="aprovados" onClick={() => markTabAsSeen("aprovados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Aprovados ({tabTransactions.aprovados.length})
               {hasUnseen("aprovados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="boletos-gerados" onClick={() => markTabAsSeen("boletos-gerados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Boletos ({tabTransactions["boletos-gerados"].length})
               {hasUnseen("boletos-gerados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="pix-cartao-pendentes" onClick={() => markTabAsSeen("pix-cartao-pendentes")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
               {hasUnseen("pix-cartao-pendentes") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="rejeitados" onClick={() => markTabAsSeen("rejeitados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Rejeitados ({tabTransactions.rejeitados.length})
               {hasUnseen("rejeitados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
