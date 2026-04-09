@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, QrCode, CreditCard, FileText, Copy, Check,
   User, Phone, Mail, FileDigit, ShoppingBag, ArrowLeft, ArrowRight,
-  Loader2, X, CircleDot, Calendar, Hash,
+  Loader2, X, CircleDot, Calendar, Hash, Search, BadgeCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/normalizePhone";
@@ -39,6 +39,7 @@ interface OrphanTx {
   amount: number;
   customer_name: string | null;
   customer_document: string | null;
+  customer_phone: string | null;
   created_at: string;
   paid_at: string | null;
 }
@@ -84,6 +85,8 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
   const [copied, setCopied] = useState(false);
   const [orphanTxs, setOrphanTxs] = useState<OrphanTx[]>([]);
   const [loadingTxs, setLoadingTxs] = useState(false);
+  const [txSearch, setTxSearch] = useState("");
+  const [txLimit, setTxLimit] = useState(5);
 
   const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
@@ -105,13 +108,11 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     setLoadingTxs(true);
     const { data, error } = await supabase
       .from("transactions")
-      .select("id, amount, customer_name, customer_document, created_at, paid_at")
+      .select("id, amount, customer_name, customer_document, customer_phone, created_at, paid_at")
       .eq("workspace_id", workspaceId)
       .eq("type", "pix")
       .eq("status", "aprovado")
-      .is("customer_phone", null)
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .order("created_at", { ascending: false });
     setLoadingTxs(false);
 
     if (error) {
@@ -121,13 +122,33 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
 
     const txs = (data || []) as OrphanTx[];
     if (txs.length === 0) {
-      toast.error("Nenhuma transação PIX sem vínculo encontrada");
+      toast.error("Nenhuma transação PIX aprovada encontrada");
       return;
     }
 
     setOrphanTxs(txs);
+    setTxSearch("");
+    setTxLimit(5);
     setStep("select-tx");
   }, [workspaceId]);
+
+  const filteredTxs = useMemo(() => {
+    if (!txSearch.trim()) {
+      // No search: show only unlinked, paginated
+      const unlinked = orphanTxs.filter((tx) => !tx.customer_phone);
+      return unlinked.slice(0, txLimit);
+    }
+    // Search: filter all txs (linked + unlinked)
+    const q = txSearch.toLowerCase();
+    return orphanTxs.filter(
+      (tx) =>
+        tx.customer_name?.toLowerCase().includes(q) ||
+        tx.customer_document?.includes(q)
+    );
+  }, [orphanTxs, txSearch, txLimit]);
+
+  const totalUnlinked = useMemo(() => orphanTxs.filter((tx) => !tx.customer_phone).length, [orphanTxs]);
+  const hasMoreUnlinked = !txSearch.trim() && txLimit < totalUnlinked;
 
   const processDelivery = useCallback(async (method: string, existingTxId?: string) => {
     if (!workspaceId || !userId) return;
@@ -264,6 +285,8 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     setMessage("");
     setCopied(false);
     setOrphanTxs([]);
+    setTxSearch("");
+    setTxLimit(5);
   };
 
   return (
@@ -402,49 +425,90 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                 </p>
               </div>
 
-              <ScrollArea className="max-h-[280px]">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+                <Input
+                  value={txSearch}
+                  onChange={(e) => { setTxSearch(e.target.value); setTxLimit(5); }}
+                  placeholder="Buscar por nome ou CPF..."
+                  className="h-8 text-xs pl-9 bg-muted/30 border-border/50 focus:bg-background"
+                />
+              </div>
+
+              <p className="text-[10px] text-muted-foreground">
+                {txSearch.trim()
+                  ? `${filteredTxs.length} transações encontradas`
+                  : `${totalUnlinked} transações sem vínculo`}
+              </p>
+
+              <ScrollArea className="max-h-[240px]">
                 <div className="space-y-2 pr-2">
-                  {orphanTxs.map((tx) => (
-                    <button
-                      key={tx.id}
-                      onClick={() => processDelivery("pix", tx.id)}
-                      className="w-full flex items-center gap-3 rounded-lg border border-border/50 bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-accent/30 active:scale-[0.99]"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 shrink-0">
-                        <QrCode className="h-4 w-4 text-emerald-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold text-foreground">
-                            R$ {Number(tx.amount).toFixed(2)}
-                          </p>
-                          <span className="text-[10px] text-muted-foreground font-mono">
-                            ...{tx.id.slice(-8)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1">
-                          {tx.customer_name && (
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
-                              <User className="h-2.5 w-2.5 shrink-0" />
-                              {tx.customer_name}
-                            </span>
+                  {filteredTxs.map((tx) => {
+                    const isLinked = !!tx.customer_phone;
+                    return (
+                      <button
+                        key={tx.id}
+                        disabled={isLinked}
+                        onClick={() => !isLinked && processDelivery("pix", tx.id)}
+                        className={`w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-all active:scale-[0.99] ${
+                          isLinked
+                            ? "border-border/30 bg-muted/30 opacity-60 cursor-default"
+                            : "border-border/50 bg-card hover:border-primary/40 hover:bg-accent/30"
+                        }`}
+                      >
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shrink-0 ${isLinked ? "bg-blue-500/10" : "bg-emerald-500/10"}`}>
+                          {isLinked ? (
+                            <BadgeCheck className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <QrCode className="h-4 w-4 text-emerald-500" />
                           )}
-                          {tx.customer_document && (
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <FileDigit className="h-2.5 w-2.5 shrink-0" />
-                              {tx.customer_document}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1 ml-auto shrink-0">
-                            <Calendar className="h-2.5 w-2.5" />
-                            {format(new Date(tx.paid_at || tx.created_at), "dd/MM HH:mm")}
-                          </span>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-foreground">
+                              R$ {Number(tx.amount).toFixed(2)}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              ...{tx.id.slice(-8)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            {tx.customer_name && (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                                <User className="h-2.5 w-2.5 shrink-0" />
+                                {tx.customer_name}
+                                {isLinked && <BadgeCheck className="h-2.5 w-2.5 text-blue-500 shrink-0" />}
+                              </span>
+                            )}
+                            {tx.customer_document && (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <FileDigit className="h-2.5 w-2.5 shrink-0" />
+                                {tx.customer_document}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1 ml-auto shrink-0">
+                              <Calendar className="h-2.5 w-2.5" />
+                              {format(new Date(tx.paid_at || tx.created_at), "dd/MM HH:mm")}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </ScrollArea>
+
+              {hasMoreUnlinked && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTxLimit((l) => l + 5)}
+                  className="w-full h-8 text-xs text-muted-foreground"
+                >
+                  Ver mais
+                </Button>
+              )}
             </div>
           )}
 
