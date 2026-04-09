@@ -180,7 +180,7 @@ const Leads = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedLeads.map((l) => (
+              {leads.map((l) => (
                 <TableRow
                   key={l.remote_jid}
                   className="cursor-pointer hover:bg-muted/50"
