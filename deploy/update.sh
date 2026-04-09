@@ -382,8 +382,10 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   payment_url text,
   metadata jsonb,
   paid_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  viewed_at timestamptz DEFAULT NULL
 );
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can manage own transactions') THEN
