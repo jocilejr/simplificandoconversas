@@ -1,8 +1,6 @@
 /**
  * PDF to Image conversion using mupdf (WASM).
  * Replaces pdftoppm (poppler-utils) which fails on complex PDFs (e.g. Mercado Pago boletos).
- * 
- * mupdf is ESM-only, so we use dynamic import() in this CommonJS project.
  */
 
 import { readFile, writeFile } from "fs/promises";
@@ -16,8 +14,8 @@ export async function convertPdfToJpg(pdfPath: string, jpgPath: string, scale: n
 
   const pdfBuffer = await readFile(pdfPath);
 
-  // Dynamic import for ESM-only mupdf package
-  const mupdf = await (Function('return import("mupdf")')()) as typeof import("mupdf");
+  // Dynamic import for ESM-only mupdf package (bypass TS module resolution)
+  const mupdf: any = await (Function('return import("mupdf")')());
 
   const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf");
   const page = doc.loadPage(0);
