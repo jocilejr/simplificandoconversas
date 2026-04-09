@@ -1,10 +1,10 @@
-import { useState, useRef } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useRef, useMemo } from "react";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users,
+  Search, Plus, Upload, Tag, ChevronLeft, ChevronRight, Users, ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
@@ -28,9 +28,12 @@ const formatPhone = (jid: string, phone?: string | null) => {
   return (phone || jid).replace("@s.whatsapp.net", "").replace(/\D/g, "");
 };
 
+type SortField = "name" | "phone" | "orders" | "total" | "reminders" | "status";
+type SortDir = "asc" | "desc";
+
 const Leads = () => {
   const {
-    leads, totalLeads, isLoading, search, setSearch,
+    leads, allLeads, totalLeads, isLoading, search, setSearch,
     tagFilter, setTagFilter, uniqueTags,
     paymentFilter, setPaymentFilter,
     page, setPage, totalPages, counts,
@@ -42,6 +45,47 @@ const Leads = () => {
   const [form, setForm] = useState({ name: "", phone: "", instance_name: "" });
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
+  const sortedLeads = useMemo(() => {
+    if (!sortField) return leads;
+    const arr = [...leads];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortField) {
+        case "name":
+          return dir * (a.contact_name || "").localeCompare(b.contact_name || "");
+        case "phone":
+          return dir * formatPhone(a.remote_jid, a.phone_number).localeCompare(formatPhone(b.remote_jid, b.phone_number));
+        case "orders":
+          return dir * (a.paidOrdersCount - b.paidOrdersCount);
+        case "total":
+          return dir * (a.totalPaid - b.totalPaid);
+        case "reminders":
+          return dir * (a.remindersCount - b.remindersCount);
+        case "status":
+          return dir * (Number(a.hasPaid) - Number(b.hasPaid));
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [leads, sortField, sortDir]);
 
   const handleCreate = () => {
     if (!form.phone.trim()) return;
@@ -136,7 +180,7 @@ const Leads = () => {
       {/* Table List */}
       {isLoading ? (
         <div className="text-sm text-muted-foreground text-center py-12">Carregando...</div>
-      ) : leads.length === 0 ? (
+      ) : sortedLeads.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <Users className="h-12 w-12 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
@@ -148,18 +192,30 @@ const Leads = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Telefone</TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("name")}>
+                  <span className="flex items-center">Nome <SortIcon field="name" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("phone")}>
+                  <span className="flex items-center">Telefone <SortIcon field="phone" /></span>
+                </TableHead>
                 <TableHead className="hidden md:table-cell">Email</TableHead>
-                <TableHead className="text-center">Pedidos</TableHead>
-                <TableHead className="text-right">Total Pago</TableHead>
-                <TableHead className="hidden md:table-cell text-center">Agend.</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="text-center cursor-pointer select-none" onClick={() => handleSort("orders")}>
+                  <span className="flex items-center justify-center">Pedidos <SortIcon field="orders" /></span>
+                </TableHead>
+                <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort("total")}>
+                  <span className="flex items-center justify-end">Total Pago <SortIcon field="total" /></span>
+                </TableHead>
+                <TableHead className="hidden md:table-cell text-center cursor-pointer select-none" onClick={() => handleSort("reminders")}>
+                  <span className="flex items-center justify-center">Agend. <SortIcon field="reminders" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none" onClick={() => handleSort("status")}>
+                  <span className="flex items-center">Status <SortIcon field="status" /></span>
+                </TableHead>
                 <TableHead className="hidden lg:table-cell">Tags</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {leads.map((l) => (
+              {sortedLeads.map((l) => (
                 <TableRow
                   key={l.remote_jid}
                   className="cursor-pointer hover:bg-muted/50"
