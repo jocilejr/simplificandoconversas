@@ -1,30 +1,64 @@
 
 
-# Isolamento de Leads por Workspace
+# Corrigir Isolamento de Leads por Workspace
 
-## Problema
-Os hooks `useCreatePayment` e `useCreatePaymentOpenpix` não enviam `workspaceId` ao backend. O backend usa `resolveWorkspaceId(userId)` que retorna o **primeiro workspace** do usuário, fazendo transações aparecerem no workspace errado.
+## Diagnóstico
+
+As queries do `useLeads` já filtram por `workspace_id` nas tabelas `conversations`, `transactions`, `contact_tags` e `reminders`. Se leads estão aparecendo no workspace errado, o problema é que **os dados existentes no banco estão com `workspace_id` errado** — provavelmente conversas ou transações criadas antes da migração multi-tenant, ou instâncias sem `workspace_id` populado (causando fallback para o primeiro workspace do usuário).
+
+A correção nos hooks de pagamento (enviar `workspaceId` pelo frontend) é válida mas **não resolve o problema de leads** porque leads vêm de `conversations`, não de pagamentos. A vinculação correta deve ser feita **exclusivamente pelo backend** a partir da instância WhatsApp.
 
 ## Alterações
 
-### 1. Frontend: enviar `workspaceId` nos hooks de pagamento
+### 1. Reverter hooks de pagamento ao estado anterior
 
 **`src/hooks/useCreatePayment.ts`**
-- Importar `useWorkspace`
-- Incluir `workspaceId` no body do fetch
+- Remover `useWorkspace` e o envio de `workspaceId` no body
 
 **`src/hooks/useCreatePaymentOpenpix.ts`**
-- Mesma alteração
+- Remover `useWorkspace` e o envio de `workspaceId` no body
 
-### 2. Backend: usar `resolveWorkspaceIdFromRequest`
+### 2. Backend: payment routes devem resolver workspace pela instância
 
-**`deploy/backend/src/routes/payment.ts`** (linha 3 e 153)
-- Trocar import de `resolveWorkspaceId` para incluir `resolveWorkspaceIdFromRequest`
-- Na rota `/create` (linha 153): trocar `resolveWorkspaceId(userId)` por `resolveWorkspaceIdFromRequest(req.body, userId)`
+**`deploy/backend/src/routes/payment.ts`**
+- Na rota `/create`, após identificar o usuário, buscar a instância ativa do workspace via a tabela `whatsapp_instances` usando o `customer_phone` para encontrar a conversa e seu `workspace_id`
+- Fallback: usar `resolveWorkspaceId(userId)` apenas se não encontrar
 
-**`deploy/backend/src/routes/payment-openpix.ts`** (linha 3 e 41)
-- Mesma troca: import e uso de `resolveWorkspaceIdFromRequest(req.body, userId)`
+**`deploy/backend/src/routes/payment-openpix.ts`**
+- Mesma lógica: resolver workspace a partir da conversa existente com aquele telefone
 
-### Resumo
-4 arquivos alterados. Após deploy na VPS, cada transação criada será vinculada ao workspace ativo no frontend.
+### 3. Script SQL para corrigir dados existentes na VPS
+
+Fornecer um script que o usuário executa na VPS para:
+- Atualizar `conversations` com `workspace_id` errado, usando o `workspace_id` correto da tabela `whatsapp_instances` baseado no `instance_name`
+- Atualizar `transactions` com `workspace_id` errado, cruzando pelo telefone com a conversa correta
+
+```sql
+-- Corrigir conversations usando workspace_id da instância vinculada
+UPDATE conversations c
+SET workspace_id = wi.workspace_id
+FROM whatsapp_instances wi
+WHERE c.instance_name = wi.instance_name
+  AND c.workspace_id != wi.workspace_id;
+
+-- Corrigir transactions cruzando com conversations pelo telefone
+UPDATE transactions t
+SET workspace_id = c.workspace_id
+FROM conversations c
+WHERE c.phone_number IS NOT NULL
+  AND t.customer_phone IS NOT NULL
+  AND RIGHT(regexp_replace(c.phone_number, '\D', '', 'g'), 8) = RIGHT(regexp_replace(t.customer_phone, '\D', '', 'g'), 8)
+  AND t.workspace_id != c.workspace_id;
+```
+
+### 4. Instruções de investigação para a VPS
+
+Fornecer comandos para o usuário verificar na VPS:
+- Quantas conversas existem com workspace_id diferente do esperado
+- Quantas instâncias não têm workspace_id definido
+
+## Resumo
+- 2 arquivos frontend revertidos (hooks de pagamento)
+- 2 arquivos backend ajustados (resolver workspace sem depender do frontend)
+- Script SQL de correção de dados para rodar na VPS
 
