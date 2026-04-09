@@ -1,29 +1,53 @@
 
 
-# Remover cron do light-sync
+# Fix: markSeen não funciona — solução simples via backend
 
-## Contexto
+## Problema
 
-O light-sync roda automaticamente a cada 5 minutos via cron mas nunca foi útil. O botão "Sincronizar" já existente nas instâncias faz um sync muito mais completo (`sync-chats`) que já importa conversas E mensagens. O light-sync manual via `debug-lightsync` também continua disponível se necessário.
+O `markSeen` atual faz `supabase.from("transactions").update(...)` direto pelo client JS do frontend. Na VPS, o PostgREST provavelmente rejeita esse update silenciosamente (RLS ou cast do `as any`), então `viewed_at` nunca é gravado.
 
-## Alteração
+## Solução
 
-### `deploy/backend/src/index.ts`
+Criar um endpoint `POST /mark-seen` no backend (que usa service role, sem RLS) e fazer o frontend chamar esse endpoint.
 
-Remover (ou comentar) o bloco do cron de light-sync (linhas ~78-85):
+## Alterações
+
+### 1. Backend — `deploy/backend/src/routes/platform-api.ts`
+
+Adicionar rota simples no final do router:
 
 ```typescript
-// REMOVER:
-cron.schedule("*/5 * * * *", async () => {
-  try {
-    await lightSync();
-  } catch (err: any) {
-    console.error("[cron] light-sync error:", err.message);
-  }
+router.post("/mark-seen", async (req, res) => {
+  const { ids, workspaceId } = req.body;
+  if (!ids?.length || !workspaceId) return res.json({ updated: 0 });
+
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from("transactions")
+    .update({ viewed_at: new Date().toISOString() })
+    .in("id", ids)
+    .eq("workspace_id", workspaceId)
+    .is("viewed_at", null)
+    .select("id");
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ updated: data?.length || 0 });
 });
 ```
 
-Remover também o import do `lightSync` (linha 13), já que ele continuará disponível apenas via a action `debug-lightsync` no `whatsapp-proxy.ts` (que já importa diretamente).
+### 2. Frontend — `src/hooks/useUnseenTransactions.ts`
 
-Nenhuma outra alteração necessária — o botão "Sincronizar" já funciona com `sync-chats` e é mais completo que o light-sync.
+Substituir o `markSeen` para chamar o backend via `apiUrl("mark-seen")` com fetch, passando `ids` e `workspaceId`. Após sucesso, invalidar `["unseen-transactions"]` e `["transactions"]`. Adicionar `console.error` se falhar para facilitar debug futuro.
+
+### 3. Frontend — `src/components/transactions/TransactionsTable.tsx`
+
+Manter a lógica atual do `useEffect` com `prevTab` (que já funciona corretamente para detectar a aba). O problema não era a detecção — era o `markSeen` que não gravava. Com o backend funcionando, a lógica atual resolve.
+
+Adicionar também: quando `isLoading` muda de `true` para `false`, resetar `prevTab` para `null` para forçar re-processamento da aba ativa com os dados reais.
+
+### 4. Deploy
+
+```bash
+docker compose up -d --build backend
+```
 
