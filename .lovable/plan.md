@@ -1,31 +1,42 @@
 
 
-# Fix: Coluna `normalized_phone` não existe — usar `phone`
+# Fix: LinkGenerator.tsx usando coluna errada no upsert
 
 ## Problema
 
-A tabela `member_products` na VPS usa a coluna `phone`, mas o endpoint backend está consultando `normalized_phone` (que não existe). Por isso o endpoint retorna erro 500 silenciosamente e o frontend mostra 0 produtos.
+A tabela `member_products` na VPS tem a coluna `phone`, mas o `LinkGenerator.tsx` faz upsert com `normalized_phone`. O upsert falha silenciosamente e nenhum registro é criado.
 
 ## Solução
 
-### 1. Backend: `deploy/backend/src/routes/platform-api.ts` (linhas 1405-1409)
+### Arquivo: `src/components/entrega/LinkGenerator.tsx`
 
-Trocar `normalized_phone` por `phone` na query:
+Trocar todas as referências de `normalized_phone` por `phone` no upsert de `member_products`:
 
 ```typescript
-const { data, error } = await sb
-  .from("member_products")
-  .select("id, phone, is_active, product_id, delivery_products(name)")
-  .eq("workspace_id", workspace_id)
-  .in("phone", phones);
+// ANTES (linha ~109)
+await supabase.from("member_products").upsert(
+  {
+    workspace_id: workspaceId,
+    product_id: product.id,
+    normalized_phone: normalized,
+    is_active: true,
+  },
+  { onConflict: "workspace_id,product_id,normalized_phone" }
+);
+
+// DEPOIS
+await supabase.from("member_products").upsert(
+  {
+    workspace_id: workspaceId,
+    product_id: product.id,
+    phone: normalized,
+    is_active: true,
+  },
+  { onConflict: "product_id,phone" }
+);
 ```
 
-### 2. Frontend: `src/components/leads/LeadDetailDialog.tsx`
+Mesma correção no segundo upsert (~linha 138). O `onConflict` deve usar `product_id,phone` para corresponder ao unique constraint real da VPS (`member_products_product_id_phone_key`).
 
-Atualizar qualquer referência a `normalized_phone` nos dados retornados para `phone`.
-
-Após a mudança, será necessário rebuild do backend na VPS:
-```bash
-cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
-```
+Após deploy na VPS, gere um link de teste para verificar que o registro é criado em `member_products`.
 
