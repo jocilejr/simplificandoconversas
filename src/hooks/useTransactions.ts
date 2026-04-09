@@ -1,8 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useWorkspace } from "./useWorkspace";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 export interface Transaction {
   id: string;
@@ -28,7 +28,6 @@ export interface Transaction {
 export function useTransactions(startDate?: Date, endDate?: Date) {
   const { user } = useAuth();
   const { workspaceId } = useWorkspace();
-  const queryClient = useQueryClient();
 
   // Query 1: transactions by created_at range
   const createdQuery = useQuery({
@@ -48,6 +47,7 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
       return (data || []) as Transaction[];
     },
     enabled: !!user && !!workspaceId,
+    refetchInterval: 15_000,
   });
 
   // Query 2: approved transactions by paid_at range (captures old boletos paid today)
@@ -70,6 +70,7 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
       return (data || []) as Transaction[];
     },
     enabled: !!user && !!workspaceId && !!startDate && !!endDate,
+    refetchInterval: 15_000,
   });
 
   // Merge + dedup by id
@@ -82,25 +83,6 @@ export function useTransactions(startDate?: Date, endDate?: Date) {
     );
   }, [createdQuery.data, paidQuery.data]);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel("transactions-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "transactions" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["transactions"] });
-          queryClient.invalidateQueries({ queryKey: ["transactions-paid"] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, queryClient]);
 
   const stats = useMemo(() => {
     const txs = mergedData;
