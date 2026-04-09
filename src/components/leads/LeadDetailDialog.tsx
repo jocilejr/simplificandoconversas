@@ -141,7 +141,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
   const unpaidTxs = lead?.transactions.filter((t) => t.status !== "aprovado") || [];
 
-  const { data: reminders = [] } = useQuery({
+  const { data: reminders = [], isLoading: isLoadingReminders } = useQuery({
     queryKey: ["lead-reminders", lead?.remote_jid],
     queryFn: async () => {
       const { data, error } = await supabase
