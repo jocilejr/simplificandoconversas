@@ -92,7 +92,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
               remote_jid: normalized,
               phone_number: normalized,
             })
-            .select("id")
+            .select("id, phone_number")
             .single();
           matched = newConvo;
         }
