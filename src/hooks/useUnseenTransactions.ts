@@ -82,7 +82,7 @@ export function useUnseenTransactions() {
     async (ids: string[]) => {
       if (!ids.length || !workspaceId) return;
       try {
-        const resp = await fetch(apiUrl("mark-seen"), {
+        const resp = await fetch(apiUrl("platform/mark-seen"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ids, workspaceId }),
