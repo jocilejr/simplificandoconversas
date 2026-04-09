@@ -2,8 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import type { Transaction } from "@/hooks/useTransactions";
+
+type SortField = "name" | "phone" | "orders" | "total" | "reminders" | "status";
+type SortDir = "asc" | "desc";
 
 export interface LeadInstance {
   instance_name: string | null;
