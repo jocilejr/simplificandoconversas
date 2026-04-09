@@ -42,8 +42,9 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
     mutationFn: async () => {
       if (!workspaceId || !userId) throw new Error("Sem workspace");
       const normalized = normalizePhone(phone);
+      if (normalized === "-" || normalized.length < 10) throw new Error("Telefone inválido");
 
-      // 1. Register in member_products (unify with member area)
+      // 1. Always: grant access in member area
       await supabase.from("member_products").upsert({
         workspace_id: workspaceId,
         product_id: product.id,
@@ -51,7 +52,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
         is_active: true,
       }, { onConflict: "workspace_id,product_id,normalized_phone" });
 
-      // 2. Register link generation
+      // 2. Always: log link generation
       await supabase.from("delivery_link_generations").insert({
         workspace_id: workspaceId,
         product_id: product.id,
@@ -60,7 +61,57 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
         payment_method: paymentMethod,
       });
 
-      // 3. Build link
+      // 3. PIX only: match/create lead + insert transaction
+      if (paymentMethod === "pix") {
+        const last8 = normalized.slice(-8);
+
+        // Fetch all conversations for this workspace
+        const { data: convos } = await supabase
+          .from("conversations")
+          .select("id, phone_number")
+          .eq("workspace_id", workspaceId);
+
+        // Priority 1: exact match on full normalized phone
+        let matched = convos?.find(c => normalizePhone(c.phone_number) === normalized);
+
+        // Fallback: match by last 8 digits
+        if (!matched) {
+          matched = convos?.find(c => {
+            const norm = normalizePhone(c.phone_number);
+            return norm !== "-" && norm.slice(-8) === last8;
+          });
+        }
+
+        // No match: create new contact (remote_jid = just the number, NO suffixes)
+        if (!matched) {
+          const { data: newConvo } = await supabase
+            .from("conversations")
+            .insert({
+              user_id: userId,
+              workspace_id: workspaceId,
+              remote_jid: normalized,
+              phone_number: normalized,
+            })
+            .select("id")
+            .single();
+          matched = newConvo;
+        }
+
+        // Insert approved PIX transaction
+        await supabase.from("transactions").insert({
+          user_id: userId,
+          workspace_id: workspaceId,
+          type: "pix",
+          status: "aprovado",
+          amount: product.value,
+          customer_phone: normalized,
+          source: "entrega_digital",
+          description: product.name,
+          paid_at: new Date().toISOString(),
+        });
+      }
+
+      // 4. Build link
       const domain = settings?.custom_domain || window.location.origin;
       const link = `${domain}/entrega/${product.slug}?phone=${encodeURIComponent(normalized)}`;
       return link;
@@ -68,7 +119,13 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
     onSuccess: (link) => {
       setGeneratedLink(link);
       qc.invalidateQueries({ queryKey: ["delivery-link-generations"] });
-      toast.success("Acesso liberado e link gerado!");
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success(
+        paymentMethod === "pix"
+          ? "Acesso liberado + pagamento PIX vinculado ao lead!"
+          : "Acesso liberado e link gerado!"
+      );
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -122,9 +179,13 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
                   <SelectItem value="pix">PIX</SelectItem>
                   <SelectItem value="boleto">Boleto</SelectItem>
                   <SelectItem value="cartao">Cartão</SelectItem>
-                  <SelectItem value="manual">Manual</SelectItem>
                 </SelectContent>
               </Select>
+              {paymentMethod === "pix" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  PIX: será criada uma transação aprovada e vinculada ao lead
+                </p>
+              )}
             </div>
             <Button
               className="w-full"
