@@ -1404,9 +1404,9 @@ router.get("/member-products", async (req: Request, res: Response) => {
     const sb = getServiceClient();
     const { data, error } = await sb
       .from("member_products")
-      .select("id, normalized_phone, is_active, product_id, delivery_products(name)")
+      .select("id, phone, is_active, product_id, delivery_products(name)")
       .eq("workspace_id", workspace_id)
-      .in("normalized_phone", phones);
+      .in("phone", phones);
     if (error) throw error;
     res.json(data || []);
   } catch (err: any) {
