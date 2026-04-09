@@ -34,6 +34,8 @@ export function AccessesTab() {
   const { data: accesses, isLoading } = useQuery({
     queryKey: ["delivery-accesses", workspaceId, productFilter],
     enabled: !!workspaceId,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       let q = supabase
         .from("delivery_accesses")
