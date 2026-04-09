@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Download, User, Phone, Mail, FileText, Tag, Bell, MessageSquare, CreditCard, CheckCircle, XCircle } from "lucide-react";
+import { Copy, Download, User, Phone, Mail, FileText, Tag, Bell, MessageSquare, CreditCard, CheckCircle, XCircle, ChevronDown, ChevronRight, Smartphone } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -12,6 +13,8 @@ import type { Lead } from "@/hooks/useLeads";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const statusColors: Record<string, string> = {
   aprovado: "bg-green-500/10 text-green-600 border-green-500/30",
@@ -43,10 +46,67 @@ const InfoRow = ({ icon: Icon, label, value }: { icon: any; label: string; value
   </div>
 );
 
+function CollapsibleSection({ icon: Icon, title, count, children, defaultOpen = false }: {
+  icon: any; title: string; count?: number; children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 hover:bg-muted/50 rounded-md px-2 -mx-2 transition-colors">
+        {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-semibold flex-1 text-left">{title}</span>
+        {count !== undefined && <Badge variant="secondary" className="text-xs">{count}</Badge>}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function InstanceMessageHistory({ conversationId }: { conversationId: string }) {
+  const { data: messages = [], isLoading } = useQuery({
+    queryKey: ["lead-instance-messages", conversationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("content, direction, created_at, message_type")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true })
+        .limit(500);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!conversationId,
+  });
+
+  if (isLoading) return <div className="text-xs text-muted-foreground py-4 text-center">Carregando mensagens...</div>;
+  if (messages.length === 0) return <div className="text-xs text-muted-foreground py-4 text-center">Nenhuma mensagem encontrada.</div>;
+
+  return (
+    <ScrollArea className="h-[400px] border rounded-lg p-3">
+      <div className="space-y-2">
+        {messages.map((m, i) => (
+          <div key={i} className={`text-xs p-2.5 rounded-lg max-w-[85%] ${
+            m.direction === "inbound"
+              ? "bg-muted/60 mr-auto"
+              : "bg-primary/10 ml-auto"
+          }`}>
+            <p className="break-all">{m.content || `[${m.message_type}]`}</p>
+            <span className="text-[10px] text-muted-foreground mt-1 block">
+              {format(new Date(m.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+            </span>
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
 export function LeadDetailDialog({ lead, open, onClose }: Props) {
-  const formatPhone = (jid: string) => {
-    return jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
-  };
+  const { workspaceId } = useWorkspace();
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+
+  const formatPhone = (jid: string) => jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
 
   const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
   const unpaidTxs = lead?.transactions.filter((t) => t.status !== "aprovado") || [];
@@ -65,25 +125,31 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
     enabled: open && !!lead,
   });
 
-  const { data: messages = [] } = useQuery({
-    queryKey: ["lead-messages", lead?.remote_jid],
+  // Get message count per conversation for instance cards
+  const { data: conversationMsgCounts = {} } = useQuery({
+    queryKey: ["lead-conv-msg-counts", lead?.remote_jid, workspaceId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("content, direction, created_at, message_type")
-        .eq("remote_jid", lead!.remote_jid)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      if (error) throw error;
-      return data || [];
+      const ids = lead!.instances.map((i) => i.conversation_id);
+      const counts: Record<string, number> = {};
+      // Fetch counts in parallel batches
+      for (const id of ids) {
+        const { count, error } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", id);
+        if (!error && count !== null) counts[id] = count;
+      }
+      return counts;
     },
-    enabled: open && !!lead,
+    enabled: open && !!lead && (lead?.instances?.length ?? 0) > 0,
   });
 
   if (!lead) return null;
 
+  const instances = lead.instances || [];
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); } }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -107,7 +173,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
         </DialogHeader>
 
         <ScrollArea className="flex-1 -mx-6 px-6">
-          {/* Section 1: Personal Data */}
+          {/* Dados Pessoais */}
           <div className="divide-y">
             <InfoRow icon={User} label="Nome" value={lead.contact_name} />
             <InfoRow icon={Phone} label="Telefone" value={lead.phone_number || formatPhone(lead.remote_jid)} />
@@ -128,7 +194,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             )}
           </div>
 
-          {/* Section 2: Financial Summary */}
+          {/* Resumo Financeiro */}
           <Separator className="my-3" />
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border p-3 text-center">
@@ -145,123 +211,144 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             </div>
           </div>
 
-          {/* Section 3: Paid Transactions */}
-          {paidTxs.length > 0 && (
+          {/* Pagamentos - Collapsible */}
+          {(paidTxs.length > 0 || unpaidTxs.length > 0) && (
             <>
               <Separator className="my-3" />
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <p className="text-sm font-semibold">Transações Pagas ({paidTxs.length})</p>
-              </div>
-              <div className="space-y-2">
-                {paidTxs.map((tx) => (
-                  <div key={tx.id} className="rounded-lg border p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
-                        <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
-                      </div>
-                      <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
+              <CollapsibleSection icon={CreditCard} title="Pagamentos" count={paidTxs.length + unpaidTxs.length}>
+                {paidTxs.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                      <p className="text-xs font-medium text-green-600">Pagas ({paidTxs.length})</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                      {tx.description && ` — ${tx.description}`}
-                    </p>
+                    <div className="space-y-2">
+                      {paidTxs.map((tx) => (
+                        <div key={tx.id} className="rounded-lg border p-3 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
+                              <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
+                            </div>
+                            <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {tx.description && ` — ${tx.description}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                )}
+                {unpaidTxs.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <XCircle className="h-3.5 w-3.5 text-yellow-500" />
+                      <p className="text-xs font-medium text-yellow-600">Pendentes/Rejeitadas ({unpaidTxs.length})</p>
+                    </div>
+                    <div className="space-y-2">
+                      {unpaidTxs.map((tx) => (
+                        <div key={tx.id} className="rounded-lg border p-3 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
+                              <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
+                            </div>
+                            <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {tx.description && ` — ${tx.description}`}
+                          </p>
+                          {tx.payment_url && (
+                            <div className="flex gap-2 pt-1">
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
+                                  <Download className="h-3 w-3 mr-1" /> PDF
+                                </a>
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => {
+                                navigator.clipboard.writeText(tx.payment_url!);
+                                toast.success("Link copiado!");
+                              }}>
+                                <Copy className="h-3 w-3 mr-1" /> Link
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CollapsibleSection>
             </>
           )}
 
-          {/* Section 4: Unpaid Transactions */}
-          {unpaidTxs.length > 0 && (
-            <>
-              <Separator className="my-3" />
-              <div className="flex items-center gap-2 mb-2">
-                <XCircle className="h-4 w-4 text-yellow-500" />
-                <p className="text-sm font-semibold">Transações Pendentes/Rejeitadas ({unpaidTxs.length})</p>
-              </div>
-              <div className="space-y-2">
-                {unpaidTxs.map((tx) => (
-                  <div key={tx.id} className="rounded-lg border p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{typeLabels[tx.type] || tx.type}</Badge>
-                        <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
-                      </div>
-                      <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                      {tx.description && ` — ${tx.description}`}
-                    </p>
-                    {tx.payment_url && (
-                      <div className="flex gap-2 pt-1">
-                        <Button size="sm" variant="outline" asChild>
-                          <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
-                            <Download className="h-3 w-3 mr-1" /> PDF
-                          </a>
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => {
-                          navigator.clipboard.writeText(tx.payment_url!);
-                          toast.success("Link copiado!");
-                        }}>
-                          <Copy className="h-3 w-3 mr-1" /> Link
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Section 5: Reminders */}
+          {/* Agendamentos - Collapsible */}
           {reminders.length > 0 && (
             <>
               <Separator className="my-3" />
-              <div className="flex items-center gap-2 mb-2">
-                <Bell className="h-4 w-4 text-blue-500" />
-                <p className="text-sm font-semibold">Agendamentos ({reminders.length})</p>
-              </div>
-              <div className="space-y-2">
-                {reminders.map((r) => (
-                  <div key={r.id} className="rounded-lg border p-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{r.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(r.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                      </p>
-                      {r.description && <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>}
+              <CollapsibleSection icon={Bell} title="Agendamentos" count={reminders.length}>
+                <div className="space-y-2">
+                  {reminders.map((r) => (
+                    <div key={r.id} className="rounded-lg border p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{r.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(r.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </p>
+                        {r.description && <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>}
+                      </div>
+                      <Badge variant={r.completed ? "secondary" : "outline"} className="text-xs shrink-0">
+                        {r.completed ? "Concluído" : "Pendente"}
+                      </Badge>
                     </div>
-                    <Badge variant={r.completed ? "secondary" : "outline"} className="text-xs shrink-0">
-                      {r.completed ? "Concluído" : "Pendente"}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </CollapsibleSection>
             </>
           )}
 
-          {/* Section 6: Message History */}
-          {messages.length > 0 && (
+          {/* Histórico de Conversas por Instância */}
+          {instances.length > 0 && (
             <>
               <Separator className="my-3" />
-              <div className="flex items-center gap-2 mb-2">
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                <p className="text-sm font-semibold">Últimas Mensagens</p>
-              </div>
-              <div className="space-y-1.5">
-                {messages.map((m, i) => (
-                  <div key={i} className={`text-xs p-2 rounded-md ${m.direction === "inbound" ? "bg-muted/50" : "bg-primary/5"}`}>
-                    <span className="font-medium text-muted-foreground">
-                      {m.direction === "inbound" ? "📩" : "📤"}{" "}
-                      {format(new Date(m.created_at), "dd/MM HH:mm")}
-                    </span>
-                    <p className="mt-0.5 break-all">{m.content || `[${m.message_type}]`}</p>
-                  </div>
-                ))}
-              </div>
+              <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={instances.length} defaultOpen>
+                <div className="space-y-2">
+                  {instances.map((inst) => {
+                    const isSelected = selectedConversationId === inst.conversation_id;
+                    const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
+                    return (
+                      <div key={inst.conversation_id}>
+                        <button
+                          className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 ${
+                            isSelected ? "border-primary bg-primary/5" : ""
+                          }`}
+                          onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {msgCount} mensagen{msgCount !== 1 ? "s" : ""}
+                                {inst.last_message_at && ` · Última: ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
+                              </p>
+                            </div>
+                            {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+                        {isSelected && (
+                          <div className="mt-2">
+                            <InstanceMessageHistory conversationId={inst.conversation_id} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CollapsibleSection>
             </>
           )}
 

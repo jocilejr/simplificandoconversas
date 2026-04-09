@@ -5,6 +5,13 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useMemo, useState } from "react";
 import type { Transaction } from "@/hooks/useTransactions";
 
+export interface LeadInstance {
+  instance_name: string | null;
+  conversation_id: string;
+  last_message: string | null;
+  last_message_at: string | null;
+}
+
 export interface Lead {
   remote_jid: string;
   contact_name: string | null;
@@ -20,6 +27,7 @@ export interface Lead {
   transactions: Transaction[];
   customer_email: string | null;
   customer_document: string | null;
+  instances: LeadInstance[];
 }
 
 const normalizePhone = (phone: string | null | undefined) =>
@@ -41,7 +49,7 @@ export function useLeads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at")
+        .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at")
         .eq("workspace_id", workspaceId!)
         .not("remote_jid", "like", "%@lid")
         .order("last_message_at", { ascending: false });
@@ -112,32 +120,43 @@ export function useLeads() {
   const leads = useMemo(() => {
     const map = new Map<string, Lead>();
     for (const c of rawConversations) {
-      if (!map.has(c.remote_jid)) {
-        const jidDigits = c.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
-        if (jidDigits.length < 12 || jidDigits.length > 13) continue;
+      const jidDigits = c.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+      if (jidDigits.length < 12 || jidDigits.length > 13) continue;
 
-        const phoneKey = normalizePhone(c.phone_number || c.remote_jid);
-        const txs = txByPhone.get(phoneKey) || [];
-        const approvedTxs = txs.filter((t) => t.status === "aprovado");
-        const firstTxWithData = txs.find((t) => t.customer_email || t.customer_document);
+      const instance: LeadInstance = {
+        instance_name: c.instance_name,
+        conversation_id: c.id,
+        last_message: c.last_message,
+        last_message_at: c.last_message_at,
+      };
 
-        map.set(c.remote_jid, {
-          remote_jid: c.remote_jid,
-          contact_name: c.contact_name,
-          phone_number: c.phone_number,
-          instance_name: c.instance_name,
-          last_message: c.last_message,
-          last_message_at: c.last_message_at,
-          tags: [],
-          hasPaid: approvedTxs.length > 0,
-          totalPaid: approvedTxs.reduce((s, t) => s + Number(t.amount), 0),
-          paidOrdersCount: approvedTxs.length,
-          remindersCount: remindersByJid.get(c.remote_jid) || 0,
-          transactions: txs,
-          customer_email: firstTxWithData?.customer_email || null,
-          customer_document: firstTxWithData?.customer_document || null,
-        });
+      if (map.has(c.remote_jid)) {
+        map.get(c.remote_jid)!.instances.push(instance);
+        continue;
       }
+
+      const phoneKey = normalizePhone(c.phone_number || c.remote_jid);
+      const txs = txByPhone.get(phoneKey) || [];
+      const approvedTxs = txs.filter((t) => t.status === "aprovado");
+      const firstTxWithData = txs.find((t) => t.customer_email || t.customer_document);
+
+      map.set(c.remote_jid, {
+        remote_jid: c.remote_jid,
+        contact_name: c.contact_name,
+        phone_number: c.phone_number,
+        instance_name: c.instance_name,
+        last_message: c.last_message,
+        last_message_at: c.last_message_at,
+        tags: [],
+        hasPaid: approvedTxs.length > 0,
+        totalPaid: approvedTxs.reduce((s, t) => s + Number(t.amount), 0),
+        paidOrdersCount: approvedTxs.length,
+        remindersCount: remindersByJid.get(c.remote_jid) || 0,
+        transactions: txs,
+        customer_email: firstTxWithData?.customer_email || null,
+        customer_document: firstTxWithData?.customer_document || null,
+        instances: [instance],
+      });
     }
     for (const t of allTags) {
       const lead = map.get(t.remote_jid);
@@ -236,6 +255,7 @@ export function useLeads() {
 
   return {
     leads: paginated,
+    allLeads: filtered,
     totalLeads: filtered.length,
     isLoading: isLoadingConvos || isLoadingTags || isLoadingTx,
     search, setSearch,
