@@ -30,8 +30,16 @@ export interface Lead {
   instances: LeadInstance[];
 }
 
-const normalizePhone = (phone: string | null | undefined) =>
+const matchKey = (phone: string | null | undefined) =>
   phone ? phone.replace(/\D/g, "").slice(-8) : "";
+
+const displayPhone = (raw: string | null | undefined): string | null => {
+  if (!raw) return null;
+  let phone = raw.replace(/\D/g, "").replace(/^0+/, "");
+  if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55"))
+    phone = "55" + phone;
+  return phone || null;
+};
 
 export function useLeads() {
   const { toast } = useToast();
@@ -101,7 +109,7 @@ export function useLeads() {
   const txByPhone = useMemo(() => {
     const map = new Map<string, Transaction[]>();
     for (const tx of allTransactions) {
-      const key = normalizePhone(tx.customer_phone);
+      const key = matchKey(tx.customer_phone);
       if (!key) continue;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(tx);
@@ -109,10 +117,12 @@ export function useLeads() {
     return map;
   }, [allTransactions]);
 
-  const remindersByJid = useMemo(() => {
+  const remindersByKey = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of allReminders) {
-      map.set(r.remote_jid, (map.get(r.remote_jid) || 0) + 1);
+      const key = matchKey(r.remote_jid);
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + 1);
     }
     return map;
   }, [allReminders]);
@@ -121,7 +131,10 @@ export function useLeads() {
     const map = new Map<string, Lead>();
     for (const c of rawConversations) {
       const jidDigits = c.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
-      if (jidDigits.length < 12 || jidDigits.length > 13) continue;
+      if (jidDigits.length < 8) continue;
+
+      const key = matchKey(c.remote_jid);
+      if (!key) continue;
 
       const instance: LeadInstance = {
         instance_name: c.instance_name,
@@ -130,20 +143,23 @@ export function useLeads() {
         last_message_at: c.last_message_at,
       };
 
-      if (map.has(c.remote_jid)) {
-        map.get(c.remote_jid)!.instances.push(instance);
+      if (map.has(key)) {
+        const existing = map.get(key)!;
+        existing.instances.push(instance);
+        if (!existing.contact_name && c.contact_name) {
+          existing.contact_name = c.contact_name;
+        }
         continue;
       }
 
-      const phoneKey = normalizePhone(c.phone_number || c.remote_jid);
-      const txs = txByPhone.get(phoneKey) || [];
+      const txs = txByPhone.get(key) || [];
       const approvedTxs = txs.filter((t) => t.status === "aprovado");
       const firstTxWithData = txs.find((t) => t.customer_email || t.customer_document);
 
-      map.set(c.remote_jid, {
+      map.set(key, {
         remote_jid: c.remote_jid,
         contact_name: c.contact_name,
-        phone_number: c.phone_number,
+        phone_number: displayPhone(c.phone_number || c.remote_jid.replace("@s.whatsapp.net", "")),
         instance_name: c.instance_name,
         last_message: c.last_message,
         last_message_at: c.last_message_at,
@@ -151,7 +167,7 @@ export function useLeads() {
         hasPaid: approvedTxs.length > 0,
         totalPaid: approvedTxs.reduce((s, t) => s + Number(t.amount), 0),
         paidOrdersCount: approvedTxs.length,
-        remindersCount: remindersByJid.get(c.remote_jid) || 0,
+        remindersCount: remindersByKey.get(key) || 0,
         transactions: txs,
         customer_email: firstTxWithData?.customer_email || null,
         customer_document: firstTxWithData?.customer_document || null,
@@ -159,13 +175,13 @@ export function useLeads() {
       });
     }
     for (const t of allTags) {
-      const lead = map.get(t.remote_jid);
+      const lead = map.get(matchKey(t.remote_jid));
       if (lead && !lead.tags.includes(t.tag_name)) {
         lead.tags.push(t.tag_name);
       }
     }
     return Array.from(map.values());
-  }, [rawConversations, allTags, txByPhone, remindersByJid]);
+  }, [rawConversations, allTags, txByPhone, remindersByKey]);
 
   const uniqueTags = useMemo(() => {
     const set = new Set<string>();
