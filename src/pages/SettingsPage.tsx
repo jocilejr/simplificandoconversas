@@ -23,6 +23,7 @@ const allSections = [
   { key: "api", label: "API", icon: Code, minRole: "admin" },
   { key: "email", label: "E-mail", icon: Mail, minRole: "operator" },
   { key: "fees", label: "Taxas", icon: Percent, minRole: "admin" },
+  { key: "member_area", label: "Área de Membros", icon: Crown, minRole: "admin" },
   { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
 ];
 
