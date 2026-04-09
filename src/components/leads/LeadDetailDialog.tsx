@@ -11,6 +11,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import type { Lead } from "@/hooks/useLeads";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -140,7 +141,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
   const unpaidTxs = lead?.transactions.filter((t) => t.status !== "aprovado") || [];
 
-  const { data: reminders = [] } = useQuery({
+  const { data: reminders = [], isLoading: isLoadingReminders } = useQuery({
     queryKey: ["lead-reminders", lead?.remote_jid],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -154,7 +155,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
     enabled: open && !!lead,
   });
 
-  const { data: conversationMsgCounts = {} } = useQuery({
+  const { data: conversationMsgCounts = {}, isLoading: isLoadingMsgCounts } = useQuery({
     queryKey: ["lead-conv-msg-counts", lead?.remote_jid, workspaceId],
     queryFn: async () => {
       const ids = lead!.instances.map((i) => i.conversation_id);
@@ -318,9 +319,23 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
           )}
 
           {/* Agendamentos */}
-          {reminders.length > 0 && (
-            <div className="pt-3">
-              <CollapsibleSection icon={Bell} title="Agendamentos" count={reminders.length}>
+          <div className="pt-3">
+            <CollapsibleSection icon={Bell} title="Agendamentos" count={isLoadingReminders ? undefined : reminders.length}>
+              {isLoadingReminders ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="rounded-lg border p-3 flex items-center justify-between gap-3">
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-28" />
+                      </div>
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : reminders.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">Nenhum agendamento</p>
+              ) : (
                 <div className="space-y-2">
                   {reminders.map((r) => (
                     <div key={r.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
@@ -337,20 +352,30 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                     </div>
                   ))}
                 </div>
-              </CollapsibleSection>
-            </div>
-          )}
+              )}
+            </CollapsibleSection>
+          </div>
 
           {/* Histórico de Conversas */}
-          {(() => {
-            const activeInstances = instances.filter((inst) => {
-              const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
-              return msgCount > 0;
-            });
-            if (activeInstances.length === 0) return null;
-            return (
-              <div className="pt-3">
-                <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={activeInstances.length} defaultOpen>
+          <div className="pt-3">
+            <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={isLoadingMsgCounts ? undefined : instances.filter(i => (conversationMsgCounts[i.conversation_id] ?? 0) > 0).length} defaultOpen>
+              {isLoadingMsgCounts ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-lg border p-3 flex items-center gap-3">
+                      <Skeleton className="h-4 w-4 rounded shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-3 w-48" />
+                      </div>
+                      <Skeleton className="h-4 w-4 shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              ) : (() => {
+                const activeInstances = instances.filter((inst) => (conversationMsgCounts[inst.conversation_id] ?? 0) > 0);
+                if (activeInstances.length === 0) return <p className="text-xs text-muted-foreground text-center py-3">Nenhuma conversa encontrada</p>;
+                return (
                   <div className="space-y-2">
                     {activeInstances.map((inst) => {
                       const isSelected = selectedConversationId === inst.conversation_id;
@@ -384,10 +409,10 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                       );
                     })}
                   </div>
-                </CollapsibleSection>
-              </div>
-            );
-          })()}
+                );
+              })()}
+            </CollapsibleSection>
+          </div>
 
           <div className="h-6" />
         </div>
