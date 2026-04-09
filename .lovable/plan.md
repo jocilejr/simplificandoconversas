@@ -1,66 +1,96 @@
 
 
-# Match de leads com prioridade: CPF → Telefone completo → 8 dígitos
+# Área de Membros — Implementação Completa
 
-## Problema
+## Visão Geral
 
-Atualmente o agrupamento usa apenas os últimos 8 dígitos, o que pode gerar falsos positivos (dois contatos diferentes com os mesmos 8 dígitos finais). Falta uma hierarquia de confiança no match.
+Portar o módulo completo de Área de Membros do Finance Hub para este projeto, adaptando para a arquitetura multi-tenant (workspace_id) já existente. O módulo terá 5 abas: Membros, Conteúdo, Ofertas, Atividade e Configurações.
 
-## Solução — Arquivo único: `src/hooks/useLeads.ts`
+## Etapa 1 — Criação das Tabelas (6 tabelas + 1 storage bucket)
 
-### Lógica de merge com 3 níveis de prioridade
+Todas as tabelas terão `workspace_id` com RLS baseado em `is_workspace_member` / `can_write_workspace`.
 
-Ao iterar cada conversa, o sistema tenta encontrar um lead existente nesta ordem:
+### Tabelas a criar:
 
-1. **CPF (prioridade máxima)** — Se a conversa tem transações com `customer_document`, busca no mapa se já existe um lead com o mesmo CPF. Se sim, faz merge (adiciona instância + acumula transações). CPF é único, impossível duplicar.
+1. **delivery_products** — Produtos digitais (base para membros e entrega digital)
+   - `id`, `workspace_id`, `name`, `slug`, `page_logo`, `value`, `is_active`, `member_cover_image`, `member_description`, etc.
 
-2. **Telefone normalizado completo (segunda prioridade)** — Usa `displayPhone()` para normalizar o número e busca match exato. Exemplo: `5524992011394` bate com `5524992011394`.
+2. **member_products** — Vínculo telefone → produto (acesso do membro)
+   - `id`, `workspace_id`, `normalized_phone`, `product_id` (FK delivery_products), `is_active`, `granted_at`
 
-3. **Últimos 8 dígitos (terceira prioridade)** — Fallback atual. Agrupa variações como `5524992011394` e `24992011394`.
+3. **member_area_settings** — Configurações visuais e prompts de IA
+   - `id`, `workspace_id`, `title`, `logo_url`, `welcome_message`, `theme_color`, `ai_persona_prompt`, `greeting_prompt`, `offer_prompt`, `layout_order`
 
-### Estrutura de dados interna
+4. **member_area_offers** — Ofertas exibidas na área pública
+   - `id`, `workspace_id`, `name`, `product_id`, `description`, `image_url`, `purchase_url`, `price`, `display_type`, `pix_key`, `pix_key_type`, `card_payment_url`, `category_tag`, `total_impressions`, `total_clicks`, `is_active`, `sort_order`
 
-```text
-Índices de lookup (todos apontam para o mesmo Lead):
-  cpfIndex:   Map<string, Lead>     "12345678901" → Lead
-  phoneIndex: Map<string, Lead>     "5524992011394" → Lead
-  last8Index: Map<string, Lead>     "92011394" → Lead
-```
+5. **member_product_categories** — Categorias/módulos dentro de um produto
+   - `id`, `workspace_id`, `product_id` (FK), `name`, `icon`, `description`, `sort_order`
 
-Quando um lead é criado ou encontrado por qualquer nível, todos os índices são atualizados. Assim, matches futuros por qualquer critério apontam para o mesmo lead.
+6. **member_product_materials** — Materiais (PDF, vídeo, texto, áudio, imagem)
+   - `id`, `workspace_id`, `product_id` (FK), `category_id` (FK), `title`, `description`, `content_type`, `content_url`, `content_text`, `button_label`, `sort_order`, `is_preview`
 
-### Fluxo por conversa
+7. **member_sessions** — Sessões de atividade dos membros
+   - `id`, `workspace_id`, `normalized_phone`, `started_at`, `last_heartbeat_at`, `ended_at`, `current_activity`, `current_product_name`, `current_material_name`
 
-```text
-Para cada conversa C:
-  cpf = buscar CPF nas transações de C (via matchKey do telefone)
-  normalizedPhone = displayPhone(C.remote_jid)
-  last8 = matchKey(C.remote_jid)
+### Storage bucket:
+- `member-files` (público) — para upload de imagens, PDFs, áudios
 
-  existingLead = cpfIndex[cpf]          // prioridade 1
-                 || phoneIndex[normalizedPhone]  // prioridade 2
-                 || last8Index[last8]    // prioridade 3
+### RLS:
+- SELECT: `is_workspace_member(auth.uid(), workspace_id)`
+- INSERT/UPDATE: `can_write_workspace(auth.uid(), workspace_id)`
+- DELETE: `has_workspace_role(auth.uid(), workspace_id, 'admin')`
+- `member_sessions`: anon pode inserir/atualizar (acesso público), authenticated pode ler
 
-  SE existingLead:
-    → merge instância, acumula nome se vazio
-    → registra todos os índices novos neste lead
-  SENÃO:
-    → cria novo Lead
-    → registra nos 3 índices
-```
+## Etapa 2 — Componentes Frontend
 
-### Transações — match também por CPF
+### Arquivo principal: `src/pages/AreaMembros.tsx`
+Reescrever completamente com 5 abas:
 
-O `txByPhone` atual indexa apenas por últimos 8 dígitos. Adicionamos um `txByCpf` (Map por `customer_document`) para que transações sem telefone mas com CPF também sejam vinculadas ao lead correto.
+**Aba Membros** — Lista de membros agrupados por telefone
+- Busca por telefone, dialog para liberar produto
+- Cards expansíveis com: produtos liberados, link de acesso copiável, histórico de compras (via transactions)
+- Stats: total membros, acessos ativos, total liberados
 
-### Mudanças resumidas
+**Aba Conteúdo** — Gestão de materiais por produto
+- Seletor de produto → editor de conteúdo
+- Personalização do produto (capa, descrição)
+- CRUD de categorias/módulos
+- CRUD de materiais (texto, PDF, vídeo, imagem, áudio) com upload para storage
 
-| Item | Antes | Depois |
-|------|-------|--------|
-| Índices | 1 (`last8Index`) | 3 (`cpfIndex`, `phoneIndex`, `last8Index`) |
-| Match de transação | Só por telefone | CPF primeiro, depois telefone |
-| Falso positivo 8 dígitos | Possível | Impedido pelo CPF/telefone completo |
-| Duplicação | Possível em edge cases | Impossível |
+**Aba Ofertas** — Ofertas para upsell na área pública
+- CRUD de ofertas vinculadas a produtos
+- Tipos: Card ou Produto Físico (vitrine)
+- Campos: PIX, cartão, preço, imagem, categoria
+- Métricas: impressões, cliques, CTR, vendas
 
-Sem mudança em outros arquivos — toda a lógica fica no hook.
+**Aba Atividade** — Monitoramento em tempo real
+- Cards de stats: online agora, visitantes 24h, sessões, tempo médio
+- Lista de membros online com atividade atual
+- Tabela consolidada de sessões (24h) com status, duração, acessos
+- Realtime subscription para atualizações automáticas
+
+**Aba Configurações** — Personalização da área
+- Título, logo, mensagem de boas-vindas, cor do tema
+- Prompts de IA (persona, saudação, oferta)
+
+### Componentes em `src/components/membros/`:
+- `MemberClientCard.tsx` — Card expansível por membro
+- `ContentManagement.tsx` — Editor de conteúdo por produto
+- `MemberActivityTab.tsx` — Dashboard de atividade
+
+### Utilitário:
+- `src/lib/phoneNormalization.ts` — `generatePhoneVariations()` para match de telefones
+
+## Etapa 3 — Integração
+
+- Todos os hooks usam `useWorkspace()` para `workspaceId`
+- Queries filtradas por `workspace_id`
+- Permissão `area_membros` já configurada no sistema
+
+## Observações
+
+- A página pública (`AreaMembrosPublica`) não será incluída nesta etapa — foco no painel admin
+- As tabelas `delivery_products` criadas aqui também servirão para o módulo "Entrega Digital" futuramente
+- A migração na VPS deve ser aplicada manualmente via `migrate-workspace.sql` ou diretamente no container `deploy-postgres-1`
 
