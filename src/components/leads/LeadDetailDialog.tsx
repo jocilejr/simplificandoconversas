@@ -342,45 +342,52 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
           )}
 
           {/* Histórico de Conversas */}
-          {instances.length > 0 && (
-            <div className="pt-3">
-              <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={instances.length} defaultOpen>
-                <div className="space-y-2">
-                  {instances.map((inst) => {
-                    const isSelected = selectedConversationId === inst.conversation_id;
-                    const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
-                    return (
-                      <div key={inst.conversation_id}>
-                        <button
-                          className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${
-                            isSelected ? "border-primary bg-primary/5" : ""
-                          }`}
-                          onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {msgCount} mensagen{msgCount !== 1 ? "s" : ""}
-                                {inst.last_message_at && ` · Última: ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
-                              </p>
+          {(() => {
+            const activeInstances = instances.filter((inst) => {
+              const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
+              return msgCount > 0 || inst.instance_name;
+            });
+            if (activeInstances.length === 0) return null;
+            return (
+              <div className="pt-3">
+                <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={activeInstances.length} defaultOpen>
+                  <div className="space-y-2">
+                    {activeInstances.map((inst) => {
+                      const isSelected = selectedConversationId === inst.conversation_id;
+                      const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
+                      return (
+                        <div key={inst.conversation_id}>
+                          <button
+                            className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${
+                              isSelected ? "border-primary bg-primary/5" : ""
+                            }`}
+                            onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {msgCount} mensagen{msgCount !== 1 ? "s" : ""}
+                                  {inst.last_message_at && ` · Última: ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
+                                </p>
+                              </div>
+                              {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                             </div>
-                            {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                          </div>
-                        </button>
-                        {isSelected && (
-                          <div className="mt-2">
-                            <InstanceMessageHistory conversationId={inst.conversation_id} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </CollapsibleSection>
-            </div>
-          )}
+                          </button>
+                          {isSelected && (
+                            <div className="mt-2">
+                              <InstanceMessageHistory conversationId={inst.conversation_id} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleSection>
+              </div>
+            );
+          })()}
 
           <div className="h-6" />
         </div>
