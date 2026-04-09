@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { Activity, Clock, Wifi, WifiOff } from "lucide-react";
+import { Activity, Clock, Wifi, WifiOff, FlaskConical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format, differenceInMinutes, differenceInSeconds } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -75,6 +76,7 @@ function phoneGroupKey(phone: string): string {
 
 export default function MemberActivityTab() {
   const { workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -85,6 +87,15 @@ export default function MemberActivityTab() {
   const { data: sessions, refetch } = useQuery({
     queryKey: ["member-sessions-recent", workspaceId],
     queryFn: async () => {
+      // Auto-close orphan sessions (no heartbeat for 5+ minutes, not ended)
+      const orphanThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      await supabase
+        .from("member_sessions" as any)
+        .update({ ended_at: new Date().toISOString() })
+        .eq("workspace_id", workspaceId!)
+        .is("ended_at", null)
+        .lt("last_heartbeat_at", orphanThreshold);
+
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data } = await supabase.from("member_sessions" as any)
         .select("*")
@@ -108,7 +119,6 @@ export default function MemberActivityTab() {
     queryKey: ["session-contact-names", uniquePhones, workspaceId],
     queryFn: async () => {
       if (!uniquePhones.length || !workspaceId) return {};
-      const last8s = uniquePhones.map(p => p.replace(/\D/g, "").slice(-8));
       const { data } = await supabase
         .from("conversations")
         .select("phone_number, contact_name")
@@ -163,13 +173,28 @@ export default function MemberActivityTab() {
     return summaries;
   }, [sessions, contactNames, now]);
 
-  // Realtime
+  // Polling-based refetch (VPS doesn't have realtime service)
   useEffect(() => {
-    const channel = supabase.channel("member-sessions-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "member_sessions" }, () => refetch())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const interval = setInterval(() => refetch(), 15_000);
+    return () => clearInterval(interval);
   }, [refetch]);
+
+  // Simulate test session
+  const simulateMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("member_sessions" as any).insert({
+        workspace_id: workspaceId,
+        normalized_phone: "5500000000000",
+        current_activity: "viewing_home",
+        current_product_name: "Produto Teste",
+        current_material_name: null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["member-sessions-recent"] });
+    },
+  });
 
   const onlineCount = memberSummaries.filter(m => m.isOnline).length;
   const avgDurationMins = useMemo(() => {
@@ -229,9 +254,15 @@ export default function MemberActivityTab() {
       {/* History Table */}
       <Card>
         <CardContent className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <Clock className="h-4 w-4 text-muted-foreground" /> Membros (24h)
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" /> Membros (24h)
+            </h3>
+            <Button variant="outline" size="sm" onClick={() => simulateMutation.mutate()} disabled={simulateMutation.isPending} className="gap-1.5 text-xs">
+              <FlaskConical className="h-3.5 w-3.5" />
+              Simular sessão
+            </Button>
+          </div>
           {!memberSummaries.length ? (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-10 w-10 mx-auto mb-2 opacity-30" />

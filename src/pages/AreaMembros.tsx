@@ -471,6 +471,11 @@ function MemberOffersTab() {
                         <span>{impressions.toLocaleString("pt-BR")} views</span>
                         <span>{clicks.toLocaleString("pt-BR")} cliques</span>
                         <span>{ctr}% CTR</span>
+                        {offer.product_id && (offerConversions?.[offer.product_id] || 0) > 0 && (
+                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">
+                            {offerConversions[offer.product_id]} vendas
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
