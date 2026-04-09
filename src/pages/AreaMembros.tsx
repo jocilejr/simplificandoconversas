@@ -185,7 +185,7 @@ function MemberSettingsTab() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useQuery({
     queryKey: ["member-area-settings", workspaceId],
-    queryFn: async () => { const { data } = await supabase.from("member_area_settings" as any).select("*").eq("workspace_id", workspaceId!).limit(1).maybeSingle(); return data; },
+    queryFn: async () => { const { data } = await supabase.from("member_area_settings" as any).select("*").eq("workspace_id", workspaceId!).limit(1).maybeSingle(); return data as any; },
     enabled: !!workspaceId,
   });
 
