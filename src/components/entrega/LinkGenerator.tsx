@@ -50,6 +50,8 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
   const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
     enabled: !!workspaceId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const { data } = await supabase
         .from("delivery_settings")

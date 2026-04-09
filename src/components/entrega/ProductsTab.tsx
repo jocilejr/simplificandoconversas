@@ -25,6 +25,8 @@ export function ProductsTab() {
   const { data: products, isLoading } = useQuery({
     queryKey: ["delivery-products", workspaceId],
     enabled: !!workspaceId,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("delivery_products")
