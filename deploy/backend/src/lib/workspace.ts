@@ -53,3 +53,36 @@ export async function resolveWorkspaceFromInstance(instanceName: string): Promis
   if (!data) return null;
   return { userId: data.user_id, workspaceId: data.workspace_id };
 }
+
+/**
+ * Resolve workspace_id from a customer phone number by matching conversations.
+ * Uses last-8-digit matching for resilience against formatting differences.
+ * Falls back to resolveWorkspaceId(userId) if no match found.
+ */
+export async function resolveWorkspaceFromPhone(userId: string, phone: string | null | undefined): Promise<string | null> {
+  if (!phone) return resolveWorkspaceId(userId);
+
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 8) return resolveWorkspaceId(userId);
+
+  const last8 = digits.slice(-8);
+  const sb = getServiceClient();
+
+  // Try to find a conversation with this phone in the user's workspaces
+  const { data } = await sb
+    .from("conversations")
+    .select("workspace_id, phone_number")
+    .eq("user_id", userId)
+    .not("phone_number", "is", null);
+
+  if (data && data.length > 0) {
+    for (const row of data) {
+      const rowDigits = (row.phone_number || "").replace(/\D/g, "");
+      if (rowDigits.length >= 8 && rowDigits.slice(-8) === last8) {
+        return row.workspace_id;
+      }
+    }
+  }
+
+  return resolveWorkspaceId(userId);
+}
