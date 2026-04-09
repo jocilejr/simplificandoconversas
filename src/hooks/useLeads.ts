@@ -314,7 +314,7 @@ export function useLeads() {
   return {
     leads: paginated,
     allLeads: filtered,
-    totalLeads: filtered.length,
+    totalLeads: sorted.length,
     isLoading: isLoadingConvos || isLoadingTags || isLoadingTx,
     search, setSearch,
     tagFilter, setTagFilter,
@@ -323,6 +323,7 @@ export function useLeads() {
     page, setPage,
     totalPages,
     counts,
+    sortField, sortDir, handleSort,
     createContact,
     importCSV,
   };

@@ -28,9 +28,6 @@ const formatPhone = (jid: string, phone?: string | null) => {
   return (phone || jid).replace("@s.whatsapp.net", "").replace(/\D/g, "");
 };
 
-type SortField = "name" | "phone" | "orders" | "total" | "reminders" | "status";
-type SortDir = "asc" | "desc";
-
 const Leads = () => {
   const {
     leads, allLeads, totalLeads, isLoading, search, setSearch,
