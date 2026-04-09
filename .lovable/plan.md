@@ -1,33 +1,29 @@
 
 
-# Fix: Green dot não aparece nas transações
+# Fix: Dot de transações não aparece na VPS
 
-## Problema
+## Causa raiz
 
-O `useEffect` que chama `markSeen` (linha 230-236 do `TransactionsTable.tsx`) dispara automaticamente no mount do componente e a cada mudança de `tabTransactions`. Isso significa que quando uma nova transação chega via realtime:
+A coluna `viewed_at` foi criada via migração no Lovable Cloud (`supabase/migrations/20260408234316_...sql`) mas nunca foi adicionada aos scripts de deploy da VPS (`deploy/init-db.sql` e `deploy/update.sh`). Sem essa coluna, a query do `useUnseenTransactions` falha silenciosamente, retornando contadores zerados.
 
-1. `useTransactions` refaz o fetch → nova transação aparece
-2. `tabTransactions` recomputa → `useEffect` dispara
-3. `markSeen` marca como visto imediatamente (milissegundos)
-4. O dot desaparece antes do usuário perceber
+Você acabou de adicionar a coluna manualmente. Agora precisamos garantir que ela esteja nos scripts para futuras atualizações.
 
-O dot nunca fica visível porque o `markSeen` é chamado automaticamente, não apenas quando o usuário troca de aba.
+## Alterações
 
-## Solução
+### 1. `deploy/init-db.sql` — Adicionar `viewed_at` na definição da tabela `transactions`
 
-**Arquivo:** `src/components/transactions/TransactionsTable.tsx`
+Adicionar `viewed_at timestamptz DEFAULT NULL` na lista de colunas da tabela transactions (após `created_at`).
 
-Mudar a lógica para que `markSeen` só seja chamado quando o usuário **manualmente troca de aba**, não no mount nem quando os dados mudam:
+### 2. `deploy/update.sh` — Adicionar `viewed_at` na definição + ALTER TABLE
 
-1. Adicionar um `useRef` para rastrear se é a primeira renderização e qual aba o usuário trocou
-2. Substituir o `useEffect` automático por uma chamada dentro do handler `setActiveTab`
-3. Não marcar como visto automaticamente no mount — apenas quando o usuário clica na aba
+Mesma alteração na definição da tabela, e adicionar um `ALTER TABLE` idempotente logo após:
+```sql
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS viewed_at TIMESTAMPTZ DEFAULT NULL;
+```
 
-Lógica concreta:
-- Criar `const isFirstRender = useRef(true)` 
-- No useEffect atual, ignorar se `isFirstRender.current === true` (setar `false` após)
-- Só chamar `markSeen` quando `activeTab` mudar (não quando `tabTransactions` mudar)
-- Remover `tabTransactions` das dependências do useEffect
+### 3. Verificação pós-fix
 
-Resultado: o dot verde aparece e persiste até o usuário clicar na aba correspondente.
+Após o deploy, as novas transações que chegarem terão `viewed_at = NULL` e o dot verde aparecerá na sidebar e nas abas. Ao clicar na aba, o `markSeen` atualizará `viewed_at` e o dot sumirá.
+
+**Importante:** Como você já marcou todas as transações existentes como vistas (`UPDATE transactions SET viewed_at = now()`), o dot só aparecerá para transações **novas** a partir de agora.
 
