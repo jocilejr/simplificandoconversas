@@ -142,6 +142,7 @@ function DominioTab() {
     setCustomDomain(settings.custom_domain || "");
     setGlobalRedirectUrl(settings.global_redirect_url || "");
     setLinkMessageTemplate(settings.link_message_template || "Olá! Aqui está seu acesso: {link}");
+    setDeliveryMessage((settings as any).delivery_message || "");
     setLoaded(true);
   }
 
