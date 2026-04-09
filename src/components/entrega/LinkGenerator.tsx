@@ -122,7 +122,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
           product_id: product.id,
           phone: normalized,
           is_active: true,
-        },
+        } as any,
         { onConflict: "product_id,phone" }
       );
 
@@ -158,7 +158,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
           product_id: product.id,
           phone: normalized,
           is_active: true,
-        },
+        } as any,
         { onConflict: "product_id,phone" }
       );
 
