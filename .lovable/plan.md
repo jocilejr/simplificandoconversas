@@ -1,73 +1,39 @@
 
 
-# Vincular transação PIX existente ao contato
-
-## Problema atual
-Ao selecionar PIX na entrega digital, o sistema **cria uma nova transação**. O correto é **buscar transações PIX aprovadas sem telefone** (órfãs vindas do webhook, que já têm `customer_name` e `customer_document` mas não têm `customer_phone`) e permitir vincular ao contato buscado pelo telefone.
-
-## Novo fluxo
-
-```text
-Telefone → Pagamento → [PIX] Selecionar Transação Órfã → Resultado
-```
+# Melhorias na listagem de transações PIX órfãs
 
 ## Mudanças em `src/components/entrega/DeliveryFlowDialog.tsx`
 
-### A) Novo step e estados
-- Adicionar `"select-tx"` ao type `Step`
-- Novos estados: `orphanTxs` (lista de transações encontradas) e `selectedTxId`
+### A) Paginação: mostrar 5 por vez com "Ver Mais"
+- Novo estado `txLimit` iniciando em 5
+- Exibir apenas `orphanTxs.slice(0, txLimit)` na lista
+- Botão "Ver Mais" ao final que incrementa `txLimit += 5`
+- Remover o `.limit(50)` da query para trazer todas as transações órfãs
 
-### B) Ao clicar em PIX
-Em vez de chamar `processDelivery("pix")`, buscar transações órfãs:
-```typescript
-// Buscar PIX aprovados SEM telefone no workspace
-const { data } = await supabase
-  .from("transactions")
-  .select("*")
-  .eq("workspace_id", workspaceId)
-  .eq("type", "pix")
-  .eq("status", "aprovado")
-  .is("customer_phone", null)
-  .order("created_at", { ascending: false });
-```
-- Se encontrou → mostrar step `"select-tx"` com a lista
-- Se não encontrou → toast "Nenhuma transação PIX sem vínculo encontrada"
+### B) Campo de busca por nome ou CPF
+- Novo estado `txSearch` (string)
+- Input com ícone Search acima da lista, placeholder "Buscar por nome ou CPF..."
+- Quando `txSearch` não está vazio: filtrar `orphanTxs` por `customer_name` ou `customer_document` contendo o texto (case-insensitive) e mostrar **todos** os resultados filtrados (sem limite de 5)
+- Quando `txSearch` está vazio: aplicar paginação normal (5 em 5)
+- Contador: "X transações encontradas"
 
-### C) Nova tela `select-tx`
-Lista de cards clicáveis mostrando:
-- Valor (`R$ X,XX`)
-- Nome do cliente (vindo do webhook)
-- CPF (vindo do webhook)
-- Data de pagamento
-- ID parcial
+### C) Ícone de verificado nas transações já vinculadas
+- Alterar a query `handlePixClick` para buscar **todas** as transações PIX aprovadas (não apenas `customer_phone IS NULL`), mas manter a separação visual
+- Na verdade, melhor abordagem: manter a query atual de órfãs para a lista principal, e quando o search é usado, buscar **todas** as transações PIX aprovadas (com e sem telefone) para mostrar resultados completos
+- Transações que já possuem `customer_phone` preenchido exibem um ícone `BadgeCheck` azul ao lado do nome — e ficam desabilitadas (não clicáveis)
+- Para isso, adicionar `customer_phone` ao select da query
 
-Ao clicar, chama `processDelivery("pix", txId)`.
+### D) Ordenação
+- Manter `.order("created_at", { ascending: false })` — mais recente primeiro (já está assim)
 
-### D) Alterar `processDelivery` para PIX
-Receber `existingTxId?: string`. Quando PIX + existingTxId:
-- **UPDATE** a transação existente adicionando `customer_phone` do contato buscado
-- **Não criar** transação nova
-- O `customer_name` e `customer_document` já existem (vieram do webhook)
-- Adicionar `description: product.name` e `source: "entrega_digital"` ao update
-
-```typescript
-if (method === "pix" && existingTxId) {
-  await supabase
-    .from("transactions")
-    .update({
-      customer_phone: normalized,
-      description: product.name,
-    })
-    .eq("id", existingTxId);
-}
-```
-
-### E) Enriquecer LeadInfo com dados da transação selecionada
-Ao vincular, preencher o `leadInfo` com `customer_name` e `customer_document` da transação selecionada — integrando CPF da transação ao contato.
+## Resumo do fluxo
+1. Ao clicar PIX → busca todas transações PIX aprovadas (sem limit)
+2. Lista mostra 5 mais recentes sem telefone
+3. "Ver Mais" carrega +5
+4. Search filtra por nome/CPF em todas as transações (incluindo vinculadas)
+5. Vinculadas aparecem com ícone azul de verificado e não são clicáveis
+6. Não vinculadas são clicáveis normalmente
 
 ## Arquivo alterado
 - `src/components/entrega/DeliveryFlowDialog.tsx`
-
-## Resultado
-Transação PIX de "CPF X" fica vinculada ao "Contato Y" (identificado pelo telefone). Nenhuma transação duplicada é criada.
 
