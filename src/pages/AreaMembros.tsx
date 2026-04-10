@@ -41,9 +41,10 @@ function MemberProductsTab() {
   const { data: memberProducts, isLoading } = useQuery({
     queryKey: ["member-products", searchPhone, workspaceId],
     queryFn: async () => {
+      // Step 1: fetch member_products WITHOUT embedded join
       let query = supabase
         .from("member_products" as any)
-        .select("*, delivery_products(name)")
+        .select("id, phone, is_active, product_id, workspace_id, created_at")
         .eq("workspace_id", workspaceId!)
         .order("created_at", { ascending: false });
 
@@ -62,7 +63,25 @@ function MemberProductsTab() {
         if (data && data.length > 0) { allData.push(...data); from += pageSize; hasMore = data.length === pageSize; }
         else hasMore = false;
       }
-      return allData;
+
+      // Step 2: fetch product names separately
+      const productIds = Array.from(new Set(allData.map((mp: any) => mp.product_id).filter(Boolean)));
+      const productMap: Record<string, string> = {};
+      if (productIds.length) {
+        const { data: prods } = await supabase
+          .from("delivery_products" as any)
+          .select("id, name")
+          .in("id", productIds);
+        for (const p of (prods || []) as any[]) productMap[p.id] = p.name;
+      }
+
+      // Step 3: merge
+      return allData.map((mp: any) => ({
+        ...mp,
+        delivery_products: mp.product_id && productMap[mp.product_id]
+          ? { name: productMap[mp.product_id] }
+          : null,
+      }));
     },
     enabled: !!workspaceId,
   });

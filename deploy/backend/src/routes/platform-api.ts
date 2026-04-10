@@ -1402,13 +1402,36 @@ router.get("/member-products", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "phones and workspace_id required" });
     }
     const sb = getServiceClient();
-    const { data, error } = await sb
+
+    // Step 1: fetch member_products without embedded join
+    const { data: mpRows, error: mpError } = await sb
       .from("member_products")
-      .select("id, phone, is_active, product_id, delivery_products(name)")
+      .select("id, phone, is_active, product_id")
       .eq("workspace_id", workspace_id)
       .in("phone", phones);
-    if (error) throw error;
-    res.json(data || []);
+    if (mpError) throw mpError;
+    if (!mpRows?.length) return res.json([]);
+
+    // Step 2: fetch product names separately
+    const productIds = Array.from(new Set(mpRows.map((r: any) => r.product_id).filter(Boolean)));
+    const productMap: Record<string, string> = {};
+    if (productIds.length) {
+      const { data: prods } = await sb
+        .from("delivery_products")
+        .select("id, name")
+        .in("id", productIds);
+      for (const p of prods || []) productMap[p.id] = p.name;
+    }
+
+    // Step 3: merge
+    const result = mpRows.map((mp: any) => ({
+      ...mp,
+      delivery_products: mp.product_id && productMap[mp.product_id]
+        ? { name: productMap[mp.product_id] }
+        : null,
+    }));
+
+    res.json(result);
   } catch (err: any) {
     console.error("[member-products] error:", err.message);
     res.status(500).json({ error: err.message });
