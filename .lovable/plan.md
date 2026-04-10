@@ -1,33 +1,57 @@
 
 
-## Melhorias visuais na Área de Membros
+## Plano: Corrigir criação de ofertas + Usar descrição do produto na copy da oferta
 
-### Alterações em `src/pages/MemberAccess.tsx`
+### Problema 1: Falha ao salvar ofertas
+O `fix-member-tables.sql` assume que a tabela `member_area_offers` já existe — ele só faz `ALTER TABLE ADD COLUMN IF NOT EXISTS`. Se a tabela não existir na VPS, todos os ALTERs falham e as ofertas não podem ser salvas.
 
-**1. Remover header "Área de Membros"** (linhas 488-503)
-Remover completamente o bloco sticky header com o título "Área de Membros" e saudação.
+**Solução**: Adicionar `CREATE TABLE IF NOT EXISTS` para `member_area_offers` no `fix-member-tables.sql`, antes dos ALTERs de coluna. Incluir todas as colunas necessárias, RLS habilitado e GRANT para os roles.
 
-**2. Cards de produto mais compactos** (linhas 435-483)
-- Reduzir altura da imagem de cover de `h-[160px]` para `h-[120px]`
-- Reduzir altura do fallback sem imagem de `h-[140px]` para `h-[100px]`
-- Remover a barra inferior "Toque para acessar" — o card inteiro já é clicável, não precisa dessa indicação
+### Problema 2: Descrição do produto não alimenta a IA
+A tabela `delivery_products` tem uma coluna `member_description` que deveria ser usada para enriquecer o contexto da IA ao gerar a copy de oferta, mas a rota `/offer-pitch` não a consulta.
 
-**3. Caixa de texto da IA mais compacta** (linhas 507-535)
-- Reduzir padding do container
-- Reduzir tamanho do texto da mensagem de `text-[13px]` para `text-xs`
-- Reduzir avatar de `h-10 w-10` para `h-8 w-8`
-- Reduzir nome de `text-[13px]` para `text-xs`
+**Solução**: Na rota `POST /offer-pitch` em `member-access.ts`, ao buscar o `product_id` da oferta, também buscar `member_description` de `delivery_products` e injetá-la no prompt como contexto adicional sobre o produto.
 
-**4. Efeito de digitação com delay de 3 segundos**
-- Quando a resposta da IA chega, não mostrar imediatamente
-- Manter o indicador "digitando..." com os 3 pontinhos por 3 segundos após receber a resposta
-- Após o delay, exibir o texto letra por letra (typewriter effect) usando um intervalo de ~20ms por caractere
-- Novo estado `typedText` que vai acumulando caracteres do `greeting` com `setInterval`
-- O balão mostra `typedText` em vez do texto completo
+### Alterações
+
+**1. `deploy/fix-member-tables.sql`**
+Adicionar antes dos ALTERs de `member_area_offers`:
+```sql
+CREATE TABLE IF NOT EXISTS public.member_area_offers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Oferta',
+  description text,
+  is_active boolean NOT NULL DEFAULT true,
+  price numeric,
+  purchase_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_area_offers ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
+```
+Os ALTERs subsequentes adicionam as colunas extras (`product_id`, `image_url`, etc.) de forma idempotente.
+
+Adicionar também políticas RLS no bloco de workspace policies (o array `_tables` já inclui a tabela, mas precisa de um fallback caso as policies não existam).
+
+**2. `deploy/backend/src/routes/member-access.ts`**
+Na rota `/offer-pitch`, ao buscar dados do produto (linha ~370-374), também buscar `member_description`:
+```typescript
+const { data: productData } = await sb
+  .from("delivery_products")
+  .select("member_cover_image, page_logo, member_description")
+  .eq("id", offerData.product_id)
+  .single();
+```
+E injetar `member_description` no prompt da IA:
+```
+SOBRE O PRODUTO (descrição do criador):
+{member_description}
+```
 
 ### Resultado
-- Sem header no topo — mais espaço para conteúdo
-- Cards mais baixos e sem barra "Toque para acessar"
-- Mensagem da IA aparece com delay de 3s + efeito typewriter
-- Caixa de chat mais compacta e elegante
+- Tabela `member_area_offers` é criada automaticamente pelo `update.sh` se não existir
+- A descrição do produto (`member_description`) alimenta a IA para gerar copies mais contextualizadas
+- Rodar `./update.sh` na VPS aplica tudo
 
