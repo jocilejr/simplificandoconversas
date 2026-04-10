@@ -1,50 +1,108 @@
 
+## Plano: Corrigir o novo erro ao salvar ofertas na VPS
 
-## Plano: Corrigir race condition nas permissões do colaborador
+### Diagnóstico
+O erro do print não é de permissão. É uma divergência de schema na VPS:
 
-### Problema raiz
+- o frontend salva oferta usando `name`
+- o código atual não envia `title`
+- mas a tabela `member_area_offers` na sua VPS ainda está exigindo `title NOT NULL`
 
-Em `useWorkspace.tsx`, o estado `isLoading` exposto ao resto da aplicação só rastreia o loading da query de **workspaces**, mas NÃO o loading da query de **isSuperAdmin**. 
+Resultado: o insert falha com `null value in column "title"`.
 
-Fluxo problemático no segundo acesso:
-1. `isSuperAdmin` query inicia (loading, default `false`)
-2. Workspaces query inicia com `enabled: !!user` — não espera `isSuperAdmin` resolver
-3. React-query pode servir dados em cache da sessão anterior enquanto refetcha
-4. Se o cache está parcialmente preenchido ou as queries resolvem em ordem diferente, o UI renderiza antes de ter os dados de permissão finais
+Além disso, o repositório está inconsistente:
+- `src/pages/AreaMembros.tsx` usa `name`
+- `supabase/migrations/...member_area_offers...sql` usa só `name`
+- `deploy/init-db.sql` ainda carrega legado com `title`
+- `deploy/fix-member-tables.sql` não corrige um `title NOT NULL` já existente
 
-Além disso, há um segundo problema na lógica de fallback (linha 164-166):
-```typescript
-if (Object.keys(permissions).length === 0) {
-  return role === "operator" || role === "admin"; // ← dá acesso TOTAL se permissions é {} ou null
-}
+### O que vou ajustar
+
+**1. Corrigir o schema de ofertas na VPS**
+Arquivo: `deploy/fix-member-tables.sql`
+
+Adicionar um bloco de compatibilidade para:
+- garantir `name`
+- garantir `title` apenas como legado opcional
+- remover `NOT NULL` de `title`
+- preencher `name` a partir de `title` quando necessário
+- preencher `title` a partir de `name` quando necessário
+- definir `name` como campo canônico
+
+Em prática, a correção fará algo nessa linha:
+```sql
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE public.member_area_offers ALTER COLUMN title DROP NOT NULL;
+
+UPDATE public.member_area_offers
+SET name = COALESCE(NULLIF(name, ''), NULLIF(title, ''), 'Oferta')
+WHERE name IS NULL OR btrim(name) = '';
+
+UPDATE public.member_area_offers
+SET title = COALESCE(NULLIF(title, ''), name, 'Oferta')
+WHERE title IS NULL OR btrim(title) = '';
+
+ALTER TABLE public.member_area_offers ALTER COLUMN name SET DEFAULT 'Oferta';
+ALTER TABLE public.member_area_offers ALTER COLUMN name SET NOT NULL;
 ```
-Se por qualquer motivo o `permissions` do membro vier como `null` ou `{}` (ex: cache parcial, Supabase retornando null temporariamente), um operador ganha acesso a TODAS as abas.
 
-### Alterações em `src/hooks/useWorkspace.tsx`
+**2. Unificar o schema base para novas VPS**
+Arquivo: `deploy/init-db.sql`
 
-**1. Rastrear o loading de `isSuperAdmin`**
-Extrair `isLoading` da query de super admin e incluir no `isLoading` global:
-```typescript
-const { data: isSuperAdmin = false, isLoading: isSuperAdminLoading } = useQuery({...});
+Deixar o schema inicial coerente com o app atual:
+- `name` como campo principal
+- `title` apenas legado opcional, sem `NOT NULL`
+- evitar que uma instalação nova recrie o problema
+
+**3. Blindar a leitura das ofertas**
+Arquivo: `deploy/backend/src/routes/member-access.ts`
+
+Ao retornar ofertas para a área de membros, normalizar o nome:
+```ts
+name: offer.name || offer.title || "Oferta"
 ```
 
-**2. Bloquear workspaces query até `isSuperAdmin` resolver**
-Mudar o `enabled` da query de workspaces:
-```typescript
-enabled: !!user && !isSuperAdminLoading,
+Isso evita card vazio caso existam registros antigos na VPS.
+
+**4. Blindar a listagem/admin das ofertas**
+Arquivo: `src/pages/AreaMembros.tsx`
+
+Manter o save usando `name`, mas ajustar a exibição para fallback seguro em registros antigos:
+- exibir `offer.name || offer.title || "Oferta"`
+
+### Verificação que vou te pedir para rodar DENTRO da VPS
+Antes e depois da correção, quero que você rode estes comandos:
+
+```bash
+cd ~/simplificandoconversas/deploy
+
+docker compose exec -T postgres psql -U postgres -d postgres -c "
+SELECT column_name, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'member_area_offers'
+  AND column_name IN ('name','title')
+ORDER BY column_name;
+"
 ```
 
-**3. Combinar loading states**
-O `isLoading` exposto no contexto deve ser:
-```typescript
-const combinedLoading = isSuperAdminLoading || isWorkspacesLoading;
+```bash
+docker compose exec -T postgres psql -U postgres -d postgres -c "
+SELECT
+  count(*) FILTER (WHERE name IS NULL OR btrim(name) = '') AS sem_name,
+  count(*) FILTER (WHERE title IS NULL OR btrim(title) = '') AS sem_title
+FROM public.member_area_offers;
+"
 ```
 
-**4. Não mudar o fallback de permissions**
-O fallback para `permissions === {}` com acesso baseado em role é intencional para retrocompatibilidade (membros antigos sem permissions granulares). A correção do loading já resolve a inconsistência visual.
+Depois da atualização, o esperado é:
+- `name` preenchido
+- `title` permitido como nulo
+- criação de oferta funcionando sem erro
 
-### Resultado
-- O sidebar e todas as gates de permissão esperam AMBAS as queries resolverem antes de renderizar
-- Elimina a janela de tempo onde o UI renderiza com dados incompletos
-- Colaboradores sempre veem apenas as abas que têm permissão
-
+### Resultado esperado
+- o modal “Nova Oferta” volta a salvar normalmente
+- ofertas antigas continuam aparecendo
+- a VPS deixa de depender do campo legado `title`
+- o problema não volta em futuras atualizações do `./update.sh`
