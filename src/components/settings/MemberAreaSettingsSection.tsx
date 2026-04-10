@@ -166,20 +166,26 @@ function DominioTab() {
   return (
     <Card>
       <CardContent className="p-6 space-y-4">
-        <div className="border rounded-md p-4 bg-muted/30 space-y-2">
-          <h4 className="font-medium text-sm">Configuração de DNS</h4>
+        <div className="border rounded-md p-4 bg-muted/30 space-y-3">
+          <h4 className="font-medium text-sm">Como configurar um domínio personalizado</h4>
           <p className="text-xs text-muted-foreground">
-            Para usar um domínio personalizado na sua área de membros, aponte o domínio para o IP do seu servidor:
+            No painel DNS do seu provedor de domínio, crie os seguintes registros apontando para o IP da sua VPS:
           </p>
+
           <div className="text-xs font-mono space-y-1 bg-background p-3 rounded border">
+            <p className="text-muted-foreground mb-1">Registro A — aponta seu subdomínio para o servidor</p>
             <p><strong>Tipo:</strong> A</p>
-            <p><strong>Nome:</strong> membros (ou o subdomínio desejado)</p>
-            <p><strong>Valor:</strong> IP do seu servidor VPS</p>
+            <p><strong>Nome:</strong> membros <span className="text-muted-foreground">(ou o subdomínio que desejar)</span></p>
+            <p><strong>Valor:</strong> <span className="text-primary font-bold">{(() => { try { const h = new URL(import.meta.env.VITE_SUPABASE_URL || window.location.origin).hostname; return h; } catch { return window.location.hostname; } })()}</span></p>
           </div>
-          <div className="text-xs font-mono space-y-1 bg-background p-3 rounded border mt-2">
-            <p><strong>TXT (verificação):</strong></p>
-            <p>_verify → workspace-{workspaceId?.slice(0, 8)}</p>
-          </div>
+
+          <p className="text-xs text-muted-foreground">
+            <strong>Exemplo:</strong> se seu domínio é <code className="bg-muted px-1 rounded">meusite.com</code> e você quer acessar via <code className="bg-muted px-1 rounded">membros.meusite.com</code>, crie o registro A com nome <code className="bg-muted px-1 rounded">membros</code> apontando para o IP acima.
+          </p>
+
+          <p className="text-xs text-amber-500">
+            ⚠️ Após criar o registro, aguarde até 24h para propagação do DNS. Depois, insira o domínio completo no campo abaixo.
+          </p>
         </div>
 
         <div>
