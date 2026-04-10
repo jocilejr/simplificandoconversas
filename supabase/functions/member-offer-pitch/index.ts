@@ -71,6 +71,7 @@ serve(async (req) => {
         .replace(/\{memberDays\}/g, String(memberDays))
         .replace(/\{profileCategory\}/g, profileCategory);
       if (personaPrompt && !customOfferPrompt.includes("PERSONALIDADE")) systemPrompt = `SUA PERSONALIDADE:\n${personaPrompt}\n\n${systemPrompt}`;
+      if (memberDescription) systemPrompt += `\n\nSOBRE O PRODUTO (descrição do criador):\n${memberDescription}`;
       if (knowledgeContext) systemPrompt += `\n\nCONHECIMENTO QUE A PESSOA JÁ ADQUIRIU:\n${knowledgeContext}`;
       if (offerMaterials && offerMaterials.length > 0) systemPrompt += `\n\nCONTEÚDO QUE A PESSOA VAI RECEBER:\n${offerMaterials.join("\n")}`;
     } else {
