@@ -30,14 +30,17 @@ export default function DailyVerse() {
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm">
-      <div className="relative px-5 py-4">
-        <div className="absolute top-2 left-3 text-gray-100 text-3xl leading-none select-none">🙏</div>
-        <div className="pl-8">
-          <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase mb-2">Oração do dia</p>
-          <p className="text-sm text-gray-700 leading-relaxed font-medium" style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}>
-            {prayer}
-          </p>
-        </div>
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-amber-600 rounded-l-2xl" />
+      <div className="px-5 py-4 pl-6">
+        <p className="text-[10px] font-semibold text-amber-600/70 tracking-widest uppercase mb-2">
+          Oração do dia
+        </p>
+        <p
+          className="text-sm text-gray-600 leading-relaxed italic"
+          style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
+        >
+          {prayer}
+        </p>
       </div>
     </div>
   );

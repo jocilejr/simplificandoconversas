@@ -162,4 +162,229 @@ router.get("/:phone", async (req, res) => {
   }
 });
 
+// ─── AI Context Route ───
+router.post("/ai-context", async (req, res) => {
+  try {
+    const { firstName, products, ownedProductNames, progress, profile } = req.body;
+    const sb = getServiceClient();
+
+    const [openaiRes, settingsRes] = await Promise.all([
+      sb.from("openai_settings").select("api_key").limit(1).maybeSingle(),
+      sb.from("member_area_settings").select("ai_persona_prompt").limit(1).maybeSingle(),
+    ]);
+
+    if (openaiRes.error || !openaiRes.data?.api_key) {
+      return res.status(500).json({ error: "OpenAI API key not configured." });
+    }
+
+    const OPENAI_API_KEY = openaiRes.data.api_key;
+    const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
+
+    const categories = [
+      { id: "salmo", instruction: "Compartilhe um salmo ou versículo bíblico que combina com o momento dessa pessoa. Cite o livro, capítulo e versículo. Conecte o versículo com algo pessoal dela." },
+      { id: "progresso", instruction: "Comente especificamente sobre o progresso dela nos materiais, citando nomes exatos e porcentagens. Se não houver progresso, incentive a começar um material específico pelo nome." },
+      { id: "reflexao", instruction: "Compartilhe uma reflexão pessoal sua, algo que você pensou hoje de manhã ou que Deus colocou no seu coração. Seja genuína e específica." },
+      { id: "curiosidade", instruction: "Conte uma curiosidade bíblica interessante, uma história pouco conhecida da Bíblia, ou um fato surpreendente sobre um personagem bíblico. Seja específica e educativa." },
+      { id: "oracao", instruction: "Faça uma oração curta, pessoal e carinhosa dedicada a essa pessoa pelo nome. A oração deve ser como se você estivesse orando ali na hora, de coração." },
+      { id: "incentivo", instruction: "Dê palavras de encorajamento baseadas na situação atual dela. Pode ser sobre persistência, fé, ou algo que você percebeu sobre ela." },
+      { id: "pergunta", instruction: "Faça uma pergunta carinhosa e genuína sobre como ela está, como está o dia dela, ou algo sobre a vida dela que demonstre interesse real." },
+    ];
+
+    const chosen = categories[Math.floor(Math.random() * categories.length)];
+
+    const productList = (products || [])
+      .map((p: any) => `"${p.name}" (materiais: ${p.materials?.length ? p.materials.join(", ") : "sem materiais cadastrados"})`)
+      .join("\n- ");
+
+    const ownedNames = (ownedProductNames || []).join(", ") || "nenhum produto identificado";
+
+    const progressItems = (progress || []) as any[];
+    let progressContext = "Nenhum progresso registrado ainda.";
+    if (progressItems.length > 0) {
+      progressContext = progressItems.map((p: any) => {
+        if (p.type === "pdf" && p.totalPages > 0) { const pct = Math.round((p.currentPage / p.totalPages) * 100); return `"${p.materialName}": leu ${p.currentPage} de ${p.totalPages} páginas (${pct}%)`; }
+        if (p.type === "video" && p.videoDuration > 0) { const pct = Math.round((p.videoSeconds / p.videoDuration) * 100); const mins = Math.floor(p.videoSeconds / 60); return `"${p.materialName}": assistiu ${mins} minutos (${pct}%)`; }
+        return `"${p.materialName}": acessado`;
+      }).join("\n- ");
+    }
+
+    const prof = profile || {};
+    let memberSinceStr = "desconhecido";
+    let memberDays = 0;
+    if (prof.memberSince) {
+      const sinceDate = new Date(prof.memberSince);
+      memberDays = Math.floor((Date.now() - sinceDate.getTime()) / (1000 * 60 * 60 * 24));
+      memberSinceStr = `${memberDays} dias atrás`;
+    }
+    const totalProducts = prof.totalProducts || 0;
+    const daysSinceLastAccess = prof.daysSinceLastAccess;
+
+    let profileCategory = "regular";
+    if (memberDays <= 7) profileCategory = "novo";
+    else if (daysSinceLastAccess !== null && daysSinceLastAccess > 7) profileCategory = "inativo";
+    else if ((prof.totalPaid || 0) > 200 || totalProducts >= 3) profileCategory = "fiel";
+
+    const profileContext = `PERFIL DO MEMBRO:\n- Membro há: ${memberSinceStr}${memberDays <= 7 ? " (MEMBRO NOVA!)" : ""}\n- Produtos que possui: ${totalProducts}\n- Dias sem acessar materiais: ${daysSinceLastAccess !== null ? daysSinceLastAccess : "nunca acessou"}${daysSinceLastAccess !== null && daysSinceLastAccess > 3 ? " (ESTÁ SUMIDA!)" : ""}\n- Categoria: ${profileCategory === "novo" ? "NOVA" : profileCategory === "inativo" ? "INATIVA" : profileCategory === "fiel" ? "FIEL" : "REGULAR"}`;
+
+    const personaBlock = personaPrompt
+      ? `\nSUA PERSONALIDADE:\n${personaPrompt}\n`
+      : `\nVocê é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Fala com carinho, como uma amiga próxima. Nunca usa termos de marketing.\n`;
+
+    const systemPrompt = `Você é uma amiga mandando UMA ÚNICA mensagem curta no WhatsApp.\n${personaBlock}\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}\n${chosen.instruction}\n\nADAPTE O TOM ao perfil:\n${profileCategory === "novo" ? "MEMBRO NOVA: Boas-vindas calorosas. Mostre que fez a escolha certa." : ""}${profileCategory === "inativo" ? "MEMBRO INATIVA: Mostre que sentiu falta. NÃO critique a ausência." : ""}${profileCategory === "fiel" ? "MEMBRO FIEL: Reconheça a dedicação e fidelidade." : ""}${profileCategory === "regular" ? "MEMBRO REGULAR: Tom amigável e encorajador." : ""}\n\nREGRAS ABSOLUTAS:\n- Gere APENAS 1 mensagem. UMA. Não duas.\n- PROIBIDO usar travessão (—) ou travessão curto (–)\n- A mensagem DEVE incluir o nome da pessoa de forma natural\n- NUNCA use termos genéricos como "este material", "este conteúdo"\n- SEMPRE cite nomes EXATOS dos produtos e materiais\n- Tom: amiga próxima mandando mensagem no WhatsApp\n- NUNCA use termos de marketing\n- NUNCA mencione valores ou preços\n- Máximo 3 frases curtas\n- Use 1 emoji no máximo\n- Seja CRIATIVA e ORIGINAL`;
+
+    const userPrompt = `Nome: ${firstName || "Querido(a)"}\n\n${profileContext}\n\nProdutos com acesso:\n- ${productList || "Nenhum produto específico"}\n\nNomes dos produtos: ${ownedNames}\n\nPROGRESSO:\n- ${progressContext}\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()} - ${chosen.instruction}`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 1.1,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "generate_member_message",
+            description: "Generate 1 single personalized WhatsApp-style message.",
+            parameters: { type: "object", properties: { message: { type: "string", description: `Uma única mensagem curta e pessoal seguindo a categoria "${chosen.id}". Máx 3 frases. Sem travessões.` } }, required: ["message"] }
+          }
+        }],
+        tool_choice: { type: "function", function: { name: "generate_member_message" } },
+      }),
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      console.error("OpenAI API error:", response.status, t);
+      return res.status(500).json({ error: `OpenAI API error: ${response.status}` });
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) return res.status(500).json({ error: "No tool call response from OpenAI" });
+
+    const result = JSON.parse(toolCall.function.arguments);
+    const cleanDashes = (text: string) => text.replace(/[—–]/g, ",");
+    return res.json({ greeting: cleanDashes(result.message || ""), tip: "" });
+  } catch (e: any) {
+    console.error("[member-ai-context] error:", e);
+    return res.status(500).json({ error: e.message || "Unknown error" });
+  }
+});
+
+// ─── Offer Pitch Route ───
+router.post("/offer-pitch", async (req, res) => {
+  try {
+    const { firstName, offerName, offerDescription, offerPrice, ownedProductNames, ownedProductIds, profile, offerMaterials } = req.body;
+    const sb = getServiceClient();
+
+    const [openaiRes, settingsRes] = await Promise.all([
+      sb.from("openai_settings").select("api_key").limit(1).maybeSingle(),
+      sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt").limit(1).maybeSingle(),
+    ]);
+
+    if (openaiRes.error || !openaiRes.data?.api_key) return res.status(500).json({ error: "OpenAI API key not configured." });
+
+    const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
+    const customOfferPrompt = (settingsRes.data as any)?.offer_prompt || "";
+
+    // Knowledge context
+    let knowledgeContext = "";
+    if (ownedProductIds?.length > 0) {
+      const { data: summaries } = await sb.from("product_knowledge_summaries").select("summary, key_topics").in("product_id", ownedProductIds);
+      if (summaries?.length) {
+        knowledgeContext = summaries.map((s: any) => {
+          const topics = (s.key_topics || []).join(", ");
+          return `${s.summary}${topics ? `\nTópicos: ${topics}` : ""}`;
+        }).join("\n\n");
+      }
+    }
+
+    // Product image
+    let productImageUrl: string | null = null;
+    const { data: offerData } = await sb.from("member_area_offers").select("product_id").eq("name", offerName).limit(1).maybeSingle();
+    if (offerData?.product_id) {
+      const { data: productData } = await sb.from("delivery_products").select("member_cover_image, page_logo").eq("id", offerData.product_id).single();
+      if (productData) productImageUrl = productData.member_cover_image || productData.page_logo || null;
+    }
+
+    const prof = profile || {};
+    let memberDays = 0;
+    if (prof.memberSince) memberDays = Math.floor((Date.now() - new Date(prof.memberSince).getTime()) / (1000 * 60 * 60 * 24));
+
+    let profileCategory = "regular";
+    if (memberDays <= 7) profileCategory = "novo";
+    else if (prof.daysSinceLastAccess !== null && prof.daysSinceLastAccess > 7) profileCategory = "inativo";
+    else if (prof.totalPaid > 200 || prof.totalProducts >= 3) profileCategory = "fiel";
+
+    const ownedNames = (ownedProductNames || []).join(", ") || "nenhum";
+
+    let systemPrompt: string;
+
+    if (customOfferPrompt) {
+      systemPrompt = customOfferPrompt
+        .replace(/\{firstName\}/g, firstName || "Querido(a)")
+        .replace(/\{ownedNames\}/g, ownedNames)
+        .replace(/\{offerName\}/g, offerName || "")
+        .replace(/\{offerDescription\}/g, offerDescription || "Material especial preparado com muito carinho.")
+        .replace(/\{offerPrice\}/g, offerPrice ? `R$ ${Number(offerPrice).toFixed(2).replace('.', ',')}` : "")
+        .replace(/\{memberDays\}/g, String(memberDays))
+        .replace(/\{profileCategory\}/g, profileCategory);
+      if (personaPrompt && !customOfferPrompt.includes("PERSONALIDADE")) systemPrompt = `SUA PERSONALIDADE:\n${personaPrompt}\n\n${systemPrompt}`;
+      if (knowledgeContext) systemPrompt += `\n\nCONHECIMENTO QUE A PESSOA JÁ ADQUIRIU:\n${knowledgeContext}`;
+      if (offerMaterials?.length > 0) systemPrompt += `\n\nCONTEÚDO QUE A PESSOA VAI RECEBER:\n${offerMaterials.join("\n")}`;
+    } else {
+      const personaBlock = personaPrompt
+        ? `SUA PERSONALIDADE:\n${personaPrompt}`
+        : `SUA PERSONALIDADE:\nVocê é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Você age de forma cristã e nunca tenta vender algo — você oferece com carinho algo que pode fazer sentido para a pessoa, e pede uma contribuição caso a pessoa possa contribuir.`;
+
+      const knowledgeBlock = knowledgeContext
+        ? `\nCONHECIMENTO QUE A PESSOA JÁ ADQUIRIU (dos materiais que ela já possui):\n${knowledgeContext}\n\n→ No SEGUNDO balão, faça referência ao que a pessoa já aprendeu/estudou.`
+        : "";
+
+      systemPrompt = `Você vai gerar mensagens de chat simulando uma conversa pessoal sobre um material que a pessoa demonstrou interesse.\n\n${personaBlock}\n\nREGRAS ABSOLUTAS:\n- NUNCA use termos de marketing\n- Fale de forma natural, como uma amiga\n- Use o nome da pessoa\n- Gere EXATAMENTE 3 mensagens (balão 1, balão 2 e balão 4 — o balão 3 será uma imagem)\n- Cada mensagem deve ter no máximo 2-3 frases curtas\n\nESTRUTURA DOS 3 BALÕES DE TEXTO:\n\n**Balão 1:** Cumprimente pelo nome e informe que já adquiriu: ${ownedNames}. Diga que ainda não contribuiu para "${offerName}", de forma carinhosa.\n\n**Balão 2:** ${knowledgeContext ? `Breve resumo do que aprendeu. Depois, como '${offerName}' complementa.` : `Explique brevemente '${offerName}' com base na descrição.`}\n\n**Balão 4:** Liste o conteúdo do material. ${offerPrice ? `Diga que é apenas R$ ${Number(offerPrice).toFixed(2).replace('.', ',')} e convide com gentileza.` : "Convide com gentileza."}\n\n${knowledgeBlock}\nPERFIL: Nome: ${firstName}, Membro há: ${memberDays} dias, Produtos: ${ownedNames}, Categoria: ${profileCategory}\n\nMATERIAL: "${offerName}" — "${offerDescription || 'Material especial.'}"${offerMaterials?.length > 0 ? `\nCONTEÚDO: ${offerMaterials.join("\n")}` : ""}`;
+    }
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openaiRes.data.api_key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Gere as 3 mensagens de chat para ${firstName} sobre "${offerName}".` },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "generate_offer_chat",
+            description: "Generate exactly 3 chat text messages.",
+            parameters: { type: "object", properties: { messages: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 3 } }, required: ["messages"] }
+          }
+        }],
+        tool_choice: { type: "function", function: { name: "generate_offer_chat" } },
+      }),
+    });
+
+    if (!response.ok) {
+      const t = await response.text();
+      console.error("OpenAI API error:", response.status, t);
+      return res.status(500).json({ error: `OpenAI API error: ${response.status}` });
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) return res.status(500).json({ error: "No tool call response from OpenAI" });
+
+    const result = JSON.parse(toolCall.function.arguments);
+    return res.json({ ...result, productImageUrl });
+  } catch (e: any) {
+    console.error("[member-offer-pitch] error:", e);
+    return res.status(500).json({ error: e.message || "Unknown error" });
+  }
+});
+
 export default router;

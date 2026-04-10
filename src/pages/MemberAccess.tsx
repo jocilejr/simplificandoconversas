@@ -297,9 +297,13 @@ export default function MemberAccess() {
         return { materialName: matName, type: p.progress_type, currentPage: p.current_page, totalPages: p.total_pages, videoSeconds: p.video_seconds, videoDuration: p.video_duration };
       });
 
-      const { data, error } = await supabase.functions.invoke("member-ai-context", {
-        body: { firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData },
+      const aiRes = await fetch("/api/member-access/ai-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData }),
       });
+      const data = aiRes.ok ? await aiRes.json() : null;
+      const error = aiRes.ok ? null : "AI request failed";
 
       if (!error && data?.greeting) {
         const ctx: AiContext = { greeting: data.greeting, tip: data.tip || "" };
@@ -426,81 +430,97 @@ export default function MemberAccess() {
     return (
       <button
         key={mp.id}
-        className="w-full rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 text-left active:scale-[0.98] group relative"
-        style={{ border: `1.5px solid ${themeColor}25` }}
+        className="w-full rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 text-left active:scale-[0.98] group relative bg-white border border-gray-100"
         onClick={() => setOpenProductId(mp.id)}
       >
         {coverSrc ? (
           <div className="relative h-[160px] w-full overflow-hidden">
             <img src={coverSrc} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white mb-2 bg-emerald-500">
-                <Check className="h-3 w-3" strokeWidth={3} />{recent ? "Liberado recentemente" : "Liberado"}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white mb-2 bg-emerald-500/90">
+                <Check className="h-3 w-3" strokeWidth={3} />{recent ? "Novo" : "Liberado"}
               </span>
-              <h3 className="font-black text-white text-xl leading-tight uppercase tracking-wide line-clamp-2" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>{product.name}</h3>
+              <h3 className="font-bold text-white text-lg leading-tight line-clamp-2" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.3)' }}>{product.name}</h3>
             </div>
           </div>
         ) : (
-          <div className="relative h-[140px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}20 0%, ${themeColor}08 50%, ${themeColor}18 100%)` }}>
+          <div className="relative h-[140px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}15 0%, ${themeColor}05 50%, ${themeColor}12 100%)` }}>
             {mats.length > 0 && mats[0]?.content_type === "video" ? (
-              <Play className="absolute top-3 right-3 h-10 w-10 opacity-10" style={{ color: themeColor }} />
+              <Play className="absolute top-3 right-3 h-8 w-8 opacity-[0.08]" style={{ color: themeColor }} />
             ) : mats.length > 0 && mats[0]?.content_type === "pdf" ? (
-              <BookOpen className="absolute top-3 right-3 h-10 w-10 opacity-10" style={{ color: themeColor }} />
+              <BookOpen className="absolute top-3 right-3 h-8 w-8 opacity-[0.08]" style={{ color: themeColor }} />
             ) : (
-              <ShoppingBag className="absolute top-3 right-3 h-10 w-10 opacity-10" style={{ color: themeColor }} />
+              <ShoppingBag className="absolute top-3 right-3 h-8 w-8 opacity-[0.08]" style={{ color: themeColor }} />
             )}
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold text-white w-fit mb-2 bg-emerald-500">
-              <Check className="h-3 w-3" strokeWidth={3} />{recent ? "Liberado recentemente" : "Liberado"}
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white w-fit mb-2 bg-emerald-500/90">
+              <Check className="h-3 w-3" strokeWidth={3} />{recent ? "Novo" : "Liberado"}
             </span>
-            <h3 className="font-black text-gray-800 text-xl leading-tight uppercase tracking-wide line-clamp-2">{product.name}</h3>
+            <h3 className="font-bold text-gray-800 text-lg leading-tight line-clamp-2">{product.name}</h3>
           </div>
         )}
-        <div className="px-4 py-3.5 bg-white">
+        <div className="px-4 py-3 border-t border-gray-50">
           {progress.totalMaterials > 0 ? (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, backgroundColor: themeColor }} />
                 </div>
-                <span className="text-[11px] font-semibold text-gray-400 shrink-0">{progress.materialsAccessed}/{progress.totalMaterials}</span>
+                <span className="text-[10px] font-medium text-gray-400 shrink-0">{progress.materialsAccessed}/{progress.totalMaterials}</span>
               </div>
               {progressLabel && <p className="text-xs text-gray-500 leading-tight truncate">{progressLabel}</p>}
             </div>
           ) : (
-            <p className="text-[13px] text-gray-500 leading-snug truncate">Toque para acessar seu material</p>
+            <p className="text-[13px] text-gray-400 leading-snug truncate">Toque para acessar</p>
           )}
         </div>
-        <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ boxShadow: `0 0 20px ${themeColor}20, inset 0 0 20px ${themeColor}05` }} />
       </button>
     );
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="h-1" style={{ background: `linear-gradient(90deg, ${themeColor}, ${themeColor}90, ${themeColor})` }} />
+      {/* Header bar */}
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
+        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center gap-3">
+          {settings?.logo_url ? (
+            <img src={settings.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
+          ) : (
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${themeColor}15` }}>
+              <Crown className="h-4 w-4" style={{ color: themeColor }} />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800 truncate">{settings?.title || "Área de Membros"}</p>
+            {customerName && <p className="text-[11px] text-gray-400 truncate">Olá, {firstName}</p>}
+          </div>
+        </div>
+      </div>
 
-      <main className="max-w-2xl mx-auto px-5 pt-6 pb-20 space-y-3">
-        {/* Meire Rosana Chat Bubble */}
-        <div className="rounded-2xl border shadow-sm overflow-hidden" style={{ backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}22` }}>
-          <div className="flex items-center gap-2.5 px-4 py-3">
-            <img src={meirePhoto} alt="Meire Rosana" className="h-9 w-9 rounded-full object-cover shadow-sm" style={{ border: `2px solid ${themeColor}40` }} />
+      <main className="max-w-2xl mx-auto px-5 pt-5 pb-20 space-y-4">
+        {/* AI Greeting */}
+        <div className="rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-50">
+            <div className="relative">
+              <img src={meirePhoto} alt="Meire Rosana" className="h-10 w-10 rounded-full object-cover" style={{ border: `2px solid ${themeColor}30` }} />
+              <div className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-gray-800 leading-tight">Meire Rosana</p>
+              <p className="text-[13px] font-semibold text-gray-800">Meire Rosana</p>
               {aiLoading && <p className="text-[11px] font-medium" style={{ color: themeColor }}>digitando...</p>}
             </div>
           </div>
-          <div className="px-4 pb-3.5 pt-0.5 space-y-1.5">
+          <div className="px-4 pb-4 pt-3 space-y-1.5">
             {aiLoading && visibleMessages === 0 ? (
-              <div className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl rounded-tl-md w-fit" style={{ backgroundColor: `${themeColor}10` }}>
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: `${themeColor}80`, animationDelay: "0ms" }} />
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: `${themeColor}80`, animationDelay: "150ms" }} />
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: `${themeColor}80`, animationDelay: "300ms" }} />
+              <div className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl rounded-tl-md w-fit bg-gray-100">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
             ) : (
               <>
                 {visibleMessages >= 1 && aiContext?.greeting && (
-                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in" style={{ backgroundColor: `${themeColor}10` }}>
+                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
                     {aiContext.greeting}
                   </div>
                 )}
@@ -543,7 +563,7 @@ export default function MemberAccess() {
         <DailyVerse />
 
         {showcaseOffers.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {showcaseOffers.map((offer: any) => (
               <PhysicalProductShowcase key={offer.id} offer={offer} themeColor={themeColor} memberPhone={normalizedPhone} />
             ))}
@@ -583,8 +603,8 @@ export default function MemberAccess() {
         </DialogContent>
       </Dialog>
 
-      <footer className="text-center py-6 border-t border-gray-100 bg-white">
-        <p className="text-[11px] text-gray-400">Área exclusiva para membros ✝️</p>
+      <footer className="text-center py-5 border-t border-gray-100 bg-white">
+        <p className="text-[10px] text-gray-300 tracking-wide">Área exclusiva para membros</p>
       </footer>
     </div>
   );
