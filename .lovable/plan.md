@@ -1,44 +1,71 @@
 
+Objetivo: corrigir a migração da VPS para que ela rode até o fim, recrie as tabelas da área de membros e libere upload no bucket `member-files`.
 
-## Plano: Aplicar migração das tabelas de membros na VPS + corrigir Storage RLS
+Diagnóstico confirmado:
+1. O script falhou em `CREATE OR REPLACE FUNCTION increment_offer_impression(...)` porque ele referencia `member_area_offers.total_impressions` antes de a coluna existir.
+2. Como tudo está dentro de `BEGIN`, a transação entrou em erro e fez `ROLLBACK`.
+3. O `SELECT 'Member tables migration completed!'` no final é enganoso: ele executou depois do rollback, mas a migração não foi aplicada.
+4. O schema self-hosted em `deploy/init-db.sql` ainda está desatualizado para `member_area_offers`:
+   - atual: `views`, `clicks`, `sales`, `title`, `cta_url`, `cta_text`
+   - esperado pelo app atual: `name`, `product_id`, `image_url`, `purchase_url`, `display_type`, `pix_key`, `pix_key_type`, `card_payment_url`, `category_tag`, `total_impressions`, `total_clicks`, `sort_order`
 
-### Causa raiz
+Plano de correção:
 
-As tabelas `member_product_categories` e `member_product_materials` **não existem** no banco da VPS (`deploy-postgres-1`). A migração foi aplicada apenas no Lovable Cloud. Além disso, o bucket `member-files` no Storage não tem políticas RLS, bloqueando uploads.
+1. Ajustar `deploy/fix-member-tables.sql`
+   - mover os `ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_impressions...` e `total_clicks...` para antes das funções RPC
+   - idealmente, mover toda a correção de `member_area_offers` para antes de qualquer função que dependa dela
+   - tornar o bloco mais resiliente:
+     - adicionar também `name`, `product_id`, `image_url`, `purchase_url`, `display_type`, `pix_key`, `pix_key_type`, `card_payment_url`, `category_tag`, `sort_order`
+     - manter compatibilidade com a tabela antiga sem depender de drop total da `member_area_offers`
 
-### Correção (2 partes)
+2. Alinhar `deploy/init-db.sql`
+   - atualizar a definição base de `member_area_offers` para o schema que o frontend usa hoje
+   - isso evita que novos setups da VPS nasçam com schema antigo e quebrem novamente depois
 
-**Parte 1 — Atualizar `deploy/init-db.sql`**
+3. Revisar `deploy/migrate-workspace.sql`
+   - confirmar que as novas tabelas já adicionadas continuam registradas nos arrays `_tables`
+   - manter `member_area_offers` e as novas tabelas no fluxo de `workspace_id`/RLS
 
-Substituir as definições antigas de `member_product_categories` e `member_product_materials` pelo schema novo (com colunas `product_id`, `icon`, `description`, `content_text`, `button_label`, `is_preview`). Adicionar as 7 tabelas novas da segunda migração (`member_content_progress`, `member_pixel_frames`, `member_offer_impressions`, `daily_prayers`, `openai_settings`, `product_knowledge_summaries`, `manual_boleto_settings`) + as 2 funções RPC + as 4 políticas de Storage para o bucket `member-files`.
+4. Melhorar o script de migração para evitar falso positivo
+   - remover a mensagem final “completed” solta ou condicioná-la a `COMMIT` real
+   - assim, se houver rollback, o resultado não parecerá sucesso
 
-**Parte 2 — SQL para rodar manualmente na VPS**
-
-Gerar um script SQL idempotente (`IF NOT EXISTS` / `DROP TABLE IF EXISTS`) que você rodará na VPS com:
-
+5. Validar na VPS depois da correção
+   - pedir para rodar, dentro da VPS:
 ```bash
-docker exec -i deploy-postgres-1 psql -U supabase_admin -d postgres < /tmp/fix-member-tables.sql
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'member_area_offers'
+ORDER BY ordinal_position;"
+```
+   - depois reaplicar:
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres < ~/simplificandoconversas/deploy/fix-member-tables.sql
+```
+   - e validar:
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT policyname, cmd
+FROM pg_policies
+WHERE tablename IN ('member_product_materials','member_product_categories')
+ORDER BY tablename, policyname;"
+```
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT policyname, cmd
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+ORDER BY policyname;"
 ```
 
-O script fará:
+Resultado esperado após implementar:
+- a migração deixa de abortar
+- `member_product_categories` e `member_product_materials` passam a existir na VPS
+- as RPCs de oferta são criadas com sucesso
+- as policies de Storage do bucket `member-files` passam a existir
+- o frontend da área de membros deixa de depender de colunas ausentes no banco da VPS
 
-1. **DROP** das tabelas antigas `member_product_categories` e `member_product_materials` (se existirem com schema antigo)
-2. **CREATE** das 2 tabelas com schema novo + RLS + triggers
-3. **CREATE** das 7 tabelas novas + RLS
-4. **CREATE** das 2 funções RPC (`increment_offer_impression`, `increment_offer_click`)
-5. **CREATE** das 4 políticas de Storage no `storage.objects` para o bucket `member-files`
-6. **GRANT** para `anon`, `authenticated`, `service_role`
-
-**Parte 3 — Atualizar `deploy/migrate-workspace.sql`**
-
-Adicionar as 7 tabelas novas aos arrays `_tables` para que o sistema multi-tenant aplique `workspace_id` e RLS corretamente.
-
-### Após aplicar
-
-Na VPS:
-```bash
-cd ~/simplificandoconversas/deploy
-docker exec -i deploy-postgres-1 psql -U supabase_admin -d postgres < /tmp/fix-member-tables.sql
-docker compose up -d --force-recreate backend
-```
-
+Detalhe técnico importante:
+O problema principal não é só “falta a coluna”; é também “ordem incorreta da migração” + “schema base self-hosted divergente do schema real usado pela aplicação”. Vou corrigir os dois juntos para não voltar a quebrar no próximo deploy.
