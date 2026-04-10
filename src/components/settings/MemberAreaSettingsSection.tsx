@@ -219,13 +219,8 @@ function DominioTab() {
 
   if (domainsLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
 
-  const serverHost = (() => {
-    try {
-      return new URL(import.meta.env.VITE_SUPABASE_URL || window.location.origin).hostname;
-    } catch {
-      return window.location.hostname;
-    }
-  })();
+  // Show the VPS IP — use the browser's current hostname which is the VPS address
+  const serverIp = window.location.hostname;
 
   return (
     <div className="space-y-4">
