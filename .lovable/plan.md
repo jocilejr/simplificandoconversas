@@ -1,44 +1,68 @@
 
 
-## Plano: Corrigir resolução de domínio nos links da Área de Membros
+## Plano: Suporte dinâmico ao domínio de membros na infraestrutura
 
-### Problema
-- `LinkGenerator.tsx` usa `settings.custom_domain || window.location.origin` — não garante `https://` e não substitui `{link}` na mensagem
-- `MemberClientCard.tsx` usa `window.location.origin` fixo, ignora o domínio configurado
-- DNS mostra `window.location.hostname` que pode ser URL/domínio em vez do IPv4 real
+### Situação atual
+O código frontend **já está correto** — `LinkGenerator.tsx` e `MemberClientCard.tsx` leem `delivery_settings.custom_domain` (que é definido em Configurações > Área de Membros > Domínio). Não há nada hardcodado no frontend.
 
-### Correções
+O problema real é na **infraestrutura**: Traefik e nginx não reconhecem o domínio de membros. O Traefik só tem routers para `APP_DOMAIN` e `API_DOMAIN`.
 
-**1. `src/components/entrega/LinkGenerator.tsx`** (linha 192-195)
-- Buscar `settings.custom_domain` (que vem da seleção em Configurações > Área de Membros > Domínio)
-- Fallback para `window.location.origin`
-- Se `custom_domain` existir e não tiver protocolo, prefixar com `https://`
-- Substituir `{link}` na `delivery_message` se presente, senão anexar no final
+### Alterações
 
-**2. `src/components/membros/MemberClientCard.tsx`** (linha 43)
-- Adicionar query para buscar `delivery_settings.custom_domain` do workspace
-- Usar esse domínio (com `https://` se necessário) como base do `memberUrl`
-- Fallback para `window.location.origin`
+**1. `deploy/docker-compose.yml`** — Adicionar variável `MEMBER_DOMAIN` e router Traefik
 
-**3. `src/components/settings/MemberAreaSettingsSection.tsx`** (linha 223, 334)
-- Nas instruções de DNS, trocar `window.location.hostname` por um campo de input onde o usuário informa o IPv4 da VPS, ou exibir um texto genérico instruindo a usar o IPv4 do servidor (já que `window.location.hostname` pode retornar o domínio e não o IP)
+No serviço `nginx`, adicionar:
+- Variável de ambiente `MEMBER_DOMAIN: ${MEMBER_DOMAIN:-}`
+- Labels Traefik para o domínio de membros (condicionalmente via env var)
 
-### Lógica de domínio (compartilhada)
-```text
-1. delivery_settings.custom_domain (selecionado pelo usuário)
-2. Se não houver → window.location.origin (URL padrão do servidor)
-3. Se custom_domain não tiver "http" → prefixar com "https://"
-4. Remover trailing slash
+```yaml
+labels:
+  # ... labels existentes ...
+  # Membros
+  - "traefik.http.routers.chatbot-membros.rule=Host(`${MEMBER_DOMAIN}`)"
+  - "traefik.http.routers.chatbot-membros.entrypoints=websecure"
+  - "traefik.http.routers.chatbot-membros.tls.certresolver=letsencrypt"
 ```
 
-### Lógica de `{link}` no LinkGenerator
-```text
-Se delivery_message contém "{link}" → substituir pelo link
-Senão → anexar link na última linha
+**2. `deploy/portainer-stack.yml`** — Mesma alteração no bloco nginx
+
+**3. `deploy/nginx/default.conf.template`** — Adicionar server block para o domínio de membros
+
+Novo bloco que serve o frontend (SPA) no domínio de membros. Precisa servir os mesmos arquivos estáticos para que as rotas `/:phone` funcionem:
+
+```nginx
+# ─── Membros (MEMBER_DOMAIN) ───
+server {
+    listen 80;
+    server_name ${MEMBER_DOMAIN};
+
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+}
 ```
 
-### Arquivos alterados
-- `src/components/entrega/LinkGenerator.tsx`
-- `src/components/membros/MemberClientCard.tsx`
-- `src/components/settings/MemberAreaSettingsSection.tsx`
+**4. `deploy/.env.example`** — Adicionar `MEMBER_DOMAIN=`
+
+### Deploy na VPS
+
+Após fazer as alterações, na VPS:
+
+```bash
+# 1. Adicionar no .env
+echo 'MEMBER_DOMAIN=membros.origemdavida.online' >> ~/simplificandoconversas/deploy/.env
+
+# 2. Rebuild e restart
+cd ~/simplificandoconversas && npm run build && rm -rf deploy/frontend/* && cp -r dist/* deploy/frontend/
+cd deploy && docker compose up -d nginx
+
+# 3. Verificar certificado (aguardar ~30s)
+curl -I https://membros.origemdavida.online
+```
+
+O Traefik detecta a nova label, solicita certificado Let's Encrypt automaticamente e começa a rotear o domínio.
+
+### Nota importante
+Quando o usuário mudar o domínio em Configurações > Área de Membros, ele também precisará atualizar a variável `MEMBER_DOMAIN` no `.env` da VPS e reiniciar o nginx. Isso é uma limitação do Traefik com labels Docker — os domínios não podem ser 100% dinâmicos sem um file provider externo.
 
