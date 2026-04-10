@@ -40,7 +40,28 @@ export default function MemberClientCard({ phone, products, customerName, onDele
   const { workspaceId } = useWorkspace();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
-  const memberUrl = `${window.location.origin}/${normalizePhone(phone)}`;
+
+  const { data: deliverySettings } = useQuery({
+    queryKey: ["delivery-settings", workspaceId],
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("delivery_settings")
+        .select("custom_domain")
+        .eq("workspace_id", workspaceId!)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const getMemberDomain = () => {
+    let domain = (deliverySettings as any)?.custom_domain || "";
+    if (domain && !domain.startsWith("http")) domain = `https://${domain}`;
+    return domain || window.location.origin;
+  };
+
+  const memberUrl = `${getMemberDomain().replace(/\/$/, "")}/${normalizePhone(phone)}`;
 
   const copyLink = () => {
     navigator.clipboard.writeText(memberUrl);
