@@ -776,10 +776,13 @@ GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
 CREATE TABLE IF NOT EXISTS public.member_product_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
-  member_product_id uuid,
+  product_id uuid NOT NULL,
   name text NOT NULL,
+  icon text,
+  description text,
   sort_order integer NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.member_product_categories ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_product_categories TO anon, authenticated, service_role;
@@ -787,13 +790,17 @@ GRANT ALL ON public.member_product_categories TO anon, authenticated, service_ro
 CREATE TABLE IF NOT EXISTS public.member_product_materials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
+  product_id uuid NOT NULL,
   category_id uuid,
   title text NOT NULL,
-  content_type text NOT NULL DEFAULT 'video',
+  content_type text NOT NULL DEFAULT 'text',
   content_url text,
   description text,
+  content_text text,
+  button_label text,
   sort_order integer NOT NULL DEFAULT 0,
   is_published boolean NOT NULL DEFAULT true,
+  is_preview boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -803,13 +810,14 @@ GRANT ALL ON public.member_product_materials TO anon, authenticated, service_rol
 CREATE TABLE IF NOT EXISTS public.member_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
-  member_product_id uuid,
-  phone text NOT NULL,
+  normalized_phone text NOT NULL,
+  current_product_name text,
+  current_material_name text,
+  current_activity text,
   started_at timestamptz NOT NULL DEFAULT now(),
-  last_active_at timestamptz NOT NULL DEFAULT now(),
-  ip_address text,
-  user_agent text,
-  is_active boolean NOT NULL DEFAULT true
+  last_heartbeat_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.member_sessions ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_sessions TO anon, authenticated, service_role;
@@ -824,6 +832,100 @@ CREATE TABLE IF NOT EXISTS public.workspace_domains (
 );
 ALTER TABLE public.workspace_domains ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.workspace_domains TO anon, authenticated, service_role;
+
+-- New tables from member area v2
+
+CREATE TABLE IF NOT EXISTS public.member_content_progress (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid,
+  normalized_phone text NOT NULL,
+  material_id uuid NOT NULL,
+  progress_type text NOT NULL DEFAULT 'pdf',
+  current_page integer NOT NULL DEFAULT 0,
+  total_pages integer NOT NULL DEFAULT 0,
+  video_seconds integer NOT NULL DEFAULT 0,
+  video_duration integer NOT NULL DEFAULT 0,
+  last_accessed_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_content_progress ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_content_progress TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_pixel_frames (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  normalized_phone text NOT NULL,
+  product_name text,
+  product_value numeric DEFAULT 0,
+  fired boolean NOT NULL DEFAULT false,
+  fired_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_pixel_frames ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_pixel_frames TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.member_offer_impressions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  normalized_phone text NOT NULL,
+  offer_id uuid NOT NULL,
+  impression_count integer NOT NULL DEFAULT 0,
+  clicked boolean NOT NULL DEFAULT false,
+  last_shown_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_offer_impressions ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_offer_impressions TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.daily_prayers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid,
+  day_number integer NOT NULL,
+  text text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.daily_prayers ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.daily_prayers TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.openai_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  api_key text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.openai_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.openai_settings TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.product_knowledge_summaries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  summary text NOT NULL DEFAULT '',
+  key_topics text[] NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.product_knowledge_summaries ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.product_knowledge_summaries TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.manual_boleto_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  webhook_url text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.manual_boleto_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.manual_boleto_settings TO anon, authenticated, service_role;
+
+-- RPC functions
+CREATE OR REPLACE FUNCTION public.increment_offer_impression(offer_id uuid)
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$ UPDATE member_area_offers SET total_impressions = total_impressions + 1 WHERE id = offer_id; $$;
+
+CREATE OR REPLACE FUNCTION public.increment_offer_click(offer_id uuid)
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$ UPDATE member_area_offers SET total_clicks = total_clicks + 1 WHERE id = offer_id; $$;
 
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
