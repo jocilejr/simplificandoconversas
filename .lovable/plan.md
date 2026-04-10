@@ -1,61 +1,50 @@
 
 
-## Corrigir Saudação IA — Diagnóstico e Fallback
+## Corrigir IA — Ler chave OpenAI da tabela correta
 
-### Problemas Identificados
+### Problema
+A rota `/ai-context` (e `/offer-pitch`) busca a chave OpenAI em `openai_settings.api_key`, mas a chave é salva em `profiles.openai_api_key`. Todas as outras rotas do backend (webhook, execute-flow, email) leem de `profiles` corretamente. Por isso `OPENAI=MISSING` no diagnóstico.
 
-1. **Backend provavelmente não foi reconstruído**: O curl retornou resposta vazia (nem JSON de erro), indicando que a rota `/ai-context` pode não existir no container atual. O código no repositório está correto, mas o container precisa ser rebuiltado.
+### Correção em `deploy/backend/src/routes/member-access.ts`
 
-2. **Sem fallback visual**: Quando a IA falha, o card fica vazio. O `greetingText` (linha 417) é calculado com fallback para `settings.welcome_message`, mas nunca é usado no card de saudação. O card só mostra texto se `aiContext?.greeting` existir.
+Nas duas rotas (`/ai-context` ~linha 174 e `/offer-pitch` ~linha 289), trocar a query de `openai_settings` para `profiles`:
 
-### Correções
+**Rota /ai-context (~linha 174-183)**:
+```typescript
+// DE:
+sb.from("openai_settings").select("api_key").eq("workspace_id", workspaceId).maybeSingle()
 
-**1. Rebuild do backend na VPS**
+// PARA:
+sb.from("profiles").select("openai_api_key").eq("workspace_id", workspaceId).maybeSingle()
+```
+E ajustar a leitura da chave:
+```typescript
+// DE:
+if (!openaiRes.data?.api_key) throw new Error("OpenAI API key not configured.");
+const OPENAI_API_KEY = openaiRes.data.api_key;
 
-Execute na VPS:
+// PARA:
+if (!openaiRes.data?.openai_api_key) throw new Error("OpenAI API key not configured.");
+const OPENAI_API_KEY = openaiRes.data.openai_api_key;
+```
+
+**Rota /offer-pitch (~linha 289-298)** — mesma correção.
+
+### Após aprovar
+
+Rebuild na VPS:
 ```bash
 cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
 ```
 
-Depois teste:
+Teste:
 ```bash
-# Pegar workspace_id real
-curl -s http://localhost:3001/api/member-access/TELEFONE_REAL_AQUI | python3 -m json.tool | grep workspace_id
-
-# Testar ai-context com workspace_id real
-curl -s -X POST http://localhost:3001/api/member-access/ai-context \
+cd ~/simplificandoconversas/deploy
+MEMBER_DOMAIN=$(grep '^MEMBER_DOMAIN=' .env | cut -d= -f2-)
+curl -skS -X POST "https://$MEMBER_DOMAIN/api/member-access/ai-context" \
   -H "Content-Type: application/json" \
-  -d '{"firstName":"Teste","products":[],"ownedProductNames":[],"progress":[],"profile":{},"workspaceId":"ID_REAL_AQUI"}' | python3 -m json.tool
+  -d '{"firstName":"Teste","products":[],"ownedProductNames":[],"progress":[],"profile":{},"workspaceId":"65698ec3-731a-436e-84cf-8997e4ed9b41"}' | python3 -m json.tool
 ```
 
-**2. Adicionar fallback no frontend — `src/pages/MemberAccess.tsx`**
-
-Quando a IA falha, mostrar a `welcome_message` das configurações em vez de deixar o card vazio:
-
-- Na seção do card de saudação (linhas 524-531), adicionar fallback:
-  - Se `aiContext?.greeting` existe, mostrar
-  - Senão, se `!aiLoading`, mostrar `settings?.welcome_message || "Bem-vindo(a) à sua área exclusiva!"` com estilo similar
-
-```tsx
-// Substituir o bloco de greeting (linhas 524-531)
-) : (
-  <>
-    {visibleMessages >= 1 && (
-      <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
-        {aiContext?.greeting || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Bem-vindo(a) à sua área exclusiva!'}`}
-      </div>
-    )}
-  </>
-)}
-```
-
-- Garantir que `setVisibleMessages(1)` é chamado mesmo quando a IA falha (adicionar no bloco catch/fallback da `loadAiContext`, linha 319):
-
-```tsx
-} catch {}
-setAiLoading(false);
-if (!aiContext) setVisibleMessages(1);  // fallback visual
-```
-
-Isso garante que mesmo sem OpenAI configurada, o membro vê uma mensagem de boas-vindas.
+Deve retornar `{"greeting":"..."}` com texto gerado pela IA.
 
