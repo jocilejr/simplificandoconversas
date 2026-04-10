@@ -262,7 +262,7 @@ router.post("/ai-context", async (req, res) => {
       return res.status(500).json({ error: `OpenAI API error: ${response.status}` });
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) return res.status(500).json({ error: "No tool call response from OpenAI" });
 
@@ -375,7 +375,7 @@ router.post("/offer-pitch", async (req, res) => {
       return res.status(500).json({ error: `OpenAI API error: ${response.status}` });
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) return res.status(500).json({ error: "No tool call response from OpenAI" });
 
