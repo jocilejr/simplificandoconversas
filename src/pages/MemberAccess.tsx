@@ -86,6 +86,7 @@ interface BackendProduct {
 
 interface BackendResponse {
   phone: string;
+  workspace_id?: string;
   settings: MemberSettings | null;
   products: BackendProduct[];
   offers?: any[];
@@ -111,6 +112,7 @@ export default function MemberAccess() {
   const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [materialsByProduct, setMaterialsByProduct] = useState<Record<string, any[]>>({});
   const [globalImpressions, setGlobalImpressions] = useState<Record<string, number>>({});
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [offerMetricsReady, setOfferMetricsReady] = useState(false);
   const impressionsRegisteredRef = useRef(false);
   const pixelFramesFiredRef = useRef(false);
@@ -151,6 +153,8 @@ export default function MemberAccess() {
         return;
       }
       const payload = await response.json() as BackendResponse;
+      const wsId = payload.workspace_id || null;
+      setWorkspaceId(wsId);
 
       if (!response.ok || !payload.products?.length) {
         setNotFound(true);
@@ -239,7 +243,7 @@ export default function MemberAccess() {
       setMemberProfile(profileData);
 
       setLoading(false);
-      loadAiContext(name, memberProds, memberOffers, matsByProd, allProgress, profileData);
+      loadAiContext(name, memberProds, memberOffers, matsByProd, allProgress, profileData, wsId);
     } catch (err) {
       console.error("[MemberAccess] Error loading data:", err);
       setNotFound(true);
@@ -266,7 +270,7 @@ export default function MemberAccess() {
     return `Último acesso: "${matName}"`;
   };
 
-  const loadAiContext = async (name: string | null, prods: MemberProduct[], memberOffers: any[], matsByProd: Record<string, any[]>, progressData: ContentProgress[], profileData: MemberProfile) => {
+  const loadAiContext = async (name: string | null, prods: MemberProduct[], memberOffers: any[], matsByProd: Record<string, any[]>, progressData: ContentProgress[], profileData: MemberProfile, wsId: string | null) => {
     const cacheKey = `${AI_CACHE_KEY}_${phone}`;
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -300,7 +304,7 @@ export default function MemberAccess() {
       const aiRes = await fetch("/api/member-access/ai-context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData }),
+        body: JSON.stringify({ firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData, workspaceId: wsId }),
       });
       const data = aiRes.ok ? await aiRes.json() : null;
       const error = aiRes.ok ? null : "AI request failed";
