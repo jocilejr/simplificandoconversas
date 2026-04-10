@@ -144,8 +144,13 @@ export default function MemberAccess() {
 
     try {
       // Fetch initial data from VPS backend
-      const response = await fetch(apiUrl(`member-access/${digits}`));
-      const payload = await safeJsonResponse(response) as BackendResponse;
+      const response = await fetch(`/api/member-access/${digits}`);
+      if (!response.ok) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+      const payload = await response.json() as BackendResponse;
 
       if (!response.ok || !payload.products?.length) {
         setNotFound(true);
