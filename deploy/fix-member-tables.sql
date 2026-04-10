@@ -41,6 +41,7 @@ ALTER TABLE public.member_area_offers ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
 
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS title text;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS product_id uuid;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS image_url text;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS purchase_url text;
@@ -52,6 +53,25 @@ ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS category_tag text
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_impressions integer NOT NULL DEFAULT 0;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_clicks integer NOT NULL DEFAULT 0;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
+
+-- Fix title/name compatibility: title may be NOT NULL on old VPS installs
+ALTER TABLE public.member_area_offers ALTER COLUMN title DROP NOT NULL;
+
+-- Backfill: ensure name is populated from title (legacy) or default
+UPDATE public.member_area_offers
+SET name = COALESCE(NULLIF(name, ''), NULLIF(title, ''), 'Oferta')
+WHERE name IS NULL OR btrim(name) = '';
+
+UPDATE public.member_area_offers
+SET title = COALESCE(NULLIF(title, ''), name, 'Oferta')
+WHERE title IS NULL OR btrim(title) = '';
+
+ALTER TABLE public.member_area_offers ALTER COLUMN name SET DEFAULT 'Oferta';
+-- Ensure name is NOT NULL going forward
+DO $$ BEGIN
+  ALTER TABLE public.member_area_offers ALTER COLUMN name SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- ============================================================
 -- 2. Drop old member tables (schema changed)
