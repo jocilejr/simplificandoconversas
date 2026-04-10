@@ -1,49 +1,61 @@
 
 
-## Corrigir IA no Card de Saudação — Filtrar por workspace_id
+## Corrigir Saudação IA — Diagnóstico e Fallback
 
-### Problema
-Dois bugs impedem a saudação da IA de aparecer:
+### Problemas Identificados
 
-1. **Backend `/ai-context` e `/offer-pitch` não recebem `workspace_id`** — as queries em `openai_settings` e `member_area_settings` fazem `.limit(1).maybeSingle()` SEM filtrar por `workspace_id`. Como a tabela `openai_settings` tem coluna `workspace_id`, a query pode retornar vazio se não filtrar corretamente.
+1. **Backend provavelmente não foi reconstruído**: O curl retornou resposta vazia (nem JSON de erro), indicando que a rota `/ai-context` pode não existir no container atual. O código no repositório está correto, mas o container precisa ser rebuiltado.
 
-2. **O GET `/:phone` não retorna `workspace_id` ao frontend** — o frontend não tem como enviar o workspace_id nas chamadas POST subsequentes.
+2. **Sem fallback visual**: Quando a IA falha, o card fica vazio. O `greetingText` (linha 417) é calculado com fallback para `settings.welcome_message`, mas nunca é usado no card de saudação. O card só mostra texto se `aiContext?.greeting` existir.
 
 ### Correções
 
-**1. `deploy/backend/src/routes/member-access.ts` — GET `/:phone`**
-- Incluir `workspace_id` na resposta JSON:
-```typescript
-return res.json({
-  phone: normalized,
-  workspace_id: workspaceId,  // ← ADICIONAR
-  settings, products, offers, customer
-});
+**1. Rebuild do backend na VPS**
+
+Execute na VPS:
+```bash
+cd ~/simplificandoconversas/deploy && docker compose up -d --build backend
 ```
 
-**2. `deploy/backend/src/routes/member-access.ts` — POST `/ai-context`**
-- Receber `workspaceId` do body
-- Filtrar `openai_settings` e `member_area_settings` por `workspace_id`:
-```typescript
-const { firstName, products, ..., workspaceId } = req.body;
-// ...
-sb.from("openai_settings").select("api_key").eq("workspace_id", workspaceId).maybeSingle()
-sb.from("member_area_settings").select("ai_persona_prompt").eq("workspace_id", workspaceId).maybeSingle()
+Depois teste:
+```bash
+# Pegar workspace_id real
+curl -s http://localhost:3001/api/member-access/TELEFONE_REAL_AQUI | python3 -m json.tool | grep workspace_id
+
+# Testar ai-context com workspace_id real
+curl -s -X POST http://localhost:3001/api/member-access/ai-context \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Teste","products":[],"ownedProductNames":[],"progress":[],"profile":{},"workspaceId":"ID_REAL_AQUI"}' | python3 -m json.tool
 ```
 
-**3. `deploy/backend/src/routes/member-access.ts` — POST `/offer-pitch`**
-- Mesmo ajuste: receber `workspaceId` e filtrar todas as queries por ele
+**2. Adicionar fallback no frontend — `src/pages/MemberAccess.tsx`**
 
-**4. `src/pages/MemberAccess.tsx` — Frontend**
-- Armazenar `workspace_id` do response do backend:
-```typescript
-const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-// na loadMemberData:
-setWorkspaceId(payload.workspace_id);
+Quando a IA falha, mostrar a `welcome_message` das configurações em vez de deixar o card vazio:
+
+- Na seção do card de saudação (linhas 524-531), adicionar fallback:
+  - Se `aiContext?.greeting` existe, mostrar
+  - Senão, se `!aiLoading`, mostrar `settings?.welcome_message || "Bem-vindo(a) à sua área exclusiva!"` com estilo similar
+
+```tsx
+// Substituir o bloco de greeting (linhas 524-531)
+) : (
+  <>
+    {visibleMessages >= 1 && (
+      <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
+        {aiContext?.greeting || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Bem-vindo(a) à sua área exclusiva!'}`}
+      </div>
+    )}
+  </>
+)}
 ```
-- Passar `workspaceId` para `loadAiContext` e incluir no body do fetch `/ai-context`
-- Passar `workspaceId` como prop ao `LockedOfferCard`
 
-**5. `src/components/membros/LockedOfferCard.tsx`**
-- Receber `workspaceId` como prop e incluir no body do fetch `/offer-pitch`
+- Garantir que `setVisibleMessages(1)` é chamado mesmo quando a IA falha (adicionar no bloco catch/fallback da `loadAiContext`, linha 319):
+
+```tsx
+} catch {}
+setAiLoading(false);
+if (!aiContext) setVisibleMessages(1);  // fallback visual
+```
+
+Isso garante que mesmo sem OpenAI configurada, o membro vê uma mensagem de boas-vindas.
 
