@@ -1,71 +1,66 @@
 
-Objetivo: corrigir a migração da VPS para que ela rode até o fim, recrie as tabelas da área de membros e libere upload no bucket `member-files`.
+Objetivo: parar de depender do Storage API da VPS para uploads da Área de Membros e alinhar esse fluxo com a arquitetura que já funciona no projeto.
 
-Diagnóstico confirmado:
-1. O script falhou em `CREATE OR REPLACE FUNCTION increment_offer_impression(...)` porque ele referencia `member_area_offers.total_impressions` antes de a coluna existir.
-2. Como tudo está dentro de `BEGIN`, a transação entrou em erro e fez `ROLLBACK`.
-3. O `SELECT 'Member tables migration completed!'` no final é enganoso: ele executou depois do rollback, mas a migração não foi aplicada.
-4. O schema self-hosted em `deploy/init-db.sql` ainda está desatualizado para `member_area_offers`:
-   - atual: `views`, `clicks`, `sales`, `title`, `cta_url`, `cta_text`
-   - esperado pelo app atual: `name`, `product_id`, `image_url`, `purchase_url`, `display_type`, `pix_key`, `pix_key_type`, `card_payment_url`, `category_tag`, `total_impressions`, `total_clicks`, `sort_order`
+Diagnóstico
+- O problema não está mais nas tabelas de membros nem no bucket em si.
+- Pelo código, a tela do erro ainda faz upload direto via Storage API em:
+  - `src/components/membros/ContentManagement.tsx`
+  - `src/pages/AreaMembros.tsx`
+- Já existe um padrão estável na VPS para upload de mídia:
+  - `src/components/chatbot/MediaUpload.tsx` chama `whatsapp-proxy`
+  - `deploy/backend/src/routes/whatsapp-proxy.ts` salva no filesystem `/media-files/...`
+  - `deploy/nginx/default.conf.template` publica isso em `/media/...`
+- Ou seja: a Área de Membros está usando um caminho diferente do restante da VPS, e é exatamente esse caminho que está falhando com RLS.
 
-Plano de correção:
+Plano de correção
+1. Unificar uploads da Área de Membros com o padrão da VPS
+- substituir `supabase.storage.from("member-files").upload(...)` por upload via backend proxy
+- usar o mesmo modelo já existente do `MediaUpload`, mas enviando também `workspaceId` para evitar ambiguidade em multi-workspace
 
-1. Ajustar `deploy/fix-member-tables.sql`
-   - mover os `ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_impressions...` e `total_clicks...` para antes das funções RPC
-   - idealmente, mover toda a correção de `member_area_offers` para antes de qualquer função que dependa dela
-   - tornar o bloco mais resiliente:
-     - adicionar também `name`, `product_id`, `image_url`, `purchase_url`, `display_type`, `pix_key`, `pix_key_type`, `card_payment_url`, `category_tag`, `sort_order`
-     - manter compatibilidade com a tabela antiga sem depender de drop total da `member_area_offers`
+2. Corrigir os dois pontos afetados
+- `src/components/membros/ContentManagement.tsx`
+  - upload da imagem de capa do produto
+  - upload de arquivos de material
+- `src/pages/AreaMembros.tsx`
+  - upload de imagem das ofertas
 
-2. Alinhar `deploy/init-db.sql`
-   - atualizar a definição base de `member_area_offers` para o schema que o frontend usa hoje
-   - isso evita que novos setups da VPS nasçam com schema antigo e quebrem novamente depois
+3. Criar um helper compartilhado no frontend
+- centralizar a chamada de upload em uma função utilitária
+- entrada: `file`, `workspaceId`
+- saída: URL pública em `/media/...`
+- isso evita duplicação e reduz novas quebras
 
-3. Revisar `deploy/migrate-workspace.sql`
-   - confirmar que as novas tabelas já adicionadas continuam registradas nos arrays `_tables`
-   - manter `member_area_offers` e as novas tabelas no fluxo de `workspace_id`/RLS
+4. Manter o restante da lógica intacto
+- banco, campos e salvamento continuam iguais
+- muda apenas a origem da URL do arquivo enviado
 
-4. Melhorar o script de migração para evitar falso positivo
-   - remover a mensagem final “completed” solta ou condicioná-la a `COMMIT` real
-   - assim, se houver rollback, o resultado não parecerá sucesso
+5. Endurecer validações
+- preservar limite de tamanho
+- preservar `contentType`
+- manter mensagens de erro mais claras no toast
 
-5. Validar na VPS depois da correção
-   - pedir para rodar, dentro da VPS:
+Verificações na VPS que vou te pedir depois da implementação
+1. Confirmar que o backend está recebendo o upload:
 ```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT column_name
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name = 'member_area_offers'
-ORDER BY ordinal_position;"
-```
-   - depois reaplicar:
-```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres < ~/simplificandoconversas/deploy/fix-member-tables.sql
-```
-   - e validar:
-```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT policyname, cmd
-FROM pg_policies
-WHERE tablename IN ('member_product_materials','member_product_categories')
-ORDER BY tablename, policyname;"
-```
-```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT policyname, cmd
-FROM pg_policies
-WHERE schemaname = 'storage' AND tablename = 'objects'
-ORDER BY policyname;"
+docker logs deploy-backend-1 --tail=100 | grep -i "media-upload\|whatsapp-proxy"
 ```
 
-Resultado esperado após implementar:
-- a migração deixa de abortar
-- `member_product_categories` e `member_product_materials` passam a existir na VPS
-- as RPCs de oferta são criadas com sucesso
-- as policies de Storage do bucket `member-files` passam a existir
-- o frontend da área de membros deixa de depender de colunas ausentes no banco da VPS
+2. Confirmar que o arquivo foi salvo no volume:
+```bash
+docker exec -i deploy-backend-1 sh -c "ls -R /media-files | tail -n 50"
+```
 
-Detalhe técnico importante:
-O problema principal não é só “falta a coluna”; é também “ordem incorreta da migração” + “schema base self-hosted divergente do schema real usado pela aplicação”. Vou corrigir os dois juntos para não voltar a quebrar no próximo deploy.
+3. Confirmar que a URL pública responde:
+```bash
+curl -I "https://SEU_API_DOMAIN/media/SEU_USER_ID/ARQUIVO_GERADO.ext"
+```
+
+Resultado esperado
+- o botão “Selecionar imagem” deixa de depender do Storage API
+- uploads da Área de Membros passam a funcionar na VPS
+- a URL salva no banco passa a apontar para `/media/...`
+- o erro `new row violates row-level security policy` deixa de aparecer nesse fluxo
+
+Detalhe técnico
+- Não vou insistir em mais ajustes de RLS para esse caso porque o próprio projeto já adota filesystem + proxy como padrão confiável na VPS.
+- O conserto correto aqui é alinhar a Área de Membros com esse padrão existente, não continuar forçando upload direto no Storage API.
