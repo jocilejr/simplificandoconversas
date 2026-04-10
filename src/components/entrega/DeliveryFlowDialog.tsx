@@ -162,7 +162,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
 
     setOrphanTxs(txs);
     setTxSearch("");
-    setTxLimit(5);
+    setTxLimit(10);
     setStep("select-tx");
   }, [workspaceId, phone]);
 
@@ -178,17 +178,9 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     };
 
     if (!txSearch.trim()) {
-      // No search: show ALL transactions — orphans first, then current lead, then other leads
-      const orphans: OrphanTx[] = [];
-      const currentLead: OrphanTx[] = [];
-      const otherLead: OrphanTx[] = [];
-      for (const tx of orphanTxs) {
-        const cat = classifyTx(tx);
-        if (cat === "orphan") orphans.push(tx);
-        else if (cat === "current_lead") currentLead.push(tx);
-        else otherLead.push(tx);
-      }
-      return [...orphans, ...currentLead, ...otherLead].slice(0, txLimit);
+      // No search: show ALL transactions in chronological order (paid_at DESC from query)
+      // Badges still classify each tx visually, but order is NOT changed
+      return orphanTxs.slice(0, txLimit);
     }
     // Search: filter all txs
     const q = txSearch.toLowerCase();
