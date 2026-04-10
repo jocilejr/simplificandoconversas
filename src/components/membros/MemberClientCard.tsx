@@ -57,8 +57,9 @@ export default function MemberClientCard({ phone, products, customerName, onDele
 
   const getMemberDomain = () => {
     let domain = (deliverySettings as any)?.custom_domain || "";
-    if (domain && !domain.startsWith("http")) domain = `https://${domain}`;
-    return domain || window.location.origin;
+    if (!domain) return "";
+    if (!domain.startsWith("http")) domain = `https://${domain}`;
+    return domain;
   };
 
   const memberUrl = `${getMemberDomain().replace(/\/$/, "")}/${normalizePhone(phone)}`;

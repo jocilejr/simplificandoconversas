@@ -303,7 +303,13 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         if (transactionUpdateError) throw transactionUpdateError;
       }
 
-      const domain = (settings as any)?.custom_domain || window.location.origin;
+      if (!(settings as any)?.custom_domain) {
+        toast.error("Configure o domínio da Área de Membros nas configurações");
+        return;
+      }
+      let domainRaw = (settings as any).custom_domain;
+      if (!domainRaw.startsWith("http")) domainRaw = `https://${domainRaw}`;
+      const domain = domainRaw;
       const finalLink = `${domain.replace(/\/$/, "")}/${normalized}`;
       const deliveryMsg = (settings as any)?.delivery_message;
       const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
