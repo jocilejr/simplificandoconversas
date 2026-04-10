@@ -71,7 +71,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   // Check if user is Super Admin (app_role = 'admin')
-  const { data: isSuperAdmin = false } = useQuery({
+  const { data: isSuperAdmin = false, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin", user?.id],
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
@@ -86,9 +86,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const { data: workspaces = [], isLoading } = useQuery({
+  const { data: workspaces = [], isLoading: isWorkspacesLoading } = useQuery({
     queryKey: ["workspaces", user?.id, isSuperAdmin],
-    enabled: !!user,
+    enabled: !!user && !isSuperAdminLoading,
     queryFn: async () => {
       if (isSuperAdmin) {
         // Super Admin: load ALL workspaces
@@ -188,7 +188,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         permissions,
         hasPermission,
         setActiveWorkspace,
-        isLoading,
+        isLoading: isSuperAdminLoading || isWorkspacesLoading,
       }}
     >
       {children}
