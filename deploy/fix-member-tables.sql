@@ -6,6 +6,13 @@
 BEGIN;
 
 -- ============================================================
+-- 0. Fix member_products columns
+-- ============================================================
+ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS phone text;
+ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS product_id uuid;
+ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS granted_at timestamptz DEFAULT now();
+
+-- ============================================================
 -- 1. Fix member_area_offers columns FIRST (before RPC functions)
 -- ============================================================
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS name text;
