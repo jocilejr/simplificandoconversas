@@ -559,6 +559,7 @@ export default function MemberAccess() {
                 firstName={firstName}
                 memberProfile={memberProfile}
                 memberPhone={normalizedPhone}
+                workspaceId={workspaceId}
               />
             );
           });
