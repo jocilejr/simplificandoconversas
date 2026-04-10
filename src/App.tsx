@@ -47,8 +47,9 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/r/:code" element={<LinkRedirect />} />
-            <Route path="/membros/:phone" element={<MemberAccess />} />
-            <Route path="/:phone" element={<MemberAccess />} />
+             <Route path="/a/entrega/:phone" element={<MemberAccess />} />
+             <Route path="/membros/:phone" element={<MemberAccess />} />
+             <Route path="/:phone" element={<MemberAccess />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
