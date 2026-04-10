@@ -166,7 +166,7 @@ router.get("/:phone", async (req, res) => {
 // ─── AI Context Route ───
 router.post("/ai-context", async (req, res) => {
   try {
-    const { firstName, products, ownedProductNames, progress, profile, workspaceId } = req.body;
+    const { firstName, products, ownedProductNames, progress, profile, workspaceId, phone: reqPhone } = req.body;
     const sb = getServiceClient();
 
     if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
@@ -197,8 +197,9 @@ router.post("/ai-context", async (req, res) => {
       return res.status(500).json({ error: "OpenAI API key not configured." });
     }
 
-    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt").eq("workspace_id", workspaceId).maybeSingle();
+    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, ai_model").eq("workspace_id", workspaceId).maybeSingle();
     const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
+    const aiModel = (settingsRes.data as any)?.ai_model || "gpt-4o-mini";
 
     const categories = [
       { id: "salmo", instruction: "Compartilhe um salmo ou versículo bíblico que combina com o momento dessa pessoa. Cite o livro, capítulo e versículo. Conecte o versículo com algo pessoal dela." },

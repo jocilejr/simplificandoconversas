@@ -14,6 +14,7 @@ ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS theme_color tex
 ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS ai_persona_prompt text;
 ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS greeting_prompt text;
 ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS offer_prompt text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS ai_model text DEFAULT 'gpt-4o-mini';
 
 -- ============================================================
 -- 0b. Fix member_products columns
