@@ -3,12 +3,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Trash2, Plus, Globe } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 // ---- Ajustes Sub-tab ----
 function AjustesTab() {
@@ -87,18 +92,17 @@ function AjustesTab() {
           <Label>Descrição</Label>
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrição da sua área de membros..." />
         </div>
-
         <div className="border-t border-border pt-4 mt-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Prompts de IA</h3>
         </div>
         <div>
           <Label>Personalidade da IA (persona)</Label>
-          <Textarea value={aiPersonaPrompt} onChange={(e) => setAiPersonaPrompt(e.target.value)} placeholder="Você é um assistente profissional. Fala com clareza e objetividade." rows={4} />
+          <Textarea value={aiPersonaPrompt} onChange={(e) => setAiPersonaPrompt(e.target.value)} placeholder="Você é um assistente profissional..." rows={4} />
           <p className="text-xs text-muted-foreground mt-1">Define como a IA se comporta no chat e nas ofertas</p>
         </div>
         <div>
           <Label>Prompt da Saudação Inicial</Label>
-          <Textarea value={greetingPrompt} onChange={(e) => setGreetingPrompt(e.target.value)} placeholder="Gere uma frase curta de boas-vindas personalizada..." rows={6} />
+          <Textarea value={greetingPrompt} onChange={(e) => setGreetingPrompt(e.target.value)} placeholder="Gere uma frase curta de boas-vindas..." rows={6} />
           <p className="text-xs text-muted-foreground mt-1">Prompt para gerar mensagem de boas-vindas. Deixe vazio para usar o padrão.</p>
         </div>
         <div>
@@ -106,7 +110,6 @@ function AjustesTab() {
           <Textarea value={offerPrompt} onChange={(e) => setOfferPrompt(e.target.value)} placeholder="Gere mensagens de venda naturais..." rows={8} />
           <p className="text-xs text-muted-foreground mt-1">Prompt para gerar mensagens de venda. Deixe vazio para usar o padrão.</p>
         </div>
-
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
           {saveMutation.isPending ? "Salvando..." : "Salvar Configurações"}
         </Button>
@@ -118,9 +121,27 @@ function AjustesTab() {
 // ---- Domínio Sub-tab ----
 function DominioTab() {
   const { workspaceId } = useWorkspace();
+  const { user } = useAuth();
   const qc = useQueryClient();
+  const [newDomain, setNewDomain] = useState("");
 
-  const { data: settings, isLoading } = useQuery({
+  // Fetch domains
+  const { data: domains = [], isLoading: domainsLoading } = useQuery({
+    queryKey: ["workspace-domains", workspaceId],
+    enabled: !!workspaceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("workspace_domains")
+        .select("*")
+        .eq("workspace_id", workspaceId!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch delivery settings
+  const { data: settings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
     enabled: !!workspaceId,
     queryFn: async () => {
@@ -133,18 +154,61 @@ function DominioTab() {
     },
   });
 
-  const [customDomain, setCustomDomain] = useState("");
   const [deliveryMessage, setDeliveryMessage] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  if (settings && !loaded) {
-    setCustomDomain(settings.custom_domain || "");
+  if (settings && !settingsLoaded) {
     setDeliveryMessage((settings as any).delivery_message || "");
-    setLoaded(true);
+    setSettingsLoaded(true);
   }
 
+  const activeDomains = domains.filter((d) => d.is_active);
+  const selectedDomain = settings?.custom_domain || "";
+
+  // Add domain
+  const addMut = useMutation({
+    mutationFn: async (domain: string) => {
+      const { error } = await supabase.from("workspace_domains").insert({
+        workspace_id: workspaceId!,
+        domain: domain.trim().toLowerCase(),
+        is_active: false,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Domínio adicionado");
+      setNewDomain("");
+      qc.invalidateQueries({ queryKey: ["workspace-domains"] });
+    },
+    onError: (e: any) => toast.error(e.message?.includes("duplicate") ? "Domínio já cadastrado" : e.message),
+  });
+
+  // Toggle active
+  const toggleMut = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase.from("workspace_domains").update({ is_active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspace-domains"] }),
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Remove domain
+  const removeMut = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("workspace_domains").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Domínio removido");
+      qc.invalidateQueries({ queryKey: ["workspace-domains"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Save delivery settings (selected domain + message)
   const saveMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (customDomain: string) => {
       const data = { custom_domain: customDomain || null, delivery_message: deliveryMessage || null } as any;
       if (settings) {
         const { error } = await supabase.from("delivery_settings").update(data).eq("id", settings.id);
@@ -161,53 +225,159 @@ function DominioTab() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  if (isLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
+  if (domainsLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
+
+  const serverHost = (() => {
+    try {
+      return new URL(import.meta.env.VITE_SUPABASE_URL || window.location.origin).hostname;
+    } catch {
+      return window.location.hostname;
+    }
+  })();
 
   return (
-    <Card>
-      <CardContent className="p-6 space-y-4">
-        <div className="border rounded-md p-4 bg-muted/30 space-y-3">
-          <h4 className="font-medium text-sm">Como configurar um domínio personalizado</h4>
-          <p className="text-xs text-muted-foreground">
-            No painel DNS do seu provedor de domínio, crie os seguintes registros apontando para o IP da sua VPS:
-          </p>
-
-          <div className="text-xs font-mono space-y-1 bg-background p-3 rounded border">
-            <p className="text-muted-foreground mb-1">Registro A — aponta seu subdomínio para o servidor</p>
-            <p><strong>Tipo:</strong> A</p>
-            <p><strong>Nome:</strong> membros <span className="text-muted-foreground">(ou o subdomínio que desejar)</span></p>
-            <p><strong>Valor:</strong> <span className="text-primary font-bold">{(() => { try { const h = new URL(import.meta.env.VITE_SUPABASE_URL || window.location.origin).hostname; return h; } catch { return window.location.hostname; } })()}</span></p>
+    <div className="space-y-4">
+      {/* Domínios Cadastrados */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Globe className="h-5 w-5 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Domínios Cadastrados</h3>
           </div>
 
+          {domains.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum domínio cadastrado ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {domains.map((d) => (
+                <div key={d.id} className="flex items-center justify-between rounded-md border border-border px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-mono">{d.domain}</span>
+                    <Badge variant={d.is_active ? "default" : "secondary"} className="text-xs">
+                      {d.is_active ? "Ativo" : "Inativo"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={d.is_active}
+                      onCheckedChange={(checked) => toggleMut.mutate({ id: d.id, is_active: checked })}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => removeMut.mutate(d.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Input
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+              placeholder="membros.meusite.com"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newDomain.trim()) addMut.mutate(newDomain);
+              }}
+            />
+            <Button
+              onClick={() => newDomain.trim() && addMut.mutate(newDomain)}
+              disabled={!newDomain.trim() || addMut.isPending}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Adicionar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Seleção do domínio da Área de Membros */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h3 className="text-sm font-semibold text-foreground">Domínio da Área de Membros</h3>
           <p className="text-xs text-muted-foreground">
-            <strong>Exemplo:</strong> se seu domínio é <code className="bg-muted px-1 rounded">meusite.com</code> e você quer acessar via <code className="bg-muted px-1 rounded">membros.meusite.com</code>, crie o registro A com nome <code className="bg-muted px-1 rounded">membros</code> apontando para o IP acima.
+            Selecione qual domínio ativo será usado como URL da sua área de membros.
           </p>
 
-          <p className="text-xs text-amber-500">
-            ⚠️ Após criar o registro, aguarde até 24h para propagação do DNS. Depois, insira o domínio completo no campo abaixo.
-          </p>
-        </div>
+          <Select
+            value={selectedDomain || "__default__"}
+            onValueChange={(val) => {
+              const domain = val === "__default__" ? "" : val;
+              saveMut.mutate(domain);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione um domínio" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default__">Domínio padrão (servidor)</SelectItem>
+              {activeDomains.map((d) => (
+                <SelectItem key={d.id} value={d.domain}>
+                  {d.domain}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <div>
-          <Label>Domínio Personalizado</Label>
-          <Input value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="membros.meusite.com" />
-          <p className="text-xs text-muted-foreground mt-1">
-            Domínio que será usado para acessar a área de membros pública. Deixe vazio para usar o domínio padrão.
-          </p>
-        </div>
-        <div>
-          <Label>Mensagem padrão de entrega</Label>
-          <Textarea value={deliveryMessage} onChange={(e) => setDeliveryMessage(e.target.value)} rows={4} placeholder="Olá! Seu acesso está liberado..." />
-          <p className="text-xs text-muted-foreground mt-1">
-            Enviada junto com o link ao liberar acesso. O link será adicionado na última linha. Deixe vazio para enviar apenas o link.
-          </p>
-        </div>
+          {activeDomains.length === 0 && (
+            <p className="text-xs text-amber-500">
+              ⚠️ Nenhum domínio ativo. Ative um domínio acima para poder selecioná-lo.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-        <Button onClick={() => saveMut.mutate()} className="w-full" disabled={saveMut.isPending}>
-          {saveMut.isPending ? "Salvando..." : "Salvar Configurações"}
-        </Button>
-      </CardContent>
-    </Card>
+      {/* Instruções DNS */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h3 className="text-sm font-semibold text-foreground">Instruções de DNS</h3>
+          <div className="border rounded-md p-4 bg-muted/30 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              No painel DNS do seu provedor de domínio, crie o seguinte registro apontando para o IP da sua VPS:
+            </p>
+            <div className="text-xs font-mono space-y-1 bg-background p-3 rounded border">
+              <p className="text-muted-foreground mb-1">Registro A — aponta seu subdomínio para o servidor</p>
+              <p><strong>Tipo:</strong> A</p>
+              <p><strong>Nome:</strong> membros <span className="text-muted-foreground">(ou o subdomínio desejado)</span></p>
+              <p><strong>Valor:</strong> <span className="text-primary font-bold">{serverHost}</span></p>
+            </div>
+            <p className="text-xs text-amber-500">
+              ⚠️ Após criar o registro, aguarde até 24h para propagação do DNS.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Mensagem de entrega */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div>
+            <Label>Mensagem padrão de entrega</Label>
+            <Textarea
+              value={deliveryMessage}
+              onChange={(e) => setDeliveryMessage(e.target.value)}
+              rows={4}
+              placeholder="Olá! Seu acesso está liberado..."
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Enviada junto com o link ao liberar acesso. O link será adicionado na última linha.
+            </p>
+          </div>
+          <Button
+            onClick={() => saveMut.mutate(selectedDomain)}
+            className="w-full"
+            disabled={saveMut.isPending}
+          >
+            {saveMut.isPending ? "Salvando..." : "Salvar Configurações"}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
