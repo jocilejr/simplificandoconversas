@@ -217,9 +217,9 @@ function DominioTab() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  if (domainsLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
-
   const [serverIp, setServerIp] = useState("");
+
+  if (domainsLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
 
   return (
     <div className="space-y-4">
