@@ -1,15 +1,33 @@
 -- ============================================================
 -- FIX: Create/recreate member tables + Storage RLS (idempotent)
--- Run on VPS: docker exec -i deploy-postgres-1 psql -U supabase_admin -d postgres < fix-member-tables.sql
+-- Run on VPS: docker exec -i deploy-postgres-1 psql -U postgres -d postgres < fix-member-tables.sql
 -- ============================================================
 
 BEGIN;
 
--- 1. Drop old member_product_categories/materials (schema changed)
+-- ============================================================
+-- 1. Fix member_area_offers columns FIRST (before RPC functions)
+-- ============================================================
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS product_id uuid;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS purchase_url text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS display_type text NOT NULL DEFAULT 'floating_bar';
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS pix_key text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS pix_key_type text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS card_payment_url text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS category_tag text;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_impressions integer NOT NULL DEFAULT 0;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_clicks integer NOT NULL DEFAULT 0;
+ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
+
+-- ============================================================
+-- 2. Drop old member tables (schema changed)
+-- ============================================================
 DROP TABLE IF EXISTS public.member_product_materials CASCADE;
 DROP TABLE IF EXISTS public.member_product_categories CASCADE;
 
--- 2. Recreate with new schema
+-- 3. Recreate with new schema
 CREATE TABLE public.member_product_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
@@ -44,7 +62,7 @@ CREATE TABLE public.member_product_materials (
 ALTER TABLE public.member_product_materials ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_product_materials TO anon, authenticated, service_role;
 
--- 3. Fix member_sessions schema (recreate with new columns)
+-- 4. Fix member_sessions schema (recreate with new columns)
 DROP TABLE IF EXISTS public.member_sessions CASCADE;
 CREATE TABLE public.member_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -61,7 +79,9 @@ CREATE TABLE public.member_sessions (
 ALTER TABLE public.member_sessions ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_sessions TO anon, authenticated, service_role;
 
--- 4. New tables (idempotent)
+-- ============================================================
+-- 5. New tables (idempotent)
+-- ============================================================
 CREATE TABLE IF NOT EXISTS public.member_content_progress (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid,
@@ -145,7 +165,9 @@ CREATE TABLE IF NOT EXISTS public.manual_boleto_settings (
 ALTER TABLE public.manual_boleto_settings ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.manual_boleto_settings TO anon, authenticated, service_role;
 
--- 5. RPC functions
+-- ============================================================
+-- 6. RPC functions (now safe — columns exist)
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.increment_offer_impression(offer_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public
 AS $$ UPDATE member_area_offers SET total_impressions = total_impressions + 1 WHERE id = offer_id; $$;
@@ -154,11 +176,9 @@ CREATE OR REPLACE FUNCTION public.increment_offer_click(offer_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public
 AS $$ UPDATE member_area_offers SET total_clicks = total_clicks + 1 WHERE id = offer_id; $$;
 
--- 6. Fix member_area_offers columns (add if missing)
-ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_impressions integer NOT NULL DEFAULT 0;
-ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS total_clicks integer NOT NULL DEFAULT 0;
-
+-- ============================================================
 -- 7. Storage bucket + RLS policies for member-files
+-- ============================================================
 INSERT INTO storage.buckets (id, name, public) VALUES ('member-files', 'member-files', true)
 ON CONFLICT (id) DO NOTHING;
 
@@ -182,10 +202,17 @@ CREATE POLICY "Authenticated update member-files" ON storage.objects
 CREATE POLICY "Authenticated delete member-files" ON storage.objects
   FOR DELETE TO authenticated USING (bucket_id = 'member-files');
 
+-- ============================================================
 -- 8. Enable realtime for member_sessions
-ALTER PUBLICATION supabase_realtime ADD TABLE public.member_sessions;
+-- ============================================================
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.member_sessions;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
+-- ============================================================
 -- 9. Workspace RLS policies for all new tables
+-- ============================================================
 DO $$
 DECLARE _t text;
   _tables text[] := ARRAY[
@@ -214,7 +241,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- Anon select for daily_prayers and member_content_progress (public access)
+-- Anon select for daily_prayers (public access)
 DO $$ BEGIN
   CREATE POLICY "anon_select" ON public.daily_prayers FOR SELECT TO anon USING (true);
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -243,7 +270,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- Anon access for member_product_categories and member_product_materials (read only for public member area)
+-- Anon access for member_product_categories and member_product_materials (read only)
 DO $$
 DECLARE _t text;
   _tables text[] := ARRAY['member_product_categories','member_product_materials'];
@@ -260,5 +287,3 @@ END $$;
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
-
-SELECT 'Member tables migration completed!' AS status;
