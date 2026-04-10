@@ -1,110 +1,69 @@
-## Corrigir geração de URL — Buscar telefone existente em `member_products` antes de gerar
 
-**Problema**: Ao digitar `89981340810` na Entrega Digital, o `normalizePhone` transforma para `558981340810`. Mas no banco `member_products` o telefone pode estar como `5589981340810`. Isso gera URLs inconsistentes e pode duplicar registros.
 
-**Regra de matching** (prioridade):
+## Refinar Layout Público da Área de Membros + Corrigir IA
 
-1. Número exato (após limpar caracteres não numéricos) = match
-2. Número sem o 9 após DDD (após limpar caracteres não numéricos) (se 13 dígitos) = match
-3. Número com o 9 após DDD (após limpar caracteres não numéricos) (se 12 dígitos) = match
-4. Últimos 8 dígitos iguais (após limpar caracteres não numéricos) = match
-5. Se nada bater = criar nova entrada
+Dois problemas identificados:
 
-**Importante**: O campo de telefone digitado sempre será limpo (remover espaços, símbolos, não-dígitos) antes de aplicar as regras.
+### Problema 1: IA não funciona
+As funções `member-ai-context` e `member-offer-pitch` são chamadas via `supabase.functions.invoke()`, que vai para o Lovable Cloud. Como você usa apenas a VPS, essas edge functions não funcionam no seu ambiente. A solução é criar rotas equivalentes no backend da VPS.
+
+### Problema 2: Layout genérico
+Os cards de produto, a saudação da IA, ofertas e o layout geral precisam de refinamento visual para parecer profissional.
 
 ---
 
-### 1. Nova função `findExistingMemberPhone` em `src/lib/phoneNormalization.ts`
+### Alterações
 
-Recebe um array de registros `member_products` (com `phone`, `is_active`, `product_id`) e o telefone digitado (já limpo). Aplica as 4 regras de matching em ordem de prioridade. Retorna o `phone` já salvo no banco ou `null`.
+**1. Backend VPS — Nova rota `/api/member-ai-context` (deploy/backend/src/routes/member-access.ts)**
 
-```typescript
-export function findExistingMemberPhone(
-  members: Array<{ phone: string; is_active: boolean; product_id: string }>,
-  inputPhone: string,
-  productId: string
-): string | null {
-  const digits = inputPhone.replace(/\D/g, "").replace(/^0+/, "");
-  const active = members.filter(m => m.is_active && m.product_id === productId);
-  if (!active.length) return null;
+Mover a lógica da edge function `member-ai-context` para uma rota POST no backend da VPS:
+- Busca a `openai_api_key` na tabela `openai_settings`
+- Busca `ai_persona_prompt` na tabela `member_area_settings`
+- Gera a saudação personalizada via OpenAI
+- Retorna `{ greeting, tip }`
 
-  // 1. Exato
-  let match = active.find(m => m.phone === digits);
-  if (match) return match.phone;
+**2. Backend VPS — Nova rota `/api/member-offer-pitch` (deploy/backend/src/routes/member-access.ts)**
 
-  // 2. Input 13 dígitos → tirar o 9 e comparar
-  if (digits.length === 13 && digits.startsWith("55")) {
-    const without9 = digits.slice(0, 4) + digits.slice(5);
-    match = active.find(m => m.phone === without9);
-    if (match) return match.phone;
-  }
+Mover a lógica da edge function `member-offer-pitch` para uma rota POST no backend da VPS:
+- Busca API key e prompts configurados
+- Gera mensagens de pitch de oferta via OpenAI
+- Retorna `{ messages, productImageUrl }`
 
-  // 3. Input 12 dígitos → adicionar o 9 e comparar
-  if (digits.length === 12 && digits.startsWith("55")) {
-    const with9 = digits.slice(0, 4) + "9" + digits.slice(4);
-    match = active.find(m => m.phone === with9);
-    if (match) return match.phone;
-  }
+**3. Frontend — `src/pages/MemberAccess.tsx`**
 
-  // 4. Últimos 8 dígitos
-  const last8 = digits.slice(-8);
-  match = active.find(m => m.phone.slice(-8) === last8);
-  if (match) return match.phone;
+- Substituir `supabase.functions.invoke("member-ai-context")` por `fetch("/api/member-ai-context", { method: "POST", body })` 
+- Substituir `supabase.functions.invoke("member-offer-pitch")` por `fetch("/api/member-offer-pitch", { method: "POST", body })` no `LockedOfferCard`
 
-  return null;
-}
-```
+**4. Frontend — `src/components/membros/LockedOfferCard.tsx`**
 
-### 2. `src/components/entrega/DeliveryFlowDialog.tsx`
+- Substituir chamada de edge function por fetch ao VPS backend
 
-**Antes do upsert (linha ~282)**: buscar todos os `member_products` ativos do workspace para o produto atual usando `generatePhoneVariations` + últimos 8 dígitos. Chamar `findExistingMemberPhone`. Se encontrar, usar o telefone já salvo para a URL e o upsert. Se não, usar o `normalized` como hoje.
+**5. Refinamento Visual — `src/pages/MemberAccess.tsx`**
 
-- Linha 213: expandir a query de `member_products` para incluir o campo `phone`
-- Linha 283: `phone: phoneForUrl` (o telefone encontrado ou o normalized)
-- Linha 313: `/${phoneForUrl}` na URL
+Layout público refinado:
+- **Header**: Barra superior com logo + nome do membro (se disponível), em vez de ir direto ao conteúdo
+- **Saudação IA**: Estilizar o card de chat com tipografia mais elegante, avatar maior, fundo com gradiente sutil e bordas refinadas
+- **Cards de Produto**: 
+  - Bordas mais suaves, sombras com profundidade (`shadow-lg` em hover)
+  - Tipografia refinada — título em `font-bold` sem uppercase forçado
+  - Barra de progresso mais elegante com label contextual
+  - Transição de hover mais fluida
+  - Ícone do tipo de conteúdo (PDF/Vídeo) mais discreto
+- **Espaçamento**: Aumentar gap entre seções para respirar (space-y-4 → space-y-5)
+- **Footer**: Mais discreto e elegante
+- **Oração do dia**: Card com visual mais premium (borda lateral colorida em vez de emoji grande)
 
-### 3. `src/components/entrega/LinkGenerator.tsx`
+**6. Refinamento Visual — `src/components/membros/LockedOfferCard.tsx`**
 
-**Antes do upsert (~linha 130)**: mesmo padrão — buscar `member_products` com variações, aplicar `findExistingMemberPhone`, usar o telefone encontrado para upsert e URL.
+- Card externo: visual mais limpo, sem uppercase forçado, badge "EXCLUSIVO" mais sutil
+- Dialog interno: Manter estilo WhatsApp mas refinar tipografia e espaçamento
 
-- Linha 135: `phone: phoneForUrl`
-- Linha ~201: `/${phoneForUrl}` na URL
+**7. Refinamento Visual — `src/components/membros/DailyVerse.tsx`**
 
-### 4. `src/components/leads/LeadDetailDialog.tsx`
+- Remover emoji e usar borda lateral com cor temática
+- Tipografia serif mais elegante
 
-**No onClick de "Copiar link" (linha ~281)**: já tem `memberProducts` carregado via query. Usar `findExistingMemberPhone` para pegar o telefone correto do banco e gerar a URL com ele. Se não houver match (não deveria acontecer pois já mostra produtos), usar o `normalized`.
+**8. Refinamento Visual — `src/components/membros/BottomPageOffer.tsx`**
 
-- Linha 294: `/${phoneForUrl}` na URL
+- Card com hover mais suave, tipografia refinada
 
-### 5. `src/components/membros/MemberClientCard.tsx`
-
-**Linha 66**: O `phone` prop já vem direto do `member_products`. Usar ele diretamente sem passar por `normalizePhone`:
-
-```typescript
-const memberUrl = memberDomain ? `${memberDomain.replace(/\/$/, "")}/${phone.replace(/\D/g, "")}` : "";
-```
-
-### 6. Backend: `deploy/backend/src/routes/member-access.ts`
-
-Expandir `phoneCandidates` com a mesma lógica de variações para que o backend encontre o registro mesmo que a URL tenha um formato ligeiramente diferente do banco:
-
-```typescript
-function generateVariations(phone: string): string[] {
-  const s = new Set<string>();
-  s.add(phone);
-  let base = phone.startsWith("55") && phone.length >= 12 ? phone.slice(2) : phone;
-  s.add(base);
-  s.add("55" + base);
-  const ddd = base.slice(0, 2);
-  const rest = base.slice(2);
-  if (rest.length === 9 && rest[0] === "9") {
-    s.add(ddd + rest.slice(1));
-    s.add("55" + ddd + rest.slice(1));
-  } else if (rest.length === 8) {
-    s.add(ddd + "9" + rest);
-    s.add("55" + ddd + "9" + rest);
-  }
-  // últimos 8 dígitos serão tratados via query separada se necessário
-  return Array.from(s).filter(Boolean);
-}
-```
