@@ -367,10 +367,14 @@ router.post("/offer-pitch", async (req, res) => {
 
     // Product image
     let productImageUrl: string | null = null;
+    let memberDescription = "";
     const { data: offerData } = await sb.from("member_area_offers").select("product_id").eq("name", offerName).limit(1).maybeSingle();
     if (offerData?.product_id) {
-      const { data: productData } = await sb.from("delivery_products").select("member_cover_image, page_logo").eq("id", offerData.product_id).single();
-      if (productData) productImageUrl = productData.member_cover_image || productData.page_logo || null;
+      const { data: productData } = await sb.from("delivery_products").select("member_cover_image, page_logo, member_description").eq("id", offerData.product_id).single();
+      if (productData) {
+        productImageUrl = productData.member_cover_image || productData.page_logo || null;
+        memberDescription = productData.member_description || "";
+      }
     }
 
     const prof = profile || {};
