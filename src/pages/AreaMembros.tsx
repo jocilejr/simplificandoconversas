@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMediaFile } from "@/lib/uploadMedia";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { normalizePhone } from "@/lib/normalizePhone";
 import { toast } from "sonner";
@@ -256,12 +257,7 @@ function MemberOffersTab() {
   });
 
   const uploadImage = async (file: File): Promise<string> => {
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `offers/${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage.from("member-files").upload(path, file, { contentType: file.type });
-    if (error) throw error;
-    const { data: urlData } = supabase.storage.from("member-files").getPublicUrl(path);
-    return urlData.publicUrl;
+    return uploadMediaFile(file);
   };
 
   const resetForm = () => {

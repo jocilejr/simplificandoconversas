@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMediaFile } from "@/lib/uploadMedia";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { toast } from "sonner";
 import { Plus, Trash2, FolderPlus, FileText, ArrowLeft, Video, Image, Download, Upload, Loader2, Music, Edit } from "lucide-react";
@@ -139,12 +140,8 @@ function ProductContentEditor({ productId, workspaceId }: { productId: string; w
     if (file.size > 20 * 1024 * 1024) { toast.error("Arquivo muito grande (máx 20MB)"); return; }
     setLoading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const filePath = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("member-files").upload(filePath, file);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from("member-files").getPublicUrl(filePath);
-      setter(urlData.publicUrl);
+      const url = await uploadMediaFile(file);
+      setter(url);
       toast.success("Arquivo enviado!");
     } catch (err: any) {
       toast.error("Erro ao enviar: " + err.message);
