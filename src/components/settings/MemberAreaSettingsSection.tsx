@@ -134,22 +134,18 @@ function DominioTab() {
   });
 
   const [customDomain, setCustomDomain] = useState("");
-  const [globalRedirectUrl, setGlobalRedirectUrl] = useState("");
-  const [linkMessageTemplate, setLinkMessageTemplate] = useState("Olá! Aqui está seu acesso: {link}");
   const [deliveryMessage, setDeliveryMessage] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   if (settings && !loaded) {
     setCustomDomain(settings.custom_domain || "");
-    setGlobalRedirectUrl(settings.global_redirect_url || "");
-    setLinkMessageTemplate(settings.link_message_template || "Olá! Aqui está seu acesso: {link}");
     setDeliveryMessage((settings as any).delivery_message || "");
     setLoaded(true);
   }
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const data = { custom_domain: customDomain || null, global_redirect_url: globalRedirectUrl || null, link_message_template: linkMessageTemplate, delivery_message: deliveryMessage || null } as any;
+      const data = { custom_domain: customDomain || null, delivery_message: deliveryMessage || null } as any;
       if (settings) {
         const { error } = await supabase.from("delivery_settings").update(data).eq("id", settings.id);
         if (error) throw error;
@@ -193,21 +189,6 @@ function DominioTab() {
             Domínio que será usado para acessar a área de membros pública. Deixe vazio para usar o domínio padrão.
           </p>
         </div>
-        <div>
-          <Label>URL de Redirecionamento Global</Label>
-          <Input value={globalRedirectUrl} onChange={(e) => setGlobalRedirectUrl(e.target.value)} placeholder="https://meusite.com/obrigado" />
-          <p className="text-xs text-muted-foreground mt-1">
-            Usado quando o produto não possui URL de redirecionamento própria
-          </p>
-        </div>
-        <div>
-          <Label>Template da Mensagem de Link</Label>
-          <Textarea value={linkMessageTemplate} onChange={(e) => setLinkMessageTemplate(e.target.value)} rows={3} />
-          <p className="text-xs text-muted-foreground mt-1">
-            Use <code className="bg-muted px-1 rounded">{"{link}"}</code> onde o link deve aparecer
-          </p>
-        </div>
-
         <div>
           <Label>Mensagem padrão de entrega</Label>
           <Textarea value={deliveryMessage} onChange={(e) => setDeliveryMessage(e.target.value)} rows={4} placeholder="Olá! Seu acesso está liberado..." />
