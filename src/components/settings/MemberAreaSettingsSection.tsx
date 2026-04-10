@@ -92,9 +92,9 @@ function AjustesTab() {
     setTitle(settings.title || "Área de Membros");
     setFaviconUrl(settings.logo_url || "");
     setDescription(settings.welcome_message || "");
-    setAiPersonaPrompt(settings.ai_persona_prompt || "");
-    setGreetingPrompt(settings.greeting_prompt || "");
-    setOfferPrompt(settings.offer_prompt || "");
+    setAiPersonaPrompt(settings.ai_persona_prompt || DEFAULT_PERSONA);
+    setGreetingPrompt(settings.greeting_prompt || DEFAULT_GREETING);
+    setOfferPrompt(settings.offer_prompt || DEFAULT_OFFER);
     setLoaded(true);
   }
 
