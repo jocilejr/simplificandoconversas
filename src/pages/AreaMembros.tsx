@@ -235,7 +235,7 @@ function MemberOffersTab() {
   const { data: offers, isLoading } = useQuery({
     queryKey: ["member-area-offers", workspaceId],
     queryFn: async () => {
-      const { data } = await supabase.from("member_area_offers" as any).select("*, delivery_products(name, page_logo)").eq("workspace_id", workspaceId!).order("sort_order");
+      const { data } = await supabase.from("member_area_offers" as any).select("*").eq("workspace_id", workspaceId!).order("sort_order");
       return data || [];
     },
     enabled: !!workspaceId,
@@ -403,7 +403,7 @@ function MemberOffersTab() {
                       <p className="font-medium truncate">{offer.name || (offer as any).title || "Oferta"}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                         {offer.price && <span>R$ {Number(offer.price).toFixed(2).replace(".", ",")}</span>}
-                        {offer.delivery_products?.name && <Badge variant="secondary" className="text-[10px]">{offer.delivery_products.name}</Badge>}
+                        {(() => { const prod = products?.find((p: any) => p.id === offer.product_id); return prod?.name ? <Badge variant="secondary" className="text-[10px]">{prod.name}</Badge> : null; })()}
                         <Badge variant="outline" className="text-[10px]">{offer.display_type === "showcase" ? "Vitrine" : "Card"}</Badge>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
