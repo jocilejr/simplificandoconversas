@@ -219,13 +219,8 @@ function DominioTab() {
 
   if (domainsLoading) return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
 
-  const serverHost = (() => {
-    try {
-      return new URL(import.meta.env.VITE_SUPABASE_URL || window.location.origin).hostname;
-    } catch {
-      return window.location.hostname;
-    }
-  })();
+  // Show the VPS IP — use the browser's current hostname which is the VPS address
+  const serverIp = window.location.hostname;
 
   return (
     <div className="space-y-4">
@@ -336,7 +331,7 @@ function DominioTab() {
               <p className="text-muted-foreground mb-1">Registro A — aponta seu subdomínio para o servidor</p>
               <p><strong>Tipo:</strong> A</p>
               <p><strong>Nome:</strong> membros <span className="text-muted-foreground">(ou o subdomínio desejado)</span></p>
-              <p><strong>Valor:</strong> <span className="text-primary font-bold">{serverHost}</span></p>
+              <p><strong>Valor:</strong> <span className="text-primary font-bold">{serverIp}</span></p>
             </div>
             <p className="text-xs text-amber-500">
               ⚠️ Após criar o registro, aguarde até 24h para propagação do DNS.
