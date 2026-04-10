@@ -291,7 +291,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                       }
                       let domain = deliverySettings.custom_domain;
                       if (!domain.startsWith("http")) domain = `https://${domain}`;
-                      const link = `${domain.replace(/\/$/, "")}/a/entrega/${normalized}`;
+                      const link = `${domain.replace(/\/$/, "")}/${normalized}`;
                       navigator.clipboard.writeText(link);
                       toast.success("Link de acesso copiado!");
                     }}
