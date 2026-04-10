@@ -814,5 +814,16 @@ CREATE TABLE IF NOT EXISTS public.member_sessions (
 ALTER TABLE public.member_sessions ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_sessions TO anon, authenticated, service_role;
 
+CREATE TABLE IF NOT EXISTS public.workspace_domains (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  domain text NOT NULL,
+  is_active boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, domain)
+);
+ALTER TABLE public.workspace_domains ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.workspace_domains TO anon, authenticated, service_role;
+
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
