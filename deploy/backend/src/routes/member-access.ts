@@ -23,7 +23,7 @@ router.get("/:phone", async (req, res) => {
     // Step 1: fetch member_products
     const { data: accessRows, error: accessError } = await sb
       .from("member_products")
-      .select("workspace_id, product_id, phone, is_active, granted_at")
+      .select("workspace_id, product_id, phone, is_active")
       .eq("is_active", true)
       .in("phone", phoneCandidates);
 
