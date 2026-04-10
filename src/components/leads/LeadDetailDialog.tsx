@@ -183,6 +183,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
       const { apiUrl, safeJsonResponse } = await import("@/lib/api");
       const res = await fetch(apiUrl(`platform/member-products?phones=${variations.join(",")}&workspace_id=${workspaceId}`));
       const data = await safeJsonResponse(res);
+      if (!res.ok) throw new Error(data?.error || "Erro ao buscar produtos");
       return Array.isArray(data) ? data : [];
     },
     enabled: open && !!lead && !!workspaceId,

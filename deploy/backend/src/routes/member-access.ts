@@ -19,9 +19,11 @@ router.get("/:phone", async (req, res) => {
     );
 
     const sb = getServiceClient();
+
+    // Step 1: fetch member_products WITHOUT embedded join
     const { data: accessRows, error: accessError } = await sb
       .from("member_products")
-      .select("workspace_id, product_id, phone, is_active, delivery_products(id, name, member_cover_image, member_description, page_logo, slug)")
+      .select("workspace_id, product_id, phone, is_active")
       .eq("is_active", true)
       .in("phone", phoneCandidates);
 
@@ -33,6 +35,16 @@ router.get("/:phone", async (req, res) => {
     const workspaceId = accessRows[0].workspace_id as string;
     const rows = accessRows.filter((row: any) => row.workspace_id === workspaceId);
     const productIds = Array.from(new Set(rows.map((row: any) => row.product_id).filter(Boolean)));
+
+    // Step 2: fetch delivery_products separately
+    const { data: deliveryProducts, error: dpError } = await sb
+      .from("delivery_products")
+      .select("id, name, member_cover_image, member_description, page_logo, slug")
+      .in("id", productIds);
+    if (dpError) throw dpError;
+
+    const dpMap = new Map<string, any>();
+    for (const dp of deliveryProducts || []) dpMap.set(dp.id, dp);
 
     const [settingsRes, categoriesRes, materialsRes] = await Promise.all([
       sb
@@ -74,7 +86,7 @@ router.get("/:phone", async (req, res) => {
 
     const productMap = new Map<string, any>();
     for (const row of rows as any[]) {
-      const product = row.delivery_products;
+      const product = dpMap.get(row.product_id);
       if (!product || productMap.has(product.id)) continue;
 
       productMap.set(product.id, {
