@@ -190,10 +190,14 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
       await new Promise((r) => setTimeout(r, 600));
 
       let domain = (settings as any)?.custom_domain || "";
-      if (domain && !domain.startsWith("http")) {
+      if (!domain) {
+        toast.error("Configure o domínio da Área de Membros nas configurações");
+        setStep({ status: "idle" });
+        return;
+      }
+      if (!domain.startsWith("http")) {
         domain = `https://${domain}`;
       }
-      if (!domain) domain = window.location.origin;
       const link = `${domain.replace(/\/$/, "")}/${normalized}`;
       const deliveryMsg = (settings as any)?.delivery_message;
       let finalMessage: string;

@@ -57,13 +57,19 @@ export default function MemberClientCard({ phone, products, customerName, onDele
 
   const getMemberDomain = () => {
     let domain = (deliverySettings as any)?.custom_domain || "";
-    if (domain && !domain.startsWith("http")) domain = `https://${domain}`;
-    return domain || window.location.origin;
+    if (!domain) return "";
+    if (!domain.startsWith("http")) domain = `https://${domain}`;
+    return domain;
   };
 
-  const memberUrl = `${getMemberDomain().replace(/\/$/, "")}/${normalizePhone(phone)}`;
+  const memberDomain = getMemberDomain();
+  const memberUrl = memberDomain ? `${memberDomain.replace(/\/$/, "")}/${normalizePhone(phone)}` : "";
 
   const copyLink = () => {
+    if (!memberUrl) {
+      toast.error("Configure o domínio da Área de Membros nas configurações");
+      return;
+    }
     navigator.clipboard.writeText(memberUrl);
     setCopied(true);
     toast.success("Link copiado!");

@@ -138,6 +138,20 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const { workspaceId } = useWorkspace();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
 
+  const { data: deliverySettings } = useQuery({
+    queryKey: ["delivery-settings", workspaceId],
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("delivery_settings")
+        .select("custom_domain")
+        .eq("workspace_id", workspaceId!)
+        .maybeSingle();
+      return data;
+    },
+  });
+
   const formatPhone = (jid: string) => jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
 
   const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
@@ -271,7 +285,13 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                         toast.error("Telefone inválido para gerar o link");
                         return;
                       }
-                      const link = `${window.location.origin}/${normalized}`;
+                      if (!deliverySettings?.custom_domain) {
+                        toast.error("Configure o domínio da Área de Membros nas configurações");
+                        return;
+                      }
+                      let domain = deliverySettings.custom_domain;
+                      if (!domain.startsWith("http")) domain = `https://${domain}`;
+                      const link = `${domain.replace(/\/$/, "")}/${normalized}`;
                       navigator.clipboard.writeText(link);
                       toast.success("Link de acesso copiado!");
                     }}
