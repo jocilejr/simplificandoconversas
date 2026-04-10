@@ -198,7 +198,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
       if (!domain.startsWith("http")) {
         domain = `https://${domain}`;
       }
-      const link = `${domain.replace(/\/$/, "")}/${normalized}`;
+      const link = `${domain.replace(/\/$/, "")}/a/entrega/${normalized}`;
       const deliveryMsg = (settings as any)?.delivery_message;
       let finalMessage: string;
       if (deliveryMsg && deliveryMsg.includes("{link}")) {
