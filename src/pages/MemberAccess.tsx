@@ -318,6 +318,7 @@ export default function MemberAccess() {
       }
     } catch {}
     setAiLoading(false);
+    setVisibleMessages(1);
   };
 
   // Filter out offers for products the member already owns
@@ -523,9 +524,9 @@ export default function MemberAccess() {
               </div>
             ) : (
               <>
-                {visibleMessages >= 1 && aiContext?.greeting && (
+                {visibleMessages >= 1 && (
                   <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
-                    {aiContext.greeting}
+                    {aiContext?.greeting || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Bem-vindo(a) à sua área exclusiva!'}`}
                   </div>
                 )}
               </>
