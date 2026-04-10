@@ -189,10 +189,21 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
 
       await new Promise((r) => setTimeout(r, 600));
 
-      const domain = (settings as any)?.custom_domain || window.location.origin;
+      let domain = (settings as any)?.custom_domain || "";
+      if (domain && !domain.startsWith("http")) {
+        domain = `https://${domain}`;
+      }
+      if (!domain) domain = window.location.origin;
       const link = `${domain.replace(/\/$/, "")}/${normalized}`;
       const deliveryMsg = (settings as any)?.delivery_message;
-      const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${link}` : link;
+      let finalMessage: string;
+      if (deliveryMsg && deliveryMsg.includes("{link}")) {
+        finalMessage = deliveryMsg.replace(/\{link\}/g, link);
+      } else if (deliveryMsg) {
+        finalMessage = `${deliveryMsg}\n\n${link}`;
+      } else {
+        finalMessage = link;
+      }
 
       setStep({ status: "done", link, message: finalMessage });
 
