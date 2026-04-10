@@ -144,6 +144,7 @@ router.get("/:phone", async (req, res) => {
 
     return res.json({
       phone: normalized,
+      workspace_id: workspaceId,
       settings,
       products: Array.from(productMap.values()),
       offers: offersRes.data || [],
