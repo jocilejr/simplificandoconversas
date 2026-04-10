@@ -195,6 +195,7 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
+      MEMBER_DOMAIN: ${MEMBER_DOMAIN:-}
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./frontend:/usr/share/nginx/html:ro
@@ -209,6 +210,10 @@ services:
       - "traefik.http.routers.chatbot-api.rule=Host(`${API_DOMAIN}`)"
       - "traefik.http.routers.chatbot-api.entrypoints=websecure"
       - "traefik.http.routers.chatbot-api.tls.certresolver=letsencrypt"
+      # Membros
+      - "traefik.http.routers.chatbot-membros.rule=Host(`${MEMBER_DOMAIN}`)"
+      - "traefik.http.routers.chatbot-membros.entrypoints=websecure"
+      - "traefik.http.routers.chatbot-membros.tls.certresolver=letsencrypt"
       # Service
       - "traefik.http.services.chatbot-nginx.loadbalancer.server.port=80"
 
