@@ -171,16 +171,33 @@ router.post("/ai-context", async (req, res) => {
 
     if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
 
-    const [openaiRes, settingsRes] = await Promise.all([
-      sb.from("profiles").select("openai_api_key").eq("workspace_id", workspaceId).maybeSingle(),
-      sb.from("member_area_settings").select("ai_persona_prompt").eq("workspace_id", workspaceId).maybeSingle(),
-    ]);
+    // Resolve OpenAI API key from workspace or profile
+    const { data: workspaceRow, error: workspaceError } = await sb
+      .from("workspaces")
+      .select("created_by, openai_api_key")
+      .eq("id", workspaceId)
+      .maybeSingle();
 
-    if (openaiRes.error || !openaiRes.data?.openai_api_key) {
+    if (workspaceError || !workspaceRow) {
+      return res.status(404).json({ error: "Workspace not found." });
+    }
+
+    let OPENAI_API_KEY = workspaceRow.openai_api_key || "";
+
+    if (!OPENAI_API_KEY && workspaceRow.created_by) {
+      const { data: profileRow } = await sb
+        .from("profiles")
+        .select("openai_api_key")
+        .eq("user_id", workspaceRow.created_by)
+        .maybeSingle();
+      OPENAI_API_KEY = profileRow?.openai_api_key || "";
+    }
+
+    if (!OPENAI_API_KEY) {
       return res.status(500).json({ error: "OpenAI API key not configured." });
     }
 
-    const OPENAI_API_KEY = openaiRes.data.openai_api_key;
+    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt").eq("workspace_id", workspaceId).maybeSingle();
     const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
 
     const categories = [
@@ -286,12 +303,33 @@ router.post("/offer-pitch", async (req, res) => {
 
     if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
 
-    const [openaiRes, settingsRes] = await Promise.all([
-      sb.from("profiles").select("openai_api_key").eq("workspace_id", workspaceId).maybeSingle(),
-      sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt").eq("workspace_id", workspaceId).maybeSingle(),
-    ]);
+    // Resolve OpenAI API key from workspace or profile
+    const { data: workspaceRow, error: workspaceError } = await sb
+      .from("workspaces")
+      .select("created_by, openai_api_key")
+      .eq("id", workspaceId)
+      .maybeSingle();
 
-    if (openaiRes.error || !openaiRes.data?.openai_api_key) return res.status(500).json({ error: "OpenAI API key not configured." });
+    if (workspaceError || !workspaceRow) {
+      return res.status(404).json({ error: "Workspace not found." });
+    }
+
+    let OPENAI_API_KEY = workspaceRow.openai_api_key || "";
+
+    if (!OPENAI_API_KEY && workspaceRow.created_by) {
+      const { data: profileRow } = await sb
+        .from("profiles")
+        .select("openai_api_key")
+        .eq("user_id", workspaceRow.created_by)
+        .maybeSingle();
+      OPENAI_API_KEY = profileRow?.openai_api_key || "";
+    }
+
+    if (!OPENAI_API_KEY) {
+      return res.status(500).json({ error: "OpenAI API key not configured." });
+    }
+
+    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt").eq("workspace_id", workspaceId).maybeSingle();
 
     const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
     const customOfferPrompt = (settingsRes.data as any)?.offer_prompt || "";
@@ -355,7 +393,7 @@ router.post("/offer-pitch", async (req, res) => {
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${openaiRes.data.openai_api_key}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
