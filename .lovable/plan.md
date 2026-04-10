@@ -1,53 +1,53 @@
 
+Diagnóstico
 
-## Diagnóstico confirmado
+- O cadastro manual está funcionando: o registro já existe na VPS em `member_products`.
+- O problema agora é de leitura/exibição.
+- O código atual depende de relacionamento embutido `delivery_products(...)` em consultas ao `member_products`.
+- Na sua VPS, pelo `\d member_products` que você enviou antes, não aparece foreign key de `product_id` para `delivery_products(id)`. Sem esse vínculo, essas consultas embutidas podem falhar.
+- Em `src/components/leads/LeadDetailDialog.tsx`, esse erro ainda fica mascarado: se a API devolver um JSON de erro, o código converte para `[]` e mostra “Nenhum produto liberado”, mesmo com registro existente.
 
-### Problema 1: Transações PIX "desaparecem"
-O filtro `filteredTxs` (linhas 169-193) é muito restritivo. Sem busca, ele só mostra:
-- Órfãs (sem `customer_phone`)
-- Transações com CPF do lead atual E phone do lead atual
+Plano de correção
 
-Qualquer transação com `customer_phone` preenchido que não bata exatamente com o lead atual é **completamente oculta**. Exemplo: a transação das 17:55 tem `customer_phone = 89981340810`, então se você abrir o dialog com outro telefone, ela some. E se abrir com o mesmo telefone mas sem CPF resolvido (`leadCpf = null`), ela também some porque a condição `leadCpf && tx.customer_document === leadCpf` falha.
+1. `deploy/backend/src/routes/platform-api.ts`
+   - Reescrever o endpoint `/member-products` para não usar `delivery_products(name)` direto.
+   - Buscar primeiro `member_products` por `workspace_id + phones`.
+   - Buscar depois os `delivery_products` pelos `product_id`.
+   - Montar a resposta manualmente com o nome do produto.
 
-### Problema 2: Liberação manual
-O código de `AreaMembros.tsx` está correto (upsert, normalizePhone, is_active). Preciso verificar se o problema é que o toast de sucesso aparece mas a lista não atualiza, ou se o upsert está falhando silenciosamente. Vou adicionar logging mais explícito.
+2. `deploy/backend/src/routes/member-access.ts`
+   - Aplicar a mesma lógica no endpoint público de acesso.
+   - Remover a dependência de relacionamento implícito entre `member_products` e `delivery_products`.
+   - Isso corrige também o link público do membro, não só o modal do lead.
 
----
+3. `src/pages/AreaMembros.tsx`
+   - Trocar `.select("*, delivery_products(name)")` por leitura em 2 etapas + merge no frontend.
+   - Assim a aba de membros volta a mostrar os acessos liberados mesmo com o schema atual da VPS.
 
-## Plano de correção
+4. `src/components/leads/LeadDetailDialog.tsx`
+   - Ajustar o fetch de produtos liberados para lançar erro quando a API responder falha.
+   - Evitar o falso vazio silencioso que hoje vira “Nenhum produto liberado”.
 
-### 1. `src/components/entrega/DeliveryFlowDialog.tsx` — Corrigir filtro de transações
+5. Consistência futura da VPS
+   - Atualizar os arquivos de deploy/schema do projeto para refletirem o formato real usado hoje em `member_products`.
+   - Não vou depender disso para a correção imediata, mas deixarei a base preparada para próximos deploys.
 
-**Mudança no `filteredTxs`** (linhas 169-193):
-Sem busca, mostrar **TODAS** as transações, organizadas em 3 categorias:
-1. **Órfãs** (sem phone) → clicáveis, vinculação completa
-2. **Já contabilizadas** (CPF match ou phone match com lead atual) → clicáveis com badge verde
-3. **Vinculadas a outro lead** (phone preenchido, não bate com lead atual) → visíveis com badge azul "Vinculada", desabilitadas
+Validação na VPS depois do deploy
 
-Isso resolve o problema de transações "desaparecendo" após vinculação.
-
-**Mudança no `totalUnlinked`** (linhas 195-207):
-Renomear para `totalVisible` e contar TODAS as transações (não só órfãs), para que "Ver mais" funcione.
-
-**Mudança na ordenação** (linha 149):
-Trocar `order("created_at")` por `order("paid_at", { ascending: false, nullsFirst: false })` para mostrar as mais recentemente pagas primeiro.
-
-### 2. `src/pages/AreaMembros.tsx` — Melhorar feedback de erro
-
-Adicionar `console.error` detalhado no `onError` da mutation para facilitar debugging futuro na VPS.
-
-### Arquivos alterados
-- `src/components/entrega/DeliveryFlowDialog.tsx`
-- `src/pages/AreaMembros.tsx`
-
-### Não alterar
-- Banco, migrations, RLS, backend, types
-
-### Verificação na VPS depois do redeploy
 ```bash
-# Confirmar que o build está atualizado
-docker exec deploy-nginx-1 sh -lc 'grep -c "totalVisible" /usr/share/nginx/html/assets/*.js && echo "BUILD OK" || echo "BUILD ANTIGO"'
+docker logs deploy-backend-1 --since 10m | grep -Ei "member-products|member-access"
 
-# Testar: abrir Entrega Digital > PIX e verificar se todas as 42 transações aparecem
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT mp.id, mp.phone, mp.product_id, mp.is_active, dp.name
+FROM member_products mp
+LEFT JOIN delivery_products dp ON dp.id = mp.product_id
+WHERE mp.phone IN ('5589981340810','89981340810');
+"
 ```
 
+Resultado esperado
+
+- No detalhe do lead da Jocile, “Produtos Liberados” deve sair de 0 para 1
+- O produto deve aparecer com nome no card
+- A aba Área de Membros deve mostrar esse acesso
+- O link público `/{telefone}` também deve passar a listar o produto corretamente
