@@ -480,29 +480,47 @@ export default function MemberAccess() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="h-1" style={{ background: `linear-gradient(90deg, ${themeColor}, ${themeColor}90, ${themeColor})` }} />
+      {/* Header bar */}
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
+        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center gap-3">
+          {settings?.logo_url ? (
+            <img src={settings.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
+          ) : (
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${themeColor}15` }}>
+              <Crown className="h-4 w-4" style={{ color: themeColor }} />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800 truncate">{settings?.title || "Área de Membros"}</p>
+            {customerName && <p className="text-[11px] text-gray-400 truncate">Olá, {firstName}</p>}
+          </div>
+        </div>
+      </div>
 
-      <main className="max-w-2xl mx-auto px-5 pt-6 pb-20 space-y-3">
-        {/* Meire Rosana Chat Bubble */}
-        <div className="rounded-2xl border shadow-sm overflow-hidden" style={{ backgroundColor: `${themeColor}0d`, borderColor: `${themeColor}22` }}>
-          <div className="flex items-center gap-2.5 px-4 py-3">
-            <img src={meirePhoto} alt="Meire Rosana" className="h-9 w-9 rounded-full object-cover shadow-sm" style={{ border: `2px solid ${themeColor}40` }} />
+      <main className="max-w-2xl mx-auto px-5 pt-5 pb-20 space-y-4">
+        {/* AI Greeting */}
+        <div className="rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-50">
+            <div className="relative">
+              <img src={meirePhoto} alt="Meire Rosana" className="h-10 w-10 rounded-full object-cover" style={{ border: `2px solid ${themeColor}30` }} />
+              <div className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-gray-800 leading-tight">Meire Rosana</p>
+              <p className="text-[13px] font-semibold text-gray-800">Meire Rosana</p>
               {aiLoading && <p className="text-[11px] font-medium" style={{ color: themeColor }}>digitando...</p>}
             </div>
           </div>
-          <div className="px-4 pb-3.5 pt-0.5 space-y-1.5">
+          <div className="px-4 pb-4 pt-3 space-y-1.5">
             {aiLoading && visibleMessages === 0 ? (
-              <div className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl rounded-tl-md w-fit" style={{ backgroundColor: `${themeColor}10` }}>
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: `${themeColor}80`, animationDelay: "0ms" }} />
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: `${themeColor}80`, animationDelay: "150ms" }} />
-                <span className="inline-block h-1.5 w-1.5 rounded-full animate-bounce" style={{ backgroundColor: `${themeColor}80`, animationDelay: "300ms" }} />
+              <div className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl rounded-tl-md w-fit bg-gray-100">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
             ) : (
               <>
                 {visibleMessages >= 1 && aiContext?.greeting && (
-                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in" style={{ backgroundColor: `${themeColor}10` }}>
+                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
                     {aiContext.greeting}
                   </div>
                 )}
@@ -545,7 +563,7 @@ export default function MemberAccess() {
         <DailyVerse />
 
         {showcaseOffers.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {showcaseOffers.map((offer: any) => (
               <PhysicalProductShowcase key={offer.id} offer={offer} themeColor={themeColor} memberPhone={normalizedPhone} />
             ))}
@@ -585,8 +603,8 @@ export default function MemberAccess() {
         </DialogContent>
       </Dialog>
 
-      <footer className="text-center py-6 border-t border-gray-100 bg-white">
-        <p className="text-[11px] text-gray-400">Área exclusiva para membros ✝️</p>
+      <footer className="text-center py-5 border-t border-gray-100 bg-white">
+        <p className="text-[10px] text-gray-300 tracking-wide">Área exclusiva para membros</p>
       </footer>
     </div>
   );
