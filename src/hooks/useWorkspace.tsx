@@ -188,7 +188,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         permissions,
         hasPermission,
         setActiveWorkspace,
-        isLoading,
+        isLoading: isSuperAdminLoading || isWorkspacesLoading,
       }}
     >
       {children}
