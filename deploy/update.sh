@@ -460,6 +460,10 @@ echo "   → Applying workspace migration (strict)..."
 docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$DEPLOY_DIR/migrate-workspace.sql"
 echo "✓ Workspace migration aplicada"
 
+echo "   → Applying member tables fix..."
+docker compose exec -T postgres psql -U postgres -d postgres < "$DEPLOY_DIR/fix-member-tables.sql"
+echo "✓ Member tables fix aplicado"
+
 # Validate tables exist
 for tbl in meta_pixels api_request_logs platform_connections email_contacts workspaces workspace_members delivery_products delivery_settings delivery_accesses delivery_link_generations delivery_pixels global_delivery_pixels member_products member_area_settings member_area_offers member_product_categories member_product_materials member_sessions; do
   TABLE_EXISTS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "SELECT to_regclass('public.$tbl');")
