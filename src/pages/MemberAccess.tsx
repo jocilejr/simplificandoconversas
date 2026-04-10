@@ -108,6 +108,9 @@ export default function MemberAccess() {
   const [aiContext, setAiContext] = useState<AiContext | null>(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [visibleMessages, setVisibleMessages] = useState(0);
+  const [typedText, setTypedText] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [progressMap, setProgressMap] = useState<Record<string, ContentProgress[]>>({});
   const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [materialsByProduct, setMaterialsByProduct] = useState<Record<string, any[]>>({});
@@ -279,7 +282,24 @@ export default function MemberAccess() {
         if (Date.now() - parsed.cachedAt < AI_CACHE_TTL) {
           setAiContext(parsed.data);
           setAiLoading(false);
-          setTimeout(() => setVisibleMessages(1), 600);
+          setIsTyping(true);
+          setTimeout(() => {
+            setIsTyping(false);
+            setVisibleMessages(1);
+            let idx = 0;
+            const fullText = parsed.data.greeting;
+            setTypedText("");
+            if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+            typingIntervalRef.current = setInterval(() => {
+              idx++;
+              if (idx >= fullText.length) {
+                setTypedText(fullText);
+                if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+              } else {
+                setTypedText(fullText.slice(0, idx));
+              }
+            }, 20);
+          }, 3000);
           return;
         }
       }
@@ -313,12 +333,30 @@ export default function MemberAccess() {
         const ctx: AiContext = { greeting: data.greeting, tip: data.tip || "" };
         setAiContext(ctx);
         setVisibleMessages(0);
-        setTimeout(() => setVisibleMessages(1), 600);
+        // Show typing indicator for 3 seconds, then start typewriter
+        setIsTyping(true);
+        setTimeout(() => {
+          setIsTyping(false);
+          setVisibleMessages(1);
+          // Start typewriter effect
+          let idx = 0;
+          const fullText = ctx.greeting;
+          setTypedText("");
+          if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+          typingIntervalRef.current = setInterval(() => {
+            idx++;
+            if (idx >= fullText.length) {
+              setTypedText(fullText);
+              if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+            } else {
+              setTypedText(fullText.slice(0, idx));
+            }
+          }, 20);
+        }, 3000);
         try { localStorage.setItem(cacheKey, JSON.stringify({ data: ctx, cachedAt: Date.now() })); } catch {}
       }
     } catch {}
     setAiLoading(false);
-    setVisibleMessages(1);
   };
 
   // Filter out offers for products the member already owns
@@ -439,7 +477,7 @@ export default function MemberAccess() {
         onClick={() => setOpenProductId(mp.id)}
       >
         {coverSrc ? (
-          <div className="relative h-[160px] w-full overflow-hidden">
+          <div className="relative h-[120px] w-full overflow-hidden">
             <img src={coverSrc} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -450,7 +488,7 @@ export default function MemberAccess() {
             </div>
           </div>
         ) : (
-          <div className="relative h-[140px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}15 0%, ${themeColor}05 50%, ${themeColor}12 100%)` }}>
+          <div className="relative h-[100px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}15 0%, ${themeColor}05 50%, ${themeColor}12 100%)` }}>
             {mats.length > 0 && mats[0]?.content_type === "video" ? (
               <Play className="absolute top-3 right-3 h-8 w-8 opacity-[0.08]" style={{ color: themeColor }} />
             ) : mats.length > 0 && mats[0]?.content_type === "pdf" ? (
@@ -464,8 +502,8 @@ export default function MemberAccess() {
             <h3 className="font-bold text-gray-800 text-lg leading-tight line-clamp-2">{product.name}</h3>
           </div>
         )}
-        <div className="px-4 py-3 border-t border-gray-50">
-          {progress.totalMaterials > 0 ? (
+        {progress.totalMaterials > 0 && (
+          <div className="px-4 py-2.5 border-t border-gray-50">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -475,49 +513,30 @@ export default function MemberAccess() {
               </div>
               {progressLabel && <p className="text-xs text-gray-500 leading-tight truncate">{progressLabel}</p>}
             </div>
-          ) : (
-            <p className="text-[13px] text-gray-400 leading-snug truncate">Toque para acessar</p>
-          )}
-        </div>
+          </div>
+        )}
       </button>
     );
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header bar */}
-      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
-        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center gap-3">
-          {settings?.logo_url ? (
-            <img src={settings.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
-          ) : (
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${themeColor}15` }}>
-              <Crown className="h-4 w-4" style={{ color: themeColor }} />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-800 truncate">{settings?.title || "Área de Membros"}</p>
-            {customerName && <p className="text-[11px] text-gray-400 truncate">Olá, {firstName}</p>}
-          </div>
-        </div>
-      </div>
-
       <main className="max-w-2xl mx-auto px-5 pt-5 pb-20 space-y-4">
         {/* AI Greeting */}
         <div className="rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-50">
+          <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-gray-50">
             <div className="relative">
-              <img src={meirePhoto} alt="Meire Rosana" className="h-10 w-10 rounded-full object-cover" style={{ border: `2px solid ${themeColor}30` }} />
-              <div className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" />
+              <img src={meirePhoto} alt="Meire Rosana" className="h-8 w-8 rounded-full object-cover" style={{ border: `2px solid ${themeColor}30` }} />
+              <div className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-gray-800">Meire Rosana</p>
-              {aiLoading && <p className="text-[11px] font-medium" style={{ color: themeColor }}>digitando...</p>}
+              <p className="text-xs font-semibold text-gray-800">Meire Rosana</p>
+              {(aiLoading || isTyping) && <p className="text-[10px] font-medium" style={{ color: themeColor }}>digitando...</p>}
             </div>
           </div>
-          <div className="px-4 pb-4 pt-3 space-y-1.5">
-            {aiLoading && visibleMessages === 0 ? (
-              <div className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl rounded-tl-md w-fit bg-gray-100">
+          <div className="px-3 pb-3 pt-2.5 space-y-1.5">
+            {(aiLoading || isTyping) && visibleMessages === 0 ? (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl rounded-tl-md w-fit bg-gray-100">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "300ms" }} />
@@ -525,8 +544,8 @@ export default function MemberAccess() {
             ) : (
               <>
                 {visibleMessages >= 1 && (
-                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
-                    {aiContext?.greeting || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Bem-vindo(a) à sua área exclusiva!'}`}
+                  <div className="px-3 py-2 rounded-2xl rounded-tl-md text-xs text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
+                    {typedText || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Bem-vindo(a) à sua área exclusiva!'}`}
                   </div>
                 )}
               </>
