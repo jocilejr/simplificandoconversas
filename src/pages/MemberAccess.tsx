@@ -297,9 +297,13 @@ export default function MemberAccess() {
         return { materialName: matName, type: p.progress_type, currentPage: p.current_page, totalPages: p.total_pages, videoSeconds: p.video_seconds, videoDuration: p.video_duration };
       });
 
-      const { data, error } = await supabase.functions.invoke("member-ai-context", {
-        body: { firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData },
+      const aiRes = await fetch("/api/member-access/ai-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData }),
       });
+      const data = aiRes.ok ? await aiRes.json() : null;
+      const error = aiRes.ok ? null : "AI request failed";
 
       if (!error && data?.greeting) {
         const ctx: AiContext = { greeting: data.greeting, tip: data.tip || "" };
