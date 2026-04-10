@@ -1,30 +1,15 @@
 
 
-## Problema
+## Reverter URLs para formato `domain/phone`
 
-Todos os links de acesso gerados no sistema usam o formato antigo `${domain}/${phone}` em vez do novo formato `${domain}/a/entrega/${phone}`.
+O formato `/:phone` já funciona na VPS, então vamos reverter os 4 arquivos para gerar links no formato simples.
 
-## Arquivos afetados (4 pontos de geração de URL)
+### Alterações
 
-1. **`src/components/leads/LeadDetailDialog.tsx`** (linha 294)
-   - Atual: `` `${domain.replace(/\/$/, "")}/${normalized}` ``
-   - Novo: `` `${domain.replace(/\/$/, "")}/a/entrega/${normalized}` ``
+1. **`src/components/leads/LeadDetailDialog.tsx`** — reverter para `` `${domain}/${normalized}` ``
+2. **`src/components/membros/MemberClientCard.tsx`** — reverter para `` `${memberDomain}/${normalizePhone(phone)}` ``
+3. **`src/components/entrega/LinkGenerator.tsx`** — reverter para `` `${domain}/${normalized}` ``
+4. **`src/components/entrega/DeliveryFlowDialog.tsx`** — reverter para `` `${domain}/${normalized}` ``
 
-2. **`src/components/membros/MemberClientCard.tsx`** (linha 66)
-   - Atual: `` `${memberDomain.replace(/\/$/, "")}/${normalizePhone(phone)}` ``
-   - Novo: `` `${memberDomain.replace(/\/$/, "")}/a/entrega/${normalizePhone(phone)}` ``
-
-3. **`src/components/entrega/LinkGenerator.tsx`** (linha 201)
-   - Atual: `` `${domain.replace(/\/$/, "")}/${normalized}` ``
-   - Novo: `` `${domain.replace(/\/$/, "")}/a/entrega/${normalized}` ``
-
-4. **`src/components/entrega/DeliveryFlowDialog.tsx`** (linha 313)
-   - Atual: `` `${domain.replace(/\/$/, "")}/${normalized}` ``
-   - Novo: `` `${domain.replace(/\/$/, "")}/a/entrega/${normalized}` ``
-
-## Alteração
-
-Trocar `/${phone}` por `/a/entrega/${phone}` nos 4 arquivos. Mudança simples de string template em cada um.
-
-Após o deploy na VPS, todos os links gerados passarão a usar o novo formato.
+Remover `/a/entrega` do template de URL em cada arquivo. Mudança de uma linha em cada.
 
