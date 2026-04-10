@@ -1,35 +1,35 @@
 
 
-## Problemas identificados
+## Diagnóstico confirmado
 
-### 1. Scroll quebrado no "Ver mais"
-O componente tem **dois containers de scroll sobrepostos**:
-- Linha 395: `<div className="... max-h-[calc(90vh-120px)] overflow-y-auto">` (container pai)
-- Linha 517: `<ScrollArea className="max-h-[400px]">` (container filho)
+Os dados da VPS mostram:
+- Todos os PIX têm `type = 'pix'` e `status = 'aprovado'` ou `'pendente'` — **não há problema de filtro de tipo ou status**
+- São 42 transações aprovadas — todas deveriam aparecer
 
-Quando o conteúdo cresce ao clicar "Ver mais", o `ScrollArea` interno bate no `max-h-[400px]` e o `overflow-y-auto` do pai conflita com o scroll interno do Radix ScrollArea. Resultado: o scroll trava.
+O problema real está na **linha 191** do `DeliveryFlowDialog.tsx`:
+```
+return [...orphans, ...currentLead, ...otherLead].slice(0, txLimit);
+```
 
-**Correção**: Remover o `max-h` fixo do ScrollArea e deixar apenas o container pai controlar o overflow. Ou melhor: remover o `overflow-y-auto` do pai e deixar o ScrollArea ser o único responsável pelo scroll, com altura dinâmica baseada no viewport.
-
-### 2. Possível filtragem indevida por `type`
-A query na linha 147 filtra `.eq("type", "pix")`. Se transações OpenPix forem salvas com outro valor de `type` (ex: `"pix_openpix"`, `"openpix"`), elas serão excluídas. Preciso da resposta dos comandos SQL acima para confirmar.
-
----
+Isso reagrupa as transações por categoria **antes** de paginar. Como `txLimit` começa em 5, só aparecem as primeiras 5 (geralmente as sem telefone/"orphans"). Transações recentes que já têm `customer_phone` vinculado a outro contato vão para o final da lista e ficam escondidas.
 
 ## Plano de correção
 
 ### Arquivo: `src/components/entrega/DeliveryFlowDialog.tsx`
 
-**A. Corrigir scroll (garantido)**
-- Remover `overflow-y-auto` do container pai (linha 395) quando estiver no step `select-tx`
-- No `ScrollArea` (linha 517), trocar `max-h-[400px]` por `max-h-[calc(70vh-200px)]` para adaptar ao viewport
-- Isso elimina o conflito de dois scroll containers aninhados
+**1. Remover reagrupamento, manter ordem cronológica**
+- Linha 180-191: Substituir a lógica de agrupamento por uma simples exibição em ordem de `paid_at DESC` (que já vem da query)
+- Manter os badges visuais (verde "Já contabilizada", azul "Vinculada", desabilitada) — apenas sem mudar a posição dos itens
+- O `txLimit` continua funcionando, mas agora pagina cronologicamente
 
-**B. Ampliar filtro de tipo (condicional — depende da resposta SQL)**
-- Se houver tipos além de `"pix"`, trocar `.eq("type", "pix")` por `.in("type", ["pix", "pix_openpix", ...])` ou remover o filtro de tipo e filtrar apenas por `status = aprovado` + `source` relevante
+**2. Aumentar limite inicial**
+- Trocar `txLimit` inicial de 5 para 10 para mostrar mais transações de cara
 
-### Verificação na VPS
-```bash
-docker exec deploy-nginx-1 sh -lc 'grep -c "70vh" /usr/share/nginx/html/assets/*.js && echo "BUILD OK" || echo "BUILD ANTIGO"'
-```
+**3. Scroll — já corrigido**
+- A correção anterior (`max-h-[calc(70vh-200px)]` + remoção do `overflow-y-auto` do pai) já está no código
+
+### Resultado esperado
+- Os PIX mais recentes (ex: MARIA CARMO de R$70, Jocile de R$1) aparecem no topo
+- "Ver mais" expande mantendo a mesma ordem cronológica
+- Badges visuais continuam indicando status de vinculação
 
