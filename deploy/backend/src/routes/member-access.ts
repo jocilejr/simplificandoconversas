@@ -367,10 +367,14 @@ router.post("/offer-pitch", async (req, res) => {
 
     // Product image
     let productImageUrl: string | null = null;
+    let memberDescription = "";
     const { data: offerData } = await sb.from("member_area_offers").select("product_id").eq("name", offerName).limit(1).maybeSingle();
     if (offerData?.product_id) {
-      const { data: productData } = await sb.from("delivery_products").select("member_cover_image, page_logo").eq("id", offerData.product_id).single();
-      if (productData) productImageUrl = productData.member_cover_image || productData.page_logo || null;
+      const { data: productData } = await sb.from("delivery_products").select("member_cover_image, page_logo, member_description").eq("id", offerData.product_id).single();
+      if (productData) {
+        productImageUrl = productData.member_cover_image || productData.page_logo || null;
+        memberDescription = productData.member_description || "";
+      }
     }
 
     const prof = profile || {};
@@ -396,6 +400,7 @@ router.post("/offer-pitch", async (req, res) => {
         .replace(/\{memberDays\}/g, String(memberDays))
         .replace(/\{profileCategory\}/g, profileCategory);
       if (personaPrompt && !customOfferPrompt.includes("PERSONALIDADE")) systemPrompt = `SUA PERSONALIDADE:\n${personaPrompt}\n\n${systemPrompt}`;
+      if (memberDescription) systemPrompt += `\n\nSOBRE O PRODUTO (descrição do criador):\n${memberDescription}`;
       if (knowledgeContext) systemPrompt += `\n\nCONHECIMENTO QUE A PESSOA JÁ ADQUIRIU:\n${knowledgeContext}`;
       if (offerMaterials?.length > 0) systemPrompt += `\n\nCONTEÚDO QUE A PESSOA VAI RECEBER:\n${offerMaterials.join("\n")}`;
     } else {
@@ -407,7 +412,9 @@ router.post("/offer-pitch", async (req, res) => {
         ? `\nCONHECIMENTO QUE A PESSOA JÁ ADQUIRIU (dos materiais que ela já possui):\n${knowledgeContext}\n\n→ No SEGUNDO balão, faça referência ao que a pessoa já aprendeu/estudou.`
         : "";
 
-      systemPrompt = `Você vai gerar mensagens de chat simulando uma conversa pessoal sobre um material que a pessoa demonstrou interesse.\n\n${personaBlock}\n\nREGRAS ABSOLUTAS:\n- NUNCA use termos de marketing\n- Fale de forma natural, como uma amiga\n- Use o nome da pessoa\n- Gere EXATAMENTE 3 mensagens (balão 1, balão 2 e balão 4 — o balão 3 será uma imagem)\n- Cada mensagem deve ter no máximo 2-3 frases curtas\n\nESTRUTURA DOS 3 BALÕES DE TEXTO:\n\n**Balão 1:** Cumprimente pelo nome e informe que já adquiriu: ${ownedNames}. Diga que ainda não contribuiu para "${offerName}", de forma carinhosa.\n\n**Balão 2:** ${knowledgeContext ? `Breve resumo do que aprendeu. Depois, como '${offerName}' complementa.` : `Explique brevemente '${offerName}' com base na descrição.`}\n\n**Balão 4:** Liste o conteúdo do material. ${offerPrice ? `Diga que é apenas R$ ${Number(offerPrice).toFixed(2).replace('.', ',')} e convide com gentileza.` : "Convide com gentileza."}\n\n${knowledgeBlock}\nPERFIL: Nome: ${firstName}, Membro há: ${memberDays} dias, Produtos: ${ownedNames}, Categoria: ${profileCategory}\n\nMATERIAL: "${offerName}" — "${offerDescription || 'Material especial.'}"${offerMaterials?.length > 0 ? `\nCONTEÚDO: ${offerMaterials.join("\n")}` : ""}`;
+      const descBlock = memberDescription ? `\nSOBRE O PRODUTO (descrição do criador):\n${memberDescription}\n` : "";
+
+      systemPrompt = `Você vai gerar mensagens de chat simulando uma conversa pessoal sobre um material que a pessoa demonstrou interesse.\n\n${personaBlock}\n\nREGRAS ABSOLUTAS:\n- NUNCA use termos de marketing\n- Fale de forma natural, como uma amiga\n- Use o nome da pessoa\n- Gere EXATAMENTE 3 mensagens (balão 1, balão 2 e balão 4 — o balão 3 será uma imagem)\n- Cada mensagem deve ter no máximo 2-3 frases curtas\n\nESTRUTURA DOS 3 BALÕES DE TEXTO:\n\n**Balão 1:** Cumprimente pelo nome e informe que já adquiriu: ${ownedNames}. Diga que ainda não contribuiu para "${offerName}", de forma carinhosa.\n\n**Balão 2:** ${knowledgeContext ? `Breve resumo do que aprendeu. Depois, como '${offerName}' complementa.` : `Explique brevemente '${offerName}' com base na descrição.`}\n\n**Balão 4:** Liste o conteúdo do material. ${offerPrice ? `Diga que é apenas R$ ${Number(offerPrice).toFixed(2).replace('.', ',')} e convide com gentileza.` : "Convide com gentileza."}\n\n${knowledgeBlock}${descBlock}\nPERFIL: Nome: ${firstName}, Membro há: ${memberDays} dias, Produtos: ${ownedNames}, Categoria: ${profileCategory}\n\nMATERIAL: "${offerName}" — "${offerDescription || 'Material especial.'}"${offerMaterials?.length > 0 ? `\nCONTEÚDO: ${offerMaterials.join("\n")}` : ""}`;
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {

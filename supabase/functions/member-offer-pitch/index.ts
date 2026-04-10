@@ -38,10 +38,14 @@ serve(async (req) => {
     }
 
     let productImageUrl: string | null = null;
+    let memberDescription = "";
     const { data: offerData } = await supabase.from("member_area_offers").select("product_id").eq("name", offerName).limit(1).maybeSingle();
     if (offerData?.product_id) {
-      const { data: productData } = await supabase.from("delivery_products").select("member_cover_image, page_logo").eq("id", offerData.product_id).single();
-      if (productData) productImageUrl = productData.member_cover_image || productData.page_logo || null;
+      const { data: productData } = await supabase.from("delivery_products").select("member_cover_image, page_logo, member_description").eq("id", offerData.product_id).single();
+      if (productData) {
+        productImageUrl = productData.member_cover_image || productData.page_logo || null;
+        memberDescription = (productData as any).member_description || "";
+      }
     }
 
     const prof = profile || {};
@@ -67,6 +71,7 @@ serve(async (req) => {
         .replace(/\{memberDays\}/g, String(memberDays))
         .replace(/\{profileCategory\}/g, profileCategory);
       if (personaPrompt && !customOfferPrompt.includes("PERSONALIDADE")) systemPrompt = `SUA PERSONALIDADE:\n${personaPrompt}\n\n${systemPrompt}`;
+      if (memberDescription) systemPrompt += `\n\nSOBRE O PRODUTO (descrição do criador):\n${memberDescription}`;
       if (knowledgeContext) systemPrompt += `\n\nCONHECIMENTO QUE A PESSOA JÁ ADQUIRIU:\n${knowledgeContext}`;
       if (offerMaterials && offerMaterials.length > 0) systemPrompt += `\n\nCONTEÚDO QUE A PESSOA VAI RECEBER:\n${offerMaterials.join("\n")}`;
     } else {
@@ -108,6 +113,7 @@ ${profileCategory === "novo" ? "→ É nova, não pressione." : ""}
 ${profileCategory === "inativo" ? "→ Está voltando. Incentive com carinho." : ""}
 ${profileCategory === "fiel" ? "→ É fiel e comprometida. Reconheça isso." : ""}
 
+${memberDescription ? `SOBRE O PRODUTO (descrição do criador):\n${memberDescription}\n` : ""}
 MATERIAL CLICADO:
 - Nome: "${offerName}"
 - Descrição: "${offerDescription || 'Material especial preparado com muito carinho.'}"

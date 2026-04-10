@@ -24,8 +24,22 @@ ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS product_id uuid;
 ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS granted_at timestamptz DEFAULT now();
 
 -- ============================================================
--- 1. Fix member_area_offers columns FIRST (before RPC functions)
+-- 1. Create member_area_offers if not exists + fix columns
 -- ============================================================
+CREATE TABLE IF NOT EXISTS public.member_area_offers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL DEFAULT 'Oferta',
+  description text,
+  is_active boolean NOT NULL DEFAULT true,
+  price numeric,
+  purchase_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.member_area_offers ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
+
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS name text;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS product_id uuid;
 ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS image_url text;
@@ -236,7 +250,8 @@ DECLARE _t text;
   _tables text[] := ARRAY[
     'member_product_categories','member_product_materials','member_sessions',
     'member_content_progress','member_pixel_frames','member_offer_impressions',
-    'daily_prayers','openai_settings','product_knowledge_summaries','manual_boleto_settings'
+    'daily_prayers','openai_settings','product_knowledge_summaries','manual_boleto_settings',
+    'member_area_offers'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
