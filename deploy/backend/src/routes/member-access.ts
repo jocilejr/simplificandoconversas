@@ -62,7 +62,7 @@ router.get("/:phone", async (req, res) => {
     // Step 3: fetch settings, categories, materials, offers, and customer in parallel
     const [settingsRes, categoriesRes, materialsRes, offersRes, customerRes, memberSettingsRes] = await Promise.all([
       sb.from("member_area_settings")
-        .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt")
+        .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt, ai_model")
         .eq("workspace_id", workspaceId)
         .maybeSingle(),
       sb.from("member_product_categories")
@@ -414,7 +414,7 @@ router.post("/offer-pitch", async (req, res) => {
       method: "POST",
       headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: offerAiModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Gere as 3 mensagens de chat para ${firstName} sobre "${offerName}".` },
