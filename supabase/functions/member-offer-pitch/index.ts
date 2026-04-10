@@ -113,6 +113,7 @@ ${profileCategory === "novo" ? "→ É nova, não pressione." : ""}
 ${profileCategory === "inativo" ? "→ Está voltando. Incentive com carinho." : ""}
 ${profileCategory === "fiel" ? "→ É fiel e comprometida. Reconheça isso." : ""}
 
+${memberDescription ? `SOBRE O PRODUTO (descrição do criador):\n${memberDescription}\n` : ""}
 MATERIAL CLICADO:
 - Nome: "${offerName}"
 - Descrição: "${offerDescription || 'Material especial preparado com muito carinho.'}"
