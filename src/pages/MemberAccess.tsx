@@ -282,7 +282,24 @@ export default function MemberAccess() {
         if (Date.now() - parsed.cachedAt < AI_CACHE_TTL) {
           setAiContext(parsed.data);
           setAiLoading(false);
-          setTimeout(() => setVisibleMessages(1), 600);
+          setIsTyping(true);
+          setTimeout(() => {
+            setIsTyping(false);
+            setVisibleMessages(1);
+            let idx = 0;
+            const fullText = parsed.data.greeting;
+            setTypedText("");
+            if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+            typingIntervalRef.current = setInterval(() => {
+              idx++;
+              if (idx >= fullText.length) {
+                setTypedText(fullText);
+                if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+              } else {
+                setTypedText(fullText.slice(0, idx));
+              }
+            }, 20);
+          }, 3000);
           return;
         }
       }
@@ -316,12 +333,30 @@ export default function MemberAccess() {
         const ctx: AiContext = { greeting: data.greeting, tip: data.tip || "" };
         setAiContext(ctx);
         setVisibleMessages(0);
-        setTimeout(() => setVisibleMessages(1), 600);
+        // Show typing indicator for 3 seconds, then start typewriter
+        setIsTyping(true);
+        setTimeout(() => {
+          setIsTyping(false);
+          setVisibleMessages(1);
+          // Start typewriter effect
+          let idx = 0;
+          const fullText = ctx.greeting;
+          setTypedText("");
+          if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+          typingIntervalRef.current = setInterval(() => {
+            idx++;
+            if (idx >= fullText.length) {
+              setTypedText(fullText);
+              if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+            } else {
+              setTypedText(fullText.slice(0, idx));
+            }
+          }, 20);
+        }, 3000);
         try { localStorage.setItem(cacheKey, JSON.stringify({ data: ctx, cachedAt: Date.now() })); } catch {}
       }
     } catch {}
     setAiLoading(false);
-    setVisibleMessages(1);
   };
 
   // Filter out offers for products the member already owns
@@ -442,7 +477,7 @@ export default function MemberAccess() {
         onClick={() => setOpenProductId(mp.id)}
       >
         {coverSrc ? (
-          <div className="relative h-[160px] w-full overflow-hidden">
+          <div className="relative h-[120px] w-full overflow-hidden">
             <img src={coverSrc} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -453,7 +488,7 @@ export default function MemberAccess() {
             </div>
           </div>
         ) : (
-          <div className="relative h-[140px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}15 0%, ${themeColor}05 50%, ${themeColor}12 100%)` }}>
+          <div className="relative h-[100px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}15 0%, ${themeColor}05 50%, ${themeColor}12 100%)` }}>
             {mats.length > 0 && mats[0]?.content_type === "video" ? (
               <Play className="absolute top-3 right-3 h-8 w-8 opacity-[0.08]" style={{ color: themeColor }} />
             ) : mats.length > 0 && mats[0]?.content_type === "pdf" ? (
@@ -467,8 +502,8 @@ export default function MemberAccess() {
             <h3 className="font-bold text-gray-800 text-lg leading-tight line-clamp-2">{product.name}</h3>
           </div>
         )}
-        <div className="px-4 py-3 border-t border-gray-50">
-          {progress.totalMaterials > 0 ? (
+        {progress.totalMaterials > 0 && (
+          <div className="px-4 py-2.5 border-t border-gray-50">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -478,10 +513,8 @@ export default function MemberAccess() {
               </div>
               {progressLabel && <p className="text-xs text-gray-500 leading-tight truncate">{progressLabel}</p>}
             </div>
-          ) : (
-            <p className="text-[13px] text-gray-400 leading-snug truncate">Toque para acessar</p>
-          )}
-        </div>
+          </div>
+        )}
       </button>
     );
   };
