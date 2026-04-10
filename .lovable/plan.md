@@ -1,31 +1,86 @@
 
+Problema real: a página pública já está batendo na rota correta (`/a/entrega/:phone` no frontend e `/api/member-access/:phone` no backend), mas o backend ainda quebra no acesso à tabela `member_area_settings`.
 
-## Plano: Corrigir CORS da página pública de membros
+Do I know what the issue is? Sim: há um desencontro de schema na VPS e, além disso, o backend usa PostgREST (`http://postgrest:3000`), então após `ALTER TABLE` o cache de schema pode continuar antigo até ser recarregado.
 
-### Causa raiz
-A página pública em `membros.origemdavida.online` chama `apiUrl("member-access/...")` que resolve para `https://api.chatbotsimplificado.com/functions/v1/member-access/...`. O Nginx do API_DOMAIN retorna `Access-Control-Allow-Origin: https://app.chatbotsimplificado.com`, que não corresponde à origem `membros.origemdavida.online` — bloqueio de CORS.
+Arquivos isolados:
+- `deploy/backend/src/routes/member-access.ts`
+- `deploy/init-db.sql`
+- `deploy/fix-member-tables.sql`
+- `src/pages/MemberAccess.tsx`
 
-O domínio de membros (`MEMBER_DOMAIN`) já possui proxy próprio em `/api/member-access/` no Nginx (linhas 73-78 da config). Ou seja, a chamada deveria ser **relativa** (`/api/member-access/...`), não absoluta para o API_DOMAIN.
+O que o código espera hoje em `member_area_settings`:
+- `title`
+- `logo_url`
+- `welcome_message`
+- `theme_color`
+- `ai_persona_prompt`
+- `greeting_prompt`
+- `offer_prompt`
 
-### Correção
+O que o schema base antigo cria em `deploy/init-db.sql`:
+- `brand_name`
+- `logo_url`
+- `primary_color`
+- `custom_domain`
 
-**1. `src/pages/MemberAccess.tsx`** — usar URL relativa para o endpoint de member-access em vez de `apiUrl()`:
+Ou seja: sua VPS está parcialmente no schema antigo.
 
-```typescript
-// ANTES
-const response = await fetch(apiUrl(`member-access/${digits}`));
+Plano de correção
 
-// DEPOIS
-const response = await fetch(`/api/member-access/${digits}`);
-```
-
-Isso faz a requisição bater no próprio domínio (`membros.origemdavida.online/api/member-access/...`), onde o Nginx do MEMBER_DOMAIN já faz proxy para o backend — sem problema de CORS.
-
-**2. Também verificar** se há outras chamadas `apiUrl()` ou chamadas ao Supabase client (`supabase.from(...)`, `supabase.rpc(...)`, `supabase.functions.invoke(...)`) no `MemberAccess.tsx` que possam sofrer o mesmo bloqueio. Se houver, precisaremos adicionar o `MEMBER_DOMAIN` ao CORS do API_DOMAIN no Nginx, ou criar proxies adicionais no bloco do MEMBER_DOMAIN.
-
-### Verificação na VPS após deploy
+1. Confirmar dentro da VPS quais colunas existem de fato
 ```bash
-# Testar se a chamada relativa funciona
-curl -I "https://membros.origemdavida.online/api/member-access/5589981340810"
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'member_area_settings'
+ORDER BY ordinal_position;
+"
 ```
 
+2. Corrigir todas as colunas faltantes na VPS, não só 3
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS welcome_message text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS theme_color text DEFAULT '#8B5CF6';
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS ai_persona_prompt text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS greeting_prompt text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS offer_prompt text;
+"
+```
+
+3. Recarregar o cache do PostgREST, porque o backend consulta via PostgREST e ele pode continuar enxergando o schema antigo
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+```
+
+4. Testar de novo direto no backend
+```bash
+docker exec deploy-backend-1 wget -qO- http://localhost:3001/api/member-access/5589981340810 2>&1 | head -40
+```
+
+5. Se ainda der erro, pegar o novo erro exato dos logs
+```bash
+docker logs deploy-backend-1 --tail=50 2>&1 | grep -i "member-access"
+```
+
+6. Correção permanente no código para não quebrar em próximos deploys
+- Atualizar `deploy/fix-member-tables.sql` para também adicionar essas colunas em `member_area_settings`
+- Atualizar `deploy/init-db.sql` para a definição base de `member_area_settings` refletir o schema atual usado pelo app
+- Opcionalmente endurecer `deploy/backend/src/routes/member-access.ts` para tolerar schema legado, mas o ideal é alinhar a VPS ao schema atual
+
+Se quiser, na próxima mensagem me envie exatamente a saída destes 3 comandos:
+```bash
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name = 'member_area_settings'
+ORDER BY ordinal_position;
+"
+
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+
+docker exec deploy-backend-1 wget -qO- http://localhost:3001/api/member-access/5589981340810 2>&1 | head -40
+```
+Com isso eu te digo exatamente o próximo ajuste dentro da VPS antes de qualquer nova alteração no projeto.
