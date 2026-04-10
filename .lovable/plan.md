@@ -1,48 +1,23 @@
 
 
-## Plano: Gestão de Domínios com Seleção para Área de Membros
+## Plano: Separar "Ajustes Entrega" em nova seção da sidebar de Configurações
 
-### Conceito
-Criar uma nova tabela `workspace_domains` para cadastrar domínios manualmente. Cada domínio terá um status (`active`/`inactive`). Na aba Domínio, o usuário poderá:
-1. Cadastrar novos domínios
-2. Ver quais estão ativos (com badge visual)
-3. Remover domínios
-4. Selecionar qual domínio ativo será usado na área de membros (salva em `delivery_settings.custom_domain`)
+### O que muda
 
-### Mudanças
+**1. Nova seção na sidebar: "Ajustes Entrega"** (`src/pages/SettingsPage.tsx`)
+- Adicionar entrada `{ key: "delivery", label: "Ajustes Entrega", icon: Package, minRole: "admin" }` na lista `allSections`
+- Renderizar um novo componente `DeliverySettingsSection` quando `active === "delivery"`
 
-**1. Nova tabela `workspace_domains`** (migração SQL)
-- `id`, `workspace_id`, `domain` (text), `is_active` (boolean, default false), `created_at`
-- RLS padrão do workspace (select/insert/update/delete)
-- Constraint unique em `(workspace_id, domain)`
+**2. Novo componente `DeliverySettingsSection`** (`src/components/settings/DeliverySettingsSection.tsx`)
+- Conterá apenas o campo "Mensagem padrão de entrega" (movido do `DominioTab`)
+- Adicionar um botão/chip de variável `{link}` que insere `{link}` na posição do cursor no Textarea
+- Dica explicativa: "Use `{link}` para posicionar o link de acesso na mensagem. Se não incluído, o link será adicionado na última linha."
+- Botão "Salvar" que persiste em `delivery_settings.delivery_message`
 
-**2. Reescrever `DominioTab`** em `MemberAreaSettingsSection.tsx`
-- Seção superior: lista de domínios cadastrados com badge verde (Ativo) ou cinza (Inativo) e botão de remover
-- Input + botão "Adicionar Domínio" para cadastrar novos
-- Seção "Domínio da Área de Membros": um `Select` dropdown mostrando apenas domínios ativos + opção "Domínio padrão". Ao selecionar, salva em `delivery_settings.custom_domain`
-- Manter instruções de DNS e mensagem de entrega abaixo
-- O campo `is_active` será controlado por um Switch ao lado de cada domínio na lista
+**3. Remover a mensagem de entrega do `DominioTab`** (`src/components/settings/MemberAreaSettingsSection.tsx`)
+- Remover o Card da mensagem de entrega e o state `deliveryMessage` do `DominioTab`
+- O `DominioTab` ficará apenas com: lista de domínios + seleção de domínio ativo + instruções DNS
 
-**3. Registrar a tabela no `migrate-workspace.sql`** e `init-db.sql`
-- Adicionar `workspace_domains` aos arrays de migração para garantir `workspace_id` e RLS na VPS
-
-### Fluxo do usuário
-```text
-┌─────────────────────────────────────────┐
-│  Domínios Cadastrados                   │
-│  ┌───────────────────────────────────┐  │
-│  │ membros.meusite.com  🟢 Ativo [x]│  │
-│  │ app.meusite.com      ⚫ Inativo[x]│  │
-│  └───────────────────────────────────┘  │
-│  [ novo-dominio.com        ] [Adicionar]│
-│                                         │
-│  Domínio da Área de Membros             │
-│  [ ▼ membros.meusite.com           ]   │
-│  (apenas domínios ativos aparecem)      │
-│                                         │
-│  📋 Instruções de DNS ...               │
-│  Mensagem de entrega: [________]        │
-│  [Salvar Configurações]                 │
-└─────────────────────────────────────────┘
-```
+**4. Atualizar componentes que usam `delivery_message`** (se necessário)
+- Verificar `DeliveryFlowDialog` e `LinkGenerator` para garantir que respeitem a posição de `{link}` na mensagem em vez de sempre adicionar no final
 
