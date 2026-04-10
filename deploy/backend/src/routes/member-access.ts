@@ -144,6 +144,7 @@ router.get("/:phone", async (req, res) => {
 
     return res.json({
       phone: normalized,
+      workspace_id: workspaceId,
       settings,
       products: Array.from(productMap.values()),
       offers: offersRes.data || [],
@@ -165,12 +166,14 @@ router.get("/:phone", async (req, res) => {
 // ─── AI Context Route ───
 router.post("/ai-context", async (req, res) => {
   try {
-    const { firstName, products, ownedProductNames, progress, profile } = req.body;
+    const { firstName, products, ownedProductNames, progress, profile, workspaceId } = req.body;
     const sb = getServiceClient();
 
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
+
     const [openaiRes, settingsRes] = await Promise.all([
-      sb.from("openai_settings").select("api_key").limit(1).maybeSingle(),
-      sb.from("member_area_settings").select("ai_persona_prompt").limit(1).maybeSingle(),
+      sb.from("openai_settings").select("api_key").eq("workspace_id", workspaceId).maybeSingle(),
+      sb.from("member_area_settings").select("ai_persona_prompt").eq("workspace_id", workspaceId).maybeSingle(),
     ]);
 
     if (openaiRes.error || !openaiRes.data?.api_key) {
@@ -278,12 +281,14 @@ router.post("/ai-context", async (req, res) => {
 // ─── Offer Pitch Route ───
 router.post("/offer-pitch", async (req, res) => {
   try {
-    const { firstName, offerName, offerDescription, offerPrice, ownedProductNames, ownedProductIds, profile, offerMaterials } = req.body;
+    const { firstName, offerName, offerDescription, offerPrice, ownedProductNames, ownedProductIds, profile, offerMaterials, workspaceId } = req.body;
     const sb = getServiceClient();
 
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
+
     const [openaiRes, settingsRes] = await Promise.all([
-      sb.from("openai_settings").select("api_key").limit(1).maybeSingle(),
-      sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt").limit(1).maybeSingle(),
+      sb.from("openai_settings").select("api_key").eq("workspace_id", workspaceId).maybeSingle(),
+      sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt").eq("workspace_id", workspaceId).maybeSingle(),
     ]);
 
     if (openaiRes.error || !openaiRes.data?.api_key) return res.status(500).json({ error: "OpenAI API key not configured." });
