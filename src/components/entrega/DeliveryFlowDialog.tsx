@@ -506,7 +506,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                   : `${totalVisible} transações disponíveis`}
               </p>
 
-              <ScrollArea className="max-h-[calc(70vh-200px)]">
+              <ScrollArea className="h-[calc(70vh-200px)]">
                 <div className="space-y-2 pr-2">
                   {filteredTxs.map((tx) => {
                     const isLinked = !!tx.customer_phone;
