@@ -4,6 +4,24 @@ import { normalizePhone } from "../lib/normalize-phone";
 
 const router = Router();
 
+function generateVariations(phone: string): string[] {
+  const s = new Set<string>();
+  s.add(phone);
+  let base = phone.startsWith("55") && phone.length >= 12 ? phone.slice(2) : phone;
+  s.add(base);
+  s.add("55" + base);
+  const ddd = base.slice(0, 2);
+  const rest = base.slice(2);
+  if (rest.length === 9 && rest[0] === "9") {
+    s.add(ddd + rest.slice(1));
+    s.add("55" + ddd + rest.slice(1));
+  } else if (rest.length === 8) {
+    s.add(ddd + "9" + rest);
+    s.add("55" + ddd + "9" + rest);
+  }
+  return Array.from(s).filter(Boolean);
+}
+
 router.get("/:phone", async (req, res) => {
   try {
     const normalized = normalizePhone(req.params.phone);
@@ -11,12 +29,7 @@ router.get("/:phone", async (req, res) => {
       return res.status(400).json({ error: "Telefone inválido" });
     }
 
-    const phoneCandidates = Array.from(
-      new Set([
-        normalized,
-        normalized.startsWith("55") ? normalized.slice(2) : normalized,
-      ].filter(Boolean))
-    );
+    const phoneCandidates = generateVariations(normalized);
 
     const sb = getServiceClient();
 

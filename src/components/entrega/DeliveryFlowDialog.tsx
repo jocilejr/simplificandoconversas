@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/normalizePhone";
-import { generatePhoneVariations } from "@/lib/phoneNormalization";
+import { generatePhoneVariations, findExistingMemberPhone } from "@/lib/phoneNormalization";
 import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -210,7 +210,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       const [convosRes, txRes, memberRes, allProductsRes] = await Promise.all([
         supabase.from("conversations").select("id, phone_number, contact_name, email").eq("workspace_id", workspaceId),
         supabase.from("transactions").select("customer_document, customer_name, customer_email, customer_phone").eq("workspace_id", workspaceId).not("customer_phone", "is", null),
-        supabase.from("member_products" as any).select("product_id, is_active").eq("workspace_id", workspaceId).in("phone", variations),
+        supabase.from("member_products" as any).select("product_id, is_active, phone").eq("workspace_id", workspaceId).in("phone", variations),
         supabase.from("delivery_products").select("id, name").eq("workspace_id", workspaceId),
       ]);
 
@@ -279,8 +279,15 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         if (conversationInsertError) throw conversationInsertError;
       }
 
+      const existingPhone = findExistingMemberPhone(
+        ((memberRes.data || []) as any[]),
+        phone,
+        product.id
+      );
+      const phoneForUrl = existingPhone || normalized;
+
       const { error: memberProductError } = await supabase.from("member_products").upsert(
-        { workspace_id: workspaceId, product_id: product.id, phone: normalized, is_active: true } as any,
+        { workspace_id: workspaceId, product_id: product.id, phone: phoneForUrl, is_active: true } as any,
         { onConflict: "product_id,phone" }
       );
       if (memberProductError) throw memberProductError;
@@ -310,7 +317,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       let domainRaw = (settings as any).custom_domain;
       if (!domainRaw.startsWith("http")) domainRaw = `https://${domainRaw}`;
       const domain = domainRaw;
-      const finalLink = `${domain.replace(/\/$/, "")}/${normalized}`;
+      const finalLink = `${domain.replace(/\/$/, "")}/${phoneForUrl}`;
       const deliveryMsg = (settings as any)?.delivery_message;
       const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
       setLink(finalLink);

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Check, Copy, Link2, Search, UserCheck, UserPlus, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/normalizePhone";
+import { generatePhoneVariations, findExistingMemberPhone } from "@/lib/phoneNormalization";
 
 interface Props {
   open: boolean;
@@ -79,9 +80,25 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
         return;
       }
 
+      // Step 0: Check for existing member_products
+      const cleanDigits = phone.replace(/\D/g, "").replace(/^0+/, "");
+      const variations = generatePhoneVariations(phone);
+      const { data: existingMembers } = await supabase
+        .from("member_products" as any)
+        .select("phone, is_active, product_id")
+        .eq("workspace_id", workspaceId)
+        .eq("product_id", product.id)
+        .in("phone", variations);
+      
+      const existingPhone = findExistingMemberPhone(
+        ((existingMembers || []) as any[]),
+        phone,
+        product.id
+      );
+      const phoneForUrl = existingPhone || normalized;
+
       // Step 1: Search lead
       setStep({ status: "searching" });
-      await new Promise((r) => setTimeout(r, 600));
 
       let matchedName: string | null = null;
 
@@ -132,7 +149,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
           {
             workspace_id: workspaceId,
             product_id: product.id,
-            phone: normalized,
+            phone: phoneForUrl,
             is_active: true,
           } as any,
           { onConflict: "product_id,phone" }
@@ -170,7 +187,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
           {
             workspace_id: workspaceId,
             product_id: product.id,
-            phone: normalized,
+            phone: phoneForUrl,
             is_active: true,
           } as any,
           { onConflict: "product_id,phone" }
@@ -198,7 +215,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
       if (!domain.startsWith("http")) {
         domain = `https://${domain}`;
       }
-      const link = `${domain.replace(/\/$/, "")}/${normalized}`;
+      const link = `${domain.replace(/\/$/, "")}/${phoneForUrl}`;
       const deliveryMsg = (settings as any)?.delivery_message;
       let finalMessage: string;
       if (deliveryMsg && deliveryMsg.includes("{link}")) {
