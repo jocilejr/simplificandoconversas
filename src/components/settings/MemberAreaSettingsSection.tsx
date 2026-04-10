@@ -331,7 +331,7 @@ function DominioTab() {
               <p className="text-muted-foreground mb-1">Registro A — aponta seu subdomínio para o servidor</p>
               <p><strong>Tipo:</strong> A</p>
               <p><strong>Nome:</strong> membros <span className="text-muted-foreground">(ou o subdomínio desejado)</span></p>
-              <p><strong>Valor:</strong> <span className="text-primary font-bold">{serverHost}</span></p>
+              <p><strong>Valor:</strong> <span className="text-primary font-bold">{serverIp}</span></p>
             </div>
             <p className="text-xs text-amber-500">
               ⚠️ Após criar o registro, aguarde até 24h para propagação do DNS.
