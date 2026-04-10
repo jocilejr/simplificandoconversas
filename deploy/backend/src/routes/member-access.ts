@@ -62,7 +62,7 @@ router.get("/:phone", async (req, res) => {
     // Step 3: fetch settings, categories, materials, offers, and customer in parallel
     const [settingsRes, categoriesRes, materialsRes, offersRes, customerRes, memberSettingsRes] = await Promise.all([
       sb.from("member_area_settings")
-        .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt")
+        .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt, ai_model")
         .eq("workspace_id", workspaceId)
         .maybeSingle(),
       sb.from("member_product_categories")
@@ -166,7 +166,7 @@ router.get("/:phone", async (req, res) => {
 // ─── AI Context Route ───
 router.post("/ai-context", async (req, res) => {
   try {
-    const { firstName, products, ownedProductNames, progress, profile, workspaceId } = req.body;
+    const { firstName, products, ownedProductNames, progress, profile, workspaceId, phone: reqPhone } = req.body;
     const sb = getServiceClient();
 
     if (!workspaceId) return res.status(400).json({ error: "workspaceId is required" });
@@ -197,8 +197,9 @@ router.post("/ai-context", async (req, res) => {
       return res.status(500).json({ error: "OpenAI API key not configured." });
     }
 
-    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt").eq("workspace_id", workspaceId).maybeSingle();
+    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, ai_model").eq("workspace_id", workspaceId).maybeSingle();
     const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
+    const aiModel = (settingsRes.data as any)?.ai_model || "gpt-4o-mini";
 
     const categories = [
       { id: "salmo", instruction: "Compartilhe um salmo ou versículo bíblico que combina com o momento dessa pessoa. Cite o livro, capítulo e versículo. Conecte o versículo com algo pessoal dela." },
@@ -252,13 +253,30 @@ router.post("/ai-context", async (req, res) => {
 
     const systemPrompt = `Você é uma amiga mandando UMA ÚNICA mensagem curta no WhatsApp.\n${personaBlock}\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}\n${chosen.instruction}\n\nADAPTE O TOM ao perfil:\n${profileCategory === "novo" ? "MEMBRO NOVA: Boas-vindas calorosas. Mostre que fez a escolha certa." : ""}${profileCategory === "inativo" ? "MEMBRO INATIVA: Mostre que sentiu falta. NÃO critique a ausência." : ""}${profileCategory === "fiel" ? "MEMBRO FIEL: Reconheça a dedicação e fidelidade." : ""}${profileCategory === "regular" ? "MEMBRO REGULAR: Tom amigável e encorajador." : ""}\n\nREGRAS ABSOLUTAS:\n- Gere APENAS 1 mensagem. UMA. Não duas.\n- PROIBIDO usar travessão (—) ou travessão curto (–)\n- A mensagem DEVE incluir o nome da pessoa de forma natural\n- NUNCA use termos genéricos como "este material", "este conteúdo"\n- SEMPRE cite nomes EXATOS dos produtos e materiais\n- Tom: amiga próxima mandando mensagem no WhatsApp\n- NUNCA use termos de marketing\n- NUNCA mencione valores ou preços\n- Máximo 3 frases curtas\n- Use 1 emoji no máximo\n- Seja CRIATIVA e ORIGINAL`;
 
-    const userPrompt = `Nome: ${firstName || "Querido(a)"}\n\n${profileContext}\n\nProdutos com acesso:\n- ${productList || "Nenhum produto específico"}\n\nNomes dos produtos: ${ownedNames}\n\nPROGRESSO:\n- ${progressContext}\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()} - ${chosen.instruction}`;
+    // Query lead data if phone provided
+    let leadContext = "";
+    if (reqPhone) {
+      const phoneCandidates = generateVariations(normalizePhone(reqPhone) || reqPhone);
+      const { data: leadRow } = await sb
+        .from("customers")
+        .select("name, first_seen_at, total_paid, total_transactions")
+        .eq("workspace_id", workspaceId)
+        .in("normalized_phone", phoneCandidates)
+        .limit(1)
+        .maybeSingle();
+      if (leadRow) {
+        const lr = leadRow as any;
+        leadContext = `\n\nDADOS DO LEAD:\n- Nome completo: ${lr.name || "desconhecido"}\n- Primeiro contato: ${lr.first_seen_at || "desconhecido"}\n- Total pago: R$ ${Number(lr.total_paid || 0).toFixed(2).replace('.', ',')}\n- Total de transações: ${lr.total_transactions || 0}`;
+      }
+    }
+
+    const userPrompt = `Nome: ${firstName || "Querido(a)"}\n\n${profileContext}\n\nProdutos com acesso:\n- ${productList || "Nenhum produto específico"}\n\nNomes dos produtos: ${ownedNames}\n\nPROGRESSO:\n- ${progressContext}\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()} - ${chosen.instruction}${leadContext}`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: aiModel,
         temperature: 1.1,
         messages: [
           { role: "system", content: systemPrompt },
@@ -329,10 +347,11 @@ router.post("/offer-pitch", async (req, res) => {
       return res.status(500).json({ error: "OpenAI API key not configured." });
     }
 
-    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt").eq("workspace_id", workspaceId).maybeSingle();
+    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, offer_prompt, ai_model").eq("workspace_id", workspaceId).maybeSingle();
 
     const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
     const customOfferPrompt = (settingsRes.data as any)?.offer_prompt || "";
+    const offerAiModel = (settingsRes.data as any)?.ai_model || "gpt-4o-mini";
 
     // Knowledge context
     let knowledgeContext = "";
@@ -395,7 +414,7 @@ router.post("/offer-pitch", async (req, res) => {
       method: "POST",
       headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: offerAiModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Gere as 3 mensagens de chat para ${firstName} sobre "${offerName}".` },

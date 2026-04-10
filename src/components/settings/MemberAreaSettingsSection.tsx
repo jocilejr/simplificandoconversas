@@ -86,6 +86,7 @@ function AjustesTab() {
   const [aiPersonaPrompt, setAiPersonaPrompt] = useState("");
   const [greetingPrompt, setGreetingPrompt] = useState("");
   const [offerPrompt, setOfferPrompt] = useState("");
+  const [aiModel, setAiModel] = useState("gpt-4o-mini");
   const [loaded, setLoaded] = useState(false);
 
   if (settings && !loaded) {
@@ -95,6 +96,7 @@ function AjustesTab() {
     setAiPersonaPrompt(settings.ai_persona_prompt || DEFAULT_PERSONA);
     setGreetingPrompt(settings.greeting_prompt || DEFAULT_GREETING);
     setOfferPrompt(settings.offer_prompt || DEFAULT_OFFER);
+    setAiModel(settings.ai_model || "gpt-4o-mini");
     setLoaded(true);
   }
 
@@ -107,6 +109,7 @@ function AjustesTab() {
         ai_persona_prompt: aiPersonaPrompt || null,
         greeting_prompt: greetingPrompt || null,
         offer_prompt: offerPrompt || null,
+        ai_model: aiModel || "gpt-4o-mini",
       };
       if (settings?.id) {
         const { error } = await supabase.from("member_area_settings" as any).update(payload).eq("id", settings.id);
@@ -145,6 +148,22 @@ function AjustesTab() {
         </div>
         <div className="border-t border-border pt-4 mt-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Prompts de IA</h3>
+        </div>
+        <div>
+          <Label>Modelo OpenAI</Label>
+          <Select value={aiModel} onValueChange={setAiModel}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o modelo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gpt-4o-mini">gpt-4o-mini (padrão)</SelectItem>
+              <SelectItem value="gpt-4o">gpt-4o</SelectItem>
+              <SelectItem value="gpt-4.1-mini">gpt-4.1-mini</SelectItem>
+              <SelectItem value="gpt-4.1">gpt-4.1</SelectItem>
+              <SelectItem value="o4-mini">o4-mini</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground mt-1">Modelo usado para saudações e ofertas na área de membros</p>
         </div>
         <div>
           <Label>Personalidade da IA (persona)</Label>

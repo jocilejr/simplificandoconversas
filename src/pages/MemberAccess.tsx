@@ -304,7 +304,7 @@ export default function MemberAccess() {
       const aiRes = await fetch("/api/member-access/ai-context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData, workspaceId: wsId }),
+        body: JSON.stringify({ firstName, products: productsPayload, ownedProductNames: ownedProductNamesPayload, progress: progressPayload, profile: profileData, workspaceId: wsId, phone: phone?.replace(/\D/g, "") }),
       });
       const data = aiRes.ok ? await aiRes.json() : null;
       const error = aiRes.ok ? null : "AI request failed";
