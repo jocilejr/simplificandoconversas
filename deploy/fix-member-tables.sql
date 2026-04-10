@@ -73,6 +73,20 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- Add FK to delivery_products for PostgREST joins (idempotent)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'member_area_offers_product_id_fkey'
+      AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.member_area_offers
+      ADD CONSTRAINT member_area_offers_product_id_fkey
+      FOREIGN KEY (product_id) REFERENCES public.delivery_products(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
 -- ============================================================
 -- 2. Drop old member tables (schema changed)
 -- ============================================================

@@ -787,6 +787,20 @@ CREATE TABLE IF NOT EXISTS public.member_area_offers (
 ALTER TABLE public.member_area_offers ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
 
+-- FK for PostgREST relationship resolution
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'member_area_offers_product_id_fkey'
+      AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.member_area_offers
+      ADD CONSTRAINT member_area_offers_product_id_fkey
+      FOREIGN KEY (product_id) REFERENCES public.delivery_products(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.member_product_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
