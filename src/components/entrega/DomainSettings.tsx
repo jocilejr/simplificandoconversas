@@ -30,8 +30,6 @@ export function DomainSettings() {
   const { register, handleSubmit, reset } = useForm({
     defaultValues: {
       custom_domain: "",
-      global_redirect_url: "",
-      link_message_template: "Olá! Aqui está seu acesso: {link}",
     },
   });
 
@@ -39,8 +37,6 @@ export function DomainSettings() {
     if (settings) {
       reset({
         custom_domain: settings.custom_domain || "",
-        global_redirect_url: settings.global_redirect_url || "",
-        link_message_template: settings.link_message_template || "Olá! Aqui está seu acesso: {link}",
       });
     }
   }, [settings, reset]);
@@ -74,20 +70,6 @@ export function DomainSettings() {
             <Input {...register("custom_domain")} placeholder="entrega.meusite.com" />
             <p className="text-xs text-muted-foreground mt-1">
               Configure um CNAME apontando para seu servidor. Deixe vazio para usar o domínio padrão.
-            </p>
-          </div>
-          <div>
-            <Label>URL de Redirecionamento Global</Label>
-            <Input {...register("global_redirect_url")} placeholder="https://meusite.com/obrigado" />
-            <p className="text-xs text-muted-foreground mt-1">
-              Usado quando o produto não possui URL de redirecionamento própria
-            </p>
-          </div>
-          <div>
-            <Label>Template da Mensagem de Link</Label>
-            <Textarea {...register("link_message_template")} rows={3} />
-            <p className="text-xs text-muted-foreground mt-1">
-              Use <code className="bg-muted px-1 rounded">{"{link}"}</code> onde o link deve aparecer
             </p>
           </div>
 
