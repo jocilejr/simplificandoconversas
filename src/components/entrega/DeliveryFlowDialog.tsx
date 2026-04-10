@@ -142,9 +142,9 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
     // 2) Fetch all approved PIX transactions
     const { data, error } = await supabase
       .from("transactions")
-      .select("id, amount, customer_name, customer_document, customer_phone, created_at, paid_at")
+      .select("id, amount, customer_name, customer_document, customer_phone, created_at, paid_at, type")
       .eq("workspace_id", workspaceId)
-      .eq("type", "pix")
+      .in("type", ["pix", "pix_openpix", "openpix"])
       .eq("status", "aprovado")
       .order("paid_at", { ascending: false, nullsFirst: false });
     setLoadingTxs(false);
@@ -392,7 +392,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
         </div>
 
         {/* ── Content ── */}
-        <div className="px-6 py-5 min-h-[220px] max-h-[calc(90vh-120px)] overflow-y-auto">
+        <div className="px-6 py-5 min-h-[220px]">
           {/* Step: Phone */}
           {step === "phone" && (
             <div className="space-y-5">
@@ -514,7 +514,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                   : `${totalVisible} transações disponíveis`}
               </p>
 
-              <ScrollArea className="max-h-[400px]">
+              <ScrollArea className="max-h-[calc(70vh-200px)]">
                 <div className="space-y-2 pr-2">
                   {filteredTxs.map((tx) => {
                     const isLinked = !!tx.customer_phone;
