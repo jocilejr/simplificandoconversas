@@ -1,108 +1,70 @@
 
-## Plano: Corrigir o novo erro ao salvar ofertas na VPS
+
+## Plano: Corrigir listagem de ofertas (join PostgREST falhando)
 
 ### Diagnóstico
-O erro do print não é de permissão. É uma divergência de schema na VPS:
+A oferta é salva corretamente, mas **não aparece na lista** porque a query usa um join embutido do PostgREST:
 
-- o frontend salva oferta usando `name`
-- o código atual não envia `title`
-- mas a tabela `member_area_offers` na sua VPS ainda está exigindo `title NOT NULL`
+```typescript
+.select("*, delivery_products(name, page_logo)")
+```
 
-Resultado: o insert falha com `null value in column "title"`.
+Para isso funcionar, o PostgREST precisa de uma **foreign key** entre `member_area_offers.product_id` e `delivery_products.id`. Essa FK não existe na VPS — o `fix-member-tables.sql` apenas faz `ADD COLUMN IF NOT EXISTS product_id uuid` sem constraint.
 
-Além disso, o repositório está inconsistente:
-- `src/pages/AreaMembros.tsx` usa `name`
-- `supabase/migrations/...member_area_offers...sql` usa só `name`
-- `deploy/init-db.sql` ainda carrega legado com `title`
-- `deploy/fix-member-tables.sql` não corrige um `title NOT NULL` já existente
+Quando o PostgREST não consegue resolver o relacionamento, ele retorna erro ou array vazio, e a lista fica vazia.
 
-### O que vou ajustar
+### Correções
 
-**1. Corrigir o schema de ofertas na VPS**
-Arquivo: `deploy/fix-member-tables.sql`
-
-Adicionar um bloco de compatibilidade para:
-- garantir `name`
-- garantir `title` apenas como legado opcional
-- remover `NOT NULL` de `title`
-- preencher `name` a partir de `title` quando necessário
-- preencher `title` a partir de `name` quando necessário
-- definir `name` como campo canônico
-
-Em prática, a correção fará algo nessa linha:
+**1. Adicionar FK no banco (`deploy/fix-member-tables.sql`)**
+Adicionar após os ALTERs de `member_area_offers`:
 ```sql
-ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS name text;
-ALTER TABLE public.member_area_offers ADD COLUMN IF NOT EXISTS title text;
-ALTER TABLE public.member_area_offers ALTER COLUMN title DROP NOT NULL;
-
-UPDATE public.member_area_offers
-SET name = COALESCE(NULLIF(name, ''), NULLIF(title, ''), 'Oferta')
-WHERE name IS NULL OR btrim(name) = '';
-
-UPDATE public.member_area_offers
-SET title = COALESCE(NULLIF(title, ''), name, 'Oferta')
-WHERE title IS NULL OR btrim(title) = '';
-
-ALTER TABLE public.member_area_offers ALTER COLUMN name SET DEFAULT 'Oferta';
-ALTER TABLE public.member_area_offers ALTER COLUMN name SET NOT NULL;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'member_area_offers_product_id_fkey'
+  ) THEN
+    ALTER TABLE public.member_area_offers
+      ADD CONSTRAINT member_area_offers_product_id_fkey
+      FOREIGN KEY (product_id) REFERENCES public.delivery_products(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 ```
 
-**2. Unificar o schema base para novas VPS**
-Arquivo: `deploy/init-db.sql`
+**2. Blindar a query no frontend (`src/pages/AreaMembros.tsx`)**
+Caso a FK ainda falhe em algum ambiente, mudar a query para buscar ofertas e produtos separadamente e fazer o merge em memória (padrão já usado em outras partes do sistema):
 
-Deixar o schema inicial coerente com o app atual:
-- `name` como campo principal
-- `title` apenas legado opcional, sem `NOT NULL`
-- evitar que uma instalação nova recrie o problema
-
-**3. Blindar a leitura das ofertas**
-Arquivo: `deploy/backend/src/routes/member-access.ts`
-
-Ao retornar ofertas para a área de membros, normalizar o nome:
-```ts
-name: offer.name || offer.title || "Oferta"
+```typescript
+// Buscar ofertas sem join
+const { data } = await supabase
+  .from("member_area_offers")
+  .select("*")
+  .eq("workspace_id", workspaceId!)
+  .order("sort_order");
+return data || [];
 ```
 
-Isso evita card vazio caso existam registros antigos na VPS.
+E no render, buscar o nome do produto do array `products` já carregado:
+```typescript
+const product = products?.find(p => p.id === offer.product_id);
+const productName = product?.name || offer.name || "Oferta";
+```
 
-**4. Blindar a listagem/admin das ofertas**
-Arquivo: `src/pages/AreaMembros.tsx`
+Isso segue o padrão de **merge em memória** já documentado no projeto para evitar dependência de FKs no PostgREST da VPS.
 
-Manter o save usando `name`, mas ajustar a exibição para fallback seguro em registros antigos:
-- exibir `offer.name || offer.title || "Oferta"`
+**3. Atualizar `deploy/init-db.sql`**
+Incluir a FK na definição base para novas instalações.
 
-### Verificação que vou te pedir para rodar DENTRO da VPS
-Antes e depois da correção, quero que você rode estes comandos:
-
+### Verificação na VPS
+Após `./update.sh`, rode:
 ```bash
-cd ~/simplificandoconversas/deploy
-
 docker compose exec -T postgres psql -U postgres -d postgres -c "
-SELECT column_name, is_nullable, column_default
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name = 'member_area_offers'
-  AND column_name IN ('name','title')
-ORDER BY column_name;
+SELECT * FROM public.member_area_offers ORDER BY created_at DESC LIMIT 5;
 "
 ```
 
-```bash
-docker compose exec -T postgres psql -U postgres -d postgres -c "
-SELECT
-  count(*) FILTER (WHERE name IS NULL OR btrim(name) = '') AS sem_name,
-  count(*) FILTER (WHERE title IS NULL OR btrim(title) = '') AS sem_title
-FROM public.member_area_offers;
-"
-```
+### Resultado
+- Ofertas salvas aparecem imediatamente na lista
+- Não depende mais de join PostgREST funcionar
+- FK adicionada para ambientes futuros
 
-Depois da atualização, o esperado é:
-- `name` preenchido
-- `title` permitido como nulo
-- criação de oferta funcionando sem erro
-
-### Resultado esperado
-- o modal “Nova Oferta” volta a salvar normalmente
-- ofertas antigas continuam aparecendo
-- a VPS deixa de depender do campo legado `title`
-- o problema não volta em futuras atualizações do `./update.sh`
