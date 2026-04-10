@@ -250,7 +250,8 @@ DECLARE _t text;
   _tables text[] := ARRAY[
     'member_product_categories','member_product_materials','member_sessions',
     'member_content_progress','member_pixel_frames','member_offer_impressions',
-    'daily_prayers','openai_settings','product_knowledge_summaries','manual_boleto_settings'
+    'daily_prayers','openai_settings','product_knowledge_summaries','manual_boleto_settings',
+    'member_area_offers'
   ];
 BEGIN
   FOREACH _t IN ARRAY _tables LOOP
