@@ -1,19 +1,31 @@
 
 
-## Plano: Adicionar coluna `granted_at` em `member_products`
+## Plano: Corrigir CORS da página pública de membros
 
 ### Causa raiz
-O endpoint `member-access/:phone` faz `SELECT ... granted_at` na tabela `member_products`, mas essa coluna não existe na VPS.
+A página pública em `membros.origemdavida.online` chama `apiUrl("member-access/...")` que resolve para `https://api.chatbotsimplificado.com/functions/v1/member-access/...`. O Nginx do API_DOMAIN retorna `Access-Control-Allow-Origin: https://app.chatbotsimplificado.com`, que não corresponde à origem `membros.origemdavida.online` — bloqueio de CORS.
 
-### Correções
+O domínio de membros (`MEMBER_DOMAIN`) já possui proxy próprio em `/api/member-access/` no Nginx (linhas 73-78 da config). Ou seja, a chamada deveria ser **relativa** (`/api/member-access/...`), não absoluta para o API_DOMAIN.
 
-1. **`deploy/fix-member-tables.sql`** — adicionar `ALTER TABLE member_products ADD COLUMN IF NOT EXISTS granted_at TIMESTAMPTZ DEFAULT now();` junto aos outros ALTERs
+### Correção
 
-2. **`deploy/init-db.sql`** — incluir `granted_at` na definição base de `member_products` para novos deploys
+**1. `src/pages/MemberAccess.tsx`** — usar URL relativa para o endpoint de member-access em vez de `apiUrl()`:
 
-### Comando imediato na VPS
+```typescript
+// ANTES
+const response = await fetch(apiUrl(`member-access/${digits}`));
+
+// DEPOIS
+const response = await fetch(`/api/member-access/${digits}`);
+```
+
+Isso faz a requisição bater no próprio domínio (`membros.origemdavida.online/api/member-access/...`), onde o Nginx do MEMBER_DOMAIN já faz proxy para o backend — sem problema de CORS.
+
+**2. Também verificar** se há outras chamadas `apiUrl()` ou chamadas ao Supabase client (`supabase.from(...)`, `supabase.rpc(...)`, `supabase.functions.invoke(...)`) no `MemberAccess.tsx` que possam sofrer o mesmo bloqueio. Se houver, precisaremos adicionar o `MEMBER_DOMAIN` ao CORS do API_DOMAIN no Nginx, ou criar proxies adicionais no bloco do MEMBER_DOMAIN.
+
+### Verificação na VPS após deploy
 ```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "ALTER TABLE member_products ADD COLUMN IF NOT EXISTS granted_at TIMESTAMPTZ DEFAULT now();"
-docker compose -f ~/simplificandoconversas/deploy/docker-compose.yml restart backend
+# Testar se a chamada relativa funciona
+curl -I "https://membros.origemdavida.online/api/member-access/5589981340810"
 ```
 
