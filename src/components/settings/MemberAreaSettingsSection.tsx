@@ -154,14 +154,6 @@ function DominioTab() {
     },
   });
 
-  const [deliveryMessage, setDeliveryMessage] = useState("");
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
-
-  if (settings && !settingsLoaded) {
-    setDeliveryMessage((settings as any).delivery_message || "");
-    setSettingsLoaded(true);
-  }
-
   const activeDomains = domains.filter((d) => d.is_active);
   const selectedDomain = settings?.custom_domain || "";
 
@@ -206,10 +198,10 @@ function DominioTab() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Save delivery settings (selected domain + message)
+  // Save delivery settings (selected domain)
   const saveMut = useMutation({
     mutationFn: async (customDomain: string) => {
-      const data = { custom_domain: customDomain || null, delivery_message: deliveryMessage || null } as any;
+      const data = { custom_domain: customDomain || null } as any;
       if (settings) {
         const { error } = await supabase.from("delivery_settings").update(data).eq("id", settings.id);
         if (error) throw error;
@@ -353,30 +345,6 @@ function DominioTab() {
         </CardContent>
       </Card>
 
-      {/* Mensagem de entrega */}
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <div>
-            <Label>Mensagem padrão de entrega</Label>
-            <Textarea
-              value={deliveryMessage}
-              onChange={(e) => setDeliveryMessage(e.target.value)}
-              rows={4}
-              placeholder="Olá! Seu acesso está liberado..."
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Enviada junto com o link ao liberar acesso. O link será adicionado na última linha.
-            </p>
-          </div>
-          <Button
-            onClick={() => saveMut.mutate(selectedDomain)}
-            className="w-full"
-            disabled={saveMut.isPending}
-          >
-            {saveMut.isPending ? "Salvando..." : "Salvar Configurações"}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
