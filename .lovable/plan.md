@@ -1,31 +1,49 @@
 
 
-## Plano: Auto-criar tabelas no update.sh + Pré-preencher prompts de IA
+## Plano: Seletor de modelo OpenAI + Injetar dados do lead na IA
 
-### Problema
-1. O `update.sh` não executa o `fix-member-tables.sql`, então as colunas `ai_persona_prompt`, `greeting_prompt` e `offer_prompt` podem não existir na VPS
-2. Os campos de prompt na UI aparecem vazios mesmo existindo scripts hardcodados no backend
+### Problemas identificados
+
+1. **Modelo hardcodado**: Ambas as rotas (`/ai-context` e `/offer-pitch`) usam `gpt-4o-mini` fixo no código. Não há como trocar.
+2. **Sem dados do lead**: A rota `/ai-context` recebe `profile` (memberSince, totalPaid etc.) mas **não recebe nem consulta dados do lead** (nome do contato, tags, histórico de conversas, notas). A IA gera mensagens sem contexto sobre o relacionamento anterior.
 
 ### Alterações
 
-**1. `deploy/update.sh`** — Adicionar execução do `fix-member-tables.sql` logo após o `migrate-workspace.sql` (linha ~461):
+**1. Frontend — `src/components/settings/MemberAreaSettingsSection.tsx`**
 
-```bash
-echo "   → Applying member tables fix..."
-docker compose exec -T postgres psql -U postgres -d postgres < "$DEPLOY_DIR/fix-member-tables.sql"
-echo "✓ Member tables fix aplicado"
+Adicionar um `<Select>` na seção "Prompts de IA" do `AjustesTab` para escolher o modelo OpenAI:
+- Opções: `gpt-4o-mini` (padrão), `gpt-4o`, `gpt-4.1-mini`, `gpt-4.1`, `o4-mini`
+- Novo estado `aiModel` com default `gpt-4o-mini`
+- Carregar de `settings.ai_model` e salvar no payload como `ai_model`
+
+**2. Backend — `deploy/backend/src/routes/member-access.ts`**
+
+Rota `GET /:phone`:
+- Já retorna `settings` — adicionar `ai_model` ao select de `member_area_settings`
+
+Rota `POST /ai-context`:
+- Ler `ai_model` de `member_area_settings` junto com `ai_persona_prompt` e `greeting_prompt`
+- Usar `settings.ai_model || "gpt-4o-mini"` na chamada à OpenAI
+- **Buscar dados do lead**: consultar tabela `customers` pelo `workspaceId` + phone (receber phone no body) para pegar nome, tags, total_paid, total_transactions, first_seen_at
+- Injetar esses dados no `userPrompt` como bloco `DADOS DO LEAD`
+
+Rota `POST /offer-pitch`:
+- Ler `ai_model` da mesma forma
+- Usar na chamada à OpenAI
+
+**3. Database — `deploy/fix-member-tables.sql`**
+
+Adicionar coluna:
+```sql
+ALTER TABLE member_area_settings ADD COLUMN IF NOT EXISTS ai_model text DEFAULT 'gpt-4o-mini';
 ```
 
-**2. `src/components/settings/MemberAreaSettingsSection.tsx`** — No bloco `if (settings && !loaded)` (linhas 40-48), pré-preencher os campos com os defaults hardcodados do backend quando estiverem vazios:
+**4. Frontend — `src/pages/MemberAccess.tsx`**
 
-- **ai_persona_prompt**: `"Você é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Fala com carinho, como uma amiga próxima. Nunca usa termos de marketing."`
-- **greeting_prompt**: O system prompt completo com categorias, regras absolutas e tom por perfil (extraído de `member-access.ts` linhas 249-253)
-- **offer_prompt**: O system prompt completo do pitch de oferta com estrutura dos 3 balões (extraído de `member-access.ts` linhas 383-391)
-
-Os defaults serão constantes no topo do componente. Ao salvar, o valor vai para o banco e o backend passa a usar o valor salvo em vez do hardcoded.
+Na chamada `loadAiContext`, adicionar `phone` ao payload enviado para `/ai-context` para que o backend possa buscar dados do lead.
 
 ### Resultado
-- `./update.sh` cria automaticamente todas as tabelas e colunas necessárias
-- Ao abrir Configurações > Área de Membros > Ajustes, os campos já aparecem preenchidos com o script atual da IA
-- Você pode editar e salvar a qualquer momento
+- Em Configurações > Área de Membros > Ajustes, aparece um dropdown para escolher o modelo
+- A IA recebe dados do lead (nome, valor pago, transações, data de entrada) para personalizar melhor
+- Rodar `./update.sh` na VPS aplica a coluna automaticamente
 
