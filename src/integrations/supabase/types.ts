@@ -625,6 +625,38 @@ export type Database = {
           },
         ]
       }
+      daily_prayers: {
+        Row: {
+          created_at: string
+          day_number: number
+          id: string
+          text: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          day_number: number
+          id?: string
+          text: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          day_number?: number
+          id?: string
+          text?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_prayers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       delivery_accesses: {
         Row: {
           accessed_at: string
@@ -2056,6 +2088,38 @@ export type Database = {
           },
         ]
       }
+      manual_boleto_settings: {
+        Row: {
+          created_at: string
+          id: string
+          updated_at: string
+          webhook_url: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          webhook_url?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          webhook_url?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_boleto_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_area_offers: {
         Row: {
           card_payment_url: string | null
@@ -2185,6 +2249,127 @@ export type Database = {
             foreignKeyName: "member_area_settings_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_content_progress: {
+        Row: {
+          created_at: string
+          current_page: number
+          id: string
+          last_accessed_at: string
+          material_id: string
+          normalized_phone: string
+          progress_type: string
+          total_pages: number
+          video_duration: number
+          video_seconds: number
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          current_page?: number
+          id?: string
+          last_accessed_at?: string
+          material_id: string
+          normalized_phone: string
+          progress_type?: string
+          total_pages?: number
+          video_duration?: number
+          video_seconds?: number
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          current_page?: number
+          id?: string
+          last_accessed_at?: string
+          material_id?: string
+          normalized_phone?: string
+          progress_type?: string
+          total_pages?: number
+          video_duration?: number
+          video_seconds?: number
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_content_progress_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_offer_impressions: {
+        Row: {
+          clicked: boolean
+          created_at: string
+          id: string
+          impression_count: number
+          last_shown_at: string
+          normalized_phone: string
+          offer_id: string
+        }
+        Insert: {
+          clicked?: boolean
+          created_at?: string
+          id?: string
+          impression_count?: number
+          last_shown_at?: string
+          normalized_phone: string
+          offer_id: string
+        }
+        Update: {
+          clicked?: boolean
+          created_at?: string
+          id?: string
+          impression_count?: number
+          last_shown_at?: string
+          normalized_phone?: string
+          offer_id?: string
+        }
+        Relationships: []
+      }
+      member_pixel_frames: {
+        Row: {
+          created_at: string
+          fired: boolean
+          fired_at: string | null
+          id: string
+          normalized_phone: string
+          product_name: string | null
+          product_value: number | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          fired?: boolean
+          fired_at?: string | null
+          id?: string
+          normalized_phone: string
+          product_name?: string | null
+          product_value?: number | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          fired?: boolean
+          fired_at?: string | null
+          id?: string
+          normalized_phone?: string
+          product_name?: string | null
+          product_value?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_pixel_frames_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
@@ -2545,6 +2730,38 @@ export type Database = {
           },
         ]
       }
+      openai_settings: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openai_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_connections: {
         Row: {
           created_at: string | null
@@ -2579,6 +2796,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "fk_platform_connections_workspace"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_knowledge_summaries: {
+        Row: {
+          created_at: string
+          id: string
+          key_topics: string[]
+          product_id: string
+          summary: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key_topics?: string[]
+          product_id: string
+          summary?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key_topics?: string[]
+          product_id?: string
+          summary?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_knowledge_summaries_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -3255,6 +3510,11 @@ export type Database = {
           _workspace_id: string
         }
         Returns: boolean
+      }
+      increment_offer_click: { Args: { offer_id: string }; Returns: undefined }
+      increment_offer_impression: {
+        Args: { offer_id: string }
+        Returns: undefined
       }
       increment_unread: { Args: { conv_id: string }; Returns: undefined }
       is_workspace_member: {
