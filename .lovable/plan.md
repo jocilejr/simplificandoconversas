@@ -1,68 +1,29 @@
 
 
-## Plano: Suporte dinâmico ao domínio de membros na infraestrutura
+## Plano: Usar apenas a URL pública configurada (sem fallback)
 
-### Situação atual
-O código frontend **já está correto** — `LinkGenerator.tsx` e `MemberClientCard.tsx` leem `delivery_settings.custom_domain` (que é definido em Configurações > Área de Membros > Domínio). Não há nada hardcodado no frontend.
-
-O problema real é na **infraestrutura**: Traefik e nginx não reconhecem o domínio de membros. O Traefik só tem routers para `APP_DOMAIN` e `API_DOMAIN`.
+### Problema
+Três arquivos usam `window.location.origin` como fallback quando `custom_domain` não está definido. O usuário quer que **apenas** o domínio configurado em `delivery_settings.custom_domain` seja utilizado, sem fallback.
 
 ### Alterações
 
-**1. `deploy/docker-compose.yml`** — Adicionar variável `MEMBER_DOMAIN` e router Traefik
+**1. `src/components/leads/LeadDetailDialog.tsx`** (linha 274)
+- Adicionar query para buscar `delivery_settings.custom_domain` (mesmo padrão do `LinkGenerator.tsx`)
+- Substituir `window.location.origin` pelo `custom_domain` do banco
+- Se `custom_domain` não estiver configurado, mostrar `toast.error("Configure o domínio da Área de Membros nas configurações")` e não gerar link
 
-No serviço `nginx`, adicionar:
-- Variável de ambiente `MEMBER_DOMAIN: ${MEMBER_DOMAIN:-}`
-- Labels Traefik para o domínio de membros (condicionalmente via env var)
+**2. `src/components/entrega/DeliveryFlowDialog.tsx`** (linha 306)
+- Remover fallback `|| window.location.origin`
+- Se `custom_domain` estiver vazio, mostrar erro ao invés de gerar link com domínio errado
 
-```yaml
-labels:
-  # ... labels existentes ...
-  # Membros
-  - "traefik.http.routers.chatbot-membros.rule=Host(`${MEMBER_DOMAIN}`)"
-  - "traefik.http.routers.chatbot-membros.entrypoints=websecure"
-  - "traefik.http.routers.chatbot-membros.tls.certresolver=letsencrypt"
-```
+**3. `src/components/membros/MemberClientCard.tsx`** (linha 61)
+- Remover `|| window.location.origin` do retorno de `getMemberDomain()`
+- Se não houver domínio configurado, exibir aviso
 
-**2. `deploy/portainer-stack.yml`** — Mesma alteração no bloco nginx
+**4. `src/components/entrega/LinkGenerator.tsx`** (linha 196)
+- Remover `if (!domain) domain = window.location.origin;`
+- Se domínio vazio, mostrar erro
 
-**3. `deploy/nginx/default.conf.template`** — Adicionar server block para o domínio de membros
-
-Novo bloco que serve o frontend (SPA) no domínio de membros. Precisa servir os mesmos arquivos estáticos para que as rotas `/:phone` funcionem:
-
-```nginx
-# ─── Membros (MEMBER_DOMAIN) ───
-server {
-    listen 80;
-    server_name ${MEMBER_DOMAIN};
-
-    location / {
-        root /usr/share/nginx/html;
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-**4. `deploy/.env.example`** — Adicionar `MEMBER_DOMAIN=`
-
-### Deploy na VPS
-
-Após fazer as alterações, na VPS:
-
-```bash
-# 1. Adicionar no .env
-echo 'MEMBER_DOMAIN=membros.origemdavida.online' >> ~/simplificandoconversas/deploy/.env
-
-# 2. Rebuild e restart
-cd ~/simplificandoconversas && npm run build && rm -rf deploy/frontend/* && cp -r dist/* deploy/frontend/
-cd deploy && docker compose up -d nginx
-
-# 3. Verificar certificado (aguardar ~30s)
-curl -I https://membros.origemdavida.online
-```
-
-O Traefik detecta a nova label, solicita certificado Let's Encrypt automaticamente e começa a rotear o domínio.
-
-### Nota importante
-Quando o usuário mudar o domínio em Configurações > Área de Membros, ele também precisará atualizar a variável `MEMBER_DOMAIN` no `.env` da VPS e reiniciar o nginx. Isso é uma limitação do Traefik com labels Docker — os domínios não podem ser 100% dinâmicos sem um file provider externo.
+### Resultado
+Todos os links de acesso de membros usarão exclusivamente `https://membros.origemdavida.online` (ou qualquer domínio configurado em Configurações > Área de Membros > Domínio). Se nenhum domínio estiver configurado, o sistema avisará o usuário ao invés de gerar links incorretos.
 
