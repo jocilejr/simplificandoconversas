@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { generatePhoneVariations } from "@/lib/phoneNormalization";
+import { generatePhoneVariations, findExistingMemberPhone } from "@/lib/phoneNormalization";
 import { normalizePhone } from "@/lib/normalizePhone";
 
 const statusColors: Record<string, string> = {
@@ -279,8 +279,8 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                     variant="outline"
                     className="w-full h-8 text-xs gap-1.5"
                     onClick={() => {
-                      const phone = lead.phone_number || formatPhone(lead.remote_jid);
-                      const normalized = normalizePhone(phone);
+                      const phoneRaw = lead.phone_number || formatPhone(lead.remote_jid);
+                      const normalized = normalizePhone(phoneRaw);
                       if (normalized === "-") {
                         toast.error("Telefone inválido para gerar o link");
                         return;
@@ -289,9 +289,20 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                         toast.error("Configure o domínio da Área de Membros nas configurações");
                         return;
                       }
+                      // Use the phone already saved in member_products if it exists
+                      const existingPhone = findExistingMemberPhone(
+                        (memberProducts || []).map((mp: any) => ({
+                          phone: mp.phone || "",
+                          is_active: mp.is_active ?? true,
+                          product_id: mp.product_id || mp.delivery_products?.id || "",
+                        })),
+                        phoneRaw,
+                        memberProducts?.[0]?.product_id || ""
+                      );
+                      const phoneForUrl = existingPhone || normalized;
                       let domain = deliverySettings.custom_domain;
                       if (!domain.startsWith("http")) domain = `https://${domain}`;
-                      const link = `${domain.replace(/\/$/, "")}/${normalized}`;
+                      const link = `${domain.replace(/\/$/, "")}/${phoneForUrl}`;
                       navigator.clipboard.writeText(link);
                       toast.success("Link de acesso copiado!");
                     }}
