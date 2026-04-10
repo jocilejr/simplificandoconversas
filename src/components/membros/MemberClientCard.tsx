@@ -63,7 +63,7 @@ export default function MemberClientCard({ phone, products, customerName, onDele
   };
 
   const memberDomain = getMemberDomain();
-  const memberUrl = memberDomain ? `${memberDomain.replace(/\/$/, "")}/${normalizePhone(phone)}` : "";
+  const memberUrl = memberDomain ? `${memberDomain.replace(/\/$/, "")}/${phone.replace(/\D/g, "")}` : "";
 
   const copyLink = () => {
     if (!memberUrl) {
