@@ -1,57 +1,50 @@
 
 
-## Plano: Corrigir criação de ofertas + Usar descrição do produto na copy da oferta
+## Plano: Corrigir race condition nas permissões do colaborador
 
-### Problema 1: Falha ao salvar ofertas
-O `fix-member-tables.sql` assume que a tabela `member_area_offers` já existe — ele só faz `ALTER TABLE ADD COLUMN IF NOT EXISTS`. Se a tabela não existir na VPS, todos os ALTERs falham e as ofertas não podem ser salvas.
+### Problema raiz
 
-**Solução**: Adicionar `CREATE TABLE IF NOT EXISTS` para `member_area_offers` no `fix-member-tables.sql`, antes dos ALTERs de coluna. Incluir todas as colunas necessárias, RLS habilitado e GRANT para os roles.
+Em `useWorkspace.tsx`, o estado `isLoading` exposto ao resto da aplicação só rastreia o loading da query de **workspaces**, mas NÃO o loading da query de **isSuperAdmin**. 
 
-### Problema 2: Descrição do produto não alimenta a IA
-A tabela `delivery_products` tem uma coluna `member_description` que deveria ser usada para enriquecer o contexto da IA ao gerar a copy de oferta, mas a rota `/offer-pitch` não a consulta.
+Fluxo problemático no segundo acesso:
+1. `isSuperAdmin` query inicia (loading, default `false`)
+2. Workspaces query inicia com `enabled: !!user` — não espera `isSuperAdmin` resolver
+3. React-query pode servir dados em cache da sessão anterior enquanto refetcha
+4. Se o cache está parcialmente preenchido ou as queries resolvem em ordem diferente, o UI renderiza antes de ter os dados de permissão finais
 
-**Solução**: Na rota `POST /offer-pitch` em `member-access.ts`, ao buscar o `product_id` da oferta, também buscar `member_description` de `delivery_products` e injetá-la no prompt como contexto adicional sobre o produto.
-
-### Alterações
-
-**1. `deploy/fix-member-tables.sql`**
-Adicionar antes dos ALTERs de `member_area_offers`:
-```sql
-CREATE TABLE IF NOT EXISTS public.member_area_offers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  name text NOT NULL DEFAULT 'Oferta',
-  description text,
-  is_active boolean NOT NULL DEFAULT true,
-  price numeric,
-  purchase_url text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE public.member_area_offers ENABLE ROW LEVEL SECURITY;
-GRANT ALL ON public.member_area_offers TO anon, authenticated, service_role;
-```
-Os ALTERs subsequentes adicionam as colunas extras (`product_id`, `image_url`, etc.) de forma idempotente.
-
-Adicionar também políticas RLS no bloco de workspace policies (o array `_tables` já inclui a tabela, mas precisa de um fallback caso as policies não existam).
-
-**2. `deploy/backend/src/routes/member-access.ts`**
-Na rota `/offer-pitch`, ao buscar dados do produto (linha ~370-374), também buscar `member_description`:
+Além disso, há um segundo problema na lógica de fallback (linha 164-166):
 ```typescript
-const { data: productData } = await sb
-  .from("delivery_products")
-  .select("member_cover_image, page_logo, member_description")
-  .eq("id", offerData.product_id)
-  .single();
+if (Object.keys(permissions).length === 0) {
+  return role === "operator" || role === "admin"; // ← dá acesso TOTAL se permissions é {} ou null
+}
 ```
-E injetar `member_description` no prompt da IA:
+Se por qualquer motivo o `permissions` do membro vier como `null` ou `{}` (ex: cache parcial, Supabase retornando null temporariamente), um operador ganha acesso a TODAS as abas.
+
+### Alterações em `src/hooks/useWorkspace.tsx`
+
+**1. Rastrear o loading de `isSuperAdmin`**
+Extrair `isLoading` da query de super admin e incluir no `isLoading` global:
+```typescript
+const { data: isSuperAdmin = false, isLoading: isSuperAdminLoading } = useQuery({...});
 ```
-SOBRE O PRODUTO (descrição do criador):
-{member_description}
+
+**2. Bloquear workspaces query até `isSuperAdmin` resolver**
+Mudar o `enabled` da query de workspaces:
+```typescript
+enabled: !!user && !isSuperAdminLoading,
 ```
+
+**3. Combinar loading states**
+O `isLoading` exposto no contexto deve ser:
+```typescript
+const combinedLoading = isSuperAdminLoading || isWorkspacesLoading;
+```
+
+**4. Não mudar o fallback de permissions**
+O fallback para `permissions === {}` com acesso baseado em role é intencional para retrocompatibilidade (membros antigos sem permissions granulares). A correção do loading já resolve a inconsistência visual.
 
 ### Resultado
-- Tabela `member_area_offers` é criada automaticamente pelo `update.sh` se não existir
-- A descrição do produto (`member_description`) alimenta a IA para gerar copies mais contextualizadas
-- Rodar `./update.sh` na VPS aplica tudo
+- O sidebar e todas as gates de permissão esperam AMBAS as queries resolverem antes de renderizar
+- Elimina a janela de tempo onde o UI renderiza com dados incompletos
+- Colaboradores sempre veem apenas as abas que têm permissão
 
