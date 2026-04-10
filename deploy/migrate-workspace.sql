@@ -132,7 +132,9 @@ DECLARE _rec RECORD; _ws_id uuid;
     'group_message_queue','group_participant_events','group_queue_config',
     'delivery_products','delivery_settings','delivery_accesses','delivery_link_generations',
     'delivery_pixels','global_delivery_pixels','member_products','member_area_settings',
-    'member_area_offers','member_product_categories','member_product_materials','member_sessions'
+    'member_area_offers','member_product_categories','member_product_materials','member_sessions',
+    'member_content_progress','member_pixel_frames','member_offer_impressions',
+    'daily_prayers','openai_settings','product_knowledge_summaries','manual_boleto_settings'
   ]; _t text;
 BEGIN
   FOR _rec IN
