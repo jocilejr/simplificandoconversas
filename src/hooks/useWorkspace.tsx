@@ -86,9 +86,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const { data: workspaces = [], isLoading } = useQuery({
+  const { data: workspaces = [], isLoading: isWorkspacesLoading } = useQuery({
     queryKey: ["workspaces", user?.id, isSuperAdmin],
-    enabled: !!user,
+    enabled: !!user && !isSuperAdminLoading,
     queryFn: async () => {
       if (isSuperAdmin) {
         // Super Admin: load ALL workspaces
