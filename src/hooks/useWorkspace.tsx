@@ -71,7 +71,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   // Check if user is Super Admin (app_role = 'admin')
-  const { data: isSuperAdmin = false } = useQuery({
+  const { data: isSuperAdmin = false, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin", user?.id],
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
