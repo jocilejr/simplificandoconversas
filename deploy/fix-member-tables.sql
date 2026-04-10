@@ -6,7 +6,17 @@
 BEGIN;
 
 -- ============================================================
--- 0. Fix member_products columns
+-- 0a. Fix member_area_settings columns
+-- ============================================================
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS welcome_message text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS theme_color text DEFAULT '#8B5CF6';
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS ai_persona_prompt text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS greeting_prompt text;
+ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS offer_prompt text;
+
+-- ============================================================
+-- 0b. Fix member_products columns
 -- ============================================================
 ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE public.member_products ADD COLUMN IF NOT EXISTS product_id uuid;
