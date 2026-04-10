@@ -763,9 +763,9 @@ GRANT ALL ON public.member_area_settings TO anon, authenticated, service_role;
 CREATE TABLE IF NOT EXISTS public.member_area_offers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
-  name text,
-  product_id uuid,
+  name text NOT NULL DEFAULT 'Oferta',
   title text,
+  product_id uuid,
   description text,
   price numeric NOT NULL DEFAULT 0,
   image_url text,

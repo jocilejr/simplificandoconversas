@@ -400,7 +400,7 @@ function MemberOffersTab() {
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     {offer.image_url && <img src={offer.image_url} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />}
                     <div className="min-w-0">
-                      <p className="font-medium truncate">{offer.name}</p>
+                      <p className="font-medium truncate">{offer.name || (offer as any).title || "Oferta"}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                         {offer.price && <span>R$ {Number(offer.price).toFixed(2).replace(".", ",")}</span>}
                         {offer.delivery_products?.name && <Badge variant="secondary" className="text-[10px]">{offer.delivery_products.name}</Badge>}

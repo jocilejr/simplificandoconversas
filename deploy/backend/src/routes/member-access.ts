@@ -147,7 +147,7 @@ router.get("/:phone", async (req, res) => {
       workspace_id: workspaceId,
       settings,
       products: Array.from(productMap.values()),
-      offers: offersRes.data || [],
+      offers: (offersRes.data || []).map((o: any) => ({ ...o, name: o.name || o.title || "Oferta" })),
       customer: customerRes.data
         ? {
             name: (customerRes.data as any).name || null,
