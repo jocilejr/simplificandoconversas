@@ -108,6 +108,9 @@ export default function MemberAccess() {
   const [aiContext, setAiContext] = useState<AiContext | null>(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [visibleMessages, setVisibleMessages] = useState(0);
+  const [typedText, setTypedText] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [progressMap, setProgressMap] = useState<Record<string, ContentProgress[]>>({});
   const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [materialsByProduct, setMaterialsByProduct] = useState<Record<string, any[]>>({});
