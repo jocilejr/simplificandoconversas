@@ -1,80 +1,93 @@
 
+Diagnóstico objetivo:
+- O problema não parece ser “Mercado Pago fora do ar”, e sim um fluxo incorreto na Área de Membros da VPS.
+- Hoje o checkout de membros (`src/components/membros/PaymentFlow.tsx`) não chama os endpoints reais de geração de cobrança (`/functions/v1/payment/create` ou `/functions/v1/payment-openpix/create`).
+- Em vez disso, ele faz `fetch("/api/member-purchase")`, que só tenta inserir uma transação local com `source: "member-area"` e não cria cobrança no gateway.
+- Pior: no domínio de membros, o Nginx só expõe `/api/member-access/` e `/functions/v1/`. Não há proxy para `/api/member-purchase`. Então essa requisição pode estar caindo no `index.html` da SPA, parecendo “ok” no frontend sem realmente gerar nada.
+- Isso explica exatamente seu relato: “solicitei a geração”, mas não apareceu em transações reais nem foi criado no Mercado Pago.
 
-## Plano: Corrigir busca de dados do lead na VPS (tabela `customers` não existe)
+O que precisa ser corrigido:
+1. Unificar o checkout da Área de Membros com os endpoints reais da VPS
+- PIX: usar o endpoint real já existente de geração (`payment-openpix/create` ou `payment/create`, conforme a credencial ativa do projeto).
+- Boleto: usar `payment/create`.
+- Cartão: se continuar sendo link externo, registrar apenas intenção/conversão; se quiser geração real, precisa de fluxo específico do backend.
 
-### Causa raiz confirmada
-A tabela `customers` **não existe na VPS**. Ela só existe no Lovable Cloud. O backend `member-access.ts` faz query em `customers` (linhas 85-108), recebe erro silencioso, e retorna `customer: null`. Por isso o nome e CPF nunca chegam ao frontend.
+2. Parar de usar `/api/member-purchase` como “geração”
+- Esse endpoint hoje serve no máximo para log local simplificado.
+- Se for mantido, deve virar apenas tracking auxiliar, nunca o fluxo principal de cobrança.
 
-### Fontes reais de dados do lead na VPS
+3. Corrigir as URLs no frontend da Área de Membros
+- No domínio de membros, chamadas devem usar `apiUrl(...)`/`/functions/v1/...`, não `/api/...` relativo, exceto para `member-access` que já tem proxy dedicado.
+- Isso evita cair no frontend em vez do backend.
 
-| Dado | Tabela | Coluna |
-|------|--------|--------|
-| Nome | `transactions` | `customer_name` |
-| CPF | `transactions` | `customer_document` |
-| Nome (fallback) | `conversations` | `contact_name` |
+4. Garantir feedback de erro real no modal
+- Hoje `createTransaction()` engole erros e pode seguir o fluxo sem validar corretamente.
+- O modal precisa mostrar erro explícito quando a geração falhar e só avançar quando houver resposta válida do backend.
 
-### Solução
+5. Garantir persistência em transações
+- Como os endpoints `payment.ts` e `payment-openpix.ts` já salvam em `transactions`, ao usar eles a cobrança deve passar a aparecer corretamente.
+- Também vale conferir se o workspace/usuário está sendo resolvido corretamente a partir do telefone no checkout de membros.
 
-**1. Backend `member-access.ts` — substituir query em `customers` por busca em `transactions` + `conversations`**
+Arquivos a alterar:
+- `src/components/membros/PaymentFlow.tsx`
+- possivelmente `src/lib/api.ts` apenas se precisar de helper extra, mas a base já existe
+- opcionalmente `deploy/backend/src/routes/member-purchase.ts` para rebaixar esse endpoint a tracking, ou removê-lo do fluxo
+- opcionalmente `deploy/nginx/default.conf.template` apenas se você quiser continuar usando `/api/member-purchase` no domínio de membros, o que eu não recomendo
 
-Remover completamente as queries à tabela `customers` (linhas 85-108) e substituir por:
-
-```typescript
-// Buscar dados do lead em transactions (fonte mais confiável para nome + CPF)
-const txRes = await sb
-  .from("transactions")
-  .select("customer_name, customer_document, customer_phone")
-  .eq("workspace_id", workspaceId)
-  .in("customer_phone", phoneCandidates)
-  .not("customer_name", "is", null)
-  .order("created_at", { ascending: false })
-  .limit(1);
-
-let customerName = txRes.data?.[0]?.customer_name || null;
-let customerDocument = txRes.data?.[0]?.customer_document || null;
-
-// Fallback: last 8 digits em transactions
-if (!customerName) {
-  // busca fuzzy por últimos 8 dígitos
-}
-
-// Fallback: conversations.contact_name
-if (!customerName) {
-  // busca em conversations por remote_jid
-}
-```
-
-Retornar no JSON:
-```typescript
-customer: {
-  name: customerName,
-  document: customerDocument,
-}
-```
-
-**2. Backend `member-access.ts` — rota `/ai-context` (linha 276-282)**
-
-Mesma correção: substituir query em `customers` por busca em `transactions`.
-
-**3. Backend `member-purchase.ts` — rota `/customer-info` (linhas 107-123)**
-
-Remover o bloco try/catch que tenta buscar em `customers` (que falha silenciosamente). O resto da lógica (busca em transactions e conversations) já funciona corretamente.
-
-**4. Frontend — sem alterações necessárias**
-
-O prop drilling já está implementado corretamente (`MemberAccess → LockedOfferCard/PhysicalProductShowcase → PaymentFlow`). Quando o backend passar a retornar os dados corretos, o preenchimento automático vai funcionar.
-
-### Arquivos alterados
-- `deploy/backend/src/routes/member-access.ts` — substituir queries em `customers` por `transactions` + `conversations`
-- `deploy/backend/src/routes/member-purchase.ts` — remover bloco `customers` que falha silenciosamente
-
-### Após implementação, rode na VPS
+Investigação que preciso que você faça DENTRO da VPS antes da implementação final:
+1. Verifique se a rota usada hoje no checkout de membros realmente não está exposta:
 ```bash
-cd ~/simplificandoconversas/deploy && bash update.sh
+cd ~/simplificandoconversas/deploy
+grep -n "location /api/member-purchase" nginx/default.conf.template
+grep -n "location /api/member-access" nginx/default.conf.template
+grep -n "location /functions/v1/" nginx/default.conf.template
 ```
 
-### Resultado esperado
-- Nome e CPF do lead encontrados via `transactions` (a fonte real na VPS)
-- Modal de pagamento abre com dados pré-preenchidos
-- Sem mais queries a tabelas inexistentes
+2. Teste manualmente a rota problemática no domínio de membros
+Substitua `SEU_DOMINIO_MEMBROS` pelo domínio real:
+```bash
+curl -i https://SEU_DOMINIO_MEMBROS/api/member-purchase
+```
+Se voltar HTML ou 404, confirmamos o gargalo principal.
 
+3. Teste se os endpoints reais de geração estão respondendo
+No domínio da API:
+```bash
+curl -i https://SEU_DOMINIO_API/functions/v1/payment/create
+curl -i https://SEU_DOMINIO_API/functions/v1/payment-openpix/create
+```
+O esperado sem payload é 400/401 JSON, não HTML.
+
+4. Verifique se existem registros “member-area” recentes
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+select id, created_at, source, type, status, customer_name, customer_phone, amount
+from transactions
+where source = 'member-area'
+order by created_at desc
+limit 20;
+"
+```
+
+5. Verifique se existem transações reais recentes de gateway
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+select id, created_at, source, type, status, customer_name, customer_phone, amount, external_id
+from transactions
+where source in ('mercadopago', 'openpix')
+order by created_at desc
+limit 20;
+"
+```
+
+Implementação que farei após sua confirmação:
+- Trocar o fluxo de geração do `PaymentFlow` para usar os endpoints reais da VPS.
+- Fazer PIX e boleto criarem cobrança de verdade e retornarem os dados corretos.
+- Manter o preenchimento automático de nome/CPF/telefone.
+- Registrar conversão de oferta sem fingir que houve geração quando a API falhar.
+- Exibir erro real ao usuário quando a geração não acontecer.
+
+Resultado esperado:
+- Ao clicar em gerar, a cobrança será criada no gateway correto.
+- A transação aparecerá na tabela `transactions`.
+- O checkout da Área de Membros deixará de depender de um endpoint local simplificado e inconsistente com a VPS.
