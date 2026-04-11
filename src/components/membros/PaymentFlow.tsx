@@ -118,8 +118,14 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
     setStep("pix-confirm");
   };
 
-  const handlePixConfirm = () => {
+  const handlePixConfirm = async () => {
     setStep("pix");
+    // Registrar intenção de pagamento PIX (fire and forget)
+    try {
+      await createCharge({ ...basePayload, payment_method: "pix" });
+    } catch {
+      // Apenas logging, não impede o usuário de ver a chave
+    }
   };
 
   const handleCard = async () => {
