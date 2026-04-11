@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Lock, Sparkles } from "lucide-react";
+import { Lock } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,8 +11,6 @@ interface MemberProfile { memberSince: string | null; totalPaid: number; totalTr
 interface Props { offer: Offer; themeColor: string; ownedProductNames?: string[]; ownedProductIds?: string[]; firstName?: string; memberProfile?: MemberProfile | null; memberPhone?: string; workspaceId?: string | null; }
 type ChatBubble = { type: "text"; content: string } | { type: "image"; url: string };
 
-const CONTEXTUAL_LABELS = ["Aprofunde seus estudos", "Complementa seu material", "Continue sua jornada", "Recomendado para você", "Material complementar"];
-function getContextLabel(offer: Offer): string { return offer.category_tag || CONTEXTUAL_LABELS[Math.floor(Math.random() * CONTEXTUAL_LABELS.length)]; }
 const BUBBLE_DELAY_MS = 10000;
 
 export default function LockedOfferCard({ offer, themeColor, ownedProductNames, ownedProductIds, firstName, memberProfile, memberPhone, workspaceId }: Props) {
@@ -78,58 +76,55 @@ export default function LockedOfferCard({ offer, themeColor, ownedProductNames, 
   }, [offer, firstName, ownedProductNames, ownedProductIds, memberProfile, memberPhone]);
 
   const handleClose = () => { setDialogOpen(false); setVisibleCount(0); setShowDots(false); setCtaVisible(false); };
-  const label = getContextLabel(offer);
   const timeStr = `${new Date().getHours().toString().padStart(2, "0")}:${new Date().getMinutes().toString().padStart(2, "0")}`;
 
   return (
     <>
-      <button
-        className="w-full rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 text-left active:scale-[0.98] group relative bg-white border border-gray-100"
+      <div
+        className="w-full rounded-2xl overflow-hidden shadow-md shadow-gray-200/60 transition-all duration-300 active:scale-[0.98] group relative bg-white border border-gray-100 cursor-pointer"
         onClick={handleOpen}
       >
         {offer.image_url ? (
-          <div className="relative h-[160px] w-full overflow-hidden">
-            <img src={offer.image_url} alt={offer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            <div className="absolute top-3 right-3">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold text-white bg-black/40 backdrop-blur-sm">
-                <Lock className="h-3 w-3" /> Exclusivo
+          <div className="relative h-[120px] w-full overflow-hidden">
+            <img src={offer.image_url} alt={offer.name} className="w-full h-full object-cover scale-105" style={{ filter: "blur(3px)" }} />
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="absolute top-3 left-3">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white/90 bg-black/40 backdrop-blur-sm">
+                <Lock className="h-3 w-3" /> Bloqueado
               </span>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 p-4">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-white/90 mb-2" style={{ backgroundColor: `${themeColor}90` }}>
-                <Sparkles className="h-3 w-3" /> {label}
-              </span>
-              <h3 className="font-bold text-white text-lg leading-tight line-clamp-2" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>{offer.name}</h3>
+            <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between gap-2">
+              <h3 className="font-bold text-white text-sm leading-tight line-clamp-2 flex-1" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.3)' }}>{offer.name}</h3>
+              <button
+                className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full text-white shadow-sm hover:shadow-md transition-shadow"
+                style={{ backgroundColor: themeColor }}
+                onClick={(e) => { e.stopPropagation(); handleOpen(); }}
+              >
+                Desbloquear
+              </button>
             </div>
           </div>
         ) : (
-          <div className="relative h-[140px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}12 0%, ${themeColor}06 50%, ${themeColor}10 100%)` }}>
-            <div className="absolute top-3 right-3">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold text-gray-500 bg-gray-100">
-                <Lock className="h-3 w-3" /> Exclusivo
+          <div className="relative h-[120px] w-full flex flex-col justify-end p-4" style={{ background: `linear-gradient(135deg, ${themeColor}15 0%, ${themeColor}05 50%, ${themeColor}12 100%)` }}>
+            <Lock className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 opacity-[0.07]" style={{ color: themeColor }} />
+            <div className="absolute top-3 left-3">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-gray-500 bg-gray-100">
+                <Lock className="h-3 w-3" /> Bloqueado
               </span>
             </div>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-white w-fit mb-2" style={{ backgroundColor: themeColor }}>
-              <Sparkles className="h-3 w-3" /> {label}
-            </span>
-            <h3 className="font-bold text-gray-800 text-lg leading-tight line-clamp-2">{offer.name}</h3>
+            <div className="flex items-end justify-between gap-2">
+              <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-2 flex-1">{offer.name}</h3>
+              <button
+                className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full text-white shadow-sm hover:shadow-md transition-shadow"
+                style={{ backgroundColor: themeColor }}
+                onClick={(e) => { e.stopPropagation(); handleOpen(); }}
+              >
+                Desbloquear
+              </button>
+            </div>
           </div>
         )}
-        <div className="px-4 py-3 flex items-center justify-between gap-3 border-t border-gray-50">
-          {offer.description ? (
-            <p className="text-[13px] text-gray-500 leading-snug line-clamp-2 flex-1">{offer.description}</p>
-          ) : (
-            <p className="text-[13px] text-gray-400 leading-snug flex-1">Toque para saber mais</p>
-          )}
-          <span
-            className="shrink-0 text-xs font-semibold px-4 py-2 rounded-full text-white shadow-sm group-hover:shadow-md transition-shadow"
-            style={{ backgroundColor: themeColor }}
-          >
-            Conhecer
-          </span>
-        </div>
-      </button>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && handleClose()}>
         <DialogContent className="sm:max-w-md rounded-2xl border-0 p-0 overflow-hidden shadow-2xl bg-white">
