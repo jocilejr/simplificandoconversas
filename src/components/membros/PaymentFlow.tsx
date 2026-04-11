@@ -58,46 +58,50 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   const [step, setStep] = useState<Step>("select");
   const [copied, setCopied] = useState(false);
   const [pixSent, setPixSent] = useState(false);
-  const [boletoName, setBoletoName] = useState("");
-  const [boletoCpf, setBoletoCpf] = useState("");
+  const [boletoName, setBoletoName] = useState(customerName || "");
+  const [boletoCpf, setBoletoCpf] = useState(customerDocument ? customerDocument.replace(/\D/g, "").slice(0, 11) : "");
   const [boletoLoading, setBoletoLoading] = useState(false);
   const [boletoSent, setBoletoSent] = useState(false);
-  const [customerLoading, setCustomerLoading] = useState(false);
-  const [customerLoaded, setCustomerLoaded] = useState(false);
-  const [hasExistingData, setHasExistingData] = useState(false);
+  const [hasExistingData, setHasExistingData] = useState(!!(customerName || customerDocument));
   const [editingData, setEditingData] = useState(false);
 
   const handleClose = () => {
     onOpenChange(false);
     setTimeout(() => {
       setStep("select"); setCopied(false); setPixSent(false);
-      setBoletoName(""); setBoletoCpf(""); setBoletoLoading(false); setBoletoSent(false);
-      setCustomerLoaded(false); setHasExistingData(false); setEditingData(false);
+      setBoletoName(customerName || ""); setBoletoCpf(customerDocument ? customerDocument.replace(/\D/g, "").slice(0, 11) : ""); setBoletoLoading(false); setBoletoSent(false);
+      setHasExistingData(!!(customerName || customerDocument)); setEditingData(false);
     }, 200);
   };
 
+  // Sync props when they arrive after initial render
   useEffect(() => {
-    if (step !== "boleto" || customerLoaded) return;
-    // Pre-fill from props immediately — no extra backend call needed
-    if (customerName) {
+    if (customerName && !boletoName) {
       setBoletoName(customerName);
       setHasExistingData(true);
     }
+  }, [customerName]);
+
+  useEffect(() => {
     if (customerDocument) {
-      setBoletoCpf(customerDocument.replace(/\D/g, "").slice(0, 11));
-      setHasExistingData(true);
+      const cleaned = customerDocument.replace(/\D/g, "").slice(0, 11);
+      if (cleaned && !boletoCpf) {
+        setBoletoCpf(cleaned);
+        setHasExistingData(true);
+      }
     }
-    setCustomerLoaded(true);
-    setCustomerLoading(false);
-  }, [step, customerLoaded, customerName, customerDocument]);
+  }, [customerDocument]);
+
+  const resolvedName = boletoName || customerName || undefined;
+  const resolvedDoc = boletoCpf || (customerDocument ? customerDocument.replace(/\D/g, "").slice(0, 11) : undefined);
 
   const baseTxPayload = {
     phone: memberPhone,
     offer_name: offer.name,
     amount: offer.price || 0,
     workspace_id: workspaceId,
-    customer_name: customerName || undefined,
-    customer_document: customerDocument || undefined,
+    customer_name: resolvedName,
+    customer_document: resolvedDoc,
   };
 
   const handlePix = async () => {
@@ -237,12 +241,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
               )}
             </div>
 
-            {customerLoading ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
-                <span className="text-sm text-gray-500">Buscando seus dados...</span>
-              </div>
-            ) : hasExistingData && !editingData ? (
+            {hasExistingData && !editingData ? (
               /* Read-only customer card */
               <div className="space-y-4">
                 <div className="border border-gray-200 rounded-xl p-4 relative bg-gray-50/50">
