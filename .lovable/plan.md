@@ -1,33 +1,24 @@
 
 
-## Plano: Reformular LockedOfferCard — blur na imagem + botão desbloquear
+## Plano: Melhorar sombreamento do LockedOfferCard
 
-### Alterações em `src/components/membros/LockedOfferCard.tsx`
+### Alteração em `src/components/membros/LockedOfferCard.tsx`
 
-Substituir o card atual (button com rodapé, badge "Exclusivo", botão "Conhecer") por um card que replica a estrutura do `renderProductCard` (h-[120px]), com estas diferenças:
+**Linha 84** — trocar as classes de shadow do container:
 
-**Com imagem:**
-- Imagem com `filter: blur(3px)` e `scale(1.05)` (para cobrir bordas do blur)
-- Overlay escuro `bg-black/40`
-- Badge "Bloqueado" com ícone Lock (no lugar de "Novo/Liberado")
-- Título do produto visível (sem blur) sobre a imagem
-- Botão "Desbloquear" compacto (`text-xs`, `px-3 py-1.5`, `rounded-full`) posicionado no canto inferior direito do card, com cor `themeColor`
+De:
+```
+shadow-md shadow-gray-200/60
+```
 
-**Sem imagem:**
-- Background com gradiente suave do `themeColor`
-- Ícone Lock grande com opacidade baixa como decoração
-- Badge "Bloqueado" + título visível
-- Mesmo botão "Desbloquear" no canto inferior direito
+Para:
+```
+shadow-[0_2px_12px_-2px_rgba(0,0,0,0.12),0_4px_20px_-4px_rgba(0,0,0,0.08)]
+```
 
-**Remover:**
-- Rodapé com description + "Conhecer"
-- Import de `Sparkles`
-- `getContextLabel` e `CONTEXTUAL_LABELS` (causa do bug de texto aleatório)
+Isso aplica uma sombra em duas camadas (uma mais próxima e concentrada, outra mais difusa e profunda), criando o efeito de elevação profissional semelhante aos cards do Material Design.
 
-O `onClick` do botão "Desbloquear" chama `handleOpen()` (abre o dialog de chat IA). O Dialog e PaymentFlow permanecem inalterados.
+Também adicionar `hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.18),0_8px_30px_-6px_rgba(0,0,0,0.12)]` para dar feedback visual no hover.
 
-### Resultado
-- Card de oferta fica visualmente uniforme com os cards de produto
-- Blur apenas na imagem, título legível
-- Botão "Desbloquear" claro e integrado dentro do card
+O botão "Desbloquear" (linhas 99 e 118) já tem `shadow-sm hover:shadow-md`, que é adequado.
 
