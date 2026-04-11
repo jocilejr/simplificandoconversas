@@ -2313,6 +2313,8 @@ export type Database = {
           last_shown_at: string
           normalized_phone: string
           offer_id: string
+          payment_method: string | null
+          payment_started: boolean
         }
         Insert: {
           clicked?: boolean
@@ -2322,6 +2324,8 @@ export type Database = {
           last_shown_at?: string
           normalized_phone: string
           offer_id: string
+          payment_method?: string | null
+          payment_started?: boolean
         }
         Update: {
           clicked?: boolean
@@ -2331,6 +2335,8 @@ export type Database = {
           last_shown_at?: string
           normalized_phone?: string
           offer_id?: string
+          payment_method?: string | null
+          payment_started?: boolean
         }
         Relationships: []
       }
