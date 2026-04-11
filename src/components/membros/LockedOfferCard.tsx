@@ -8,12 +8,12 @@ import meirePhoto from "@/assets/meire-rosana.png";
 
 interface Offer { id: string; name: string; description: string | null; image_url: string | null; purchase_url: string; price: number | null; category_tag: string | null; pix_key?: string | null; card_payment_url?: string | null; product_id?: string | null; }
 interface MemberProfile { memberSince: string | null; totalPaid: number; totalTransactions: number; totalProducts: number; daysSinceLastAccess: number | null; }
-interface Props { offer: Offer; themeColor: string; ownedProductNames?: string[]; ownedProductIds?: string[]; firstName?: string; memberProfile?: MemberProfile | null; memberPhone?: string; workspaceId?: string | null; }
+interface Props { offer: Offer; themeColor: string; ownedProductNames?: string[]; ownedProductIds?: string[]; firstName?: string; memberProfile?: MemberProfile | null; memberPhone?: string; workspaceId?: string | null; customerName?: string; }
 type ChatBubble = { type: "text"; content: string } | { type: "image"; url: string };
 
 const BUBBLE_DELAY_MS = 10000;
 
-export default function LockedOfferCard({ offer, themeColor, ownedProductNames, ownedProductIds, firstName, memberProfile, memberPhone, workspaceId }: Props) {
+export default function LockedOfferCard({ offer, themeColor, ownedProductNames, ownedProductIds, firstName, memberProfile, memberPhone, workspaceId, customerName }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [bubbles, setBubbles] = useState<ChatBubble[]>([]);
@@ -185,7 +185,7 @@ export default function LockedOfferCard({ offer, themeColor, ownedProductNames, 
           <style>{`@keyframes chatBubbleIn { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } } @keyframes dotBounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }`}</style>
         </DialogContent>
       </Dialog>
-      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} workspaceId={workspaceId} />
+      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} workspaceId={workspaceId} customerName={customerName} />
     </>
   );
 }

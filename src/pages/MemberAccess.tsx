@@ -580,6 +580,7 @@ export default function MemberAccess() {
                 memberProfile={memberProfile}
                 memberPhone={normalizedPhone}
                 workspaceId={workspaceId}
+                customerName={customerName || undefined}
               />
             );
           });
@@ -590,7 +591,7 @@ export default function MemberAccess() {
         {showcaseOffers.length > 0 && (
           <div className="space-y-3">
             {showcaseOffers.map((offer: any) => (
-              <PhysicalProductShowcase key={offer.id} offer={offer} themeColor={themeColor} memberPhone={normalizedPhone} workspaceId={workspaceId} />
+              <PhysicalProductShowcase key={offer.id} offer={offer} themeColor={themeColor} memberPhone={normalizedPhone} workspaceId={workspaceId} customerName={customerName || undefined} />
             ))}
           </div>
         )}

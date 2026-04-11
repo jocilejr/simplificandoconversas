@@ -24,6 +24,7 @@ interface Props {
   themeColor: string;
   memberPhone: string;
   workspaceId?: string | null;
+  customerName?: string;
 }
 
 type Step = "select" | "pix" | "boleto";
@@ -52,7 +53,7 @@ async function createTransaction(payload: Record<string, any>) {
   }
 }
 
-export default function PaymentFlow({ open, onOpenChange, offer, themeColor, memberPhone, workspaceId }: Props) {
+export default function PaymentFlow({ open, onOpenChange, offer, themeColor, memberPhone, workspaceId, customerName }: Props) {
   const [step, setStep] = useState<Step>("select");
   const [copied, setCopied] = useState(false);
   const [pixSent, setPixSent] = useState(false);
@@ -76,17 +77,23 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
 
   useEffect(() => {
     if (step !== "boleto" || customerLoaded || !workspaceId) return;
+    // Pre-fill from prop immediately
+    if (customerName) {
+      setBoletoName(customerName);
+      setHasExistingData(true);
+    }
     setCustomerLoading(true);
     fetch(`/api/member-purchase/customer-info?phone=${encodeURIComponent(memberPhone)}&workspace_id=${encodeURIComponent(workspaceId)}`)
       .then(r => r.json())
       .then(data => {
         if (data.name) { setBoletoName(data.name); setHasExistingData(true); }
+        else if (customerName) { setBoletoName(customerName); setHasExistingData(true); }
         if (data.document) setBoletoCpf(data.document);
         setCustomerLoaded(true);
       })
       .catch(() => setCustomerLoaded(true))
       .finally(() => setCustomerLoading(false));
-  }, [step, customerLoaded, workspaceId, memberPhone]);
+  }, [step, customerLoaded, workspaceId, memberPhone, customerName]);
 
   const baseTxPayload = {
     phone: memberPhone,
