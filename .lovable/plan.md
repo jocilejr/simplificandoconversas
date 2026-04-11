@@ -1,43 +1,66 @@
-## Plano: Redesign do step Boleto com dados pré-preenchidos e botão de edição
 
-### Problemas
 
-O boleto mostra campos vazios mesmo quando o sistema já tem o nome e CPF do lead. A UX atual com dois botões ("Editar dados" / "Confirmar") não é profissional. O botão usa a cor do tema em vez de verde.  
-  
-PROBLEMA 2: QUANDO ESCOLHO PIX OU CARTÃO NÃO RECEBO A TRANSAÇÃO NA ABA DE TRANSAÇÕES. RESOLVA ISSO
+## Plano: Corrigir busca de dados do lead e melhorar layout do Boleto
 
-### Alteração em `src/components/membros/PaymentFlow.tsx`
+### Problema
+1. O `PaymentFlow` faz uma chamada separada a `/api/member-purchase/customer-info` que busca apenas em `transactions` e `conversations`, mas os dados do lead já existem na tabela `customers` (que já é consultada pelo endpoint `member-access` no carregamento inicial).
+2. O `customerName` já está disponível no `MemberAccess.tsx` mas **não é passado** para o `PaymentFlow` — apenas o telefone é passado.
+3. O layout do boleto precisa de refinamento visual.
 
-Redesenhar o bloco `step === "boleto" && !boletoSent` (linhas 207-249):
+### Solução
 
-**Novo comportamento:**
+**1. Passar `customerName` do MemberAccess para os componentes de pagamento**
 
-- Ao entrar no step boleto, buscar dados via `/api/member-purchase/customer-info` (já implementado)
-- **Se dados existirem**: mostrar os dados em modo read-only com visual profissional (card cinza claro com ícones de User e FileText), com um botão de lápis (Pencil icon) no canto superior direito do card para alternar para modo edição
-- **Se dados não existirem**: mostrar campos de input diretamente
-- **Modo edição**: ao clicar no lápis, os dados viram inputs editáveis com os valores pré-preenchidos
-- **Botão "Gerar Boleto"**: sempre verde profissional (`bg-emerald-600 hover:bg-emerald-700`) com sombra verde, sem usar `themeColor`
+- `MemberAccess.tsx` → passar `customerName` como prop para `LockedOfferCard` e `PhysicalProductShowcase`
+- `LockedOfferCard.tsx` → repassar para `PaymentFlow`
+- `PhysicalProductShowcase.tsx` → repassar para `PaymentFlow`
+- `PaymentFlow.tsx` → aceitar nova prop `customerName?: string`
 
-**Estrutura visual (modo read-only):**
+**2. Backend: adicionar busca na tabela `customers`** (`deploy/backend/src/routes/member-purchase.ts`)
 
+No endpoint `GET /customer-info`, adicionar um step **antes** de tudo:
+```typescript
+// Step 0: Search customers table first (most reliable source)
+const { data: customer } = await sb
+  .from("customers")
+  .select("name, document, normalized_phone")
+  .eq("workspace_id", workspace_id)
+  .in("normalized_phone", phoneVariants)
+  .limit(1)
+  .maybeSingle();
+
+if (customer?.name) {
+  name = customer.name;
+  document = customer.document || "";
+}
 ```
-Gerar Boleto
-R$ 80,00
 
-┌─────────────────────────────┐
-│  👤 Nome         ✏️ (lápis) │
-│  João Silva                  │
-│  📄 CPF                      │
-│  123.456.789-01              │
-└─────────────────────────────┘
+Gerar variações de telefone (com/sem 9º dígito, com/sem prefixo 55) para o matching, usando a mesma lógica de `member-access.ts`.
 
-[ 🟢 Gerar Boleto ]
-```
+**3. Frontend: usar dados já carregados como fallback**
 
-**Detalhes técnicos:**
+Em `PaymentFlow.tsx`:
+- Se `customerName` prop já existe, pré-preencher `boletoName` imediatamente sem esperar a chamada ao backend
+- A chamada ao backend serve para buscar o CPF/documento (que não está disponível no frontend)
+- Se o backend retornar nome, sobrescrever; caso contrário, manter o nome da prop
 
-- Adicionar import `Pencil` do lucide-react (linha 7)
-- Substituir estado `confirmedData` por `editingData` (boolean, default false)
-- Quando `hasExistingData && !editingData`: mostrar card read-only + botão lápis
-- Quando `editingData || !hasExistingData`: mostrar inputs
-- Botão verde: `className="w-full h-12 rounded-xl font-bold text-white border-0 bg-emerald-600 hover:bg-emerald-700"` com `boxShadow: "0 4px 20px rgba(16,185,129,0.3)"`
+**4. Layout do Boleto — refinamentos**
+
+Melhorar o card de dados do cliente:
+- Adicionar separador visual entre nome e CPF
+- Borda mais suave e padding consistente
+- Texto "Confirme seus dados para gerar o boleto" acima do card
+- Botão verde com ícone e texto mais claro
+
+### Arquivos alterados
+- `deploy/backend/src/routes/member-purchase.ts` — adicionar busca em `customers`
+- `src/components/membros/PaymentFlow.tsx` — aceitar `customerName` prop, usar como fallback
+- `src/components/membros/LockedOfferCard.tsx` — repassar `customerName`
+- `src/components/membros/PhysicalProductShowcase.tsx` — repassar `customerName`
+- `src/pages/MemberAccess.tsx` — passar `customerName` para os componentes
+
+### Resultado
+- Dados do lead encontrados imediatamente (nome via prop, CPF via backend com busca em `customers`)
+- Layout profissional com dados pré-preenchidos
+- Sem dependência exclusiva de `transactions`/`conversations` para encontrar o lead
+
