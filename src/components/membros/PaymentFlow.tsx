@@ -241,12 +241,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
               )}
             </div>
 
-            {customerLoading ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
-                <span className="text-sm text-gray-500">Buscando seus dados...</span>
-              </div>
-            ) : hasExistingData && !editingData ? (
+            {hasExistingData && !editingData ? (
               /* Read-only customer card */
               <div className="space-y-4">
                 <div className="border border-gray-200 rounded-xl p-4 relative bg-gray-50/50">
