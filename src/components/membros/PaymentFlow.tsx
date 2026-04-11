@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { CreditCard, FileText, QrCode, Copy, Check, Loader2, ArrowLeft, ShieldCheck, Zap } from "lucide-react";
+import { CreditCard, FileText, QrCode, Copy, Check, Loader2, ArrowLeft, ShieldCheck, Zap, Pencil, User } from "lucide-react";
 
 interface Offer {
   id: string;
@@ -30,17 +30,25 @@ type Step = "select" | "pix" | "boleto";
 
 async function createTransaction(payload: Record<string, any>) {
   try {
+    if (!payload.workspace_id) {
+      console.error("[member-purchase] workspace_id is required");
+      return null;
+    }
     const res = await fetch("/api/member-purchase", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error("[member-purchase] error:", err);
+      console.error("[member-purchase] error:", data);
+      return null;
     }
+    console.log("[member-purchase] ✅ Transaction created:", data.transaction_id);
+    return data;
   } catch (e) {
     console.error("[member-purchase] fetch error:", e);
+    return null;
   }
 }
 
@@ -55,18 +63,17 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerLoaded, setCustomerLoaded] = useState(false);
   const [hasExistingData, setHasExistingData] = useState(false);
-  const [confirmedData, setConfirmedData] = useState(false);
+  const [editingData, setEditingData] = useState(false);
 
   const handleClose = () => {
     onOpenChange(false);
     setTimeout(() => {
       setStep("select"); setCopied(false); setPixSent(false);
       setBoletoName(""); setBoletoCpf(""); setBoletoLoading(false); setBoletoSent(false);
-      setCustomerLoaded(false); setHasExistingData(false); setConfirmedData(false);
+      setCustomerLoaded(false); setHasExistingData(false); setEditingData(false);
     }, 200);
   };
 
-  // Load customer info when boleto step opens
   useEffect(() => {
     if (step !== "boleto" || customerLoaded || !workspaceId) return;
     setCustomerLoading(true);
@@ -109,13 +116,17 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   };
 
   const formatCPF = (value: string) => value.replace(/\D/g, "").slice(0, 11);
+  const formatCPFDisplay = (cpf: string) => {
+    const d = cpf.replace(/\D/g, "");
+    if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+    return d;
+  };
 
   const submitBoleto = async () => {
     if (!boletoName.trim()) { toast.error("Nome é obrigatório"); return; }
     if (boletoCpf.length !== 11) { toast.error("CPF inválido (11 dígitos)"); return; }
     setBoletoLoading(true);
     try {
-      // Create transaction
       await createTransaction({
         ...baseTxPayload,
         payment_method: "boleto",
@@ -123,7 +134,6 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
         customer_document: boletoCpf,
       });
 
-      // Call boleto webhook
       const sb = (await import("@/integrations/supabase/client")).supabase;
       const { data: settings } = await sb.from("manual_boleto_settings").select("webhook_url").maybeSingle();
       if (settings && (settings as any).webhook_url) {
@@ -216,32 +226,54 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
                 <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 <span className="text-sm text-gray-500 ml-2">Buscando seus dados...</span>
               </div>
-            ) : hasExistingData && !confirmedData ? (
+            ) : hasExistingData && !editingData ? (
               <div className="space-y-3">
-                <p className="text-sm text-gray-600 text-center">Posso gerar o seu boleto com essas informações?</p>
-                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                  <div><span className="text-xs text-gray-500">Nome</span><p className="text-sm font-medium text-gray-800">{boletoName}</p></div>
-                  {boletoCpf && <div><span className="text-xs text-gray-500">CPF</span><p className="text-sm font-medium text-gray-800">{boletoCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}</p></div>}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { setHasExistingData(false); setConfirmedData(true); }}>
-                    Editar dados
-                  </Button>
-                  <Button
-                    className="flex-1 font-bold text-white border-0"
-                    style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)` }}
-                    onClick={() => { setConfirmedData(true); submitBoleto(); }}
-                    disabled={boletoLoading}
+                <div className="bg-gray-50 rounded-xl p-4 relative">
+                  <button
+                    onClick={() => setEditingData(true)}
+                    className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-gray-200 transition-colors text-gray-400 hover:text-gray-600"
+                    title="Editar dados"
                   >
-                    {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Confirmar"}
-                  </Button>
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <div className="space-y-3 pr-8">
+                    <div className="flex items-start gap-2.5">
+                      <User className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">Nome</p>
+                        <p className="text-sm font-medium text-gray-800">{boletoName}</p>
+                      </div>
+                    </div>
+                    {boletoCpf && (
+                      <div className="flex items-start gap-2.5">
+                        <FileText className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">CPF</p>
+                          <p className="text-sm font-medium text-gray-800">{formatCPFDisplay(boletoCpf)}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
+                <Button
+                  className="w-full h-12 rounded-xl font-bold text-white border-0 bg-emerald-600 hover:bg-emerald-700"
+                  style={{ boxShadow: "0 4px 20px rgba(16,185,129,0.3)" }}
+                  onClick={submitBoleto}
+                  disabled={boletoLoading}
+                >
+                  {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Gerar Boleto"}
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
                 <div><Label htmlFor="boleto-name" className="text-xs text-gray-700">Nome Completo *</Label><Input id="boleto-name" value={boletoName} onChange={(e) => setBoletoName(e.target.value)} placeholder="Seu nome completo" className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
                 <div><Label htmlFor="boleto-cpf" className="text-xs text-gray-700">CPF *</Label><Input id="boleto-cpf" value={boletoCpf} onChange={(e) => setBoletoCpf(formatCPF(e.target.value))} placeholder="12345678901" maxLength={11} className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
-                <Button className="w-full h-12 rounded-xl font-bold text-white border-0" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`, boxShadow: `0 4px 20px ${themeColor}40` }} onClick={submitBoleto} disabled={boletoLoading}>
+                <Button
+                  className="w-full h-12 rounded-xl font-bold text-white border-0 bg-emerald-600 hover:bg-emerald-700"
+                  style={{ boxShadow: "0 4px 20px rgba(16,185,129,0.3)" }}
+                  onClick={submitBoleto}
+                  disabled={boletoLoading}
+                >
                   {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Gerar Boleto"}
                 </Button>
               </div>
