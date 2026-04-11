@@ -1,70 +1,88 @@
 
 
-## Plano: Corrigir listagem de ofertas (join PostgREST falhando)
+## Diagnóstico: Follow Up para antes de finalizar os envios
 
-### Diagnóstico
-A oferta é salva corretamente, mas **não aparece na lista** porque a query usa um join embutido do PostgREST:
+### Problemas identificados
 
-```typescript
-.select("*, delivery_products(name, page_logo)")
-```
+Analisei o fluxo completo: cron → `processFollowUpDaily()` → `MessageQueue.processNext()` e encontrei **3 causas potenciais**:
 
-Para isso funcionar, o PostgREST precisa de uma **foreign key** entre `member_area_offers.product_id` e `delivery_products.id`. Essa FK não existe na VPS — o `fix-member-tables.sql` apenas faz `ADD COLUMN IF NOT EXISTS product_id uuid` sem constraint.
+**1. Fetch sem timeout (causa mais provável)**
+As chamadas `fetch()` para a Evolution API (sendText, sendMedia) não têm timeout. Se a Evolution demorar ou travar, o `await fetch(...)` fica preso **indefinidamente**, bloqueando a fila inteira. Nenhuma mensagem seguinte é processada.
 
-Quando o PostgREST não consegue resolver o relacionamento, ele retorna erro ou array vazio, e a lista fica vazia.
+**2. Cadeia recursiva sem proteção**
+O método `processNext()` chama a si mesmo recursivamente (linha 135) sem `await` e sem `.catch()`. Se ocorrer uma exceção não capturada antes do `try/catch` interno (ex: durante o cooldown), a cadeia de processamento **morre silenciosamente** — a fila fica com itens mas `processing = false` nunca é resetado corretamente.
+
+**3. Cooldown legítimo confundido com parada**
+Se `pause_after_sends` está configurado (ex: 5), após 5 envios a fila pausa por `pause_minutes` minutos. Isso é comportamento correto, mas pode parecer que "parou".
 
 ### Correções
 
-**1. Adicionar FK no banco (`deploy/fix-member-tables.sql`)**
-Adicionar após os ALTERs de `member_area_offers`:
-```sql
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.table_constraints
-    WHERE constraint_name = 'member_area_offers_product_id_fkey'
-  ) THEN
-    ALTER TABLE public.member_area_offers
-      ADD CONSTRAINT member_area_offers_product_id_fkey
-      FOREIGN KEY (product_id) REFERENCES public.delivery_products(id)
-      ON DELETE SET NULL;
-  END IF;
-END $$;
-```
-
-**2. Blindar a query no frontend (`src/pages/AreaMembros.tsx`)**
-Caso a FK ainda falhe em algum ambiente, mudar a query para buscar ofertas e produtos separadamente e fazer o merge em memória (padrão já usado em outras partes do sistema):
+**1. Adicionar timeout nas chamadas fetch (`deploy/backend/src/routes/followup-daily.ts`)**
+Criar helper com `AbortController` e timeout de 30s para todas as chamadas à Evolution API:
 
 ```typescript
-// Buscar ofertas sem join
-const { data } = await supabase
-  .from("member_area_offers")
-  .select("*")
-  .eq("workspace_id", workspaceId!)
-  .order("sort_order");
-return data || [];
+async function fetchWithTimeout(url: string, opts: RequestInit, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 ```
 
-E no render, buscar o nome do produto do array `products` já carregado:
+Substituir todos os `fetch(...)` por `fetchWithTimeout(...)`.
+
+**2. Proteger a cadeia recursiva (`deploy/backend/src/lib/message-queue.ts`)**
+Envolver `processNext()` em try/catch global e garantir que a cadeia nunca morra:
+
 ```typescript
-const product = products?.find(p => p.id === offer.product_id);
-const productName = product?.name || offer.name || "Oferta";
+private async processNext() {
+  if (this.queue.length === 0) {
+    this.processing = false;
+    this.currentLabel = null;
+    return;
+  }
+  this.processing = true;
+  // ... existing logic ...
+  
+  // Protect recursive call
+  try {
+    this.processNext();
+  } catch (e) {
+    console.error(`[queue:${this.instanceName}] processNext chain error, retrying...`, e);
+    setTimeout(() => this.processNext(), 1000);
+  }
+}
 ```
 
-Isso segue o padrão de **merge em memória** já documentado no projeto para evitar dependência de FKs no PostgREST da VPS.
+**3. Adicionar log de progresso com total**
+Para facilitar a investigação futura, adicionar contadores de progresso nos logs:
 
-**3. Atualizar `deploy/init-db.sql`**
-Incluir a FK na definição base para novas instalações.
+```
+[followup-daily] Progress: 15/42 enqueued, 8 skipped
+```
 
 ### Verificação na VPS
-Após `./update.sh`, rode:
+
+Antes da correção, rode na VPS para ver se a fila está travada:
+
 ```bash
-docker compose exec -T postgres psql -U postgres -d postgres -c "
-SELECT * FROM public.member_area_offers ORDER BY created_at DESC LIMIT 5;
-"
+cd ~/simplificandoconversas/deploy
+curl -s http://localhost:3100/api/queue-status | python3 -m json.tool
 ```
 
-### Resultado
-- Ofertas salvas aparecem imediatamente na lista
-- Não depende mais de join PostgREST funcionar
-- FK adicionada para ambientes futuros
+Isso mostra se há itens na fila, se está em cooldown, e o histórico de envios (sent/failed).
+
+Também verifique os logs do backend:
+
+```bash
+docker compose logs --tail=200 backend | grep -E "followup-daily|queue:"
+```
+
+### Resultado esperado
+- Fetch com timeout de 30s impede que a fila trave em chamadas penduradas
+- Cadeia recursiva protegida garante que a fila sempre continue processando
+- Logs de progresso facilitam investigação futura
 
