@@ -1,39 +1,50 @@
 
 
-## Plano: Registrar transação PIX na lista de transações
+## Plano: Corrigir registro de transação PIX no backend
 
-### Problema
-O fluxo PIX foi simplificado para apenas exibir a chave, mas removeu completamente a chamada ao backend. Por isso, nenhuma transação é registrada na tabela `transactions` quando o usuário confirma o PIX.
+### Causa raiz
+O backend `member-purchase.ts` ainda tenta gerar uma cobrança real via OpenPix quando `payment_method === "pix"`. Se o OpenPix não estiver configurado, retorna erro 500 (`"OpenPix não configurado"`). O frontend captura esse erro no `catch` silencioso e segue sem registrar nada.
 
-### Solução
-No `handlePixConfirm`, adicionar a chamada ao backend (`createCharge`) com `payment_method: "pix"` para registrar a intenção de pagamento — exatamente como já é feito para cartão. A chamada será "fire and forget" (não bloqueia o fluxo nem impede de ver a chave PIX).
+O fluxo PIX agora é manual (exibir chave), então o backend deve apenas registrar a intenção — exatamente como já faz para `cartao`.
 
-### Arquivo: `src/components/membros/PaymentFlow.tsx`
+### Alteração
 
-Alterar `handlePixConfirm` de:
+**Arquivo: `deploy/backend/src/routes/member-purchase.ts`**
+
+Substituir o bloco PIX inteiro (linhas 94-165, que chama OpenPix API) por um registro simples de intenção:
+
 ```typescript
-const handlePixConfirm = () => {
-  setStep("pix");
-};
+if (payment_method === "pix") {
+  const { data: tx } = await sb
+    .from("transactions")
+    .insert({
+      user_id: creds.userId,
+      workspace_id,
+      type: "pix",
+      status: "pendente",
+      amount: Number(amount),
+      customer_phone: normalizedPhone,
+      customer_name: customer_name || null,
+      customer_email: resolvedEmail,
+      customer_document: customer_document || null,
+      description,
+      source: "member-area",
+    })
+    .select("id")
+    .single();
+
+  console.log(`[member-purchase] ✅ PIX intent logged: ${tx?.id}`);
+  return res.json({ success: true, transaction_id: tx?.id, type: "pix" });
+}
 ```
 
-Para:
-```typescript
-const handlePixConfirm = async () => {
-  setStep("pix");
-  // Registrar intenção de pagamento PIX (não bloqueia o fluxo)
-  try {
-    await createCharge({ ...basePayload, payment_method: "pix" });
-  } catch {
-    // Apenas logging, não impede o usuário de ver a chave
-  }
-};
-```
+Isso elimina a dependência do OpenPix e garante que a transação seja criada sempre.
 
-Isso criará um registro na tabela `transactions` com `type: "pix"`, `status: "pendente"`, `source: "member-area"`, vinculado ao workspace e com os dados do cliente.
-
-### Após deploy
+### Após deploy na VPS
 ```bash
 cd ~/simplificandoconversas/deploy && bash update.sh
 ```
+
+### Resultado esperado
+- Ao confirmar PIX na Área de Membros, a transação aparece imediatamente na tabela `transactions` com `type: "pix"`, `status: "pendente"`, `source: "member-area"`
 
