@@ -96,6 +96,8 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
     offer_name: offer.name,
     amount: offer.price || 0,
     workspace_id: workspaceId,
+    customer_name: customerName || undefined,
+    customer_document: customerDocument || undefined,
   };
 
   const handlePix = async () => {
