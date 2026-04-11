@@ -166,7 +166,7 @@ router.get("/:phone", async (req, res) => {
       customer: customerData
         ? {
             name: customerData.name || null,
-            document: customerDocument || customerData.document || null,
+            document: customerData.document || null,
             first_seen_at: customerData.first_seen_at || null,
             total_paid: customerData.total_paid || 0,
             total_transactions: customerData.total_transactions || 0,
