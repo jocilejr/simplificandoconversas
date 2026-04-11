@@ -54,6 +54,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   };
 
   const handleCard = () => {
+    trackPaymentStarted("cartao");
     const url = offer.card_payment_url || offer.purchase_url;
     if (url) window.open(url, "_blank");
   };

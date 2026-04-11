@@ -241,15 +241,15 @@ function MemberOffersTab() {
     enabled: !!workspaceId,
   });
 
-  // Conversions: count active member_products per product_id
+  // Conversions: count payment_started per offer_id
   const { data: offerConversions } = useQuery({
     queryKey: ["offer-conversions", workspaceId],
     queryFn: async () => {
-      const { data } = await supabase.from("member_products" as any).select("product_id").eq("workspace_id", workspaceId!).eq("is_active", true);
+      const { data } = await supabase.from("member_offer_impressions" as any).select("offer_id").eq("payment_started", true);
       if (!data) return {} as Record<string, number>;
       const counts: Record<string, number> = {};
       for (const row of data as any[]) {
-        counts[row.product_id] = (counts[row.product_id] || 0) + 1;
+        counts[row.offer_id] = (counts[row.offer_id] || 0) + 1;
       }
       return counts;
     },
@@ -410,9 +410,9 @@ function MemberOffersTab() {
                         <span>{impressions.toLocaleString("pt-BR")} views</span>
                         <span>{clicks.toLocaleString("pt-BR")} cliques</span>
                         <span>{ctr}% CTR</span>
-                        {offer.product_id && (offerConversions?.[offer.product_id] || 0) > 0 && (
+                        {(offerConversions?.[offer.id] || 0) > 0 && (
                           <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">
-                            {offerConversions[offer.product_id]} vendas
+                            {offerConversions[offer.id]} conversões
                           </Badge>
                         )}
                       </div>
