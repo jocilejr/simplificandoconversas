@@ -70,9 +70,6 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   const [editingData, setEditingData] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // PIX response data
-  const [pixQrCode, setPixQrCode] = useState("");
-  const [pixQrCodeBase64, setPixQrCodeBase64] = useState("");
 
   // Boleto response data
   const [boletoPaymentUrl, setBoletoPaymentUrl] = useState("");
@@ -85,8 +82,6 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
       setBoletoCpf(customerDocument ? customerDocument.replace(/\D/g, "").slice(0, 11) : "");
       setHasExistingData(!!(customerName || customerDocument));
       setEditingData(false); setErrorMsg("");
-      setPixQrCode(""); setPixQrCodeBase64("");
-      setBoletoPaymentUrl("");
     }, 200);
   };
 
