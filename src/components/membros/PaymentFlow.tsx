@@ -42,8 +42,20 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
     setTimeout(() => { setStep("select"); setCopied(false); setPixSent(false); setBoletoName(""); setBoletoCpf(""); setBoletoLoading(false); setBoletoSent(false); }, 200);
   };
 
+  const trackPaymentStarted = async (method: string) => {
+    try {
+      await supabase.from("member_offer_impressions" as any).upsert({
+        normalized_phone: memberPhone.replace(/\D/g, ""),
+        offer_id: offer.id,
+        payment_started: true,
+        payment_method: method,
+      }, { onConflict: "normalized_phone,offer_id" });
+    } catch { /* silent */ }
+  };
+
   const handlePix = async () => {
     setStep("pix");
+    trackPaymentStarted("pix");
     if (pixSent) return;
     try {
       await supabase.functions.invoke("member-purchase", {
