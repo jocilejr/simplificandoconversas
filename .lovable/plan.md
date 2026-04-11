@@ -1,50 +1,51 @@
 
 
-## Plano: Corrigir registro de transação PIX no backend
+## Plano: Corrigir listagem de materiais na Área de Membros
 
 ### Causa raiz
-O backend `member-purchase.ts` ainda tenta gerar uma cobrança real via OpenPix quando `payment_method === "pix"`. Se o OpenPix não estiver configurado, retorna erro 500 (`"OpenPix não configurado"`). O frontend captura esse erro no `catch` silencioso e segue sem registrar nada.
+A query de materiais em `ContentManagement.tsx` (linha 134) usa um join PostgREST:
+```
+select("*, member_product_categories(name)")
+```
+Porém na VPS **não existe foreign key** entre `member_product_materials.category_id` e `member_product_categories.id`. Sem a FK, o PostgREST retorna erro e `data` vem `null`, fazendo a lista aparecer vazia.
 
-O fluxo PIX agora é manual (exibir chave), então o backend deve apenas registrar a intenção — exatamente como já faz para `cartao`.
+### Solução (duas partes)
 
-### Alteração
+**1. Frontend — remover o join da query** (`ContentManagement.tsx`, linha 134)
 
-**Arquivo: `deploy/backend/src/routes/member-purchase.ts`**
-
-Substituir o bloco PIX inteiro (linhas 94-165, que chama OpenPix API) por um registro simples de intenção:
-
+Alterar de:
 ```typescript
-if (payment_method === "pix") {
-  const { data: tx } = await sb
-    .from("transactions")
-    .insert({
-      user_id: creds.userId,
-      workspace_id,
-      type: "pix",
-      status: "pendente",
-      amount: Number(amount),
-      customer_phone: normalizedPhone,
-      customer_name: customer_name || null,
-      customer_email: resolvedEmail,
-      customer_document: customer_document || null,
-      description,
-      source: "member-area",
-    })
-    .select("id")
-    .single();
-
-  console.log(`[member-purchase] ✅ PIX intent logged: ${tx?.id}`);
-  return res.json({ success: true, transaction_id: tx?.id, type: "pix" });
-}
+.select("*, member_product_categories(name)")
+```
+Para:
+```typescript
+.select("*")
 ```
 
-Isso elimina a dependência do OpenPix e garante que a transação seja criada sempre.
+E resolver o nome da categoria em memória usando os dados já carregados na query `categories` (linha 123-129). Na renderização dos materiais, fazer lookup: `categories.find(c => c.id === mat.category_id)?.name`.
 
-### Após deploy na VPS
-```bash
-cd ~/simplificandoconversas/deploy && bash update.sh
+**2. VPS — adicionar a FK para futuro** (no `fix-member-tables.sql`)
+
+Adicionar ao SQL de migração:
+```sql
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'member_product_materials_category_id_fkey'
+  ) THEN
+    ALTER TABLE public.member_product_materials
+      ADD CONSTRAINT member_product_materials_category_id_fkey
+      FOREIGN KEY (category_id) REFERENCES public.member_product_categories(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 ```
 
 ### Resultado esperado
-- Ao confirmar PIX na Área de Membros, a transação aparece imediatamente na tabela `transactions` com `type: "pix"`, `status: "pendente"`, `source: "member-area"`
+Os materiais adicionados aparecerão imediatamente na listagem, mesmo sem a FK. Com a FK adicionada futuramente, o join voltará a funcionar também.
+
+### Após deploy
+```bash
+cd ~/simplificandoconversas/deploy && bash update.sh
+```
 
