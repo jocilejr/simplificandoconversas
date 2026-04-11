@@ -225,6 +225,8 @@ async function processWorkspace(
   let sent = 0;
   let skipped = 0;
 
+  const totalBoletos = boletos.length;
+
   for (const boleto of boletos) {
     const createdAt = boleto.created_at;
     const dueDate = new Date(
@@ -412,6 +414,7 @@ async function processWorkspace(
 
     sent++;
     phoneSendCount.set(phoneKey, currentCount + 1);
+    console.log(`[followup-daily] Progress: ${sent + skipped}/${totalBoletos} processed (enqueued=${sent}, skipped=${skipped})`);
   }
 
   console.log(`[followup-daily] Workspace ${workspaceId}: enqueued=${sent}, skipped=${skipped}`);
