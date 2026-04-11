@@ -315,7 +315,7 @@ async function processWorkspace(
 
           if (block.type === "text") {
             const text = replaceVariables(block.content, vars);
-            const resp = await fetch(
+            const resp = await fetchWithTimeout(
               `${evoBaseUrl}/message/sendText/${encodeURIComponent(instanceName)}`,
               {
                 method: "POST",
@@ -336,7 +336,7 @@ async function processWorkspace(
                 const pdfBuffer = await fsModule.readFile(fsPath);
                 const pdfBase64 = cleanBase64(pdfBuffer.toString("base64"));
                 const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
-                const resp = await fetch(
+                const resp = await fetchWithTimeout(
                   `${evoBaseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`,
                   {
                     method: "POST",
@@ -369,7 +369,7 @@ async function processWorkspace(
                 await convertPdfToJpg(fsPath, jpgPath);
                 const imgBuffer = await fsModule.readFile(jpgPath);
                 const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
-                const resp = await fetch(
+                const resp = await fetchWithTimeout(
                   `${evoBaseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`,
                   {
                     method: "POST",
