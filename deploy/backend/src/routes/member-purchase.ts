@@ -103,24 +103,7 @@ router.get("/customer-info", async (req, res) => {
     }
     const uniqueVariants = [...new Set(phoneVariants)];
 
-    // Step 0: Search customers table first (most reliable source)
-    try {
-      const { data: customer } = await sb
-        .from("customers")
-        .select("name, document, normalized_phone")
-        .eq("workspace_id", workspace_id)
-        .in("normalized_phone", uniqueVariants)
-        .limit(1)
-        .maybeSingle();
-
-      if (customer?.name) {
-        name = customer.name;
-        document = (customer as any).document || "";
-        console.log(`[member-purchase] customer-info found in customers table: name="${name}"`);
-      }
-    } catch (e: any) {
-      console.log(`[member-purchase] customers table lookup skipped: ${e.message}`);
-    }
+    // Step 0: removed — customers table does not exist on VPS
 
     // 1) Search transactions — exact phone match
     if (!name) {

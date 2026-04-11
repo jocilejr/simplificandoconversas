@@ -59,10 +59,9 @@ router.get("/:phone", async (req, res) => {
     const dpMap = new Map<string, any>();
     for (const dp of deliveryProducts || []) dpMap.set(dp.id, dp);
 
-    // Step 3: fetch settings, categories, materials, offers, and customer in parallel
-    // Also try last-8-digits fallback for customer matching
+    // Step 3: fetch settings, categories, materials, offers in parallel
     const last8 = normalized.slice(-8);
-    const [settingsRes, categoriesRes, materialsRes, offersRes, customerRes, memberSettingsRes] = await Promise.all([
+    const [settingsRes, categoriesRes, materialsRes, offersRes] = await Promise.all([
       sb.from("member_area_settings")
         .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt, ai_model")
         .eq("workspace_id", workspaceId)
@@ -82,29 +81,78 @@ router.get("/:phone", async (req, res) => {
         .eq("workspace_id", workspaceId)
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
-      sb.from("customers")
-        .select("name, document, normalized_phone, first_seen_at, total_paid, total_transactions")
-        .eq("workspace_id", workspaceId)
-        .in("normalized_phone", phoneCandidates)
-        .limit(1)
-        .maybeSingle(),
-      sb.from("member_area_settings")
-        .select("theme_color, ai_persona_prompt")
-        .eq("workspace_id", workspaceId)
-        .maybeSingle(),
     ]);
 
-    // Fallback: if no customer found by exact variations, try last 8 digits
-    let customerData = customerRes.data as any;
-    if (!customerData && last8.length === 8) {
-      const { data: fallbackCustomer } = await sb
-        .from("customers")
-        .select("name, document, normalized_phone, first_seen_at, total_paid, total_transactions")
+    // Step 4: Resolve customer data from transactions (primary) + conversations (fallback)
+    let customerName: string | null = null;
+    let customerDocument: string | null = null;
+
+    // 4a: Search transactions by exact phone variations
+    const { data: txExact } = await sb
+      .from("transactions")
+      .select("customer_name, customer_document")
+      .eq("workspace_id", workspaceId)
+      .in("customer_phone", phoneCandidates)
+      .not("customer_name", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (txExact?.[0]?.customer_name) {
+      customerName = txExact[0].customer_name;
+      customerDocument = txExact[0].customer_document || null;
+    }
+
+    // 4b: Fallback — transactions by last 8 digits
+    if (!customerName && last8.length === 8) {
+      const { data: txFuzzy } = await sb
+        .from("transactions")
+        .select("customer_name, customer_document, customer_phone")
         .eq("workspace_id", workspaceId)
-        .like("normalized_phone", `%${last8}`)
-        .limit(1)
-        .maybeSingle();
-      if (fallbackCustomer) customerData = fallbackCustomer;
+        .not("customer_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (txFuzzy) {
+        const match = txFuzzy.find((t: any) => t.customer_phone?.slice(-8) === last8);
+        if (match?.customer_name) {
+          customerName = match.customer_name;
+          customerDocument = match.customer_document || null;
+        }
+      }
+    }
+
+    // 4c: Fallback — conversations.contact_name by remote_jid
+    if (!customerName) {
+      const jidVariants = phoneCandidates.map(v => `${v}@s.whatsapp.net`);
+      const { data: convos } = await sb
+        .from("conversations")
+        .select("contact_name")
+        .eq("workspace_id", workspaceId)
+        .in("remote_jid", jidVariants)
+        .not("contact_name", "is", null)
+        .limit(1);
+
+      if (convos?.[0]?.contact_name) {
+        customerName = convos[0].contact_name;
+      }
+    }
+
+    // 4d: If we have name but no document, try finding document from transactions
+    if (customerName && !customerDocument && last8.length === 8) {
+      const { data: docSearch } = await sb
+        .from("transactions")
+        .select("customer_document, customer_phone")
+        .eq("workspace_id", workspaceId)
+        .not("customer_document", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (docSearch) {
+        const match = docSearch.find((t: any) => t.customer_phone?.slice(-8) === last8);
+        if (match?.customer_document) {
+          customerDocument = match.customer_document;
+        }
+      }
     }
 
     if (settingsRes.error) throw settingsRes.error;
@@ -163,13 +211,10 @@ router.get("/:phone", async (req, res) => {
       settings,
       products: Array.from(productMap.values()),
       offers: (offersRes.data || []).map((o: any) => ({ ...o, name: o.name || o.title || "Oferta" })),
-      customer: customerData
+      customer: customerName
         ? {
-            name: customerData.name || null,
-            document: customerData.document || null,
-            first_seen_at: customerData.first_seen_at || null,
-            total_paid: customerData.total_paid || 0,
-            total_transactions: customerData.total_transactions || 0,
+            name: customerName,
+            document: customerDocument,
           }
         : null,
     });
@@ -273,16 +318,16 @@ router.post("/ai-context", async (req, res) => {
     let leadContext = "";
     if (reqPhone) {
       const phoneCandidates = generateVariations(normalizePhone(reqPhone) || reqPhone);
-      const { data: leadRow } = await sb
-        .from("customers")
-        .select("name, first_seen_at, total_paid, total_transactions")
+      const { data: leadTx } = await sb
+        .from("transactions")
+        .select("customer_name, customer_document")
         .eq("workspace_id", workspaceId)
-        .in("normalized_phone", phoneCandidates)
-        .limit(1)
-        .maybeSingle();
-      if (leadRow) {
-        const lr = leadRow as any;
-        leadContext = `\n\nDADOS DO LEAD:\n- Nome completo: ${lr.name || "desconhecido"}\n- Primeiro contato: ${lr.first_seen_at || "desconhecido"}\n- Total pago: R$ ${Number(lr.total_paid || 0).toFixed(2).replace('.', ',')}\n- Total de transações: ${lr.total_transactions || 0}`;
+        .in("customer_phone", phoneCandidates)
+        .not("customer_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (leadTx?.[0]?.customer_name) {
+        leadContext = `\n\nDADOS DO LEAD:\n- Nome completo: ${leadTx[0].customer_name}`;
       }
     }
 
