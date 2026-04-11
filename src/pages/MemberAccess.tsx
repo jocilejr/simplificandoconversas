@@ -90,7 +90,7 @@ interface BackendResponse {
   settings: MemberSettings | null;
   products: BackendProduct[];
   offers?: any[];
-  customer?: { name: string | null; first_seen_at?: string; total_paid?: number; total_transactions?: number } | null;
+  customer?: { name: string | null; document?: string | null; first_seen_at?: string; total_paid?: number; total_transactions?: number } | null;
 }
 
 const AI_CACHE_KEY = "member_ai_context";
