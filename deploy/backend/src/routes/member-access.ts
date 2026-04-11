@@ -81,7 +81,7 @@ router.get("/:phone", async (req, res) => {
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
       sb.from("customers")
-        .select("name, first_seen_at, total_paid, total_transactions")
+        .select("name, document, first_seen_at, total_paid, total_transactions")
         .eq("workspace_id", workspaceId)
         .in("normalized_phone", phoneCandidates)
         .limit(1)
@@ -151,6 +151,7 @@ router.get("/:phone", async (req, res) => {
       customer: customerRes.data
         ? {
             name: (customerRes.data as any).name || null,
+            document: (customerRes.data as any).document || null,
             first_seen_at: (customerRes.data as any).first_seen_at || null,
             total_paid: (customerRes.data as any).total_paid || 0,
             total_transactions: (customerRes.data as any).total_transactions || 0,

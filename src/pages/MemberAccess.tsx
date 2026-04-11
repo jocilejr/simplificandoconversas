@@ -103,6 +103,7 @@ export default function MemberAccess() {
   const [offers, setOffers] = useState<any[]>([]);
   const [settings, setSettings] = useState<MemberSettings | null>(null);
   const [customerName, setCustomerName] = useState<string | null>(null);
+  const [customerDocument, setCustomerDocument] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
   const [aiContext, setAiContext] = useState<AiContext | null>(null);
@@ -192,6 +193,7 @@ export default function MemberAccess() {
 
       const name = payload.customer?.name || null;
       setCustomerName(name);
+      setCustomerDocument(payload.customer?.document || null);
 
       // Load materials map from the backend response (already included)
       const matsByProd: Record<string, any[]> = {};
