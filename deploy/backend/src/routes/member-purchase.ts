@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getSupabase } from "../lib/supabase";
+import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
 
@@ -12,7 +12,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields: phone, offer_name, payment_method, workspace_id" });
     }
 
-    const sb = getSupabase();
+    const sb = getServiceClient();
 
     // Resolve user_id from workspace
     const { data: ws } = await sb
@@ -73,7 +73,7 @@ router.get("/customer-info", async (req, res) => {
     }
 
     const normalizedPhone = (phone as string).replace(/\D/g, "");
-    const sb = getSupabase();
+    const sb = getServiceClient();
 
     // Try exact match first, then last 8 digits
     const { data: exact } = await sb
