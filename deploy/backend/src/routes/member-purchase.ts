@@ -14,7 +14,6 @@ router.post("/", async (req, res) => {
 
     const sb = getServiceClient();
 
-    // Resolve user_id from workspace
     const { data: ws } = await sb
       .from("workspaces")
       .select("created_by")
@@ -27,7 +26,6 @@ router.post("/", async (req, res) => {
 
     const normalizedPhone = phone.replace(/\D/g, "");
 
-    // Map payment_method to transaction type
     const typeMap: Record<string, string> = { pix: "pix", cartao: "cartao", boleto: "boleto" };
     const txType = typeMap[payment_method] || payment_method;
 
@@ -65,6 +63,7 @@ router.post("/", async (req, res) => {
 });
 
 // GET /customer-info — Lookup existing customer data by phone
+// Searches: 1) transactions (exact + fuzzy), 2) conversations (contact_name)
 router.get("/customer-info", async (req, res) => {
   try {
     const { phone, workspace_id } = req.query;
@@ -73,10 +72,14 @@ router.get("/customer-info", async (req, res) => {
     }
 
     const normalizedPhone = (phone as string).replace(/\D/g, "");
+    const last8 = normalizedPhone.slice(-8);
     const sb = getServiceClient();
 
-    // Try exact match first, then last 8 digits
-    const { data: exact } = await sb
+    let name = "";
+    let document = "";
+
+    // 1) Search transactions — exact phone match
+    const { data: exactTx } = await sb
       .from("transactions")
       .select("customer_name, customer_document")
       .eq("workspace_id", workspace_id)
@@ -85,28 +88,101 @@ router.get("/customer-info", async (req, res) => {
       .order("created_at", { ascending: false })
       .limit(1);
 
-    if (exact && exact.length > 0 && exact[0].customer_name) {
-      return res.json({ name: exact[0].customer_name, document: exact[0].customer_document || "" });
+    if (exactTx?.[0]?.customer_name) {
+      name = exactTx[0].customer_name;
+      document = exactTx[0].customer_document || "";
     }
 
-    // Try last 8 digits
-    const last8 = normalizedPhone.slice(-8);
-    const { data: fuzzy } = await sb
-      .from("transactions")
-      .select("customer_name, customer_document, customer_phone")
-      .eq("workspace_id", workspace_id)
-      .not("customer_name", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(200);
+    // 2) If no name yet, try transactions with last 8 digits
+    if (!name) {
+      const { data: fuzzyTx } = await sb
+        .from("transactions")
+        .select("customer_name, customer_document, customer_phone")
+        .eq("workspace_id", workspace_id)
+        .not("customer_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(200);
 
-    if (fuzzy) {
-      const match = fuzzy.find((t: any) => t.customer_phone && t.customer_phone.slice(-8) === last8);
-      if (match && match.customer_name) {
-        return res.json({ name: match.customer_name, document: match.customer_document || "" });
+      if (fuzzyTx) {
+        const match = fuzzyTx.find((t: any) => t.customer_phone?.slice(-8) === last8);
+        if (match?.customer_name) {
+          name = match.customer_name;
+          document = match.customer_document || "";
+        }
       }
     }
 
-    return res.json({ name: "", document: "" });
+    // 3) If still no name, search conversations (contact_name) by remote_jid
+    if (!name) {
+      // remote_jid format: "5589981340810@s.whatsapp.net"
+      const jidVariants = [
+        `${normalizedPhone}@s.whatsapp.net`,
+      ];
+      // Also try without country code prefix or with 9th digit variations
+      if (normalizedPhone.startsWith("55") && normalizedPhone.length === 13) {
+        // Remove 9th digit: 55 + 2-digit DDD + 9 + 8 digits → 55 + DDD + 8 digits
+        const without9 = normalizedPhone.slice(0, 4) + normalizedPhone.slice(5);
+        jidVariants.push(`${without9}@s.whatsapp.net`);
+      } else if (normalizedPhone.startsWith("55") && normalizedPhone.length === 12) {
+        // Add 9th digit
+        const with9 = normalizedPhone.slice(0, 4) + "9" + normalizedPhone.slice(4);
+        jidVariants.push(`${with9}@s.whatsapp.net`);
+      }
+
+      const { data: convos } = await sb
+        .from("conversations")
+        .select("contact_name, remote_jid")
+        .eq("workspace_id", workspace_id)
+        .in("remote_jid", jidVariants)
+        .not("contact_name", "is", null)
+        .limit(1);
+
+      if (convos?.[0]?.contact_name) {
+        name = convos[0].contact_name;
+      }
+
+      // Last resort: fuzzy match conversations by last 8 digits
+      if (!name) {
+        const { data: allConvos } = await sb
+          .from("conversations")
+          .select("contact_name, remote_jid")
+          .eq("workspace_id", workspace_id)
+          .not("contact_name", "is", null)
+          .order("last_message_at", { ascending: false })
+          .limit(300);
+
+        if (allConvos) {
+          const match = allConvos.find((c: any) => {
+            const cPhone = c.remote_jid?.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+            return cPhone?.slice(-8) === last8;
+          });
+          if (match?.contact_name) {
+            name = match.contact_name;
+          }
+        }
+      }
+    }
+
+    // 4) If we have name but no document, try finding document from any transaction with this phone
+    if (name && !document) {
+      const { data: docSearch } = await sb
+        .from("transactions")
+        .select("customer_document, customer_phone")
+        .eq("workspace_id", workspace_id)
+        .not("customer_document", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (docSearch) {
+        const match = docSearch.find((t: any) => t.customer_phone?.slice(-8) === last8);
+        if (match?.customer_document) {
+          document = match.customer_document;
+        }
+      }
+    }
+
+    console.log(`[member-purchase] customer-info for ${normalizedPhone}: name="${name}", doc="${document ? "***" : ""}"`)
+    return res.json({ name, document });
   } catch (err: any) {
     console.error("[member-purchase] customer-info error:", err.message);
     return res.json({ name: "", document: "" });

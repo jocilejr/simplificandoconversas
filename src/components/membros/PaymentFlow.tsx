@@ -157,6 +157,8 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="sm:max-w-md rounded-2xl border-0 p-0 gap-0 overflow-hidden shadow-2xl bg-white [&>button]:hidden">
         <DialogTitle className="sr-only">Pagamento</DialogTitle>
+
+        {/* Header */}
         <div className="px-5 py-4 flex items-center gap-3" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}cc)` }}>
           {step !== "select" && (
             <button onClick={() => setStep("select")} className="text-white/80 hover:text-white transition-colors"><ArrowLeft className="h-5 w-5" /></button>
@@ -167,6 +169,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
           </div>
         </div>
 
+        {/* Step: Select payment method */}
         {step === "select" && (
           <div className="p-5 space-y-3">
             <p className="text-sm text-gray-600 text-center mb-1">Como deseja pagar?</p>
@@ -194,6 +197,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
           </div>
         )}
 
+        {/* Step: PIX */}
         {step === "pix" && (
           <div className="p-5 space-y-4">
             <div className="text-center space-y-2">
@@ -209,83 +213,132 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
               </Button>
             </div>
             <div className="rounded-xl p-4 text-center" style={{ backgroundColor: `${themeColor}08`, border: `1px solid ${themeColor}20` }}>
-              <p className="text-sm text-gray-700 leading-relaxed">✨ Ao efetuar o PIX, todo o material será <strong>liberado no seu WhatsApp</strong> automaticamente!</p>
+              <p className="text-sm text-gray-700 leading-relaxed">Ao efetuar o PIX, todo o material será <strong>liberado no seu WhatsApp</strong> automaticamente!</p>
             </div>
           </div>
         )}
 
+        {/* Step: Boleto — form or confirmation */}
         {step === "boleto" && !boletoSent && (
-          <div className="p-5 space-y-4">
-            <div className="text-center space-y-1">
-              <p className="text-sm font-semibold text-gray-800">Gerar Boleto</p>
-              {priceFormatted && <p className="text-lg font-bold" style={{ color: themeColor }}>{priceFormatted}</p>}
+          <div className="p-5 space-y-5">
+            {/* Title + price */}
+            <div className="text-center">
+              <div className="mx-auto h-14 w-14 rounded-2xl bg-emerald-50 flex items-center justify-center mb-3">
+                <FileText className="h-7 w-7 text-emerald-600" />
+              </div>
+              <p className="text-base font-semibold text-gray-900">Gerar Boleto Bancário</p>
+              {priceFormatted && (
+                <p className="text-2xl font-bold text-emerald-600 mt-1">{priceFormatted}</p>
+              )}
             </div>
 
             {customerLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                <span className="text-sm text-gray-500 ml-2">Buscando seus dados...</span>
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+                <span className="text-sm text-gray-500">Buscando seus dados...</span>
               </div>
             ) : hasExistingData && !editingData ? (
-              <div className="space-y-3">
-                <div className="bg-gray-50 rounded-xl p-4 relative">
+              /* Read-only customer card */
+              <div className="space-y-4">
+                <div className="border border-gray-200 rounded-xl p-4 relative bg-gray-50/50">
                   <button
                     onClick={() => setEditingData(true)}
-                    className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-gray-200 transition-colors text-gray-400 hover:text-gray-600"
+                    className="absolute top-3 right-3 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all text-gray-400 hover:text-gray-700"
                     title="Editar dados"
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <div className="space-y-3 pr-8">
-                    <div className="flex items-start gap-2.5">
-                      <User className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">Nome</p>
-                        <p className="text-sm font-medium text-gray-800">{boletoName}</p>
+
+                  <div className="space-y-3 pr-10">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                        <User className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest leading-none mb-0.5">Nome completo</p>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{boletoName}</p>
                       </div>
                     </div>
+
                     {boletoCpf && (
-                      <div className="flex items-start gap-2.5">
-                        <FileText className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">CPF</p>
-                          <p className="text-sm font-medium text-gray-800">{formatCPFDisplay(boletoCpf)}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                          <FileText className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest leading-none mb-0.5">CPF</p>
+                          <p className="text-sm font-semibold text-gray-900 font-mono">{formatCPFDisplay(boletoCpf)}</p>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
+
                 <Button
-                  className="w-full h-12 rounded-xl font-bold text-white border-0 bg-emerald-600 hover:bg-emerald-700"
-                  style={{ boxShadow: "0 4px 20px rgba(16,185,129,0.3)" }}
+                  className="w-full h-12 rounded-xl font-bold text-base text-white border-0 bg-emerald-600 hover:bg-emerald-700 transition-all"
+                  style={{ boxShadow: "0 4px 20px rgba(16,185,129,0.35)" }}
                   onClick={submitBoleto}
                   disabled={boletoLoading}
                 >
-                  {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Gerar Boleto"}
+                  {boletoLoading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando boleto...</>
+                  ) : (
+                    <><FileText className="h-4 w-4 mr-2" /> Gerar Boleto</>
+                  )}
                 </Button>
               </div>
             ) : (
-              <div className="space-y-3">
-                <div><Label htmlFor="boleto-name" className="text-xs text-gray-700">Nome Completo *</Label><Input id="boleto-name" value={boletoName} onChange={(e) => setBoletoName(e.target.value)} placeholder="Seu nome completo" className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
-                <div><Label htmlFor="boleto-cpf" className="text-xs text-gray-700">CPF *</Label><Input id="boleto-cpf" value={boletoCpf} onChange={(e) => setBoletoCpf(formatCPF(e.target.value))} placeholder="12345678901" maxLength={11} className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
+              /* Editable form */
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="boleto-name" className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Nome Completo</Label>
+                    <Input
+                      id="boleto-name"
+                      value={boletoName}
+                      onChange={(e) => setBoletoName(e.target.value)}
+                      placeholder="Seu nome completo"
+                      className="mt-1.5 h-11 bg-white text-gray-900 border-gray-200 rounded-lg placeholder:text-gray-400 focus:border-emerald-500 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="boleto-cpf" className="text-xs font-semibold text-gray-600 uppercase tracking-wide">CPF</Label>
+                    <Input
+                      id="boleto-cpf"
+                      value={boletoCpf}
+                      onChange={(e) => setBoletoCpf(formatCPF(e.target.value))}
+                      placeholder="000.000.000-00"
+                      maxLength={11}
+                      className="mt-1.5 h-11 bg-white text-gray-900 border-gray-200 rounded-lg placeholder:text-gray-400 font-mono focus:border-emerald-500 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
                 <Button
-                  className="w-full h-12 rounded-xl font-bold text-white border-0 bg-emerald-600 hover:bg-emerald-700"
-                  style={{ boxShadow: "0 4px 20px rgba(16,185,129,0.3)" }}
+                  className="w-full h-12 rounded-xl font-bold text-base text-white border-0 bg-emerald-600 hover:bg-emerald-700 transition-all"
+                  style={{ boxShadow: "0 4px 20px rgba(16,185,129,0.35)" }}
                   onClick={submitBoleto}
                   disabled={boletoLoading}
                 >
-                  {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Gerar Boleto"}
+                  {boletoLoading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando boleto...</>
+                  ) : (
+                    <><FileText className="h-4 w-4 mr-2" /> Gerar Boleto</>
+                  )}
                 </Button>
               </div>
             )}
           </div>
         )}
 
+        {/* Step: Boleto — success */}
         {step === "boleto" && boletoSent && (
-          <div className="p-5 text-center space-y-3">
-            <div className="mx-auto h-16 w-16 rounded-full bg-green-100 flex items-center justify-center"><Check className="h-8 w-8 text-green-600" /></div>
-            <p className="font-semibold text-gray-800">Boleto solicitado!</p>
-            <p className="text-sm text-gray-500">Você receberá os detalhes do boleto no seu WhatsApp em breve.</p>
+          <div className="p-6 text-center space-y-3">
+            <div className="mx-auto h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center">
+              <Check className="h-8 w-8 text-emerald-600" />
+            </div>
+            <p className="font-semibold text-gray-900 text-base">Boleto solicitado!</p>
+            <p className="text-sm text-gray-500 leading-relaxed">Você receberá os detalhes do boleto no seu WhatsApp em breve.</p>
           </div>
         )}
       </DialogContent>
