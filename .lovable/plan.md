@@ -1,26 +1,39 @@
 
 
-## Plano: PIX apenas exibe chave configurada (sem cobrança OpenPix)
+## Plano: Registrar transação PIX na lista de transações
 
-### Mudança
-O fluxo PIX na Área de Membros **não deve gerar cobrança** via gateway. Deve apenas:
+### Problema
+O fluxo PIX foi simplificado para apenas exibir a chave, mas removeu completamente a chamada ao backend. Por isso, nenhuma transação é registrada na tabela `transactions` quando o usuário confirma o PIX.
 
-1. Mostrar tela de confirmação com valor e pergunta "Tem certeza que deseja pagar via PIX?"
-2. Ao confirmar, exibir a chave PIX configurada na oferta (`offer.pix_key`) para o usuário copiar manualmente
-3. Registrar apenas a intenção de pagamento localmente (sem chamada ao OpenPix)
+### Solução
+No `handlePixConfirm`, adicionar a chamada ao backend (`createCharge`) com `payment_method: "pix"` para registrar a intenção de pagamento — exatamente como já é feito para cartão. A chamada será "fire and forget" (não bloqueia o fluxo nem impede de ver a chave PIX).
 
 ### Arquivo: `src/components/membros/PaymentFlow.tsx`
 
-- Adicionar step `pix-confirm` ao tipo `Step`
-- `handlePix` → navega para `pix-confirm` (sem chamada ao backend)
-- Tela `pix-confirm`: mostra valor formatado, mensagem "O valor é R$ X,XX, tem certeza que deseja efetuar no PIX?", botão "Confirmar"
-- Ao confirmar → vai direto para step `pix` mostrando a chave PIX da oferta (`offer.pix_key`) com botão de copiar
-- Remover toda lógica de chamada ao backend para PIX (sem `createCharge` para PIX)
-- Remover step `pix-loading` do fluxo PIX
-- Manter a tela `pix` simplificada: ícone QR, chave PIX em texto copiável, botão "Copiar Chave PIX"
+Alterar `handlePixConfirm` de:
+```typescript
+const handlePixConfirm = () => {
+  setStep("pix");
+};
+```
 
-### O que NÃO muda
-- Boleto continua gerando cobrança real via backend
-- Cartão continua abrindo link externo
-- Preenchimento automático de nome/CPF permanece
+Para:
+```typescript
+const handlePixConfirm = async () => {
+  setStep("pix");
+  // Registrar intenção de pagamento PIX (não bloqueia o fluxo)
+  try {
+    await createCharge({ ...basePayload, payment_method: "pix" });
+  } catch {
+    // Apenas logging, não impede o usuário de ver a chave
+  }
+};
+```
+
+Isso criará um registro na tabela `transactions` com `type: "pix"`, `status: "pendente"`, `source: "member-area"`, vinculado ao workspace e com os dados do cliente.
+
+### Após deploy
+```bash
+cd ~/simplificandoconversas/deploy && bash update.sh
+```
 
