@@ -239,32 +239,46 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
           </div>
         )}
 
-        {/* Step: PIX Loading */}
-        {step === "pix-loading" && (
-          <div className="p-8 flex flex-col items-center justify-center space-y-4">
-            <Loader2 className="h-10 w-10 animate-spin" style={{ color: themeColor }} />
-            <p className="text-sm text-gray-600">Gerando cobrança PIX...</p>
+        {/* Step: PIX Confirm */}
+        {step === "pix-confirm" && (
+          <div className="p-5 space-y-5">
+            <div className="text-center space-y-3">
+              <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: `${themeColor}15` }}>
+                <QrCode className="h-8 w-8" style={{ color: themeColor }} />
+              </div>
+              <p className="text-sm font-semibold text-gray-800">Pagamento via PIX</p>
+              {priceFormatted && (
+                <p className="text-2xl font-bold" style={{ color: themeColor }}>{priceFormatted}</p>
+              )}
+              <p className="text-sm text-gray-600">
+                O valor é <strong>{priceFormatted}</strong>, tem certeza que deseja efetuar no PIX?
+              </p>
+            </div>
+            <Button onClick={handlePixConfirm} className="w-full h-12 rounded-xl font-bold text-base text-white border-0 transition-all" style={{ backgroundColor: themeColor, boxShadow: `0 4px 20px ${themeColor}55` }}>
+              <Check className="h-4 w-4 mr-2" /> Confirmar Pagamento PIX
+            </Button>
           </div>
         )}
 
-        {/* Step: PIX */}
+        {/* Step: PIX — show key */}
         {step === "pix" && (
           <div className="p-5 space-y-4">
             <div className="text-center space-y-2">
-              {pixQrCodeBase64 ? (
-                <img src={pixQrCodeBase64} alt="QR Code PIX" className="mx-auto h-40 w-40 rounded-lg" />
-              ) : (
-                <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: `${themeColor}15` }}><QrCode className="h-8 w-8" style={{ color: themeColor }} /></div>
-              )}
+              <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: `${themeColor}15` }}>
+                <QrCode className="h-8 w-8" style={{ color: themeColor }} />
+              </div>
               <p className="text-sm font-semibold text-gray-800">Pague via PIX</p>
               {priceFormatted && <p className="text-2xl font-bold" style={{ color: themeColor }}>{priceFormatted}</p>}
             </div>
-            {pixQrCode && (
+            {offer.pix_key && (
               <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                <p className="text-xs text-gray-500 font-medium">Código PIX (Copia e Cola)</p>
-                <code className="text-[11px] text-gray-800 font-mono bg-white px-3 py-2 rounded-lg border break-all block max-h-20 overflow-y-auto">{pixQrCode}</code>
+                <p className="text-xs text-gray-500 font-medium">Chave PIX</p>
+                {offer.pix_key_type && (
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">{offer.pix_key_type}</p>
+                )}
+                <code className="text-[11px] text-gray-800 font-mono bg-white px-3 py-2 rounded-lg border break-all block">{offer.pix_key}</code>
                 <Button onClick={handleCopyPix} className="w-full mt-3 font-semibold" style={{ backgroundColor: themeColor, color: '#fff' }}>
-                  {copied ? <><Check className="h-4 w-4 mr-2" /> COPIADO!</> : <><Copy className="h-4 w-4 mr-2" /> COPIAR CÓDIGO PIX</>}
+                  {copied ? <><Check className="h-4 w-4 mr-2" /> COPIADO!</> : <><Copy className="h-4 w-4 mr-2" /> COPIAR CHAVE PIX</>}
                 </Button>
               </div>
             )}
