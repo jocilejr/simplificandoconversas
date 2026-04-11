@@ -81,7 +81,7 @@ export default function LockedOfferCard({ offer, themeColor, ownedProductNames, 
   return (
     <>
       <div
-        className="w-full rounded-2xl overflow-hidden shadow-md shadow-gray-200/60 transition-all duration-300 active:scale-[0.98] group relative bg-white border border-gray-100 cursor-pointer"
+        className="w-full rounded-2xl overflow-hidden shadow-[0_2px_12px_-2px_rgba(0,0,0,0.12),0_4px_20px_-4px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.18),0_8px_30px_-6px_rgba(0,0,0,0.12)] transition-all duration-300 active:scale-[0.98] group relative bg-white border border-gray-100 cursor-pointer"
         onClick={handleOpen}
       >
         {offer.image_url ? (
