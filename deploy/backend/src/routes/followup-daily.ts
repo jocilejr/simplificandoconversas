@@ -13,6 +13,20 @@ import { getServiceClient } from "../lib/supabase";
 import { getMessageQueue } from "../lib/message-queue";
 import { normalizePhone } from "../lib/normalize-phone";
 
+/**
+ * Fetch with timeout using AbortController.
+ * Prevents the queue from hanging indefinitely if Evolution API is unresponsive.
+ */
+async function fetchWithTimeout(url: string, opts: RequestInit, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const router = Router();
 
 function getGreeting(): string {
@@ -211,6 +225,8 @@ async function processWorkspace(
   let sent = 0;
   let skipped = 0;
 
+  const totalBoletos = boletos.length;
+
   for (const boleto of boletos) {
     const createdAt = boleto.created_at;
     const dueDate = new Date(
@@ -301,7 +317,7 @@ async function processWorkspace(
 
           if (block.type === "text") {
             const text = replaceVariables(block.content, vars);
-            const resp = await fetch(
+            const resp = await fetchWithTimeout(
               `${evoBaseUrl}/message/sendText/${encodeURIComponent(instanceName)}`,
               {
                 method: "POST",
@@ -322,7 +338,7 @@ async function processWorkspace(
                 const pdfBuffer = await fsModule.readFile(fsPath);
                 const pdfBase64 = cleanBase64(pdfBuffer.toString("base64"));
                 const firstName = vars.name ? vars.name.split(" ")[0] : "cliente";
-                const resp = await fetch(
+                const resp = await fetchWithTimeout(
                   `${evoBaseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`,
                   {
                     method: "POST",
@@ -355,7 +371,7 @@ async function processWorkspace(
                 await convertPdfToJpg(fsPath, jpgPath);
                 const imgBuffer = await fsModule.readFile(jpgPath);
                 const imgBase64 = cleanBase64(imgBuffer.toString("base64"));
-                const resp = await fetch(
+                const resp = await fetchWithTimeout(
                   `${evoBaseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`,
                   {
                     method: "POST",
@@ -398,6 +414,7 @@ async function processWorkspace(
 
     sent++;
     phoneSendCount.set(phoneKey, currentCount + 1);
+    console.log(`[followup-daily] Progress: ${sent + skipped}/${totalBoletos} processed (enqueued=${sent}, skipped=${skipped})`);
   }
 
   console.log(`[followup-daily] Workspace ${workspaceId}: enqueued=${sent}, skipped=${skipped}`);
