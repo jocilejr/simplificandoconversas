@@ -12,12 +12,27 @@ interface Props {
   productName: string;
   themeColor: string;
   phone?: string;
+  productDescription?: string | null;
+  initialCategories?: any[];
+  initialMaterials?: any[];
   onActivityChange?: (activity: string, productName?: string, materialName?: string) => void;
 }
 
-export default function ProductContentViewer({ productId, productName, themeColor, phone, onActivityChange }: Props) {
+export default function ProductContentViewer({
+  productId,
+  productName,
+  themeColor,
+  phone,
+  productDescription,
+  initialCategories,
+  initialMaterials,
+  onActivityChange,
+}: Props) {
   const [preloadedPdf, setPreloadedPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const preloadedPdfIdRef = useRef<string | null>(null);
+  const shouldLoadProductDetail = typeof productDescription === "undefined";
+  const shouldLoadCategories = typeof initialCategories === "undefined";
+  const shouldLoadMaterials = typeof initialMaterials === "undefined";
 
   const { data: productDetail } = useQuery({
     queryKey: ["product-member-detail", productId],
@@ -25,25 +40,30 @@ export default function ProductContentViewer({ productId, productName, themeColo
       const { data } = await supabase.from("delivery_products").select("member_description").eq("id", productId).single();
       return data as any;
     },
+    enabled: shouldLoadProductDetail,
   });
 
-  const { data: categories, isLoading: loadingCats } = useQuery({
+  const { data: categoriesData, isLoading: loadingCats } = useQuery({
     queryKey: ["member-categories", productId],
     queryFn: async () => {
       const { data } = await supabase.from("member_product_categories").select("*").eq("product_id", productId).order("sort_order");
       return data || [];
     },
+    enabled: shouldLoadCategories,
   });
 
-  const { data: materials, isLoading: loadingMats } = useQuery({
+  const { data: materialsData, isLoading: loadingMats } = useQuery({
     queryKey: ["member-materials", productId],
     queryFn: async () => {
       const { data } = await supabase.from("member_product_materials").select("*").eq("product_id", productId).order("sort_order");
       return data || [];
     },
+    enabled: shouldLoadMaterials,
   });
 
-  const allMaterials = materials || [];
+  const resolvedDescription = shouldLoadProductDetail ? productDetail?.member_description : productDescription;
+  const allCategories = initialCategories ?? categoriesData ?? [];
+  const allMaterials = initialMaterials ?? materialsData ?? [];
   const mostRecentPdf = [...allMaterials].reverse().find((m: any) => m.content_type === "pdf" && m.content_url);
 
   useEffect(() => {
@@ -54,9 +74,8 @@ export default function ProductContentViewer({ productId, productName, themeColo
 
   useEffect(() => { onActivityChange?.("viewing_product", productName); }, [productId]);
 
-  if (loadingCats || loadingMats) return <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" style={{ color: themeColor }} /></div>;
+  if ((shouldLoadCategories && loadingCats) || (shouldLoadMaterials && loadingMats)) return <div className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" style={{ color: themeColor }} /></div>;
 
-  const allCategories = categories || [];
   if (allMaterials.length === 0) return <div className="text-center py-10"><p className="text-sm text-gray-400">Conteúdo em breve...</p></div>;
 
   const categorized = allCategories.map((cat: any) => ({ ...cat, materials: allMaterials.filter((m: any) => m.category_id === cat.id) })).filter((cat: any) => cat.materials.length > 0);
@@ -69,7 +88,7 @@ export default function ProductContentViewer({ productId, productName, themeColo
 
   return (
     <div className="space-y-8">
-      {productDetail?.member_description && <div className="space-y-3"><p className="text-sm text-gray-600 leading-relaxed px-1">{productDetail.member_description}</p></div>}
+      {resolvedDescription && <div className="space-y-3"><p className="text-sm text-gray-600 leading-relaxed px-1">{resolvedDescription}</p></div>}
       {categorized.map((cat: any) => (
         <div key={cat.id}>
           <div className="flex items-center gap-3 mb-4">

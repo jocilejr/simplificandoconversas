@@ -29,6 +29,7 @@ interface MemberProduct {
     page_logo: string | null;
     value: number | null;
     member_cover_image: string | null;
+    member_description: string | null;
   } | null;
 }
 
@@ -115,6 +116,7 @@ export default function MemberAccess() {
   const [progressMap, setProgressMap] = useState<Record<string, ContentProgress[]>>({});
   const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [materialsByProduct, setMaterialsByProduct] = useState<Record<string, any[]>>({});
+  const [categoriesByProduct, setCategoriesByProduct] = useState<Record<string, any[]>>({});
   const [globalImpressions, setGlobalImpressions] = useState<Record<string, number>>({});
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [offerMetricsReady, setOfferMetricsReady] = useState(false);
@@ -179,6 +181,7 @@ export default function MemberAccess() {
           page_logo: p.page_logo,
           value: p.value || null,
           member_cover_image: p.member_cover_image,
+          member_description: p.member_description,
         },
       }));
 
@@ -197,10 +200,13 @@ export default function MemberAccess() {
 
       // Load materials map from the backend response (already included)
       const matsByProd: Record<string, any[]> = {};
+      const catsByProd: Record<string, any[]> = {};
       payload.products.forEach(p => {
         matsByProd[p.id] = p.materials || [];
+        catsByProd[p.id] = p.categories || [];
       });
       setMaterialsByProduct(matsByProd);
+      setCategoriesByProduct(catsByProd);
 
       // Load progress from Supabase directly (public RLS)
       const variations = generatePhoneVariations(digits);
@@ -624,6 +630,9 @@ export default function MemberAccess() {
                   productName={openProduct.delivery_products.name}
                   themeColor={themeColor}
                   phone={normalizedPhone}
+                  productDescription={openProduct.delivery_products.member_description}
+                  initialCategories={categoriesByProduct[openProduct.product_id] || []}
+                  initialMaterials={materialsByProduct[openProduct.product_id] || []}
                   onActivityChange={handleActivityChange}
                 />
               </div>
