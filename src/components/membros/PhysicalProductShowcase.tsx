@@ -59,7 +59,7 @@ export default function PhysicalProductShowcase({ offer, themeColor, memberPhone
         </div>
       )}
 
-      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} />
+      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} workspaceId={workspaceId} />
     </>
   );
 }
