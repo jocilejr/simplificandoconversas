@@ -78,19 +78,65 @@ router.get("/customer-info", async (req, res) => {
     let name = "";
     let document = "";
 
-    // 1) Search transactions — exact phone match
-    const { data: exactTx } = await sb
-      .from("transactions")
-      .select("customer_name, customer_document")
-      .eq("workspace_id", workspace_id)
-      .eq("customer_phone", normalizedPhone)
-      .not("customer_name", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    // Generate phone variations for matching
+    const phoneVariants = [normalizedPhone];
+    if (normalizedPhone.startsWith("55") && normalizedPhone.length === 13) {
+      // Remove 9th digit: 55 + 2-digit DDD + 9 + 8 digits → 55 + DDD + 8 digits
+      phoneVariants.push(normalizedPhone.slice(0, 4) + normalizedPhone.slice(5));
+      // Without country code
+      phoneVariants.push(normalizedPhone.slice(2));
+      phoneVariants.push(normalizedPhone.slice(2, 4) + normalizedPhone.slice(5));
+    } else if (normalizedPhone.startsWith("55") && normalizedPhone.length === 12) {
+      // Add 9th digit
+      phoneVariants.push(normalizedPhone.slice(0, 4) + "9" + normalizedPhone.slice(4));
+      phoneVariants.push(normalizedPhone.slice(2));
+      phoneVariants.push("9" + normalizedPhone.slice(4));
+    } else if (normalizedPhone.length === 11) {
+      phoneVariants.push("55" + normalizedPhone);
+      // Remove 9th digit
+      phoneVariants.push(normalizedPhone.slice(0, 2) + normalizedPhone.slice(3));
+      phoneVariants.push("55" + normalizedPhone.slice(0, 2) + normalizedPhone.slice(3));
+    } else if (normalizedPhone.length === 10) {
+      phoneVariants.push("55" + normalizedPhone);
+      phoneVariants.push(normalizedPhone.slice(0, 2) + "9" + normalizedPhone.slice(2));
+      phoneVariants.push("55" + normalizedPhone.slice(0, 2) + "9" + normalizedPhone.slice(2));
+    }
+    const uniqueVariants = [...new Set(phoneVariants)];
 
-    if (exactTx?.[0]?.customer_name) {
-      name = exactTx[0].customer_name;
-      document = exactTx[0].customer_document || "";
+    // Step 0: Search customers table first (most reliable source)
+    try {
+      const { data: customer } = await sb
+        .from("customers")
+        .select("name, document, normalized_phone")
+        .eq("workspace_id", workspace_id)
+        .in("normalized_phone", uniqueVariants)
+        .limit(1)
+        .maybeSingle();
+
+      if (customer?.name) {
+        name = customer.name;
+        document = (customer as any).document || "";
+        console.log(`[member-purchase] customer-info found in customers table: name="${name}"`);
+      }
+    } catch (e: any) {
+      console.log(`[member-purchase] customers table lookup skipped: ${e.message}`);
+    }
+
+    // 1) Search transactions — exact phone match
+    if (!name) {
+      const { data: exactTx } = await sb
+        .from("transactions")
+        .select("customer_name, customer_document")
+        .eq("workspace_id", workspace_id)
+        .eq("customer_phone", normalizedPhone)
+        .not("customer_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (exactTx?.[0]?.customer_name) {
+        name = exactTx[0].customer_name;
+        document = exactTx[0].customer_document || "";
+      }
     }
 
     // 2) If no name yet, try transactions with last 8 digits
@@ -114,20 +160,7 @@ router.get("/customer-info", async (req, res) => {
 
     // 3) If still no name, search conversations (contact_name) by remote_jid
     if (!name) {
-      // remote_jid format: "5589981340810@s.whatsapp.net"
-      const jidVariants = [
-        `${normalizedPhone}@s.whatsapp.net`,
-      ];
-      // Also try without country code prefix or with 9th digit variations
-      if (normalizedPhone.startsWith("55") && normalizedPhone.length === 13) {
-        // Remove 9th digit: 55 + 2-digit DDD + 9 + 8 digits → 55 + DDD + 8 digits
-        const without9 = normalizedPhone.slice(0, 4) + normalizedPhone.slice(5);
-        jidVariants.push(`${without9}@s.whatsapp.net`);
-      } else if (normalizedPhone.startsWith("55") && normalizedPhone.length === 12) {
-        // Add 9th digit
-        const with9 = normalizedPhone.slice(0, 4) + "9" + normalizedPhone.slice(4);
-        jidVariants.push(`${with9}@s.whatsapp.net`);
-      }
+      const jidVariants = uniqueVariants.map(v => `${v}@s.whatsapp.net`);
 
       const { data: convos } = await sb
         .from("conversations")
