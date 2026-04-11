@@ -93,46 +93,57 @@ class MessageQueue {
     }
 
     this.processing = true;
-    const item = this.queue.shift()!;
-    this.currentLabel = item.label;
-
-    if (
-      this.pauseAfterSends &&
-      this.pauseAfterSends > 0 &&
-      this.pauseMinutes &&
-      this.pauseMinutes > 0 &&
-      this.sendCount >= this.pauseAfterSends
-    ) {
-      const cooldownMs = this.pauseMinutes * 60 * 1000;
-      console.log(`[queue:${this.instanceName}] ⏸ COOLDOWN: sent ${this.sendCount} msgs, pausing for ${this.pauseMinutes} min (${cooldownMs}ms)`);
-      this.sendCount = 0;
-      this.inCooldown = true;
-      await new Promise((r) => setTimeout(r, cooldownMs));
-      this.inCooldown = false;
-    } else {
-      console.log(`[queue:${this.instanceName}] waiting ${this.delayMs}ms before sending ${item.label}...`);
-      await new Promise((r) => setTimeout(r, this.delayMs));
-    }
 
     try {
-      console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
-      const result = await item.fn();
-      item.resolve(result);
-      this.history.push({ label: item.label, status: "sent", timestamp: new Date().toISOString() });
-    } catch (err: any) {
-      console.error(`[queue:${this.instanceName}] error ${item.label}:`, err);
-      item.reject(err);
-      this.history.push({ label: item.label, status: "failed", timestamp: new Date().toISOString(), error: err?.message || String(err) });
+      const item = this.queue.shift()!;
+      this.currentLabel = item.label;
+
+      if (
+        this.pauseAfterSends &&
+        this.pauseAfterSends > 0 &&
+        this.pauseMinutes &&
+        this.pauseMinutes > 0 &&
+        this.sendCount >= this.pauseAfterSends
+      ) {
+        const cooldownMs = this.pauseMinutes * 60 * 1000;
+        console.log(`[queue:${this.instanceName}] ⏸ COOLDOWN: sent ${this.sendCount} msgs, pausing for ${this.pauseMinutes} min (${cooldownMs}ms)`);
+        this.sendCount = 0;
+        this.inCooldown = true;
+        await new Promise((r) => setTimeout(r, cooldownMs));
+        this.inCooldown = false;
+      } else {
+        console.log(`[queue:${this.instanceName}] waiting ${this.delayMs}ms before sending ${item.label}...`);
+        await new Promise((r) => setTimeout(r, this.delayMs));
+      }
+
+      try {
+        console.log(`[queue:${this.instanceName}] sending ${item.label} (remaining: ${this.queue.length}, delay: ${this.delayMs}ms)`);
+        const result = await item.fn();
+        item.resolve(result);
+        this.history.push({ label: item.label, status: "sent", timestamp: new Date().toISOString() });
+      } catch (err: any) {
+        console.error(`[queue:${this.instanceName}] error ${item.label}:`, err);
+        item.reject(err);
+        this.history.push({ label: item.label, status: "failed", timestamp: new Date().toISOString(), error: err?.message || String(err) });
+      }
+
+      // Trim history
+      if (this.history.length > MessageQueue.MAX_HISTORY) {
+        this.history = this.history.slice(-MessageQueue.MAX_HISTORY);
+      }
+
+      this.sendCount++;
+    } catch (outerErr: any) {
+      console.error(`[queue:${this.instanceName}] ❌ processNext chain error (will retry in 1s):`, outerErr);
     }
 
-    // Trim history
-    if (this.history.length > MessageQueue.MAX_HISTORY) {
-      this.history = this.history.slice(-MessageQueue.MAX_HISTORY);
+    // Always continue processing — protected with try/catch and setTimeout
+    try {
+      this.processNext();
+    } catch (e) {
+      console.error(`[queue:${this.instanceName}] ❌ recursive call failed, retrying in 1s...`, e);
+      setTimeout(() => this.processNext(), 1000);
     }
-
-    this.sendCount++;
-
-    this.processNext();
   }
 }
 
