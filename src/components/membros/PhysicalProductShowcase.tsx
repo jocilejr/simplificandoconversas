@@ -20,9 +20,10 @@ interface Props {
   memberPhone?: string;
   workspaceId?: string | null;
   customerName?: string;
+  customerDocument?: string;
 }
 
-export default function PhysicalProductShowcase({ offer, themeColor, memberPhone, workspaceId, customerName }: Props) {
+export default function PhysicalProductShowcase({ offer, themeColor, memberPhone, workspaceId, customerName, customerDocument }: Props) {
   const [showSalesPage, setShowSalesPage] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
 
@@ -60,7 +61,7 @@ export default function PhysicalProductShowcase({ offer, themeColor, memberPhone
         </div>
       )}
 
-      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} workspaceId={workspaceId} customerName={customerName} />
+      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} workspaceId={workspaceId} customerName={customerName} customerDocument={customerDocument} />
     </>
   );
 }
