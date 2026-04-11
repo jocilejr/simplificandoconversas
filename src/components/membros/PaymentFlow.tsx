@@ -119,21 +119,12 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
     customer_document: resolvedDoc,
   };
 
-  const handlePix = async () => {
-    setStep("pix-loading");
-    setLoading(true);
-    try {
-      const result = await createCharge({ ...basePayload, payment_method: "pix" });
-      setPixQrCode(result.qr_code || offer.pix_key || "");
-      setPixQrCodeBase64(result.qr_code_base64 || "");
-      setStep("pix");
-    } catch (err: any) {
-      console.error("[PaymentFlow] PIX error:", err.message);
-      setErrorMsg(err.message);
-      setStep("error");
-    } finally {
-      setLoading(false);
-    }
+  const handlePix = () => {
+    setStep("pix-confirm");
+  };
+
+  const handlePixConfirm = () => {
+    setStep("pix");
   };
 
   const handleCard = async () => {
@@ -150,7 +141,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   };
 
   const handleCopyPix = async () => {
-    const textToCopy = pixQrCode || offer.pix_key || "";
+    const textToCopy = offer.pix_key || "";
     if (!textToCopy) return;
     await navigator.clipboard.writeText(textToCopy);
     setCopied(true);
