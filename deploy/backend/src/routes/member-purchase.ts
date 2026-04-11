@@ -91,84 +91,28 @@ router.post("/", async (req, res) => {
 
     const description = `Oferta: ${offer_name}`;
 
-    // ─── PIX via OpenPix ───
+    // ─── PIX: registro de intenção (chave manual) ───
     if (payment_method === "pix") {
-      if (!creds.openpixAppId) {
-        return res.status(500).json({ error: "OpenPix não configurado. Configure na aba Integrações." });
-      }
-
-      const correlationID = `${creds.userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const valueCents = Math.round(Number(amount) * 100);
-
-      const chargeBody: any = {
-        correlationID,
-        value: valueCents,
-        comment: description,
-        customer: {
-          name: customer_name || "Cliente",
-          ...(normalizedPhone ? { phone: normalizedPhone } : {}),
-          ...(customer_document ? { taxID: { taxID: customer_document.replace(/\D/g, ""), type: "CPF" } } : {}),
-        },
-      };
-
-      console.log("[member-purchase] Creating OpenPix charge:", JSON.stringify(chargeBody));
-
-      const opResp = await fetch(`${OPENPIX_API}/charge`, {
-        method: "POST",
-        headers: { Authorization: creds.openpixAppId, "Content-Type": "application/json" },
-        body: JSON.stringify(chargeBody),
-      });
-
-      const opData: any = await opResp.json();
-      if (!opResp.ok) {
-        console.error("[member-purchase] OpenPix error:", JSON.stringify(opData));
-        return res.status(opResp.status).json({ error: "Erro ao criar cobrança PIX", details: opData });
-      }
-
-      const charge = opData.charge || {};
-      const paymentUrl = charge.paymentLinkUrl || "";
-      const qrCodeImage = charge.qrCodeImage || "";
-      const brCode = charge.brCode || "";
-
-      const { data: tx, error: txError } = await sb
+      const { data: tx } = await sb
         .from("transactions")
         .insert({
           user_id: creds.userId,
           workspace_id,
-          amount: Number(amount),
           type: "pix",
           status: "pendente",
-          source: "openpix",
-          external_id: correlationID,
-          customer_name: customer_name || null,
+          amount: Number(amount),
           customer_phone: normalizedPhone,
+          customer_name: customer_name || null,
           customer_email: resolvedEmail,
           customer_document: customer_document || null,
           description,
-          payment_url: paymentUrl,
-          metadata: {
-            openpix_charge_id: charge.id || null,
-            correlation_id: correlationID,
-            br_code: brCode,
-            origin: "member-area",
-          },
+          source: "member-area",
         })
         .select("id")
         .single();
 
-      if (txError) {
-        console.error("[member-purchase] DB insert error:", txError.message);
-      }
-
-      console.log(`[member-purchase] ✅ PIX charge created: ${tx?.id} (${correlationID})`);
-      return res.json({
-        success: true,
-        transaction_id: tx?.id,
-        payment_url: paymentUrl,
-        qr_code: brCode,
-        qr_code_base64: qrCodeImage,
-        type: "pix",
-      });
+      console.log(`[member-purchase] ✅ PIX intent logged: ${tx?.id}`);
+      return res.json({ success: true, transaction_id: tx?.id, type: "pix" });
     }
 
     // ─── Boleto via Mercado Pago ───
