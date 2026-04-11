@@ -160,11 +160,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = (key: PermissionKey): boolean => {
     if (fullAccess) return true;
-    // If permissions object is empty or key not set, default based on role
-    if (Object.keys(permissions).length === 0) {
-      // No granular permissions set — use role-based defaults
-      return role === "operator" || role === "admin";
-    }
+    // Always use explicit granular permissions for non-admin roles
     return !!permissions[key];
   };
 
