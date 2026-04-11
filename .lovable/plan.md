@@ -1,88 +1,43 @@
 
 
-## Diagnóstico: Follow Up para antes de finalizar os envios
+## Plano: Trocar métrica "vendas" por "conversões" (escolha de pagamento)
 
-### Problemas identificados
+### Contexto
+Atualmente o badge "vendas" conta `member_products` ativos (acessos liberados), que não reflete o funil real. O que importa é saber quantas pessoas **chegaram até a escolha de pagamento e preencheram dados** — ou seja, quantas interagiram com o PaymentFlow.
 
-Analisei o fluxo completo: cron → `processFollowUpDaily()` → `MessageQueue.processNext()` e encontrei **3 causas potenciais**:
+A tabela `member_offer_impressions` já existe e rastreia impressões e cliques. Vamos adicionar um campo `payment_started` para registrar quando o membro seleciona um método de pagamento.
 
-**1. Fetch sem timeout (causa mais provável)**
-As chamadas `fetch()` para a Evolution API (sendText, sendMedia) não têm timeout. Se a Evolution demorar ou travar, o `await fetch(...)` fica preso **indefinidamente**, bloqueando a fila inteira. Nenhuma mensagem seguinte é processada.
+### Alterações
 
-**2. Cadeia recursiva sem proteção**
-O método `processNext()` chama a si mesmo recursivamente (linha 135) sem `await` e sem `.catch()`. Se ocorrer uma exceção não capturada antes do `try/catch` interno (ex: durante o cooldown), a cadeia de processamento **morre silenciosamente** — a fila fica com itens mas `processing = false` nunca é resetado corretamente.
+**1. Migração SQL — adicionar coluna `payment_started`**
+```sql
+ALTER TABLE member_offer_impressions 
+  ADD COLUMN IF NOT EXISTS payment_started boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS payment_method text;
+```
+E no `deploy/init-db.sql` e `deploy/migrate-workspace.sql` incluir as colunas.
 
-**3. Cooldown legítimo confundido com parada**
-Se `pause_after_sends` está configurado (ex: 5), após 5 envios a fila pausa por `pause_minutes` minutos. Isso é comportamento correto, mas pode parecer que "parou".
-
-### Correções
-
-**1. Adicionar timeout nas chamadas fetch (`deploy/backend/src/routes/followup-daily.ts`)**
-Criar helper com `AbortController` e timeout de 30s para todas as chamadas à Evolution API:
-
+**2. `src/components/membros/PaymentFlow.tsx`**
+Quando o membro clica em PIX, Cartão ou Boleto, registrar na `member_offer_impressions`:
 ```typescript
-async function fetchWithTimeout(url: string, opts: RequestInit, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...opts, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+supabase.from("member_offer_impressions").upsert({
+  normalized_phone: memberPhone,
+  offer_id: offer.id,
+  payment_started: true,
+  payment_method: "pix", // ou "cartao" / "boleto"
+}, { onConflict: "normalized_phone,offer_id" });
 ```
 
-Substituir todos os `fetch(...)` por `fetchWithTimeout(...)`.
+**3. `src/pages/AreaMembros.tsx`**
+- Trocar a query `offer-conversions` para contar `member_offer_impressions` onde `payment_started = true`, agrupando por `offer_id`
+- Renomear badge de "vendas" para "conversões"
+- Exibir o count por offer_id (não mais por product_id)
 
-**2. Proteger a cadeia recursiva (`deploy/backend/src/lib/message-queue.ts`)**
-Envolver `processNext()` em try/catch global e garantir que a cadeia nunca morra:
+**4. `deploy/init-db.sql` + `deploy/migrate-workspace.sql`**
+Incluir as novas colunas na definição da tabela para novas instalações e atualizações.
 
-```typescript
-private async processNext() {
-  if (this.queue.length === 0) {
-    this.processing = false;
-    this.currentLabel = null;
-    return;
-  }
-  this.processing = true;
-  // ... existing logic ...
-  
-  // Protect recursive call
-  try {
-    this.processNext();
-  } catch (e) {
-    console.error(`[queue:${this.instanceName}] processNext chain error, retrying...`, e);
-    setTimeout(() => this.processNext(), 1000);
-  }
-}
-```
-
-**3. Adicionar log de progresso com total**
-Para facilitar a investigação futura, adicionar contadores de progresso nos logs:
-
-```
-[followup-daily] Progress: 15/42 enqueued, 8 skipped
-```
-
-### Verificação na VPS
-
-Antes da correção, rode na VPS para ver se a fila está travada:
-
-```bash
-cd ~/simplificandoconversas/deploy
-curl -s http://localhost:3100/api/queue-status | python3 -m json.tool
-```
-
-Isso mostra se há itens na fila, se está em cooldown, e o histórico de envios (sent/failed).
-
-Também verifique os logs do backend:
-
-```bash
-docker compose logs --tail=200 backend | grep -E "followup-daily|queue:"
-```
-
-### Resultado esperado
-- Fetch com timeout de 30s impede que a fila trave em chamadas penduradas
-- Cadeia recursiva protegida garante que a fila sempre continue processando
-- Logs de progresso facilitam investigação futura
+### Resultado
+- O badge mostra quantas pessoas **entraram no funil de pagamento** de cada oferta
+- Não depende de vendas confirmadas ou acessos liberados
+- Métrica útil para comparar performance entre ofertas
 
