@@ -54,6 +54,7 @@ app.use("/api/followup-daily", followupDailyRouter);
 app.use("/api/groups", groupsApiRouter);
 app.use("/api/groups/webhook", groupsWebhookRouter);
 app.use("/api/member-access", memberAccessRouter);
+app.use("/api/member-purchase", memberPurchaseRouter);
 
 // Queue status (no auth — internal)
 app.get("/api/queue-status", (_, res) => res.json(getAllQueuesStatus()));
