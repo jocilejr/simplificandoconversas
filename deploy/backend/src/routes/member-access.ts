@@ -107,30 +107,6 @@ router.get("/:phone", async (req, res) => {
       if (fallbackCustomer) customerData = fallbackCustomer;
     }
 
-    // Fallback: if customer found but no document, try to get CPF from transactions
-    let customerDocument = customerData?.document || null;
-    if (!customerDocument) {
-      const txPhoneCandidates = customerData?.normalized_phone
-        ? generateVariations(customerData.normalized_phone)
-        : phoneCandidates;
-      const { data: txRow } = await sb
-        .from("transactions")
-        .select("customer_document, customer_name")
-        .eq("workspace_id", workspaceId)
-        .in("customer_phone", txPhoneCandidates)
-        .not("customer_document", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (txRow) {
-        customerDocument = (txRow as any).customer_document || null;
-        // Also fill name if missing
-        if (!customerData) {
-          customerData = { name: (txRow as any).customer_name || null, document: customerDocument, first_seen_at: null, total_paid: 0, total_transactions: 0 };
-        }
-      }
-    }
-
     if (settingsRes.error) throw settingsRes.error;
     if (categoriesRes.error) throw categoriesRes.error;
     if (materialsRes.error) throw materialsRes.error;
@@ -190,7 +166,7 @@ router.get("/:phone", async (req, res) => {
       customer: customerData
         ? {
             name: customerData.name || null,
-            document: customerDocument || customerData.document || null,
+            document: customerData.document || null,
             first_seen_at: customerData.first_seen_at || null,
             total_paid: customerData.total_paid || 0,
             total_transactions: customerData.total_transactions || 0,
