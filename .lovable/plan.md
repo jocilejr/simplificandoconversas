@@ -1,47 +1,43 @@
+## Plano: Redesign do step Boleto com dados pré-preenchidos e botão de edição
 
+### Problemas
 
-## Plano: Criar rota VPS `member-purchase` e corrigir todas as transações
+O boleto mostra campos vazios mesmo quando o sistema já tem o nome e CPF do lead. A UX atual com dois botões ("Editar dados" / "Confirmar") não é profissional. O botão usa a cor do tema em vez de verde.  
+  
+PROBLEMA 2: QUANDO ESCOLHO PIX OU CARTÃO NÃO RECEBO A TRANSAÇÃO NA ABA DE TRANSAÇÕES. RESOLVA ISSO
 
-### Problema
-A edge function `member-purchase` tenta inserir em `transactions` sem `user_id` e `workspace_id` (ambos NOT NULL), então o insert falha silenciosamente. Além disso, o fluxo de boleto não cria transação nenhuma — apenas chama um webhook externo.
+### Alteração em `src/components/membros/PaymentFlow.tsx`
 
-### Solução
+Redesenhar o bloco `step === "boleto" && !boletoSent` (linhas 207-249):
 
-**1. Nova rota VPS: `deploy/backend/src/routes/member-purchase.ts`**
+**Novo comportamento:**
 
-Recebe: `{ phone, offer_name, payment_method, amount, workspace_id, customer_name?, customer_document? }`
+- Ao entrar no step boleto, buscar dados via `/api/member-purchase/customer-info` (já implementado)
+- **Se dados existirem**: mostrar os dados em modo read-only com visual profissional (card cinza claro com ícones de User e FileText), com um botão de lápis (Pencil icon) no canto superior direito do card para alternar para modo edição
+- **Se dados não existirem**: mostrar campos de input diretamente
+- **Modo edição**: ao clicar no lápis, os dados viram inputs editáveis com os valores pré-preenchidos
+- **Botão "Gerar Boleto"**: sempre verde profissional (`bg-emerald-600 hover:bg-emerald-700`) com sombra verde, sem usar `themeColor`
 
-Lógica:
-- Resolver `user_id` via `workspaces.created_by` usando o `workspace_id` recebido
-- Inserir em `transactions` com todos os campos obrigatórios (`user_id`, `workspace_id`, `type`, `status: "pendente"`, `amount`, `customer_phone`, `description`, `source: "member-area"`)
-- Se `customer_name`/`customer_document` forem fornecidos, incluir na transação
-- Retornar `{ success: true, transaction_id }`
+**Estrutura visual (modo read-only):**
 
-**2. Registrar rota em `deploy/backend/src/index.ts`**
+```
+Gerar Boleto
+R$ 80,00
 
-Adicionar `app.use("/api/member-purchase", memberPurchaseRouter)`
+┌─────────────────────────────┐
+│  👤 Nome         ✏️ (lápis) │
+│  João Silva                  │
+│  📄 CPF                      │
+│  123.456.789-01              │
+└─────────────────────────────┘
 
-**3. Alterar `PaymentFlow.tsx`**
+[ 🟢 Gerar Boleto ]
+```
 
-- Adicionar props: `workspaceId`, `customerName`, `customerDocument`
-- **PIX**: Trocar `supabase.functions.invoke("member-purchase")` por `fetch("/api/member-purchase", ...)` enviando `workspace_id`
-- **Cartão**: Além de abrir o link, também chamar `/api/member-purchase` com `payment_method: "cartao"` para registrar a transação pendente
-- **Boleto**: 
-  - Ao abrir o step de boleto, buscar dados existentes do cliente via `/api/member-purchase/customer-info?phone=X&workspace_id=Y` (nova sub-rota que consulta `transactions` por `customer_phone` para pegar `customer_name` e `customer_document`)
-  - Se encontrar dados, mostrar: "Posso gerar o seu boleto com essas informações?" com os dados pré-preenchidos e botão "Confirmar"
-  - Se não encontrar dados suficientes, mostrar os campos vazios para preenchimento
-  - Ao confirmar/submeter, chamar `/api/member-purchase` com `payment_method: "boleto"` para criar a transação E depois chamar o webhook do boleto como já faz hoje
+**Detalhes técnicos:**
 
-**4. Atualizar chamadas no `LockedOfferCard` e `PhysicalProductShowcase`**
-
-Passar `workspaceId` para o `PaymentFlow` (já disponível como prop em ambos os componentes).
-
-**5. Remover dependência da edge function `member-purchase`**
-
-A edge function pode ser mantida mas não será mais chamada pelo frontend VPS.
-
-### Resultado
-- Todas as formas de pagamento (PIX, Cartão, Boleto) criarão transações reais na tabela `transactions` com `user_id` e `workspace_id` corretos
-- Boleto pré-preenche dados do cliente quando disponíveis, perguntando confirmação
-- Transações aparecem corretamente na aba de transações do painel
-
+- Adicionar import `Pencil` do lucide-react (linha 7)
+- Substituir estado `confirmedData` por `editingData` (boolean, default false)
+- Quando `hasExistingData && !editingData`: mostrar card read-only + botão lápis
+- Quando `editingData || !hasExistingData`: mostrar inputs
+- Botão verde: `className="w-full h-12 rounded-xl font-bold text-white border-0 bg-emerald-600 hover:bg-emerald-700"` com `boxShadow: "0 4px 20px rgba(16,185,129,0.3)"`
