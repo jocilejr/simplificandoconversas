@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CreditCard, FileText, QrCode, Copy, Check, Loader2, ArrowLeft, ShieldCheck, Zap } from "lucide-react";
 
@@ -24,11 +23,28 @@ interface Props {
   offer: Offer;
   themeColor: string;
   memberPhone: string;
+  workspaceId?: string | null;
 }
 
 type Step = "select" | "pix" | "boleto";
 
-export default function PaymentFlow({ open, onOpenChange, offer, themeColor, memberPhone }: Props) {
+async function createTransaction(payload: Record<string, any>) {
+  try {
+    const res = await fetch("/api/member-purchase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("[member-purchase] error:", err);
+    }
+  } catch (e) {
+    console.error("[member-purchase] fetch error:", e);
+  }
+}
+
+export default function PaymentFlow({ open, onOpenChange, offer, themeColor, memberPhone, workspaceId }: Props) {
   const [step, setStep] = useState<Step>("select");
   const [copied, setCopied] = useState(false);
   const [pixSent, setPixSent] = useState(false);
@@ -36,37 +52,51 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
   const [boletoCpf, setBoletoCpf] = useState("");
   const [boletoLoading, setBoletoLoading] = useState(false);
   const [boletoSent, setBoletoSent] = useState(false);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerLoaded, setCustomerLoaded] = useState(false);
+  const [hasExistingData, setHasExistingData] = useState(false);
+  const [confirmedData, setConfirmedData] = useState(false);
 
   const handleClose = () => {
     onOpenChange(false);
-    setTimeout(() => { setStep("select"); setCopied(false); setPixSent(false); setBoletoName(""); setBoletoCpf(""); setBoletoLoading(false); setBoletoSent(false); }, 200);
+    setTimeout(() => {
+      setStep("select"); setCopied(false); setPixSent(false);
+      setBoletoName(""); setBoletoCpf(""); setBoletoLoading(false); setBoletoSent(false);
+      setCustomerLoaded(false); setHasExistingData(false); setConfirmedData(false);
+    }, 200);
   };
 
-  const trackPaymentStarted = async (method: string) => {
-    try {
-      await supabase.from("member_offer_impressions" as any).upsert({
-        normalized_phone: memberPhone.replace(/\D/g, ""),
-        offer_id: offer.id,
-        payment_started: true,
-        payment_method: method,
-      }, { onConflict: "normalized_phone,offer_id" });
-    } catch { /* silent */ }
+  // Load customer info when boleto step opens
+  useEffect(() => {
+    if (step !== "boleto" || customerLoaded || !workspaceId) return;
+    setCustomerLoading(true);
+    fetch(`/api/member-purchase/customer-info?phone=${encodeURIComponent(memberPhone)}&workspace_id=${encodeURIComponent(workspaceId)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.name) { setBoletoName(data.name); setHasExistingData(true); }
+        if (data.document) setBoletoCpf(data.document);
+        setCustomerLoaded(true);
+      })
+      .catch(() => setCustomerLoaded(true))
+      .finally(() => setCustomerLoading(false));
+  }, [step, customerLoaded, workspaceId, memberPhone]);
+
+  const baseTxPayload = {
+    phone: memberPhone,
+    offer_name: offer.name,
+    amount: offer.price || 0,
+    workspace_id: workspaceId,
   };
 
   const handlePix = async () => {
     setStep("pix");
-    trackPaymentStarted("pix");
     if (pixSent) return;
-    try {
-      await supabase.functions.invoke("member-purchase", {
-        body: { phone: memberPhone, offer_name: offer.name, payment_method: "pix", amount: offer.price || 0 },
-      });
-      setPixSent(true);
-    } catch { console.error("Error creating pix transaction"); }
+    await createTransaction({ ...baseTxPayload, payment_method: "pix" });
+    setPixSent(true);
   };
 
-  const handleCard = () => {
-    trackPaymentStarted("cartao");
+  const handleCard = async () => {
+    await createTransaction({ ...baseTxPayload, payment_method: "cartao" });
     const url = offer.card_payment_url || offer.purchase_url;
     if (url) window.open(url, "_blank");
   };
@@ -85,14 +115,26 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
     if (boletoCpf.length !== 11) { toast.error("CPF inválido (11 dígitos)"); return; }
     setBoletoLoading(true);
     try {
-      const { data: settings } = await supabase.from("manual_boleto_settings").select("webhook_url").maybeSingle();
-      if (!settings || !(settings as any).webhook_url) { toast.error("Boleto não configurado no momento"); setBoletoLoading(false); return; }
-      const response = await fetch((settings as any).webhook_url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome: boletoName.trim(), telefone: memberPhone, Valor: offer.price || 0, CPF: boletoCpf }),
+      // Create transaction
+      await createTransaction({
+        ...baseTxPayload,
+        payment_method: "boleto",
+        customer_name: boletoName.trim(),
+        customer_document: boletoCpf,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      // Call boleto webhook
+      const sb = (await import("@/integrations/supabase/client")).supabase;
+      const { data: settings } = await sb.from("manual_boleto_settings").select("webhook_url").maybeSingle();
+      if (settings && (settings as any).webhook_url) {
+        const response = await fetch((settings as any).webhook_url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome: boletoName.trim(), telefone: memberPhone, Valor: offer.price || 0, CPF: boletoCpf }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      }
+
       setBoletoSent(true);
       toast.success("Boleto solicitado com sucesso!");
     } catch { toast.error("Erro ao gerar boleto"); }
@@ -130,7 +172,7 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
                 <div className="flex-1"><div className="flex items-center gap-2"><p className="font-semibold text-gray-800 text-sm">Cartão de Crédito</p><span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-medium">até 12x</span></div><p className="text-xs text-gray-500">Parcelamento disponível</p></div>
               </button>
             )}
-            <button onClick={() => { setStep("boleto"); trackPaymentStarted("boleto"); }} className="w-full flex items-center gap-4 p-4 rounded-xl border-2 hover:shadow-md transition-all text-left" style={{ borderColor: `${themeColor}30` }}>
+            <button onClick={() => setStep("boleto")} className="w-full flex items-center gap-4 p-4 rounded-xl border-2 hover:shadow-md transition-all text-left" style={{ borderColor: `${themeColor}30` }}>
               <div className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${themeColor}15` }}><FileText className="h-6 w-6" style={{ color: themeColor }} /></div>
               <div><p className="font-semibold text-gray-800 text-sm">Boleto Bancário</p><p className="text-xs text-gray-500">Vencimento em 3 dias úteis</p></div>
             </button>
@@ -168,13 +210,42 @@ export default function PaymentFlow({ open, onOpenChange, offer, themeColor, mem
               <p className="text-sm font-semibold text-gray-800">Gerar Boleto</p>
               {priceFormatted && <p className="text-lg font-bold" style={{ color: themeColor }}>{priceFormatted}</p>}
             </div>
-            <div className="space-y-3">
-              <div><Label htmlFor="boleto-name" className="text-xs text-gray-700">Nome Completo *</Label><Input id="boleto-name" value={boletoName} onChange={(e) => setBoletoName(e.target.value)} placeholder="Seu nome completo" className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
-              <div><Label htmlFor="boleto-cpf" className="text-xs text-gray-700">CPF *</Label><Input id="boleto-cpf" value={boletoCpf} onChange={(e) => setBoletoCpf(formatCPF(e.target.value))} placeholder="12345678901" maxLength={11} className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
-            </div>
-            <Button className="w-full h-12 rounded-xl font-bold text-white border-0" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`, boxShadow: `0 4px 20px ${themeColor}40` }} onClick={submitBoleto} disabled={boletoLoading}>
-              {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Gerar Boleto"}
-            </Button>
+
+            {customerLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                <span className="text-sm text-gray-500 ml-2">Buscando seus dados...</span>
+              </div>
+            ) : hasExistingData && !confirmedData ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 text-center">Posso gerar o seu boleto com essas informações?</p>
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                  <div><span className="text-xs text-gray-500">Nome</span><p className="text-sm font-medium text-gray-800">{boletoName}</p></div>
+                  {boletoCpf && <div><span className="text-xs text-gray-500">CPF</span><p className="text-sm font-medium text-gray-800">{boletoCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}</p></div>}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => { setHasExistingData(false); setConfirmedData(true); }}>
+                    Editar dados
+                  </Button>
+                  <Button
+                    className="flex-1 font-bold text-white border-0"
+                    style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)` }}
+                    onClick={() => { setConfirmedData(true); submitBoleto(); }}
+                    disabled={boletoLoading}
+                  >
+                    {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Confirmar"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div><Label htmlFor="boleto-name" className="text-xs text-gray-700">Nome Completo *</Label><Input id="boleto-name" value={boletoName} onChange={(e) => setBoletoName(e.target.value)} placeholder="Seu nome completo" className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
+                <div><Label htmlFor="boleto-cpf" className="text-xs text-gray-700">CPF *</Label><Input id="boleto-cpf" value={boletoCpf} onChange={(e) => setBoletoCpf(formatCPF(e.target.value))} placeholder="12345678901" maxLength={11} className="mt-1 bg-white text-gray-900 border-gray-300 placeholder:text-gray-400" /></div>
+                <Button className="w-full h-12 rounded-xl font-bold text-white border-0" style={{ background: `linear-gradient(135deg, ${themeColor}, ${themeColor}dd)`, boxShadow: `0 4px 20px ${themeColor}40` }} onClick={submitBoleto} disabled={boletoLoading}>
+                  {boletoLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Gerando...</> : "Gerar Boleto"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
