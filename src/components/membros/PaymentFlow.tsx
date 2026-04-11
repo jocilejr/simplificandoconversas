@@ -28,7 +28,7 @@ interface Props {
   customerDocument?: string;
 }
 
-type Step = "select" | "pix" | "pix-loading" | "boleto" | "boleto-success" | "error";
+type Step = "select" | "pix-confirm" | "pix" | "boleto" | "boleto-success" | "error";
 
 interface PaymentResponse {
   success: boolean;
