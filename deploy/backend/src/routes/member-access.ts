@@ -187,13 +187,13 @@ router.get("/:phone", async (req, res) => {
       settings,
       products: Array.from(productMap.values()),
       offers: (offersRes.data || []).map((o: any) => ({ ...o, name: o.name || o.title || "Oferta" })),
-      customer: customerRes.data
+      customer: customerData
         ? {
-            name: (customerRes.data as any).name || null,
-            document: (customerRes.data as any).document || null,
-            first_seen_at: (customerRes.data as any).first_seen_at || null,
-            total_paid: (customerRes.data as any).total_paid || 0,
-            total_transactions: (customerRes.data as any).total_transactions || 0,
+            name: customerData.name || null,
+            document: customerDocument || customerData.document || null,
+            first_seen_at: customerData.first_seen_at || null,
+            total_paid: customerData.total_paid || 0,
+            total_transactions: customerData.total_transactions || 0,
           }
         : null,
     });
