@@ -898,6 +898,8 @@ CREATE TABLE IF NOT EXISTS public.member_offer_impressions (
   offer_id uuid NOT NULL,
   impression_count integer NOT NULL DEFAULT 0,
   clicked boolean NOT NULL DEFAULT false,
+  payment_started boolean NOT NULL DEFAULT false,
+  payment_method text,
   last_shown_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now()
 );
