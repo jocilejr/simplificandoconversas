@@ -60,6 +60,8 @@ router.get("/:phone", async (req, res) => {
     for (const dp of deliveryProducts || []) dpMap.set(dp.id, dp);
 
     // Step 3: fetch settings, categories, materials, offers, and customer in parallel
+    // Also try last-8-digits fallback for customer matching
+    const last8 = normalized.slice(-8);
     const [settingsRes, categoriesRes, materialsRes, offersRes, customerRes, memberSettingsRes] = await Promise.all([
       sb.from("member_area_settings")
         .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt, ai_model")
@@ -81,7 +83,7 @@ router.get("/:phone", async (req, res) => {
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
       sb.from("customers")
-        .select("name, document, first_seen_at, total_paid, total_transactions")
+        .select("name, document, normalized_phone, first_seen_at, total_paid, total_transactions")
         .eq("workspace_id", workspaceId)
         .in("normalized_phone", phoneCandidates)
         .limit(1)
@@ -91,6 +93,43 @@ router.get("/:phone", async (req, res) => {
         .eq("workspace_id", workspaceId)
         .maybeSingle(),
     ]);
+
+    // Fallback: if no customer found by exact variations, try last 8 digits
+    let customerData = customerRes.data as any;
+    if (!customerData && last8.length === 8) {
+      const { data: fallbackCustomer } = await sb
+        .from("customers")
+        .select("name, document, normalized_phone, first_seen_at, total_paid, total_transactions")
+        .eq("workspace_id", workspaceId)
+        .like("normalized_phone", `%${last8}`)
+        .limit(1)
+        .maybeSingle();
+      if (fallbackCustomer) customerData = fallbackCustomer;
+    }
+
+    // Fallback: if customer found but no document, try to get CPF from transactions
+    let customerDocument = customerData?.document || null;
+    if (!customerDocument) {
+      const txPhoneCandidates = customerData?.normalized_phone
+        ? generateVariations(customerData.normalized_phone)
+        : phoneCandidates;
+      const { data: txRow } = await sb
+        .from("transactions")
+        .select("customer_document, customer_name")
+        .eq("workspace_id", workspaceId)
+        .in("customer_phone", txPhoneCandidates)
+        .not("customer_document", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (txRow) {
+        customerDocument = (txRow as any).customer_document || null;
+        // Also fill name if missing
+        if (!customerData) {
+          customerData = { name: (txRow as any).customer_name || null, document: customerDocument, first_seen_at: null, total_paid: 0, total_transactions: 0 };
+        }
+      }
+    }
 
     if (settingsRes.error) throw settingsRes.error;
     if (categoriesRes.error) throw categoriesRes.error;
