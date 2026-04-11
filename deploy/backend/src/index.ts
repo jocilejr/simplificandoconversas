@@ -27,6 +27,7 @@ import { processFollowUpDaily } from "./routes/followup-daily";
 import groupsApiRouter, { computeNextRunAfterExecution } from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
+import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 
 const app = express();
