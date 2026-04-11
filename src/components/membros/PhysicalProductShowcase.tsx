@@ -18,9 +18,10 @@ interface Props {
   offer: Offer;
   themeColor: string;
   memberPhone?: string;
+  workspaceId?: string | null;
 }
 
-export default function PhysicalProductShowcase({ offer, themeColor, memberPhone }: Props) {
+export default function PhysicalProductShowcase({ offer, themeColor, memberPhone, workspaceId }: Props) {
   const [showSalesPage, setShowSalesPage] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
 
@@ -58,7 +59,7 @@ export default function PhysicalProductShowcase({ offer, themeColor, memberPhone
         </div>
       )}
 
-      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} />
+      <PaymentFlow open={paymentOpen} onOpenChange={setPaymentOpen} offer={offer} themeColor={themeColor} memberPhone={memberPhone || ""} workspaceId={workspaceId} />
     </>
   );
 }

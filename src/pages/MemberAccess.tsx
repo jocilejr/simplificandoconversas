@@ -590,7 +590,7 @@ export default function MemberAccess() {
         {showcaseOffers.length > 0 && (
           <div className="space-y-3">
             {showcaseOffers.map((offer: any) => (
-              <PhysicalProductShowcase key={offer.id} offer={offer} themeColor={themeColor} memberPhone={normalizedPhone} />
+              <PhysicalProductShowcase key={offer.id} offer={offer} themeColor={themeColor} memberPhone={normalizedPhone} workspaceId={workspaceId} />
             ))}
           </div>
         )}
