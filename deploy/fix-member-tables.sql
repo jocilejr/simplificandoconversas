@@ -128,6 +128,20 @@ CREATE TABLE public.member_product_materials (
 ALTER TABLE public.member_product_materials ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_product_materials TO anon, authenticated, service_role;
 
+-- Add FK for category_id -> member_product_categories (enables PostgREST joins)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'member_product_materials_category_id_fkey'
+      AND table_schema = 'public'
+  ) THEN
+    ALTER TABLE public.member_product_materials
+      ADD CONSTRAINT member_product_materials_category_id_fkey
+      FOREIGN KEY (category_id) REFERENCES public.member_product_categories(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
 -- 4. Fix member_sessions schema (recreate with new columns)
 DROP TABLE IF EXISTS public.member_sessions CASCADE;
 CREATE TABLE public.member_sessions (

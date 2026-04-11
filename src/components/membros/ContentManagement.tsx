@@ -131,7 +131,7 @@ function ProductContentEditor({ productId, workspaceId }: { productId: string; w
   const { data: materials } = useQuery({
     queryKey: ["admin-materials", productId],
     queryFn: async () => {
-      const { data } = await supabase.from("member_product_materials" as any).select("*, member_product_categories(name)").eq("product_id", productId).order("sort_order");
+      const { data } = await supabase.from("member_product_materials" as any).select("*").eq("product_id", productId).order("sort_order");
       return data || [];
     },
   });
@@ -381,7 +381,7 @@ function ProductContentEditor({ productId, workspaceId }: { productId: string; w
                     <p className="font-medium text-sm text-foreground truncate">{mat.title}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ backgroundColor: `${typeInfo.color}20`, color: typeInfo.color }}>{typeInfo.label}</span>
-                      {mat.member_product_categories?.name && <span className="text-[10px] text-muted-foreground">📁 {mat.member_product_categories.name}</span>}
+                      {mat.category_id && categories?.find((c: any) => c.id === mat.category_id)?.name && <span className="text-[10px] text-muted-foreground">📁 {categories.find((c: any) => c.id === mat.category_id)?.name}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
