@@ -1,66 +1,69 @@
 
 
-## Plano: Corrigir busca de dados do lead e melhorar layout do Boleto
+## Plano: Preencher automaticamente nome e CPF do lead no pagamento
 
-### Problema
-1. O `PaymentFlow` faz uma chamada separada a `/api/member-purchase/customer-info` que busca apenas em `transactions` e `conversations`, mas os dados do lead já existem na tabela `customers` (que já é consultada pelo endpoint `member-access` no carregamento inicial).
-2. O `customerName` já está disponível no `MemberAccess.tsx` mas **não é passado** para o `PaymentFlow` — apenas o telefone é passado.
-3. O layout do boleto precisa de refinamento visual.
+### Problema raiz
+O backend `member-access` já busca na tabela `customers` mas retorna apenas `name` — não retorna `document` (CPF). O `PaymentFlow` recebe `customerName` via props mas não recebe o CPF, e a segunda chamada a `/customer-info` falha por redundância.
 
-### Solução
+### Solução (3 alterações cirúrgicas)
 
-**1. Passar `customerName` do MemberAccess para os componentes de pagamento**
+**1. Backend `member-access.ts` — retornar `document` do customer**
 
-- `MemberAccess.tsx` → passar `customerName` como prop para `LockedOfferCard` e `PhysicalProductShowcase`
-- `LockedOfferCard.tsx` → repassar para `PaymentFlow`
-- `PhysicalProductShowcase.tsx` → repassar para `PaymentFlow`
-- `PaymentFlow.tsx` → aceitar nova prop `customerName?: string`
-
-**2. Backend: adicionar busca na tabela `customers`** (`deploy/backend/src/routes/member-purchase.ts`)
-
-No endpoint `GET /customer-info`, adicionar um step **antes** de tudo:
-```typescript
-// Step 0: Search customers table first (most reliable source)
-const { data: customer } = await sb
-  .from("customers")
-  .select("name, document, normalized_phone")
-  .eq("workspace_id", workspace_id)
-  .in("normalized_phone", phoneVariants)
-  .limit(1)
-  .maybeSingle();
-
-if (customer?.name) {
-  name = customer.name;
-  document = customer.document || "";
-}
+Na query à tabela `customers` (linha 84), adicionar o campo `document`:
+```
+.select("name, document, first_seen_at, total_paid, total_transactions")
 ```
 
-Gerar variações de telefone (com/sem 9º dígito, com/sem prefixo 55) para o matching, usando a mesma lógica de `member-access.ts`.
+No response JSON (linha 151-158), incluir `document`:
+```typescript
+customer: customerRes.data ? {
+  name: customerRes.data.name || null,
+  document: customerRes.data.document || null,  // ← NOVO
+  ...
+} : null,
+```
 
-**3. Frontend: usar dados já carregados como fallback**
+**2. Frontend `MemberAccess.tsx` — armazenar e passar `customerDocument`**
 
-Em `PaymentFlow.tsx`:
-- Se `customerName` prop já existe, pré-preencher `boletoName` imediatamente sem esperar a chamada ao backend
-- A chamada ao backend serve para buscar o CPF/documento (que não está disponível no frontend)
-- Se o backend retornar nome, sobrescrever; caso contrário, manter o nome da prop
+- Adicionar estado `customerDocument`
+- Extrair de `payload.customer?.document`
+- Passar para `LockedOfferCard` e `PhysicalProductShowcase`
 
-**4. Layout do Boleto — refinamentos**
+**3. Prop drilling até `PaymentFlow`**
 
-Melhorar o card de dados do cliente:
-- Adicionar separador visual entre nome e CPF
-- Borda mais suave e padding consistente
-- Texto "Confirme seus dados para gerar o boleto" acima do card
-- Botão verde com ícone e texto mais claro
+- `LockedOfferCard` e `PhysicalProductShowcase`: aceitar e repassar `customerDocument`
+- `PaymentFlow`: aceitar `customerDocument?: string`, pré-preencher `boletoCpf` imediatamente
+- Remover a chamada ao `/customer-info` — os dados já vêm no carregamento inicial
+- Se `customerName` e `customerDocument` existirem: mostrar card read-only com lápis
+- Se faltar algum: mostrar os campos editáveis
+
+### Verificação necessária na VPS
+
+Antes de implementar, confirme que a coluna `document` existe na tabela `customers` da VPS:
+
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "SELECT column_name FROM information_schema.columns WHERE table_name='customers' AND column_name='document';"
+```
+
+Se não existir, rode:
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document TEXT;"
+```
+
+E depois:
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+```
 
 ### Arquivos alterados
-- `deploy/backend/src/routes/member-purchase.ts` — adicionar busca em `customers`
-- `src/components/membros/PaymentFlow.tsx` — aceitar `customerName` prop, usar como fallback
-- `src/components/membros/LockedOfferCard.tsx` — repassar `customerName`
-- `src/components/membros/PhysicalProductShowcase.tsx` — repassar `customerName`
-- `src/pages/MemberAccess.tsx` — passar `customerName` para os componentes
+- `deploy/backend/src/routes/member-access.ts` — adicionar `document` ao select e ao response
+- `src/pages/MemberAccess.tsx` — estado `customerDocument`, passar como prop
+- `src/components/membros/LockedOfferCard.tsx` — aceitar e repassar `customerDocument`
+- `src/components/membros/PhysicalProductShowcase.tsx` — aceitar e repassar `customerDocument`
+- `src/components/membros/PaymentFlow.tsx` — aceitar `customerDocument`, pré-preencher, remover chamada a `/customer-info`
 
 ### Resultado
-- Dados do lead encontrados imediatamente (nome via prop, CPF via backend com busca em `customers`)
-- Layout profissional com dados pré-preenchidos
-- Sem dependência exclusiva de `transactions`/`conversations` para encontrar o lead
+- Nome e CPF preenchidos automaticamente ao abrir o modal de boleto
+- Zero chamadas extras ao backend
+- Layout profissional com card de confirmação quando dados existem
 
