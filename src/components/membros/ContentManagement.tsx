@@ -120,7 +120,7 @@ function ProductContentEditor({ productId, workspaceId }: { productId: string; w
     setProdSettingsLoaded(true);
   }
 
-  const { data: categories } = useQuery({
+  const { data: categories } = useQuery<any[]>({
     queryKey: ["admin-categories", productId],
     queryFn: async () => {
       const { data } = await supabase.from("member_product_categories" as any).select("*").eq("product_id", productId).order("sort_order");
