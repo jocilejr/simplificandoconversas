@@ -447,7 +447,6 @@ async function processWorkspace(
           });
         } catch (_) {}
       });
-      });
 
     sent++;
     phoneSendCount.set(phoneKey, currentCount + 1);
