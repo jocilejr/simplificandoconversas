@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export function AppLayout() {
   const location = useLocation();
   const isFullscreen = location.pathname === "/conversations";
+  useTransactionNotifications();
 
   return (
     <SidebarProvider>
