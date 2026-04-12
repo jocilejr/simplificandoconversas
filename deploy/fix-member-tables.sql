@@ -6,6 +6,17 @@
 BEGIN;
 
 -- ============================================================
+-- 0. Remove auto-admin promotion trigger (security fix)
+-- ============================================================
+DROP TRIGGER IF EXISTS on_profile_created_assign_admin ON public.profiles;
+DROP FUNCTION IF EXISTS public.assign_admin_role();
+
+-- Remove global admin from all users except the real Super Admin (Jocile Júnior)
+DELETE FROM user_roles
+WHERE role = 'admin'
+AND user_id != '46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6';
+
+-- ============================================================
 -- 0a. Fix member_area_settings columns
 -- ============================================================
 ALTER TABLE public.member_area_settings ADD COLUMN IF NOT EXISTS title text;
