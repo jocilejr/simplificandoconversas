@@ -94,7 +94,7 @@ interface BackendResponse {
   customer?: { name: string | null; document?: string | null; first_seen_at?: string; total_paid?: number; total_transactions?: number } | null;
 }
 
-const AI_CACHE_KEY = "member_ai_context";
+const AI_CACHE_KEY = "member_ai_context_v2";
 const AI_CACHE_TTL = 4 * 60 * 60 * 1000;
 
 export default function MemberAccess() {
@@ -191,7 +191,7 @@ export default function MemberAccess() {
       setSettings(
         payload.settings
           ? { ...payload.settings, theme_color: (payload.settings as any).theme_color || "#8B5CF6" }
-          : { title: "Área de Membros", logo_url: null, welcome_message: "Bem-vinda à sua área exclusiva! 🎉", theme_color: "#8B5CF6" }
+          : { title: "Área de Membros", logo_url: null, welcome_message: "Boas-vindas à sua área exclusiva! 🎉", theme_color: "#8B5CF6" }
       );
 
       const name = payload.customer?.name || null;
@@ -314,7 +314,7 @@ export default function MemberAccess() {
     } catch {}
 
     try {
-      const firstName = name?.split(" ")[0] || "Querido(a)";
+      const firstName = name?.split(" ")[0] || "";
       const productsPayload = prods.filter(p => p.delivery_products).map(p => ({
         name: p.delivery_products!.name,
         materials: (matsByProd[p.product_id] || []).map((m: any) => m.title),
@@ -428,7 +428,7 @@ export default function MemberAccess() {
   const sortedProducts = useMemo(() => [...products].sort((a, b) => new Date(b.granted_at).getTime() - new Date(a.granted_at).getTime()), [products]);
   const ownedProductNames = useMemo(() => products.filter(p => p.delivery_products).map(p => p.delivery_products!.name), [products]);
   const ownedProductIds = useMemo(() => products.map(p => p.product_id), [products]);
-  const firstName = customerName?.split(" ")[0] || "Querido(a)";
+  const firstName = customerName?.split(" ")[0] || "";
 
   const openProduct = useMemo(() => {
     if (!openProductId) return null;
@@ -461,7 +461,7 @@ export default function MemberAccess() {
   }
 
   const themeColor = settings?.theme_color || "#8B5CF6";
-  const greetingText = aiContext?.greeting || settings?.welcome_message || "Sua área exclusiva";
+  const greetingText = aiContext?.greeting || settings?.welcome_message || "Boas-vindas à sua área exclusiva!";
 
   const isRecent = (grantedAt: string) => {
     const diffDays = (Date.now() - new Date(grantedAt).getTime()) / (1000 * 60 * 60 * 24);
@@ -553,7 +553,7 @@ export default function MemberAccess() {
               <>
                 {visibleMessages >= 1 && (
                   <div className="px-3 py-2 rounded-2xl rounded-tl-md text-xs text-gray-700 leading-relaxed w-fit max-w-[90%] animate-fade-in bg-gray-100">
-                    {typedText || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Bem-vindo(a) à sua área exclusiva!'}`}
+                    {typedText || `Olá${firstName ? `, ${firstName}` : ''}! ${settings?.welcome_message || 'Boas-vindas à sua área exclusiva!'}`}
                   </div>
                 )}
               </>
