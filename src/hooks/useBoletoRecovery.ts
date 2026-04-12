@@ -57,6 +57,7 @@ export interface BoletoWithRecovery extends Transaction {
   applicableRule: RecoveryRule | null;
   formattedMessage: string | null;
   contactedToday: boolean;
+  sendStatus: "pending" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone";
 }
 
 export function useBoletoRecovery() {
@@ -122,7 +123,7 @@ export function useBoletoRecovery() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("boleto_recovery_contacts" as any)
-        .select("transaction_id, rule_id")
+        .select("transaction_id, rule_id, notes")
         .eq("workspace_id", workspaceId!)
         .gte("created_at", `${todayStr}T00:00:00-03:00`)
         .lt("created_at", `${todayStr}T23:59:59-03:00`);
@@ -146,15 +147,18 @@ export function useBoletoRecovery() {
     },
   });
 
-  // Build contacted set
-  const contactedKeys = useMemo(() => {
+  // Build contacted set and notes map
+  const { contactedKeys, contactNotesMap } = useMemo(() => {
     const set = new Set<string>();
+    const notesMap = new Map<string, string>();
     todayContacts?.forEach((c: any) => {
       if (c.transaction_id && c.rule_id) {
-        set.add(`${c.transaction_id}:${c.rule_id}`);
+        const key = `${c.transaction_id}:${c.rule_id}`;
+        set.add(key);
+        if (c.notes) notesMap.set(key, c.notes);
       }
     });
-    return set;
+    return { contactedKeys: set, contactNotesMap: notesMap };
   }, [todayContacts]);
 
   // Process boletos
