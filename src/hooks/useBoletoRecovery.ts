@@ -187,15 +187,24 @@ export function useBoletoRecovery() {
 
       const key = applicableRule ? `${boleto.id}:${applicableRule.id}` : null;
       const contactedToday = key ? contactedKeys.has(key) : false;
+      const notes = key ? contactNotesMap.get(key) || "" : "";
+
+      let sendStatus: BoletoWithRecovery["sendStatus"] = "pending";
+      if (contactedToday) {
+        if (notes.startsWith("skipped_phone_limit")) sendStatus = "skipped_phone_limit";
+        else if (notes.startsWith("skipped_invalid_phone")) sendStatus = "skipped_invalid_phone";
+        else if (notes.startsWith("failed")) sendStatus = "failed";
+        else sendStatus = "sent";
+      }
 
       let formattedMessage: string | null = null;
       if (applicableRule) {
         formattedMessage = formatRecoveryMessage(applicableRule.message, boleto, dueDate);
       }
 
-      return { ...boleto, dueDate, daysUntilDue, daysSinceGeneration, isOverdue, applicableRule, formattedMessage, contactedToday };
+      return { ...boleto, dueDate, daysUntilDue, daysSinceGeneration, isOverdue, applicableRule, formattedMessage, contactedToday, sendStatus };
     });
-  }, [unpaidBoletos, settings, rules, contactedKeys]);
+  }, [unpaidBoletos, settings, rules, contactedKeys, contactNotesMap]);
 
   // Derived lists
   const todayBoletos = useMemo(() => processedBoletos.filter((b) => b.applicableRule !== null), [processedBoletos]);
