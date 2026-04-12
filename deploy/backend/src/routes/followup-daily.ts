@@ -316,6 +316,7 @@ async function processWorkspace(
     }
 
     if (blocks.length === 0) {
+      skippedNoBlocks++;
       skipped++;
       continue;
     }
@@ -431,13 +432,21 @@ async function processWorkspace(
           user_id: userId,
           transaction_id: boletoId,
           rule_id: ruleId,
-          notes: `followup-daily: ${matchingRule.rule_type} ${matchingRule.days}d`,
+          notes: `sent|${matchingRule.rule_type} ${matchingRule.days}d`,
         });
 
         console.log(`[followup-daily] ✅ Sent follow-up for boleto ${boletoId} (rule: ${matchingRule.rule_type} ${matchingRule.days}d)`);
       }, `followup:${boletoId}:${ruleId}`)
-      .catch((err: any) => {
+      .catch(async (err: any) => {
         console.error(`[followup-daily] ❌ Failed follow-up for boleto ${boletoId}: ${err.message}`);
+        // Record failure
+        try {
+          await sb.from("boleto_recovery_contacts").insert({
+            workspace_id: workspaceId, user_id: userId, transaction_id: boletoId,
+            rule_id: ruleId, notes: `failed_api|${err.message?.slice(0, 100)}`,
+          });
+        } catch (_) {}
+      });
       });
 
     sent++;
