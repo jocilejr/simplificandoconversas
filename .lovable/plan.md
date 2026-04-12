@@ -1,123 +1,55 @@
 
 
-## Plano: Descobrir e impedir o que está apagando materiais/categorias/ofertas
+## Plano: Corrigir termos de gênero na saudação da IA
 
-### Situação atual
+### Problema
 
-Após análise exaustiva de todo o código (backend, frontend, SQL scripts, crons):
-- **Nenhum código apaga** `member_product_materials`, `member_product_categories` ou `member_area_offers`
-- **Nenhum cron** toca essas tabelas
-- **Nenhum DROP TABLE** ou TRUNCATE existe nos scripts
-- **As FKs são seguras** — `ON DELETE SET NULL` no product_id, `ON DELETE CASCADE` apenas no workspace_id
-- Os dados **somem fisicamente do banco** ~10 minutos após o deploy
+O edge function `member-ai-context` tem **dois problemas**:
 
-### Hipótese principal
+1. **Ignora o `greeting_prompt` configurado pelo usuário** — ele só lê `ai_persona_prompt` da tabela `member_area_settings`, mas nunca lê o campo `greeting_prompt` onde você configurou as regras de gênero neutro.
 
-Se `ON DELETE CASCADE` no `workspace_id` está ativo, e algo recriar/apagar o workspace (por exemplo, o `migrate-workspace.sql` ou um backfill), **todos os materiais, categorias e ofertas daquele workspace seriam apagados em cascata**.
+2. **Termos femininos hardcoded no código** — mesmo que o prompt do usuário diga "não use termos de gênero", o próprio código injeta termos femininos:
+   - `"(MEMBRO NOVA!)"` (linha 88)
+   - `"(ESTÁ SUMIDA!)"` (linha 90)  
+   - `"NOVA"`, `"INATIVA"`, `"FIEL"` (linha 91)
+   - `"MEMBRO NOVA: Boas-vindas calorosas"` (linha 103)
+   - `"MEMBRO INATIVA: Mostre que sentiu falta"` (linha 104)
 
-O `migrate-workspace.sql` roda em **todo deploy** e faz backfill de workspaces. Se ele criar um workspace novo com o mesmo `created_by` mas ID diferente, o antigo pode estar sendo removido — levando todos os dados junto.
+A IA recebe instruções conflitantes: o persona diz "não use gênero", mas o contexto do perfil diz "MEMBRO NOVA", "ESTÁ SUMIDA" — e a IA segue o contexto mais específico.
 
 ### Correções
 
-**1. Trocar FK CASCADE por RESTRICT nas tabelas afetadas (SQL na VPS)**
+**1. `supabase/functions/member-ai-context/index.ts`**
 
-Remover as FKs perigosas de workspace_id com `ON DELETE CASCADE` e recriar com `ON DELETE RESTRICT`:
+- Ler `greeting_prompt` da tabela `member_area_settings` (já está no select mas não é usado)
+- **Se `greeting_prompt` existir**: usar ele como system prompt base (substituindo `{persona}` pelo `ai_persona_prompt`)
+- **Se não existir**: usar o prompt hardcoded atual, mas com termos neutros
+- Substituir todos os termos femininos hardcoded por neutros:
 
-```sql
--- member_product_categories
-ALTER TABLE public.member_product_categories 
-  DROP CONSTRAINT IF EXISTS fk_member_product_categories_workspace;
-ALTER TABLE public.member_product_categories 
-  ADD CONSTRAINT fk_member_product_categories_workspace 
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT;
-
--- member_product_materials  
-ALTER TABLE public.member_product_materials 
-  DROP CONSTRAINT IF EXISTS fk_member_product_materials_workspace;
-ALTER TABLE public.member_product_materials 
-  ADD CONSTRAINT fk_member_product_materials_workspace 
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT;
-
--- member_area_offers (tem DUAS FKs de workspace — remover ambas)
-ALTER TABLE public.member_area_offers 
-  DROP CONSTRAINT IF EXISTS fk_member_area_offers_workspace;
-ALTER TABLE public.member_area_offers 
-  DROP CONSTRAINT IF EXISTS member_area_offers_workspace_id_fkey;
-ALTER TABLE public.member_area_offers 
-  ADD CONSTRAINT fk_member_area_offers_workspace 
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT;
+```text
+"MEMBRO NOVA!"     → "MEMBRO NOVO(A)!"
+"ESTÁ SUMIDA!"     → "ESTÁ SUMIDO(A)!"
+"NOVA"             → "NOVO(A)"
+"INATIVA"          → "INATIVO(A)"
+"MEMBRO NOVA:"     → "MEMBRO NOVO(A):"
+"MEMBRO INATIVA:"  → "MEMBRO INATIVO(A):"
 ```
 
-Isso fará o Postgres **bloquear** qualquer tentativa de apagar um workspace que tenha dados vinculados — em vez de apagar tudo silenciosamente.
-
-**2. Criar tabela de auditoria + triggers para rastrear deleções**
-
-```sql
-CREATE TABLE IF NOT EXISTS public.deletion_audit (
-  id serial PRIMARY KEY,
-  table_name text NOT NULL,
-  record_id uuid,
-  old_data jsonb,
-  deleted_at timestamptz DEFAULT now(),
-  deleted_by text DEFAULT current_user
-);
+- Adicionar regra explícita no prompt hardcoded:
+```text
+- NUNCA use termos que definam gênero como "bem-vindo/bem-vinda", "querido/querida". Use sempre termos neutros como "boas-vindas", cumprimente pelo nome diretamente.
 ```
 
-Com triggers em `member_product_materials`, `member_product_categories`, `member_area_offers` e `workspaces` que gravam cada DELETE na tabela de auditoria.
+**2. `supabase/functions/member-offer-pitch/index.ts`**
 
-**3. Atualizar `deploy/fix-member-tables.sql`**
-
-Incluir os comandos acima para que todo deploy futuro garanta as FKs seguras.
-
-**4. Monitoramento imediato na VPS**
-
-Antes de implementar, rode estes comandos para capturar a deleção em tempo real:
-
-```bash
-# Rodar ANTES do deploy e deixar aberto num terminal
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
-CREATE TABLE IF NOT EXISTS public.deletion_audit (
-  id serial PRIMARY KEY, table_name text, record_id uuid, 
-  old_data jsonb, deleted_at timestamptz DEFAULT now()
-);
-
-CREATE OR REPLACE FUNCTION audit_delete() RETURNS trigger AS \$\$
-BEGIN
-  INSERT INTO deletion_audit(table_name, record_id, old_data)
-  VALUES (TG_TABLE_NAME, OLD.id, row_to_json(OLD)::jsonb);
-  RETURN OLD;
-END; \$\$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS audit_del_materials ON member_product_materials;
-CREATE TRIGGER audit_del_materials BEFORE DELETE ON member_product_materials
-  FOR EACH ROW EXECUTE FUNCTION audit_delete();
-
-DROP TRIGGER IF EXISTS audit_del_categories ON member_product_categories;
-CREATE TRIGGER audit_del_categories BEFORE DELETE ON member_product_categories
-  FOR EACH ROW EXECUTE FUNCTION audit_delete();
-
-DROP TRIGGER IF EXISTS audit_del_offers ON member_area_offers;
-CREATE TRIGGER audit_del_offers BEFORE DELETE ON member_area_offers
-  FOR EACH ROW EXECUTE FUNCTION audit_delete();
-
-DROP TRIGGER IF EXISTS audit_del_workspaces ON workspaces;
-CREATE TRIGGER audit_del_workspaces BEFORE DELETE ON workspaces
-  FOR EACH ROW EXECUTE FUNCTION audit_delete();
-"
-```
-
-Depois do deploy, quando os dados sumirem, rode:
-```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT * FROM deletion_audit ORDER BY deleted_at DESC LIMIT 20;
-"
-```
+- Mesma correção: o prompt de offer-pitch também tem "Querido(a)" como fallback (linha no user prompt) e termos como "nova", "fiel" — neutralizar todos.
 
 ### Arquivos modificados
-- `deploy/fix-member-tables.sql` — trocar CASCADE por RESTRICT + adicionar auditoria
+- `supabase/functions/member-ai-context/index.ts`
+- `supabase/functions/member-offer-pitch/index.ts`
 
 ### Resultado esperado
-- Deleções em cascata são **bloqueadas** em vez de silenciosas
-- Se algo tentar apagar workspace/produto, receberá erro em vez de sucesso
-- A tabela de auditoria revela exatamente **o que** e **quando** algo foi apagado
+- O prompt customizado do usuário (`greeting_prompt`) será respeitado quando configurado
+- Termos hardcoded não conflitam mais com instruções de gênero neutro
+- A IA não dirá "Querida Wanderley" — usará o nome diretamente sem prefixo de gênero
 
