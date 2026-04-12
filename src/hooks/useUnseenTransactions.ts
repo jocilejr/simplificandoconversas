@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useWorkspace } from "./useWorkspace";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 
 type TabKey = "aprovados" | "boletos-gerados" | "pix-cartao-pendentes" | "rejeitados";
@@ -67,6 +67,20 @@ export function useUnseenTransactions() {
   }, [user, workspaceId, queryClient]);
 
   const counts = query.data || { aprovados: 0, "boletos-gerados": 0, "pix-cartao-pendentes": 0, rejeitados: 0 };
+  const originalTitle = useRef(document.title);
+
+  // Dynamic document.title
+  useEffect(() => {
+    const total = Object.values(counts).reduce((s, c) => s + c, 0);
+    if (total > 0) {
+      document.title = `(${total}) Nova transação! | Simplificando`;
+    } else {
+      document.title = originalTitle.current;
+    }
+    return () => {
+      document.title = originalTitle.current;
+    };
+  }, [counts]);
 
   const hasUnseen = useCallback(
     (tab: TabKey) => counts[tab] > 0,
