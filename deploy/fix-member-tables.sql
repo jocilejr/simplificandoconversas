@@ -99,13 +99,9 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
--- 2. Drop old member tables (schema changed)
+-- 2. Ensure member tables exist (idempotent — NO DROP)
 -- ============================================================
-DROP TABLE IF EXISTS public.member_product_materials CASCADE;
-DROP TABLE IF EXISTS public.member_product_categories CASCADE;
-
--- 3. Recreate with new schema
-CREATE TABLE public.member_product_categories (
+CREATE TABLE IF NOT EXISTS public.member_product_categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   product_id uuid NOT NULL,
@@ -119,7 +115,11 @@ CREATE TABLE public.member_product_categories (
 ALTER TABLE public.member_product_categories ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_product_categories TO anon, authenticated, service_role;
 
-CREATE TABLE public.member_product_materials (
+ALTER TABLE public.member_product_categories ADD COLUMN IF NOT EXISTS icon text;
+ALTER TABLE public.member_product_categories ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE public.member_product_categories ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS public.member_product_materials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   product_id uuid NOT NULL,
@@ -139,6 +139,15 @@ CREATE TABLE public.member_product_materials (
 ALTER TABLE public.member_product_materials ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_product_materials TO anon, authenticated, service_role;
 
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS category_id uuid;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS content_url text;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS content_text text;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS button_label text;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS is_published boolean NOT NULL DEFAULT true;
+ALTER TABLE public.member_product_materials ADD COLUMN IF NOT EXISTS is_preview boolean NOT NULL DEFAULT false;
+
 -- Add FK for category_id -> member_product_categories (enables PostgREST joins)
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -153,9 +162,8 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- 4. Fix member_sessions schema (recreate with new columns)
-DROP TABLE IF EXISTS public.member_sessions CASCADE;
-CREATE TABLE public.member_sessions (
+-- 3. Ensure member_sessions exists (idempotent — NO DROP)
+CREATE TABLE IF NOT EXISTS public.member_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   normalized_phone text NOT NULL,
@@ -169,6 +177,12 @@ CREATE TABLE public.member_sessions (
 );
 ALTER TABLE public.member_sessions ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.member_sessions TO anon, authenticated, service_role;
+
+ALTER TABLE public.member_sessions ADD COLUMN IF NOT EXISTS current_product_name text;
+ALTER TABLE public.member_sessions ADD COLUMN IF NOT EXISTS current_material_name text;
+ALTER TABLE public.member_sessions ADD COLUMN IF NOT EXISTS current_activity text;
+ALTER TABLE public.member_sessions ADD COLUMN IF NOT EXISTS last_heartbeat_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.member_sessions ADD COLUMN IF NOT EXISTS ended_at timestamptz;
 
 -- ============================================================
 -- 5. New tables (idempotent)
