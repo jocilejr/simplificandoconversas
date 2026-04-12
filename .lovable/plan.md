@@ -1,51 +1,54 @@
 
 
-## Plano: Corrigir deduplicação do Follow Up + adicionar coluna de status de envio
+## Plano: Sanitização manual + Título dinâmico + Notificações
 
-### Problema confirmado
-Linha 259: `phone.slice(-8)` agrupa telefones diferentes como duplicatas. Com `max_messages_per_phone_per_day = 1`, metade dos boletos é descartada silenciosamente. Além disso, o `phoneSendCount` começa vazio e não considera contatos já enviados hoje.
+### 1. Script `deploy/sanitize-storage.sh` (manual, sem cron)
 
-### Correções
+Script para rodar manualmente quando quiser liberar espaço. Dois modos:
 
-**1. Backend — `deploy/backend/src/routes/followup-daily.ts`**
+```text
+./sanitize-storage.sh          → mostra o que seria apagado (dry-run)
+./sanitize-storage.sh --execute → executa a limpeza de verdade
+```
 
-- Trocar `phone.slice(-8)` por telefone completo normalizado (linha 259)
-- Pré-popular `phoneSendCount` com contatos já enviados hoje consultando o banco
-- Adicionar contadores detalhados por motivo de skip:
-  - `skipped_no_rule` — sem régua aplicável
-  - `skipped_already_contacted` — já contactado hoje
-  - `skipped_invalid_phone` — telefone inválido
-  - `skipped_phone_limit` — limite por telefone atingido
-  - `skipped_no_blocks` — régua sem conteúdo
-- Registrar resultado do envio na tabela `boleto_recovery_contacts` com campo `notes` detalhado incluindo status (`sent`, `failed_api`, `skipped_duplicate`, etc.)
-- Log de resumo final com todos os contadores
+Ações do script:
+- `docker builder prune -a -f` → ~26.5 GB
+- `docker rmi atendai/evolution-api:v2.2.3` → 1.37 GB
+- `docker rmi joseluisq/static-web-server:2-alpine` → 28 MB
+- `docker image prune -f` → só dangling (~452 MB)
+- Truncar logs de containers > 50MB → ~2.2 GB
+- Mídia efêmera > 30 dias no volume → ~7 MB
+- Mostra `df -h` antes e depois
 
-**2. Frontend — Coluna "Envio" na tabela "Hoje"**
+Nenhum cron, nenhum agendamento. Só roda quando você executar.
 
-Arquivo: `src/components/followup/FollowUpDashboard.tsx`
+### 2. Título dinâmico — `src/hooks/useUnseenTransactions.ts`
 
-Na aba "Hoje", adicionar uma coluna **Envio** entre "Status" e "Ações" com badges visuais:
+`useEffect` que altera `document.title`:
+- Com novas: `(3) Nova transação! | Simplificando`
+- Sem novas: restaura título original
 
-| Badge | Cor | Significado |
-|-------|-----|-------------|
-| ✅ Enviado | Verde | `contactedToday = true` e notes contém "sent" ou não contém "failed" |
-| ⏳ Pendente | Amarelo | Ainda não processado (`contactedToday = false`) |
-| 🔄 Duplicado | Cinza | notes contém "skipped_duplicate" ou "skipped_phone_limit" |
-| ❌ Falha API | Vermelho | notes contém "failed" |
+### 3. Notificações nativas — `src/hooks/useTransactionNotifications.ts`
 
-**3. Hook — `src/hooks/useBoletoRecovery.ts`**
+- Pede permissão via `Notification.requestPermission()`
+- Escuta INSERT em `transactions` via realtime
+- Dispara notificação por tipo/status:
+  - 📄 Boleto gerado / ✅ Boleto pago / ❌ Boleto falhou
+  - 💠 PIX gerado / ✅ PIX recebido
+  - 💳 Cartão gerado / ✅ Cartão aprovado / ❌ Cartão recusado
+  - 🛒 Carrinho abandonado
+- Corpo: nome do cliente + valor em R$
 
-- Expandir a query de `todayContacts` para incluir `notes` além de `transaction_id, rule_id`
-- Criar um mapa `contactNotes: Map<string, string>` para expor o motivo do contato
-- Adicionar campo `sendStatus` ao tipo `BoletoWithRecovery`: `"pending" | "sent" | "failed" | "skipped_duplicate"`
+### 4. Integração — `src/components/AppLayout.tsx`
 
-### Arquivos a alterar
-- `deploy/backend/src/routes/followup-daily.ts`
-- `src/hooks/useBoletoRecovery.ts`
-- `src/components/followup/FollowUpDashboard.tsx`
+Monta o hook de notificações para funcionar em todas as páginas.
 
-### Resultado esperado
-- Todos os boletos elegíveis são processados (sem falsos positivos de deduplicação)
-- A coluna "Envio" mostra em tempo real o que aconteceu com cada boleto
-- Diagnóstico futuro é instantâneo pela UI, sem precisar abrir logs
+### Arquivos
+
+| Arquivo | Ação |
+|---------|------|
+| `deploy/sanitize-storage.sh` | Criar |
+| `src/hooks/useUnseenTransactions.ts` | Alterar (document.title) |
+| `src/hooks/useTransactionNotifications.ts` | Criar |
+| `src/components/AppLayout.tsx` | Alterar |
 
