@@ -63,7 +63,7 @@ serve(async (req) => {
 
     if (customOfferPrompt) {
       systemPrompt = customOfferPrompt
-        .replace(/\{firstName\}/g, firstName || "Querido(a)")
+        .replace(/\{firstName\}/g, firstName || "")
         .replace(/\{ownedNames\}/g, ownedNames)
         .replace(/\{offerName\}/g, offerName || "")
         .replace(/\{offerDescription\}/g, offerDescription || "Material especial preparado com muito carinho.")
@@ -89,6 +89,7 @@ ${personaBlock}
 
 REGRAS ABSOLUTAS:
 - NUNCA use termos de marketing como "insights", "mindset", "jornada transformadora", "desbloqueie", "exclusivo"
+- NUNCA use termos que definam gênero como "bem-vindo/bem-vinda", "querido/querida". Use sempre termos neutros como "boas-vindas". Cumprimente pelo nome diretamente.
 - Fale de forma natural, como uma amiga que conhece a pessoa
 - Baseie-se APENAS no título e descrição da oferta para explicar o que é
 - Use o nome da pessoa
@@ -99,17 +100,17 @@ ESTRUTURA DOS 3 BALÕES DE TEXTO:
 
 **Balão 1 (primeiro):** Cumprimente a pessoa pelo nome e informe que ela já adquiriu os seguintes materiais: ${ownedNames}. Diga que ela ainda não contribuiu para receber "${offerName}", de forma carinhosa e sem pressão.
 
-**Balão 2 (segundo):** ${knowledgeContext ? `Faça um breve resumo do que ela já aprendeu com os materiais que possui. Depois, explique como o novo material '${offerName}' complementa e expande esse conhecimento.` : `Explique brevemente o que é o material '${offerName}' com base na descrição, e como ele pode ajudar a pessoa na sua jornada.`}
+**Balão 2 (segundo):** ${knowledgeContext ? `Faça um breve resumo do que ela já aprendeu com os materiais que possui. Depois, explique como o novo material '${offerName}' complementa e expande esse conhecimento.` : `Explique brevemente o que é o material '${offerName}' com base na descrição, e como ele pode ajudar a pessoa.`}
 
 **Balão 4 (terceiro texto, após a imagem):** Liste especificamente o que contém dentro do material, mencionando os módulos e conteúdos que ela vai receber. ${offerPrice ? `No final, diga que é apenas uma contribuição simbólica no valor de R$ ${Number(offerPrice).toFixed(2).replace('.', ',')} e convide com gentileza.` : "Convide com gentileza."}
 
 ${knowledgeBlock}
 PERFIL DA PESSOA:
 - Nome: ${firstName}
-- Membro há: ${memberDays} dias${memberDays <= 7 ? " (nova)" : ""}
+- Membro há: ${memberDays} dias${memberDays <= 7 ? " (recente)" : ""}
 - Produtos que já possui: ${ownedNames}
 - Categoria: ${profileCategory}
-${profileCategory === "novo" ? "→ É nova, não pressione." : ""}
+${profileCategory === "novo" ? "→ É recente, não pressione." : ""}
 ${profileCategory === "inativo" ? "→ Está voltando. Incentive com carinho." : ""}
 ${profileCategory === "fiel" ? "→ É fiel e comprometida. Reconheça isso." : ""}
 
@@ -129,13 +130,13 @@ Gere as mensagens usando a função fornecida.`;
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Gere as 3 mensagens de chat para ${firstName} sobre "${offerName}".` },
+          { role: "user", content: `Gere as 3 mensagens de chat para ${firstName} sobre "${offerName}". NUNCA use termos de gênero como querido/querida. Use o nome diretamente.` },
         ],
         tools: [{
           type: "function",
           function: {
             name: "generate_offer_chat",
-            description: "Generate exactly 3 chat text messages (balloon 1, 2, and 4). Balloon 3 is an image sent automatically.",
+            description: "Generate exactly 3 chat text messages (balloon 1, 2, and 4). Balloon 3 is an image sent automatically. NEVER use gendered terms.",
             parameters: {
               type: "object",
               properties: {
