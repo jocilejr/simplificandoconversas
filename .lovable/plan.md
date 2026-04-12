@@ -1,80 +1,51 @@
 
-Corrigi o diagnóstico: o problema não está mais apenas nas functions do backend integrado. Na sua VPS ainda existe um segundo fluxo antigo gerando a mensagem com regras femininas.
 
-O que encontrei no código da VPS
-- `deploy/backend/src/routes/member-access.ts` ainda contém o gerador real usado pela sua VPS:
-  - fallback `Nome: ${firstName || "Querido(a)"}`
-  - `replace(/\{firstName\}/g, firstName || "Querido(a)")`
-  - categorias antigas como `novo/inativo/fiel`
-  - prompt antigo com viés feminino
-  - no route `/ai-context`, ele busca só `ai_persona_prompt, ai_model` e ignora `greeting_prompt`
-- `src/pages/MemberAccess.tsx` ainda tem fallbacks femininos no frontend:
-  - `"Bem-vinda à sua área exclusiva! 🎉"`
-  - `"Bem-vindo(a) à sua área exclusiva!"`
-  - `firstName || "Querido(a)"`
-- `src/pages/MemberAccess.tsx` também guarda a saudação em cache por 4 horas no `localStorage`, então mesmo corrigindo o backend, a frase antiga pode continuar aparecendo por horas.
-- `src/components/membros/LockedOfferCard.tsx` ainda envia `firstName || "Querido(a)"` para a VPS no pitch de oferta.
+## Plano: Corrigir deduplicação do Follow Up + adicionar coluna de status de envio
 
-Plano de correção
-1. Atualizar o gerador da VPS em `deploy/backend/src/routes/member-access.ts`
-- Fazer `/ai-context` ler `greeting_prompt` junto com `ai_persona_prompt`
-- Se existir `greeting_prompt`, usar ele como base do prompt
-- Remover todos os fallbacks `Querido(a)`
-- Trocar categorias por versões neutras, por exemplo:
-  - `novo` -> `recente`
-  - `inativo` -> `ausente`
-- Reforçar no prompt e na tool description:
-  - nunca usar `querido/querida`, `bem-vindo/bem-vinda`
-  - usar somente o nome direto ou expressão neutra
+### Problema confirmado
+Linha 259: `phone.slice(-8)` agrupa telefones diferentes como duplicatas. Com `max_messages_per_phone_per_day = 1`, metade dos boletos é descartada silenciosamente. Além disso, o `phoneSendCount` começa vazio e não considera contatos já enviados hoje.
 
-2. Corrigir também o `/offer-pitch` da VPS
-- Remover `replace(... firstName || "Querido(a)")`
-- Reforçar neutralidade de gênero no system prompt e no user prompt
-- Garantir que o pitch use nome direto mesmo sem primeiro nome confiável
+### Correções
 
-3. Corrigir os fallbacks do frontend
-- Em `src/pages/MemberAccess.tsx`:
-  - remover `"Bem-vinda à sua área exclusiva! 🎉"`
-  - remover `"Bem-vindo(a) à sua área exclusiva!"`
-  - remover fallback `Querido(a)`
-  - trocar por opções neutras como:
-    - `"Sua área exclusiva"`
-    - `"Boas-vindas à sua área exclusiva!"`
-- Em `src/components/membros/LockedOfferCard.tsx`:
-  - não enviar `Querido(a)` como fallback
-  - enviar string vazia ou o primeiro nome somente quando existir
+**1. Backend — `deploy/backend/src/routes/followup-daily.ts`**
 
-4. Invalidar o cache local da saudação
-- Alterar a chave `AI_CACHE_KEY` ou adicionar versionamento
-- Assim a saudação antiga não continua vindo do navegador por 4 horas após a correção
+- Trocar `phone.slice(-8)` por telefone completo normalizado (linha 259)
+- Pré-popular `phoneSendCount` com contatos já enviados hoje consultando o banco
+- Adicionar contadores detalhados por motivo de skip:
+  - `skipped_no_rule` — sem régua aplicável
+  - `skipped_already_contacted` — já contactado hoje
+  - `skipped_invalid_phone` — telefone inválido
+  - `skipped_phone_limit` — limite por telefone atingido
+  - `skipped_no_blocks` — régua sem conteúdo
+- Registrar resultado do envio na tabela `boleto_recovery_contacts` com campo `notes` detalhado incluindo status (`sent`, `failed_api`, `skipped_duplicate`, etc.)
+- Log de resumo final com todos os contadores
 
-5. Verificação na sua VPS
-Depois da implementação, vou te pedir para testar dentro da VPS assim:
-```bash
-curl -s -X POST "http://SEU_BACKEND:3001/api/member-access/ai-context" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "firstName":"Wanderley",
-    "products":[{"name":"Manuscrito do Arcanjo Miguel","materials":["Capítulo 1"]}],
-    "ownedProductNames":["Manuscrito do Arcanjo Miguel"],
-    "progress":[],
-    "profile":{"memberSince":"2026-04-10T00:00:00.000Z","totalPaid":0,"totalProducts":1,"daysSinceLastAccess":0},
-    "workspaceId":"SEU_WORKSPACE_ID",
-    "phone":"5581999999999"
-  }'
-```
-E confirmar que:
-- não sai `Querida Wanderley`
-- não sai `bem-vinda`
-- a saudação usa o nome diretamente
+**2. Frontend — Coluna "Envio" na tabela "Hoje"**
 
-Arquivos a alterar
-- `deploy/backend/src/routes/member-access.ts`
-- `src/pages/MemberAccess.tsx`
-- `src/components/membros/LockedOfferCard.tsx`
+Arquivo: `src/components/followup/FollowUpDashboard.tsx`
 
-Resultado esperado
-- a VPS passa a respeitar o `greeting_prompt`
-- o frontend não injeta mais termos de gênero
-- o cache antigo não reaproveita mensagens femininas já geradas
-- “Querida Wanderley” deixa de aparecer mesmo no fluxo real da sua VPS
+Na aba "Hoje", adicionar uma coluna **Envio** entre "Status" e "Ações" com badges visuais:
+
+| Badge | Cor | Significado |
+|-------|-----|-------------|
+| ✅ Enviado | Verde | `contactedToday = true` e notes contém "sent" ou não contém "failed" |
+| ⏳ Pendente | Amarelo | Ainda não processado (`contactedToday = false`) |
+| 🔄 Duplicado | Cinza | notes contém "skipped_duplicate" ou "skipped_phone_limit" |
+| ❌ Falha API | Vermelho | notes contém "failed" |
+
+**3. Hook — `src/hooks/useBoletoRecovery.ts`**
+
+- Expandir a query de `todayContacts` para incluir `notes` além de `transaction_id, rule_id`
+- Criar um mapa `contactNotes: Map<string, string>` para expor o motivo do contato
+- Adicionar campo `sendStatus` ao tipo `BoletoWithRecovery`: `"pending" | "sent" | "failed" | "skipped_duplicate"`
+
+### Arquivos a alterar
+- `deploy/backend/src/routes/followup-daily.ts`
+- `src/hooks/useBoletoRecovery.ts`
+- `src/components/followup/FollowUpDashboard.tsx`
+
+### Resultado esperado
+- Todos os boletos elegíveis são processados (sem falsos positivos de deduplicação)
+- A coluna "Envio" mostra em tempo real o que aconteceu com cada boleto
+- Diagnóstico futuro é instantâneo pela UI, sem precisar abrir logs
+
