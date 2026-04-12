@@ -1,5 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { useTransactionNotifications } from "@/hooks/useTransactionNotifications";
 
 import { Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
