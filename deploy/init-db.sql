@@ -310,29 +310,8 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
   UNIQUE (user_id, role)
 );
 
--- Trigger: assign admin role on profile creation
-CREATE OR REPLACE FUNCTION public.assign_admin_role()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.user_id, 'admin')
-  ON CONFLICT (user_id, role) DO NOTHING;
-  RETURN NEW;
-END;
-$$;
-
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'on_profile_created_assign_admin') THEN
-    CREATE TRIGGER on_profile_created_assign_admin
-      AFTER INSERT ON public.profiles
-      FOR EACH ROW EXECUTE FUNCTION public.assign_admin_role();
-  END IF;
-END $$;
+-- (REMOVED) Trigger assign_admin_role was auto-promoting every user to Super Admin.
+-- Admin role must now be assigned manually via user_roles table.
 
 -- Security definer function to check roles
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
