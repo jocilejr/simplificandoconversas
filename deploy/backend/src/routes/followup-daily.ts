@@ -186,7 +186,7 @@ async function processWorkspace(
   const todayEnd = `${today}T23:59:59-03:00`;
   const { data: todayContacts } = await sb
     .from("boleto_recovery_contacts")
-    .select("transaction_id, rule_id")
+    .select("transaction_id, rule_id, notes")
     .eq("workspace_id", workspaceId)
     .gte("created_at", todayStart)
     .lte("created_at", todayEnd);
@@ -194,6 +194,18 @@ async function processWorkspace(
   const alreadyContacted = new Set(
     (todayContacts || []).map((c: any) => `${c.transaction_id}:${c.rule_id}`),
   );
+
+  // Pre-populate phone send count from today's contacts already in DB
+  const phoneSendCount = new Map<string, number>();
+  for (const c of todayContacts || []) {
+    const matchingBoleto = boletos.find((b: any) => b.id === c.transaction_id);
+    if (matchingBoleto) {
+      const p = normalizePhone(matchingBoleto.customer_phone);
+      if (p) {
+        phoneSendCount.set(p, (phoneSendCount.get(p) || 0) + 1);
+      }
+    }
+  }
 
   // 5. Load message queue config
   let configDelaySeconds = 30;
@@ -219,11 +231,13 @@ async function processWorkspace(
   const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
   const evoApiKey = process.env.EVOLUTION_API_KEY || "";
 
-  // Phone-level dedup: track how many messages each phone received today
-  const phoneSendCount = new Map<string, number>();
-
   let sent = 0;
   let skipped = 0;
+  let skippedNoRule = 0;
+  let skippedAlreadyContacted = 0;
+  let skippedInvalidPhone = 0;
+  let skippedPhoneLimit = 0;
+  let skippedNoBlocks = 0;
 
   const totalBoletos = boletos.length;
 
@@ -236,6 +250,7 @@ async function processWorkspace(
     const matchingRule = findMatchingRule(rules as Rule[], createdAt, dueDate, today);
 
     if (!matchingRule) {
+      skippedNoRule++;
       skipped++;
       continue;
     }
@@ -243,6 +258,7 @@ async function processWorkspace(
     // Check if already contacted today for this rule
     const key = `${boleto.id}:${matchingRule.id}`;
     if (alreadyContacted.has(key)) {
+      skippedAlreadyContacted++;
       skipped++;
       continue;
     }
@@ -251,16 +267,28 @@ async function processWorkspace(
     const phone = normalizePhone(boleto.customer_phone);
     if (!phone || phone.length < 12) {
       console.log(`[followup-daily] Invalid phone for boleto ${boleto.id}: ${boleto.customer_phone}`);
+      skippedInvalidPhone++;
       skipped++;
+      // Record skip reason
+      await sb.from("boleto_recovery_contacts").insert({
+        workspace_id: workspaceId, user_id: userId, transaction_id: boleto.id,
+        rule_id: matchingRule.id, notes: "skipped_invalid_phone",
+      });
       continue;
     }
 
-    // Phone-level dedup: limit messages per phone per day
-    const phoneKey = phone.slice(-8);
+    // Phone-level dedup: limit messages per phone per day (full normalized phone)
+    const phoneKey = phone;
     const currentCount = phoneSendCount.get(phoneKey) || 0;
     if (currentCount >= maxMessagesPerPhone) {
-      console.log(`[followup-daily] Phone ${phoneKey} already received ${currentCount} msg(s) today, skipping boleto ${boleto.id}`);
+      console.log(`[followup-daily] Phone ${phone} already received ${currentCount} msg(s) today, skipping boleto ${boleto.id}`);
+      skippedPhoneLimit++;
       skipped++;
+      // Record skip reason
+      await sb.from("boleto_recovery_contacts").insert({
+        workspace_id: workspaceId, user_id: userId, transaction_id: boleto.id,
+        rule_id: matchingRule.id, notes: "skipped_phone_limit",
+      });
       continue;
     }
 
@@ -288,6 +316,7 @@ async function processWorkspace(
     }
 
     if (blocks.length === 0) {
+      skippedNoBlocks++;
       skipped++;
       continue;
     }
@@ -403,13 +432,21 @@ async function processWorkspace(
           user_id: userId,
           transaction_id: boletoId,
           rule_id: ruleId,
-          notes: `followup-daily: ${matchingRule.rule_type} ${matchingRule.days}d`,
+          notes: `sent|${matchingRule.rule_type} ${matchingRule.days}d`,
         });
 
         console.log(`[followup-daily] ✅ Sent follow-up for boleto ${boletoId} (rule: ${matchingRule.rule_type} ${matchingRule.days}d)`);
       }, `followup:${boletoId}:${ruleId}`)
-      .catch((err: any) => {
+      .catch(async (err: any) => {
         console.error(`[followup-daily] ❌ Failed follow-up for boleto ${boletoId}: ${err.message}`);
+        // Record failure
+        try {
+          await sb.from("boleto_recovery_contacts").insert({
+            workspace_id: workspaceId, user_id: userId, transaction_id: boletoId,
+            rule_id: ruleId, notes: `failed_api|${err.message?.slice(0, 100)}`,
+          });
+        } catch (_) {}
+      });
       });
 
     sent++;
@@ -417,7 +454,7 @@ async function processWorkspace(
     console.log(`[followup-daily] Progress: ${sent + skipped}/${totalBoletos} processed (enqueued=${sent}, skipped=${skipped})`);
   }
 
-  console.log(`[followup-daily] Workspace ${workspaceId}: enqueued=${sent}, skipped=${skipped}`);
+  console.log(`[followup-daily] Workspace ${workspaceId} summary: enqueued=${sent}, skipped=${skipped} (no_rule=${skippedNoRule}, already_contacted=${skippedAlreadyContacted}, invalid_phone=${skippedInvalidPhone}, phone_limit=${skippedPhoneLimit}, no_blocks=${skippedNoBlocks})`);
   return { sent, skipped };
 }
 
