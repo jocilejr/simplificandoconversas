@@ -258,8 +258,9 @@ router.post("/ai-context", async (req, res) => {
       return res.status(500).json({ error: "OpenAI API key not configured." });
     }
 
-    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, ai_model").eq("workspace_id", workspaceId).maybeSingle();
+    const settingsRes = await sb.from("member_area_settings").select("ai_persona_prompt, greeting_prompt, ai_model").eq("workspace_id", workspaceId).maybeSingle();
     const personaPrompt = (settingsRes.data as any)?.ai_persona_prompt || "";
+    const greetingPrompt = (settingsRes.data as any)?.greeting_prompt || "";
     const aiModel = (settingsRes.data as any)?.ai_model || "gpt-4o-mini";
 
     const categories = [
@@ -302,17 +303,30 @@ router.post("/ai-context", async (req, res) => {
     const daysSinceLastAccess = prof.daysSinceLastAccess;
 
     let profileCategory = "regular";
-    if (memberDays <= 7) profileCategory = "novo";
-    else if (daysSinceLastAccess !== null && daysSinceLastAccess > 7) profileCategory = "inativo";
+    if (memberDays <= 7) profileCategory = "recente";
+    else if (daysSinceLastAccess !== null && daysSinceLastAccess > 7) profileCategory = "ausente";
     else if ((prof.totalPaid || 0) > 200 || totalProducts >= 3) profileCategory = "fiel";
 
-    const profileContext = `PERFIL DO MEMBRO:\n- Membro há: ${memberSinceStr}${memberDays <= 7 ? " (MEMBRO NOVA!)" : ""}\n- Produtos que possui: ${totalProducts}\n- Dias sem acessar materiais: ${daysSinceLastAccess !== null ? daysSinceLastAccess : "nunca acessou"}${daysSinceLastAccess !== null && daysSinceLastAccess > 3 ? " (ESTÁ SUMIDA!)" : ""}\n- Categoria: ${profileCategory === "novo" ? "NOVA" : profileCategory === "inativo" ? "INATIVA" : profileCategory === "fiel" ? "FIEL" : "REGULAR"}`;
+    const profileContext = `PERFIL DO MEMBRO:\n- Membro há: ${memberSinceStr}${memberDays <= 7 ? " (MEMBRO RECENTE)" : ""}\n- Produtos que possui: ${totalProducts}\n- Dias sem acessar materiais: ${daysSinceLastAccess !== null ? daysSinceLastAccess : "nunca acessou"}${daysSinceLastAccess !== null && daysSinceLastAccess > 3 ? " (ESTÁ AUSENTE)" : ""}\n- Categoria: ${profileCategory === "recente" ? "RECENTE" : profileCategory === "ausente" ? "AUSENTE" : profileCategory === "fiel" ? "FIEL" : "REGULAR"}`;
 
-    const personaBlock = personaPrompt
-      ? `\nSUA PERSONALIDADE:\n${personaPrompt}\n`
-      : `\nVocê é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Fala com carinho, como uma amiga próxima. Nunca usa termos de marketing.\n`;
+    let systemPrompt: string;
 
-    const systemPrompt = `Você é uma amiga mandando UMA ÚNICA mensagem curta no WhatsApp.\n${personaBlock}\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}\n${chosen.instruction}\n\nADAPTE O TOM ao perfil:\n${profileCategory === "novo" ? "MEMBRO NOVA: Boas-vindas calorosas. Mostre que fez a escolha certa." : ""}${profileCategory === "inativo" ? "MEMBRO INATIVA: Mostre que sentiu falta. NÃO critique a ausência." : ""}${profileCategory === "fiel" ? "MEMBRO FIEL: Reconheça a dedicação e fidelidade." : ""}${profileCategory === "regular" ? "MEMBRO REGULAR: Tom amigável e encorajador." : ""}\n\nREGRAS ABSOLUTAS:\n- Gere APENAS 1 mensagem. UMA. Não duas.\n- PROIBIDO usar travessão (—) ou travessão curto (–)\n- A mensagem DEVE incluir o nome da pessoa de forma natural\n- NUNCA use termos genéricos como "este material", "este conteúdo"\n- SEMPRE cite nomes EXATOS dos produtos e materiais\n- Tom: amiga próxima mandando mensagem no WhatsApp\n- NUNCA use termos de marketing\n- NUNCA mencione valores ou preços\n- Máximo 3 frases curtas\n- Use 1 emoji no máximo\n- Seja CRIATIVA e ORIGINAL`;
+    if (greetingPrompt) {
+      systemPrompt = greetingPrompt
+        .replace(/\{persona\}/g, personaPrompt || "")
+        .replace(/\{firstName\}/g, firstName || "")
+        .replace(/\{ownedNames\}/g, ownedNames)
+        .replace(/\{memberDays\}/g, String(memberDays))
+        .replace(/\{profileCategory\}/g, profileCategory);
+      systemPrompt += `\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}\n${chosen.instruction}`;
+      systemPrompt += `\n\n${profileContext}`;
+    } else {
+      const personaBlock = personaPrompt
+        ? `\nSUA PERSONALIDADE:\n${personaPrompt}\n`
+        : `\nVocê é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Fala com carinho, como uma amiga próxima. Nunca usa termos de marketing.\n`;
+
+      systemPrompt = `Você é uma amiga mandando UMA ÚNICA mensagem curta no WhatsApp.\n${personaBlock}\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}\n${chosen.instruction}\n\nADAPTE O TOM ao perfil:\n${profileCategory === "recente" ? "MEMBRO RECENTE: Boas-vindas calorosas. Mostre que fez a escolha certa." : ""}${profileCategory === "ausente" ? "MEMBRO AUSENTE: Mostre que sentiu falta. NÃO critique a ausência." : ""}${profileCategory === "fiel" ? "MEMBRO FIEL: Reconheça a dedicação e fidelidade." : ""}${profileCategory === "regular" ? "MEMBRO REGULAR: Tom amigável e encorajador." : ""}\n\nREGRAS ABSOLUTAS:\n- NUNCA use termos que definam gênero como "bem-vindo/bem-vinda", "querido/querida". Use sempre termos neutros como "boas-vindas". Cumprimente pelo nome diretamente.\n- Gere APENAS 1 mensagem. UMA. Não duas.\n- PROIBIDO usar travessão (—) ou travessão curto (–)\n- A mensagem DEVE incluir o nome da pessoa de forma natural\n- NUNCA use termos genéricos como "este material", "este conteúdo"\n- SEMPRE cite nomes EXATOS dos produtos e materiais\n- Tom: amiga próxima mandando mensagem no WhatsApp\n- NUNCA use termos de marketing\n- NUNCA mencione valores ou preços\n- Máximo 3 frases curtas\n- Use 1 emoji no máximo\n- Seja CRIATIVA e ORIGINAL`;
+    }
 
     // Query lead data if phone provided
     let leadContext = "";
@@ -331,7 +345,7 @@ router.post("/ai-context", async (req, res) => {
       }
     }
 
-    const userPrompt = `Nome: ${firstName || "Querido(a)"}\n\n${profileContext}\n\nProdutos com acesso:\n- ${productList || "Nenhum produto específico"}\n\nNomes dos produtos: ${ownedNames}\n\nPROGRESSO:\n- ${progressContext}\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()} - ${chosen.instruction}${leadContext}`;
+    const userPrompt = `Nome: ${firstName || ""}\n\n${profileContext}\n\nProdutos com acesso:\n- ${productList || "Nenhum produto específico"}\n\nNomes dos produtos: ${ownedNames}\n\nPROGRESSO:\n- ${progressContext}\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()} - ${chosen.instruction}${leadContext}`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -347,8 +361,8 @@ router.post("/ai-context", async (req, res) => {
           type: "function",
           function: {
             name: "generate_member_message",
-            description: "Generate 1 single personalized WhatsApp-style message.",
-            parameters: { type: "object", properties: { message: { type: "string", description: `Uma única mensagem curta e pessoal seguindo a categoria "${chosen.id}". Máx 3 frases. Sem travessões.` } }, required: ["message"] }
+            description: "Generate 1 single personalized WhatsApp-style message. NUNCA use termos de gênero como querido/querida, bem-vindo/bem-vinda. Use o nome diretamente.",
+            parameters: { type: "object", properties: { message: { type: "string", description: `Uma única mensagem curta e pessoal seguindo a categoria "${chosen.id}". Máx 3 frases. Sem travessões. Sem termos de gênero.` } }, required: ["message"] }
           }
         }],
         tool_choice: { type: "function", function: { name: "generate_member_message" } },
@@ -443,8 +457,8 @@ router.post("/offer-pitch", async (req, res) => {
     if (prof.memberSince) memberDays = Math.floor((Date.now() - new Date(prof.memberSince).getTime()) / (1000 * 60 * 60 * 24));
 
     let profileCategory = "regular";
-    if (memberDays <= 7) profileCategory = "novo";
-    else if (prof.daysSinceLastAccess !== null && prof.daysSinceLastAccess > 7) profileCategory = "inativo";
+    if (memberDays <= 7) profileCategory = "recente";
+    else if (prof.daysSinceLastAccess !== null && prof.daysSinceLastAccess > 7) profileCategory = "ausente";
     else if (prof.totalPaid > 200 || prof.totalProducts >= 3) profileCategory = "fiel";
 
     const ownedNames = (ownedProductNames || []).join(", ") || "nenhum";
@@ -453,7 +467,7 @@ router.post("/offer-pitch", async (req, res) => {
 
     if (customOfferPrompt) {
       systemPrompt = customOfferPrompt
-        .replace(/\{firstName\}/g, firstName || "Querido(a)")
+        .replace(/\{firstName\}/g, firstName || "")
         .replace(/\{ownedNames\}/g, ownedNames)
         .replace(/\{offerName\}/g, offerName || "")
         .replace(/\{offerDescription\}/g, offerDescription || "Material especial preparado com muito carinho.")
@@ -475,7 +489,7 @@ router.post("/offer-pitch", async (req, res) => {
 
       const descBlock = memberDescription ? `\nSOBRE O PRODUTO (descrição do criador):\n${memberDescription}\n` : "";
 
-      systemPrompt = `Você vai gerar mensagens de chat simulando uma conversa pessoal sobre um material que a pessoa demonstrou interesse.\n\n${personaBlock}\n\nREGRAS ABSOLUTAS:\n- NUNCA use termos de marketing\n- Fale de forma natural, como uma amiga\n- Use o nome da pessoa\n- Gere EXATAMENTE 3 mensagens (balão 1, balão 2 e balão 4 — o balão 3 será uma imagem)\n- Cada mensagem deve ter no máximo 2-3 frases curtas\n\nESTRUTURA DOS 3 BALÕES DE TEXTO:\n\n**Balão 1:** Cumprimente pelo nome e informe que já adquiriu: ${ownedNames}. Diga que ainda não contribuiu para "${offerName}", de forma carinhosa.\n\n**Balão 2:** ${knowledgeContext ? `Breve resumo do que aprendeu. Depois, como '${offerName}' complementa.` : `Explique brevemente '${offerName}' com base na descrição.`}\n\n**Balão 4:** Liste o conteúdo do material. ${offerPrice ? `Diga que é apenas R$ ${Number(offerPrice).toFixed(2).replace('.', ',')} e convide com gentileza.` : "Convide com gentileza."}\n\n${knowledgeBlock}${descBlock}\nPERFIL: Nome: ${firstName}, Membro há: ${memberDays} dias, Produtos: ${ownedNames}, Categoria: ${profileCategory}\n\nMATERIAL: "${offerName}" — "${offerDescription || 'Material especial.'}"${offerMaterials?.length > 0 ? `\nCONTEÚDO: ${offerMaterials.join("\n")}` : ""}`;
+      systemPrompt = `Você vai gerar mensagens de chat simulando uma conversa pessoal sobre um material que a pessoa demonstrou interesse.\n\n${personaBlock}\n\nREGRAS ABSOLUTAS:\n- NUNCA use termos de marketing\n- NUNCA use termos que definam gênero como "querido/querida", "bem-vindo/bem-vinda". Use o nome da pessoa diretamente.\n- Fale de forma natural, como uma amiga\n- Use o nome da pessoa\n- Gere EXATAMENTE 3 mensagens (balão 1, balão 2 e balão 4 — o balão 3 será uma imagem)\n- Cada mensagem deve ter no máximo 2-3 frases curtas\n\nESTRUTURA DOS 3 BALÕES DE TEXTO:\n\n**Balão 1:** Cumprimente pelo nome e informe que já adquiriu: ${ownedNames}. Diga que ainda não contribuiu para "${offerName}", de forma carinhosa.\n\n**Balão 2:** ${knowledgeContext ? `Breve resumo do que aprendeu. Depois, como '${offerName}' complementa.` : `Explique brevemente '${offerName}' com base na descrição.`}\n\n**Balão 4:** Liste o conteúdo do material. ${offerPrice ? `Diga que é apenas R$ ${Number(offerPrice).toFixed(2).replace('.', ',')} e convide com gentileza.` : "Convide com gentileza."}\n\n${knowledgeBlock}${descBlock}\nPERFIL: Nome: ${firstName}, Membro há: ${memberDays} dias, Produtos: ${ownedNames}, Categoria: ${profileCategory}\n\nMATERIAL: "${offerName}" — "${offerDescription || 'Material especial.'}"${offerMaterials?.length > 0 ? `\nCONTEÚDO: ${offerMaterials.join("\n")}` : ""}`;
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -491,7 +505,7 @@ router.post("/offer-pitch", async (req, res) => {
           type: "function",
           function: {
             name: "generate_offer_chat",
-            description: "Generate exactly 3 chat text messages.",
+            description: "Generate exactly 3 chat text messages. NUNCA use termos de gênero como querido/querida, bem-vindo/bem-vinda. Use o nome da pessoa diretamente.",
             parameters: { type: "object", properties: { messages: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 3 } }, required: ["messages"] }
           }
         }],
