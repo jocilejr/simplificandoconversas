@@ -391,6 +391,128 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ============================================================
+-- 10. Fix dangerous CASCADE FKs on workspace_id → RESTRICT
+-- Prevents silent data loss when workspaces are deleted/recreated
+-- ============================================================
+
+-- member_product_categories: DROP CASCADE, ADD RESTRICT
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_member_product_categories_workspace'
+      AND conrelid = 'public.member_product_categories'::regclass
+      AND pg_get_constraintdef(oid) ILIKE '%CASCADE%'
+  ) THEN
+    ALTER TABLE public.member_product_categories
+      DROP CONSTRAINT fk_member_product_categories_workspace;
+    ALTER TABLE public.member_product_categories
+      ADD CONSTRAINT fk_member_product_categories_workspace
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT;
+    RAISE NOTICE 'Fixed member_product_categories FK: CASCADE → RESTRICT';
+  END IF;
+END $$;
+
+-- member_product_materials: DROP CASCADE, ADD RESTRICT
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_member_product_materials_workspace'
+      AND conrelid = 'public.member_product_materials'::regclass
+      AND pg_get_constraintdef(oid) ILIKE '%CASCADE%'
+  ) THEN
+    ALTER TABLE public.member_product_materials
+      DROP CONSTRAINT fk_member_product_materials_workspace;
+    ALTER TABLE public.member_product_materials
+      ADD CONSTRAINT fk_member_product_materials_workspace
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT;
+    RAISE NOTICE 'Fixed member_product_materials FK: CASCADE → RESTRICT';
+  END IF;
+END $$;
+
+-- member_area_offers: has TWO workspace FKs — remove both CASCADE, add one RESTRICT
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_member_area_offers_workspace'
+      AND conrelid = 'public.member_area_offers'::regclass
+      AND pg_get_constraintdef(oid) ILIKE '%CASCADE%'
+  ) THEN
+    ALTER TABLE public.member_area_offers
+      DROP CONSTRAINT fk_member_area_offers_workspace;
+    RAISE NOTICE 'Dropped fk_member_area_offers_workspace (CASCADE)';
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'member_area_offers_workspace_id_fkey'
+      AND conrelid = 'public.member_area_offers'::regclass
+      AND pg_get_constraintdef(oid) ILIKE '%CASCADE%'
+  ) THEN
+    ALTER TABLE public.member_area_offers
+      DROP CONSTRAINT member_area_offers_workspace_id_fkey;
+    RAISE NOTICE 'Dropped member_area_offers_workspace_id_fkey (CASCADE)';
+  END IF;
+END $$;
+
+-- Re-add single safe FK for member_area_offers
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.member_area_offers'::regclass
+      AND confrelid = 'public.workspaces'::regclass
+      AND contype = 'f'
+  ) THEN
+    ALTER TABLE public.member_area_offers
+      ADD CONSTRAINT fk_member_area_offers_workspace
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT;
+    RAISE NOTICE 'Added fk_member_area_offers_workspace (RESTRICT)';
+  END IF;
+END $$;
+
+-- ============================================================
+-- 11. Deletion audit table + triggers (idempotent)
+-- Tracks any DELETE on critical member tables and workspaces
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.deletion_audit (
+  id serial PRIMARY KEY,
+  table_name text NOT NULL,
+  record_id uuid,
+  old_data jsonb,
+  deleted_at timestamptz NOT NULL DEFAULT now(),
+  deleted_by text DEFAULT current_user
+);
+
+CREATE OR REPLACE FUNCTION public.audit_delete()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO deletion_audit(table_name, record_id, old_data)
+  VALUES (TG_TABLE_NAME, OLD.id, row_to_json(OLD)::jsonb);
+  RETURN OLD;
+END;
+$$;
+
+DO $$ BEGIN
+  DROP TRIGGER IF EXISTS audit_del_materials ON public.member_product_materials;
+  CREATE TRIGGER audit_del_materials BEFORE DELETE ON public.member_product_materials
+    FOR EACH ROW EXECUTE FUNCTION public.audit_delete();
+
+  DROP TRIGGER IF EXISTS audit_del_categories ON public.member_product_categories;
+  CREATE TRIGGER audit_del_categories BEFORE DELETE ON public.member_product_categories
+    FOR EACH ROW EXECUTE FUNCTION public.audit_delete();
+
+  DROP TRIGGER IF EXISTS audit_del_offers ON public.member_area_offers;
+  CREATE TRIGGER audit_del_offers BEFORE DELETE ON public.member_area_offers
+    FOR EACH ROW EXECUTE FUNCTION public.audit_delete();
+
+  DROP TRIGGER IF EXISTS audit_del_workspaces ON public.workspaces;
+  CREATE TRIGGER audit_del_workspaces BEFORE DELETE ON public.workspaces
+    FOR EACH ROW EXECUTE FUNCTION public.audit_delete();
+END $$;
+
 -- Reload PostgREST schema cache
 NOTIFY pgrst, 'reload schema';
 
