@@ -454,7 +454,7 @@ async function processWorkspace(
     console.log(`[followup-daily] Progress: ${sent + skipped}/${totalBoletos} processed (enqueued=${sent}, skipped=${skipped})`);
   }
 
-  console.log(`[followup-daily] Workspace ${workspaceId}: enqueued=${sent}, skipped=${skipped}`);
+  console.log(`[followup-daily] Workspace ${workspaceId} summary: enqueued=${sent}, skipped=${skipped} (no_rule=${skippedNoRule}, already_contacted=${skippedAlreadyContacted}, invalid_phone=${skippedInvalidPhone}, phone_limit=${skippedPhoneLimit}, no_blocks=${skippedNoBlocks})`);
   return { sent, skipped };
 }
 
