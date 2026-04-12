@@ -40,11 +40,12 @@ serve(async (req) => {
 
     const { data: memberSettings } = await supabase
       .from("member_area_settings")
-      .select("ai_persona_prompt")
+      .select("ai_persona_prompt, greeting_prompt")
       .limit(1)
       .maybeSingle();
 
     const personaPrompt = memberSettings?.ai_persona_prompt || "";
+    const greetingPrompt = memberSettings?.greeting_prompt || "";
 
     const chosen = categories[Math.floor(Math.random() * categories.length)];
 
@@ -85,27 +86,45 @@ serve(async (req) => {
     else if ((prof.totalPaid || 0) > 200 || totalProducts >= 3) profileCategory = "fiel";
 
     const profileContext = `PERFIL DO MEMBRO:
-- Membro há: ${memberSinceStr}${memberDays <= 7 ? " (MEMBRO NOVA!)" : ""}
+- Membro há: ${memberSinceStr}${memberDays <= 7 ? " (MEMBRO RECENTE)" : ""}
 - Produtos que possui: ${totalProducts}
-- Dias sem acessar materiais: ${daysSinceLastAccess !== null ? daysSinceLastAccess : "nunca acessou"}${daysSinceLastAccess !== null && daysSinceLastAccess > 3 ? " (ESTÁ SUMIDA!)" : ""}
-- Categoria: ${profileCategory === "novo" ? "NOVA" : profileCategory === "inativo" ? "INATIVA" : profileCategory === "fiel" ? "FIEL" : "REGULAR"}`;
+- Dias sem acessar materiais: ${daysSinceLastAccess !== null ? daysSinceLastAccess : "nunca acessou"}${daysSinceLastAccess !== null && daysSinceLastAccess > 3 ? " (ESTÁ AUSENTE)" : ""}
+- Categoria: ${profileCategory === "novo" ? "RECENTE" : profileCategory === "inativo" ? "AUSENTE" : profileCategory === "fiel" ? "FIEL" : "REGULAR"}`;
 
-    const personaBlock = personaPrompt
-      ? `\nSUA PERSONALIDADE:\n${personaPrompt}\n`
-      : `\nVocê é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Fala com carinho, como uma amiga próxima. Nunca usa termos de marketing.\n`;
+    let systemPrompt: string;
 
-    const systemPrompt = `Você é uma amiga mandando UMA ÚNICA mensagem curta no WhatsApp.
+    if (greetingPrompt) {
+      // Usar o prompt customizado do usuário
+      systemPrompt = greetingPrompt
+        .replace(/\{persona\}/g, personaPrompt || "")
+        .replace(/\{firstName\}/g, firstName || "")
+        .replace(/\{ownedNames\}/g, ownedNames)
+        .replace(/\{memberDays\}/g, String(memberDays))
+        .replace(/\{profileCategory\}/g, profileCategory);
+
+      // Adicionar categoria e instrução
+      systemPrompt += `\n\nCATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}\n${chosen.instruction}`;
+
+      // Adicionar contexto do perfil
+      systemPrompt += `\n\n${profileContext}`;
+    } else {
+      const personaBlock = personaPrompt
+        ? `\nSUA PERSONALIDADE:\n${personaPrompt}\n`
+        : `\nVocê é uma mulher cristã de 57 anos, líder de uma comunidade de orações. Fala com carinho, como uma amiga próxima. Nunca usa termos de marketing.\n`;
+
+      systemPrompt = `Você é uma amiga mandando UMA ÚNICA mensagem curta no WhatsApp.
 ${personaBlock}
 CATEGORIA OBRIGATÓRIA: ${chosen.id.toUpperCase()}
 ${chosen.instruction}
 
 ADAPTE O TOM ao perfil:
-${profileCategory === "novo" ? `MEMBRO NOVA: Boas-vindas calorosas. Mostre que fez a escolha certa.` : ""}
-${profileCategory === "inativo" ? `MEMBRO INATIVA: Mostre que sentiu falta. NÃO critique a ausência.` : ""}
+${profileCategory === "novo" ? `MEMBRO RECENTE: Boas-vindas calorosas. Mostre que fez a escolha certa.` : ""}
+${profileCategory === "inativo" ? `MEMBRO AUSENTE: Mostre que sentiu falta. NÃO critique a ausência.` : ""}
 ${profileCategory === "fiel" ? `MEMBRO FIEL: Reconheça a dedicação e fidelidade.` : ""}
 ${profileCategory === "regular" ? `MEMBRO REGULAR: Tom amigável e encorajador.` : ""}
 
 REGRAS ABSOLUTAS:
+- NUNCA use termos que definam gênero como "bem-vindo/bem-vinda", "querido/querida". Use sempre termos neutros como "boas-vindas". Cumprimente pelo nome diretamente.
 - Gere APENAS 1 mensagem. UMA. Não duas.
 - PROIBIDO usar travessão (—) ou travessão curto (–) em qualquer lugar
 - A mensagem DEVE incluir o nome da pessoa de forma natural
@@ -118,8 +137,9 @@ REGRAS ABSOLUTAS:
 - Use 1 emoji no máximo
 - Seja CRIATIVA e ORIGINAL. Nunca repita padrões. Cada interação deve ser única.
 - A mensagem deve ser uma coisa só, fluida, que começa cumprimentando e naturalmente entra na categoria sorteada.`;
+    }
 
-    const userPrompt = `Nome: ${firstName || "Querido(a)"}
+    const userPrompt = `Nome: ${firstName || ""}
 
 ${profileContext}
 
@@ -131,7 +151,7 @@ Nomes dos produtos: ${ownedNames}
 PROGRESSO:
 - ${progressContext}
 
-CATEGORIA OBRIGATÓRIA para a segunda mensagem: ${chosen.id.toUpperCase()} - ${chosen.instruction}`;
+CATEGORIA OBRIGATÓRIA para a mensagem: ${chosen.id.toUpperCase()} - ${chosen.instruction}`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -147,11 +167,11 @@ CATEGORIA OBRIGATÓRIA para a segunda mensagem: ${chosen.id.toUpperCase()} - ${c
           type: "function",
           function: {
             name: "generate_member_message",
-            description: "Generate 1 single personalized WhatsApp-style message for the member area.",
+            description: "Generate 1 single personalized WhatsApp-style message for the member area. NEVER use gendered terms like querido/querida, bem-vindo/bem-vinda. Use the person's name directly.",
             parameters: {
               type: "object",
               properties: {
-                message: { type: "string", description: `Uma única mensagem curta e pessoal seguindo a categoria "${chosen.id}". Máx 3 frases. Sem travessões.` }
+                message: { type: "string", description: `Uma única mensagem curta e pessoal seguindo a categoria "${chosen.id}". Máx 3 frases. Sem travessões. Sem termos de gênero.` }
               },
               required: ["message"]
             }
