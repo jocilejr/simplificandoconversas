@@ -61,7 +61,7 @@ export default function LockedOfferCard({ offer, themeColor, ownedProductNames, 
       const res = await fetch("/api/member-access/offer-pitch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName: firstName || "Querido(a)", offerName: offer.name, offerDescription: offer.description, offerPrice: offer.price, ownedProductNames, ownedProductIds, profile: memberProfile, offerMaterials: offerMaterialNames, workspaceId }),
+        body: JSON.stringify({ firstName: firstName || "", offerName: offer.name, offerDescription: offer.description, offerPrice: offer.price, ownedProductNames, ownedProductIds, profile: memberProfile, offerMaterials: offerMaterialNames, workspaceId }),
       });
       const data = res.ok ? await res.json() : null;
 
