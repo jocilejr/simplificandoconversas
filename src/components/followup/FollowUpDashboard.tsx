@@ -102,13 +102,14 @@ export function FollowUpDashboard() {
         {/* Desktop table */}
         <div className="hidden md:block overflow-hidden rounded-lg border border-border/30">
           <table className="w-full text-sm">
-            <thead>
+             <thead>
               <tr className="bg-secondary/30">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cliente</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefone</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Valor</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vencimento</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Envio</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
@@ -134,6 +135,19 @@ export function FollowUpDashboard() {
                       <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25 text-[10px] gap-1 font-medium"><Clock className="h-3 w-3" />{boleto.applicableRule.name}</Badge>
                     ) : (
                       <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] font-medium">Pendente</Badge>
+                    )}
+                  </td>
+                  <td className="py-3 px-4">
+                    {boleto.sendStatus === "sent" ? (
+                      <Badge variant="outline" className="bg-green-500/15 text-green-500 border-green-500/25 text-[10px] gap-1 font-medium"><CheckCircle2 className="h-3 w-3" />Enviado</Badge>
+                    ) : boleto.sendStatus === "failed" ? (
+                      <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><AlertTriangle className="h-3 w-3" />Falha API</Badge>
+                    ) : boleto.sendStatus === "skipped_phone_limit" ? (
+                      <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3" />Duplicado</Badge>
+                    ) : boleto.sendStatus === "skipped_invalid_phone" ? (
+                      <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><Phone className="h-3 w-3" />Tel. inválido</Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] gap-1 font-medium"><Timer className="h-3 w-3" />Pendente</Badge>
                     )}
                   </td>
                   <td className="py-3 px-4">
