@@ -1,50 +1,89 @@
 
 
-## Plano: Refinamento Visual da Página de Grupos
+## Plano Revisado: Detecção de grupos banidos com verificação de status da instância + contagem em tempo real
 
-### Problema
-As abas da página de Grupos possuem títulos redundantes dentro de cada tab (o título já está nas abas), layout genérico sem identidade visual, e não seguem o padrão profissional do restante da aplicação (tema escuro com acentos dourados #c5a55a).
+### Lógica correta
+
+O redirecionamento **já filtra** por `g.invite_url` (linha 1021). O problema é que quando o sync falha (seja por instância offline ou grupo banido), ele simplesmente **não atualiza** a `invite_url` — mas também não a remove. Então um grupo banido continua com a URL antiga (quebrada).
+
+A solução correta:
+- **Instância offline** → não mexer nos grupos, registrar erro
+- **Instância online + inviteCode falhou** → marcar `status: "banned"`, limpar `invite_url`
+- **Instância online + inviteCode OK** → marcar `status: "active"`, atualizar URL
+- **Redirect** → filtrar `status !== "banned"` (redundante com `invite_url` vazia, mas defesa dupla)
 
 ### Mudanças
 
-#### 1. `GruposPage.tsx` — Header e Tabs refinados
-- Remover o header com ícone e título grandes (redundante com a sidebar)
-- Usar TabsList com estilo mais refinado: fundo escuro sólido, indicador dourado, ícones em cada aba
-- Adicionar ícones contextuais em todas as abas (LayoutDashboard, Megaphone, ListOrdered, Link2)
+#### 1. `deploy/backend/src/routes/groups-api.ts` — `sync-all` (linha ~1110)
 
-#### 2. `GroupDashboardTab.tsx` — Remover título interno
-- Remover qualquer header/título redundante (já está na aba "Visão Geral")
-- Manter apenas os StatCards e os Cards de conteúdo
-- Usar bordas sutis com `border-border/50` e backgrounds `bg-card/50`
+Antes de iterar os grupos de cada Smart Link, verificar o `connectionState` da instância:
 
-#### 3. `GroupCampaignsTab.tsx` — Limpar header interno
-- Remover o mini-header "Campanhas" / subtítulo (redundante com a aba)
-- Manter apenas o botão "Nova Campanha" alinhado à direita no topo
-- Cards de campanha já estão bons, manter o estilo com barra gradiente
+```text
+GET /instance/connectionState/{instanceName}
+  → status !== "open":
+    - last_sync_error = "Instância desconectada (status: close)"
+    - NÃO altera status/invite_url dos grupos
+    - Pula para o próximo Smart Link
 
-#### 4. `GroupQueueTab.tsx` — Limpar headers internos
-- Remover títulos redundantes dos Cards internos ou simplificar
-- Manter os StatCards e o conteúdo funcional
+  → status === "open":
+    - Para cada grupo:
+      - inviteCode OK → gl.status = "active", invite_url atualizada
+      - inviteCode ERRO → gl.status = "banned", gl.invite_url = ""
+```
 
-#### 5. `GroupSmartLinkTab.tsx` — Limpar header interno
-- Remover mini-header "Smart Links" / subtítulo (redundante com a aba)
-- Manter apenas o botão "Novo Smart Link" alinhado à direita
-- Na view de detalhe, refinar os cards de stats com ícones dourados
+#### 2. `deploy/backend/src/routes/groups-api.ts` — `smart-link-redirect` (linha ~1020)
+
+Adicionar filtro de `status !== "banned"`:
+```typescript
+const available = groupLinks
+  .filter((g) => g.invite_url && g.status !== "banned" && (g.member_count || 0) < maxMembers)
+```
+
+E no fallback round-robin (linha ~1031):
+```typescript
+const withUrl = groupLinks.filter((g) => g.invite_url && g.status !== "banned");
+```
+
+#### 3. `deploy/backend/src/routes/groups-webhook.ts` — Atualizar `member_count` no Smart Link JSONB
+
+Após atualizar `group_selected.member_count`, buscar todos os `group_smart_links` ativos que contêm aquele `group_jid` no JSONB e atualizar o `member_count` correspondente. Isso garante contagem em tempo real no Smart Link.
+
+#### 4. `deploy/backend/src/index.ts` — Cron `*/5` → `*/15`
+
+#### 5. `src/hooks/useGroupSmartLinks.ts` — `refetchInterval: 15000`
+
+Polling a cada 15s nas queries de smart links e stats.
+
+#### 6. `src/components/grupos/GroupSmartLinkTab.tsx` — Badge visual
+
+- Badge verde "Ativo" / vermelho "Banido" na tabela de grupos
+- Alerta amarelo no card se `last_sync_error` contiver "desconectada"
 
 ### Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| `src/pages/GruposPage.tsx` | Refinar header e TabsList com ícones e estilo profissional |
-| `src/components/grupos/GroupDashboardTab.tsx` | Remover títulos redundantes |
-| `src/components/grupos/GroupCampaignsTab.tsx` | Remover header redundante, manter botão |
-| `src/components/grupos/GroupQueueTab.tsx` | Limpar headers internos |
-| `src/components/grupos/GroupSmartLinkTab.tsx` | Limpar header redundante, refinar cards |
+| `deploy/backend/src/routes/groups-api.ts` | Checar connectionState no sync; marcar banned/active; filtrar no redirect |
+| `deploy/backend/src/routes/groups-webhook.ts` | Atualizar member_count no JSONB do Smart Link |
+| `deploy/backend/src/index.ts` | Cron `*/5` → `*/15` |
+| `src/hooks/useGroupSmartLinks.ts` | `refetchInterval: 15000` |
+| `src/components/grupos/GroupSmartLinkTab.tsx` | Badge banned/ativo + alerta instância inativa |
 
-### Estilo aplicado
-- Cores: fundo escuro (#111b21), acentos dourados (#c5a55a / `hsl(var(--primary))`)
-- Sem emojis, apenas ícones Lucide
-- Tabs com indicador ativo dourado, texto muted quando inativo
-- Cards com `border-border/50`, sem sombras excessivas
-- Tipografia compacta e profissional
+### Fluxo
+
+```text
+Cron 15min → sync-all
+  ├─ GET connectionState
+  │   ├─ OFFLINE → last_sync_error, não altera grupos
+  │   └─ ONLINE → para cada grupo:
+  │       ├─ inviteCode OK  → status="active", invite_url OK
+  │       └─ inviteCode ERR → status="banned", invite_url=""
+  │
+Webhook participante → groups-webhook.ts
+  └─ Atualiza member_count em group_selected (já existe)
+  └─ Atualiza member_count no JSONB de group_smart_links (NOVO)
+
+Redirect
+  └─ Filtra: invite_url presente + status !== "banned" + member_count < max
+```
 
