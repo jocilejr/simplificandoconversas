@@ -12,13 +12,22 @@ import GroupImportDialog from "./GroupImportDialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
+interface BackupSummary {
+  version: number;
+  campaigns: any[];
+  scheduledMessages: any[];
+  mediaKeys: string[];
+}
+
 export default function GroupCampaignsTab() {
   const { campaigns, isLoading, updateCampaign, deleteCampaign } = useGroupCampaigns();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editCampaign, setEditCampaign] = useState<any>(null);
   const [messagesCampaign, setMessagesCampaign] = useState<any>(null);
-  const [importData, setImportData] = useState<any>(null);
+  const [importSummary, setImportSummary] = useState<BackupSummary | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -31,25 +40,45 @@ export default function GroupCampaignsTab() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
+    setParsing(true);
 
-      if (parsed.version !== 1) {
+    try {
+      // Read only the first ~5MB to extract metadata (not the full 300MB)
+      const CHUNK_SIZE = 5 * 1024 * 1024;
+      const slice = file.slice(0, CHUNK_SIZE);
+      const partialText = await slice.text();
+
+      // Try to extract version
+      const versionMatch = partialText.match(/"version"\s*:\s*(\d+)/);
+      const version = versionMatch ? parseInt(versionMatch[1]) : 0;
+
+      if (version !== 1) {
         toast({ title: "Formato inválido", description: "Versão do backup não suportada.", variant: "destructive" });
         return;
       }
 
-      if (!parsed.data?.campaigns || !Array.isArray(parsed.data.campaigns)) {
+      // For the metadata, we need to read the full file but parse only data section
+      // Use a streaming approach: read as text but extract campaigns/messages with regex boundaries
+      // For files up to 300MB, we'll read the full text but only keep what we need
+      const fullText = await file.text();
+      const parsed = JSON.parse(fullText);
+
+      const campaigns = parsed.data?.campaigns || [];
+      const scheduledMessages = parsed.data?.scheduled_messages || [];
+      const mediaKeys = Object.keys(parsed.media || {});
+
+      if (!Array.isArray(campaigns) || campaigns.length === 0) {
         toast({ title: "Formato inválido", description: "O arquivo não contém campanhas.", variant: "destructive" });
         return;
       }
 
-      setImportData(parsed);
+      setImportSummary({ version, campaigns, scheduledMessages, mediaKeys });
+      setImportFile(file);
       setImportOpen(true);
     } catch {
       toast({ title: "Erro ao ler arquivo", description: "O arquivo não é um JSON válido.", variant: "destructive" });
     } finally {
+      setParsing(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -68,8 +97,9 @@ export default function GroupCampaignsTab() {
           size="sm"
           variant="outline"
           onClick={() => fileInputRef.current?.click()}
+          disabled={parsing}
         >
-          <Upload className="h-4 w-4 mr-1" /> Importar
+          <Upload className="h-4 w-4 mr-1" /> {parsing ? "Lendo..." : "Importar"}
         </Button>
         <Button
           size="sm"
@@ -150,7 +180,12 @@ export default function GroupCampaignsTab() {
 
       <GroupCampaignDialog open={dialogOpen} onOpenChange={setDialogOpen} editData={editCampaign} />
       <GroupMessagesDialog open={!!messagesCampaign} onOpenChange={(v) => !v && setMessagesCampaign(null)} campaign={messagesCampaign} />
-      <GroupImportDialog open={importOpen} onOpenChange={setImportOpen} backupData={importData} />
+      <GroupImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        summary={importSummary}
+        file={importFile}
+      />
     </div>
   );
 }
