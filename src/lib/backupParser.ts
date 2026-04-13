@@ -268,61 +268,165 @@ function extractKeysFromChunk(
 /**
  * Iterator that yields media entries one at a time from the backup file.
  * Each yield returns { path, dataUri } without holding all media in memory.
+ * Reads the file in chunks to avoid loading 300MB+ into memory.
  */
 export async function* iterateMediaEntries(file: File): AsyncGenerator<{ path: string; dataUri: string }> {
-  // We need to find "media": { then extract key-value pairs one at a time.
-  // Since values can be huge (multi-MB base64), we read in chunks and reconstruct each entry.
-  
-  const text = await file.text();
-  const mediaMatch = text.match(/"media"\s*:\s*\{/);
-  if (!mediaMatch || mediaMatch.index === undefined) return;
+  const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
 
-  const startPos = mediaMatch.index + mediaMatch[0].length;
-  
-  // Now parse key-value pairs from the media object
-  let pos = startPos;
-  let depth = 1;
+  // Step 1: Find the byte offset of "media": {
+  let mediaStartOffset = -1;
+  let searchBuffer = "";
 
-  while (pos < text.length && depth > 0) {
-    // Skip whitespace and commas
-    while (pos < text.length && /[\s,]/.test(text[pos])) pos++;
+  for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+    const slice = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
+    const chunk = await slice.text();
+    searchBuffer += chunk;
 
-    if (text[pos] === '}') { depth--; break; }
+    const match = searchBuffer.match(/"media"\s*:\s*\{/);
+    if (match && match.index !== undefined) {
+      // Calculate absolute byte offset of the opening brace content
+      const relativePos = match.index + match[0].length;
+      // Account for multi-byte chars: use the actual text offset from current window
+      mediaStartOffset = offset - (searchBuffer.length - chunk.length) + relativePos;
+      break;
+    }
 
-    // Extract key
-    if (text[pos] !== '"') break;
-    const keyEnd = findStringEnd(text, pos);
-    if (keyEnd === -1) break;
-    const key = JSON.parse(text.substring(pos, keyEnd + 1));
-    pos = keyEnd + 1;
+    // Keep last 100 chars for boundary matching
+    if (searchBuffer.length > 200) {
+      const discard = searchBuffer.length - 100;
+      searchBuffer = searchBuffer.slice(discard);
+    }
+  }
 
-    // Skip colon
-    while (pos < text.length && /[\s:]/.test(text[pos])) pos++;
+  if (mediaStartOffset < 0) return;
 
-    // Extract value
-    if (text[pos] !== '"') {
-      // skip non-string value
-      const valEnd = text.indexOf(',', pos);
-      pos = valEnd === -1 ? text.length : valEnd + 1;
+  // Step 2: Read from mediaStartOffset in chunks, extracting key-value pairs
+  let buffer = "";
+  let filePos = mediaStartOffset;
+  let depth = 1; // we're inside the media object
+
+  // States for the parser
+  const enum State { EXPECT_KEY, IN_KEY, EXPECT_COLON, EXPECT_VALUE, IN_VALUE, AFTER_VALUE }
+  let state: State = State.EXPECT_KEY;
+  let currentKey = "";
+  let currentValue = "";
+  let escaped = false;
+
+  const loadMoreBuffer = async (): Promise<boolean> => {
+    if (filePos >= file.size) return false;
+    const end = Math.min(filePos + CHUNK_SIZE, file.size);
+    const slice = file.slice(filePos, end);
+    buffer += await slice.text();
+    filePos = end;
+    return true;
+  };
+
+  // Initial load
+  await loadMoreBuffer();
+
+  let i = 0;
+  while (true) {
+    // Need more data?
+    if (i >= buffer.length) {
+      // Trim consumed part
+      buffer = buffer.slice(i);
+      i = 0;
+      const loaded = await loadMoreBuffer();
+      if (!loaded && buffer.length === 0) break;
+      if (buffer.length === 0) break;
+    }
+
+    const ch = buffer[i];
+
+    if (state === State.EXPECT_KEY) {
+      if (ch === '}') { depth--; if (depth <= 0) break; i++; continue; }
+      if (ch === '"') { state = State.IN_KEY; currentKey = ""; escaped = false; i++; continue; }
+      if (/\s/.test(ch) || ch === ',') { i++; continue; }
+      // unexpected char, skip
+      i++; continue;
+    }
+
+    if (state === State.IN_KEY) {
+      if (escaped) { currentKey += ch; escaped = false; i++; continue; }
+      if (ch === '\\') { escaped = true; i++; continue; }
+      if (ch === '"') { state = State.EXPECT_COLON; i++; continue; }
+      currentKey += ch; i++; continue;
+    }
+
+    if (state === State.EXPECT_COLON) {
+      if (ch === ':') { state = State.EXPECT_VALUE; i++; continue; }
+      if (/\s/.test(ch)) { i++; continue; }
+      i++; continue;
+    }
+
+    if (state === State.EXPECT_VALUE) {
+      if (/\s/.test(ch)) { i++; continue; }
+      if (ch === '"') {
+        state = State.IN_VALUE;
+        currentValue = "";
+        escaped = false;
+        i++;
+        continue;
+      }
+      // Non-string value (null, number) — skip until comma or }
+      while (i < buffer.length && buffer[i] !== ',' && buffer[i] !== '}') i++;
+      state = State.EXPECT_KEY;
       continue;
     }
-    const valEnd = findStringEnd(text, pos);
-    if (valEnd === -1) break;
-    const value = JSON.parse(text.substring(pos, valEnd + 1));
-    pos = valEnd + 1;
 
-    yield { path: key, dataUri: value };
-  }
-}
+    if (state === State.IN_VALUE) {
+      // Accumulate the value string, loading more chunks as needed
+      // Process in bulk for performance
+      let searchFrom = i;
+      while (true) {
+        // Scan for end of string in current buffer
+        let foundEnd = false;
+        for (let j = searchFrom; j < buffer.length; j++) {
+          const c = buffer[j];
+          if (escaped) { escaped = false; continue; }
+          if (c === '\\') { escaped = true; continue; }
+          if (c === '"') {
+            // Found end of value string
+            currentValue += buffer.slice(i, j);
+            i = j + 1;
+            foundEnd = true;
+            break;
+          }
+        }
 
-function findStringEnd(text: string, openQuotePos: number): number {
-  let escaped = false;
-  for (let i = openQuotePos + 1; i < text.length; i++) {
-    if (escaped) { escaped = false; continue; }
-    if (text[i] === '\\') { escaped = true; continue; }
-    if (text[i] === '"') return i;
+        if (foundEnd) {
+          // Yield the entry
+          yield { path: currentKey, dataUri: currentValue };
+          // Free memory
+          currentKey = "";
+          currentValue = "";
+          state = State.EXPECT_KEY;
+
+          // Trim consumed buffer to free memory
+          if (i > CHUNK_SIZE) {
+            buffer = buffer.slice(i);
+            i = 0;
+          }
+          break;
+        }
+
+        // Didn't find end — accumulate what we have and load more
+        currentValue += buffer.slice(i, buffer.length);
+        buffer = "";
+        i = 0;
+        searchFrom = 0;
+        const loaded = await loadMoreBuffer();
+        if (!loaded) {
+          // Incomplete value, discard
+          state = State.EXPECT_KEY;
+          break;
+        }
+      }
+      continue;
+    }
+
+    i++;
   }
-  return -1;
 }
 
 /**
