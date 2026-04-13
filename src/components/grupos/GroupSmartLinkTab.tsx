@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link2, Copy, RefreshCw, Users, MousePointerClick, CheckCircle2, XCircle, Trash2, Search, Plus, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,25 @@ export default function GroupSmartLinkTab() {
   const [view, setView] = useState<"list" | "create" | string>("list");
   const { smartLinks, isLoading, createSmartLink, updateSmartLink, deleteSmartLink, syncInviteLinks } = useGroupSmartLinks();
 
-  if (isLoading) return <div className="text-sm text-muted-foreground p-4">Carregando...</div>;
+  if (isLoading) return (
+    <div className="space-y-4">
+      <div className="flex justify-end"><Skeleton className="h-9 w-40" /></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {[1, 2, 3].map(i => (
+          <Card key={i} className="border-border/50">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </div>
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 
   if (view === "create") {
     return <CreateForm onBack={() => setView("list")} onCreated={() => setView("list")} createSmartLink={createSmartLink} />;
