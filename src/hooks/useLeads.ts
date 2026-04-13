@@ -69,7 +69,7 @@ export function useLeads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at")
+        .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, email, document")
         .eq("workspace_id", workspaceId!)
         .not("remote_jid", "like", "%@lid")
         .order("last_message_at", { ascending: false });
@@ -212,13 +212,14 @@ export function useLeads() {
           existingLead.totalPaid = approvedTxs.reduce((s, t) => s + Number(t.amount), 0);
           existingLead.paidOrdersCount = approvedTxs.length;
         }
-        // Merge email & document from transactions if missing
-        if (!existingLead.customer_email || !existingLead.customer_document) {
-          const txWithData = existingLead.transactions.find(t => t.customer_email || t.customer_document);
-          if (txWithData) {
-            if (!existingLead.customer_email) existingLead.customer_email = txWithData.customer_email || null;
-            if (!existingLead.customer_document) existingLead.customer_document = txWithData.customer_document || null;
-          }
+        // Merge email & document from transactions, then from conversation as fallback
+        if (!existingLead.customer_email) {
+          const txEmail = existingLead.transactions.find(t => t.customer_email)?.customer_email;
+          existingLead.customer_email = txEmail || c.email || null;
+        }
+        if (!existingLead.customer_document) {
+          const txDoc = existingLead.transactions.find(t => t.customer_document)?.customer_document;
+          existingLead.customer_document = txDoc || (c as any).document || null;
         }
         // Merge reminders count
         const mergedReminders = remindersByKey.get(last8) || 0;
@@ -263,8 +264,8 @@ export function useLeads() {
         paidOrdersCount: approvedTxs.length,
         remindersCount: remindersByKey.get(last8) || 0,
         transactions: txs,
-        customer_email: firstTxWithData?.customer_email || null,
-        customer_document: firstTxWithData?.customer_document || null,
+        customer_email: firstTxWithData?.customer_email || c.email || null,
+        customer_document: cpf || (c as any).document || null,
         instances: [instance],
       };
 

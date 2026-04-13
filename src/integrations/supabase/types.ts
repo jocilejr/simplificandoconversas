@@ -573,6 +573,7 @@ export type Database = {
         Row: {
           contact_name: string | null
           created_at: string
+          document: string | null
           email: string | null
           id: string
           instance_name: string | null
@@ -588,6 +589,7 @@ export type Database = {
         Insert: {
           contact_name?: string | null
           created_at?: string
+          document?: string | null
           email?: string | null
           id?: string
           instance_name?: string | null
@@ -603,6 +605,7 @@ export type Database = {
         Update: {
           contact_name?: string | null
           created_at?: string
+          document?: string | null
           email?: string | null
           id?: string
           instance_name?: string | null
