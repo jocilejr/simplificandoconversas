@@ -849,6 +849,219 @@ router.put("/spam-config", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── Smart Links CRUD ─── */
+router.get("/smart-links", async (req: Request, res: Response) => {
+  try {
+    const campaignId = req.query.campaignId as string;
+    const workspaceId = req.query.workspaceId as string;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+    let query = sb.from("group_smart_links").select("*").eq("workspace_id", workspaceId);
+    if (campaignId) query = query.eq("campaign_id", campaignId);
+    const { data, error } = await query.order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/smart-links", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, userId, campaignId, slug, maxMembersPerGroup } = req.body;
+    if (!workspaceId || !userId || !slug) return res.status(400).json({ error: "Missing fields" });
+
+    const sb = getServiceClient();
+
+    // Build group_links from campaign's group_jids + group_selected
+    let groupLinks: any[] = [];
+    if (campaignId) {
+      const { data: campaign } = await sb.from("group_campaigns").select("group_jids, instance_name").eq("id", campaignId).single();
+      if (campaign?.group_jids) {
+        for (const jid of campaign.group_jids) {
+          const { data: gs } = await sb.from("group_selected").select("group_name, member_count")
+            .eq("workspace_id", workspaceId).eq("group_jid", jid).maybeSingle();
+          groupLinks.push({
+            group_jid: jid,
+            group_name: gs?.group_name || "",
+            member_count: gs?.member_count || 0,
+            invite_url: "",
+          });
+        }
+      }
+    }
+
+    const { data, error } = await sb.from("group_smart_links").insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      campaign_id: campaignId || null,
+      slug,
+      max_members_per_group: maxMembersPerGroup || 200,
+      group_links: groupLinks,
+    }).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    console.error("[groups-api] create smart-link error:", err?.message || err?.details || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
+  }
+});
+
+router.put("/smart-links/:id", async (req: Request, res: Response) => {
+  try {
+    const { slug, maxMembersPerGroup, groupLinks, isActive } = req.body;
+    const update: any = {};
+    if (slug !== undefined) update.slug = slug;
+    if (maxMembersPerGroup !== undefined) update.max_members_per_group = maxMembersPerGroup;
+    if (groupLinks !== undefined) update.group_links = groupLinks;
+    if (isActive !== undefined) update.is_active = isActive;
+
+    const sb = getServiceClient();
+    const { data, error } = await sb.from("group_smart_links").update(update).eq("id", req.params.id).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/smart-links/:id", async (req: Request, res: Response) => {
+  try {
+    const sb = getServiceClient();
+    const { error } = await sb.from("group_smart_links").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ─── POST /smart-links/sync-invite — busca invite codes via Evolution API ─── */
+router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
+  try {
+    const { smartLinkId, workspaceId } = req.body;
+    if (!smartLinkId || !workspaceId) return res.status(400).json({ error: "smartLinkId and workspaceId required" });
+
+    const sb = getServiceClient();
+    const { data: sl, error: slErr } = await sb.from("group_smart_links").select("*, group_campaigns(instance_name)").eq("id", smartLinkId).single();
+    if (slErr || !sl) return res.status(404).json({ error: "Smart link not found" });
+
+    const instanceName = (sl as any).group_campaigns?.instance_name;
+    if (!instanceName) return res.status(400).json({ error: "No instance linked to campaign" });
+
+    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const encoded = encodeURIComponent(instanceName);
+    const groupLinks = (sl.group_links as any[]) || [];
+    let synced = 0;
+
+    for (const gl of groupLinks) {
+      try {
+        const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+          headers: { apikey: apiKey },
+        });
+        if (r.ok) {
+          const body: any = await r.json();
+          const code = body?.inviteCode || body?.code || body?.invite || "";
+          if (code) {
+            gl.invite_url = `https://chat.whatsapp.com/${code}`;
+            synced++;
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[smart-link] Failed to get invite for ${gl.group_jid}:`, e.message);
+      }
+
+      // Also update member_count
+      try {
+        const { data: gs } = await sb.from("group_selected").select("member_count")
+          .eq("workspace_id", workspaceId).eq("group_jid", gl.group_jid).maybeSingle();
+        if (gs) gl.member_count = gs.member_count;
+      } catch {}
+    }
+
+    await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLinkId);
+    res.json({ synced, groupLinks });
+  } catch (err: any) {
+    console.error("[smart-link] sync-invite error:", err?.message);
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
+/* ─── GET /smart-link-redirect — rota PÚBLICA (sem auth) ─── */
+router.get("/smart-link-redirect", async (req: Request, res: Response) => {
+  try {
+    let slug = (req.query.slug as string || "").trim();
+    if (!slug) return res.status(400).json({ error: "slug required" });
+
+    // Support -get mode: returns URL as text
+    const getText = slug.endsWith("-get");
+    if (getText) slug = slug.replace(/-get$/, "");
+
+    const sb = getServiceClient();
+    const { data: sl, error } = await sb.from("group_smart_links").select("*").eq("slug", slug).eq("is_active", true).maybeSingle();
+    if (error) throw error;
+    if (!sl) return res.status(404).json({ error: "Link não encontrado ou inativo" });
+
+    const groupLinks = (sl.group_links as any[]) || [];
+    if (groupLinks.length === 0) return res.status(404).json({ error: "Nenhum grupo configurado" });
+
+    const maxMembers = sl.max_members_per_group || 200;
+
+    // Find best group: least members below limit
+    const available = groupLinks
+      .filter((g: any) => g.invite_url && (g.member_count || 0) < maxMembers)
+      .sort((a: any, b: any) => (a.member_count || 0) - (b.member_count || 0));
+
+    if (available.length === 0) return res.status(404).json({ error: "Todos os grupos estão lotados" });
+
+    const chosen = available[0];
+
+    // Record click
+    try {
+      await sb.from("group_smart_link_clicks").insert({
+        smart_link_id: sl.id,
+        group_jid: chosen.group_jid,
+        redirected_to: chosen.invite_url,
+      });
+    } catch (e: any) {
+      console.warn("[smart-link] Failed to record click:", e.message);
+    }
+
+    if (getText) {
+      return res.type("text/plain").send(chosen.invite_url);
+    }
+
+    res.json({ redirect_url: chosen.invite_url, group_name: chosen.group_name });
+  } catch (err: any) {
+    console.error("[smart-link] redirect error:", err?.message);
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
+/* ─── GET /smart-link-stats ─── */
+router.get("/smart-link-stats", async (req: Request, res: Response) => {
+  try {
+    const smartLinkId = req.query.smartLinkId as string;
+    if (!smartLinkId) return res.status(400).json({ error: "smartLinkId required" });
+
+    const sb = getServiceClient();
+    const { data, error } = await sb.from("group_smart_link_clicks").select("group_jid, created_at")
+      .eq("smart_link_id", smartLinkId).order("created_at", { ascending: false }).limit(1000);
+    if (error) throw error;
+
+    // Aggregate by group
+    const byGroup: Record<string, number> = {};
+    for (const click of (data || [])) {
+      byGroup[click.group_jid] = (byGroup[click.group_jid] || 0) + 1;
+    }
+
+    res.json({ totalClicks: data?.length || 0, byGroup, clicks: data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { computeNextRunAfterExecution, getEvolutionConfig };
 
