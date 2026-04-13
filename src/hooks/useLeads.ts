@@ -192,6 +192,44 @@ export function useLeads() {
         if (!existingLead.contact_name && c.contact_name) {
           existingLead.contact_name = c.contact_name;
         }
+        if (!existingLead.phone_number && normalizedPhone) {
+          existingLead.phone_number = normalizedPhone;
+        }
+        // Merge transactions from this conversation (deduplicated)
+        const existingTxIds = new Set(existingLead.transactions.map(t => t.id));
+        const newTxs = txsForConvo.filter(t => !existingTxIds.has(t.id));
+        if (cpf) {
+          for (const t of (txByCpf.get(cpf) || [])) {
+            if (!existingTxIds.has(t.id) && !newTxs.some(n => n.id === t.id)) {
+              newTxs.push(t);
+            }
+          }
+        }
+        if (newTxs.length > 0) {
+          existingLead.transactions.push(...newTxs);
+          const approvedTxs = existingLead.transactions.filter(t => t.status === "aprovado");
+          existingLead.hasPaid = approvedTxs.length > 0;
+          existingLead.totalPaid = approvedTxs.reduce((s, t) => s + Number(t.amount), 0);
+          existingLead.paidOrdersCount = approvedTxs.length;
+        }
+        // Merge email & document from transactions if missing
+        if (!existingLead.customer_email || !existingLead.customer_document) {
+          const txWithData = existingLead.transactions.find(t => t.customer_email || t.customer_document);
+          if (txWithData) {
+            if (!existingLead.customer_email) existingLead.customer_email = txWithData.customer_email || null;
+            if (!existingLead.customer_document) existingLead.customer_document = txWithData.customer_document || null;
+          }
+        }
+        // Merge reminders count
+        const mergedReminders = remindersByKey.get(last8) || 0;
+        if (mergedReminders > existingLead.remindersCount) {
+          existingLead.remindersCount = mergedReminders;
+        }
+        // Update last_message if newer
+        if (c.last_message_at && (!existingLead.last_message_at || c.last_message_at > existingLead.last_message_at)) {
+          existingLead.last_message = c.last_message;
+          existingLead.last_message_at = c.last_message_at;
+        }
         // Register any new indices for this merged lead
         registerLead(existingLead, cpf, normalizedPhone, last8);
         continue;
