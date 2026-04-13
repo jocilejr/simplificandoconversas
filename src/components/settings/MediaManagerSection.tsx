@@ -100,7 +100,7 @@ export function MediaManagerSection() {
   const baseUrl = supabaseUrl.includes(".supabase.co") ? "" : supabaseUrl.replace(/\/+$/, "").replace(/\/functions\/v1$/, "");
 
   const fetchFiles = useCallback(async () => {
-    if (!session?.user?.id || !currentWorkspace?.id) return;
+    if (!user?.id || !workspaceId) return;
     setLoading(true);
     try {
       const resp = await fetch(apiUrl("media-manager/list"), {
@@ -118,7 +118,7 @@ export function MediaManagerSection() {
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.id, currentWorkspace?.id]);
+  }, [user?.id, workspaceId]);
 
   useEffect(() => {
     fetchFiles();
@@ -149,7 +149,7 @@ export function MediaManagerSection() {
   };
 
   const handleDelete = async () => {
-    if (!session?.user?.id) return;
+    if (!user?.id) return;
     setDeleting(true);
     try {
       const resp = await fetch(apiUrl("media-manager/delete"), {
