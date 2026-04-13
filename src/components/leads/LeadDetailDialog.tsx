@@ -173,7 +173,8 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             contact_name: editForm.name || null,
             phone_number: editForm.phone || null,
             email: editForm.email || null,
-          })
+            document: editForm.document || null,
+          } as any)
           .in("id", convIds);
         if (error) throw error;
       }
