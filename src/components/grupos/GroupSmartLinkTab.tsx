@@ -270,7 +270,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
 
   const activeGroupJid = useMemo(() => {
     const available = groupLinks
-      .filter(g => g.invite_url && (g.member_count || 0) < maxMembersLimit)
+      .filter(g => g.invite_url && (g as any).status !== "banned" && (g.member_count || 0) < maxMembersLimit)
       .sort((a, b) => (a.member_count || 0) - (b.member_count || 0));
     return available[0]?.group_jid || null;
   }, [groupLinks, maxMembersLimit]);
@@ -332,7 +332,10 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
         <Alert className="border-yellow-500/50 bg-yellow-500/10">
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="text-sm">
-            Problema na sincronização. O sistema está distribuindo links em rodízio.
+            {((smartLink as any).last_sync_error as string).includes("desconectada")
+              ? <>A instância <strong>{smartLink.instance_name}</strong> está desconectada. O sistema está usando fallback round-robin com os links existentes.</>
+              : <>Problema na sincronização: {(smartLink as any).last_sync_error}</>
+            }
             {(smartLink as any).last_sync_error_at && (
               <span className="text-xs text-muted-foreground ml-1">
                 (último erro: {new Date((smartLink as any).last_sync_error_at).toLocaleString("pt-BR")})
@@ -409,20 +412,23 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                 </TableHeader>
                 <TableBody>
                   {groupLinks.map(gl => {
-                    const isFull = (gl.member_count || 0) >= maxMembersLimit;
+                    const isBanned = (gl as any).status === "banned";
+                    const isFull = !isBanned && (gl.member_count || 0) >= maxMembersLimit;
                     const isActive = gl.group_jid === activeGroupJid;
                     return (
-                      <TableRow key={gl.group_jid} className={isActive ? "bg-primary/5" : ""}>
+                      <TableRow key={gl.group_jid} className={isBanned ? "opacity-60" : isActive ? "bg-primary/5" : ""}>
                         <TableCell className="text-sm truncate max-w-[200px]">{gl.group_name || gl.group_jid}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
                         </TableCell>
                         <TableCell className="text-center text-sm">{byGroup[gl.group_jid] || 0}</TableCell>
                         <TableCell className="text-center">
-                          {gl.invite_url ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : <XCircle className="h-4 w-4 text-muted-foreground mx-auto" />}
+                          {isBanned ? <XCircle className="h-4 w-4 text-destructive mx-auto" />
+                            : gl.invite_url ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : <XCircle className="h-4 w-4 text-muted-foreground mx-auto" />}
                         </TableCell>
                         <TableCell className="text-center">
-                          {isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Ativo</Badge>
+                          {isBanned ? <Badge variant="destructive" className="text-xs">Banido</Badge>
+                            : isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Ativo</Badge>
                             : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
                             : <span className="text-xs text-muted-foreground">Espera</span>}
                         </TableCell>
