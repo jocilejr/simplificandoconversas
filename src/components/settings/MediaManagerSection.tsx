@@ -94,6 +94,8 @@ export function MediaManagerSection() {
   const [locationFilter, setLocationFilter] = useState("all");
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
   const baseUrl = supabaseUrl.includes(".supabase.co") ? "" : supabaseUrl.replace(/\/+$/, "").replace(/\/functions\/v1$/, "");
@@ -172,6 +174,29 @@ export function MediaManagerSection() {
     }
   };
 
+  const handleCleanup = async () => {
+    if (!user?.id || !workspaceId) return;
+    setCleaning(true);
+    try {
+      const resp = await fetch(apiUrl("media-manager/cleanup"), {
+        method: "DELETE",
+        headers: {
+          "x-user-id": user.id,
+          "x-workspace-id": workspaceId,
+        },
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const result = await resp.json();
+      toast.success(`${result.deleted} arquivo(s) removido(s) • ${result.freedFormatted} liberado(s)`);
+      fetchFiles();
+    } catch (err: any) {
+      toast.error("Erro ao limpar: " + err.message);
+    } finally {
+      setCleaning(false);
+      setCleanupConfirmOpen(false);
+    }
+  };
+
   const selectedInUseCount = Array.from(selected).filter((p) =>
     files.find((f) => f.relativePath === p)?.inUse
   ).length;
@@ -224,20 +249,31 @@ export function MediaManagerSection() {
       </div>
 
       {/* Actions */}
-      {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-          <span className="text-sm font-medium">{selected.size} selecionado(s)</span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setConfirmOpen(true)}
-            disabled={deleting}
-          >
-            {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-            Deletar selecionados
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-2 p-2 bg-muted rounded-md flex-wrap">
+        {selected.size > 0 && (
+          <>
+            <span className="text-sm font-medium">{selected.size} selecionado(s)</span>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setConfirmOpen(true)}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Deletar selecionados
+            </Button>
+          </>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCleanupConfirmOpen(true)}
+          disabled={cleaning}
+        >
+          {cleaning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+          Limpar temporários (+24h)
+        </Button>
+      </div>
 
       {/* Table */}
       {loading ? (
@@ -334,6 +370,26 @@ export function MediaManagerSection() {
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
               {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Deletar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cleanup confirm dialog */}
+      <AlertDialog open={cleanupConfirmOpen} onOpenChange={setCleanupConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Limpar temporários</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai remover todos os arquivos <strong>não referenciados</strong> em fluxos, regras ou produtos que tenham mais de 24h.
+              <span className="block mt-1">Esta ação não pode ser desfeita.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCleanup} className="bg-destructive text-destructive-foreground">
+              {cleaning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Limpar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

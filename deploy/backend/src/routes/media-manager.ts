@@ -33,6 +33,99 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+interface ScannedFile {
+  name: string;
+  relativePath: string;
+  mime: string;
+  category: string;
+  size: number;
+  sizeFormatted: string;
+  createdAt: string;
+  modifiedAt: string;
+  isTmpFolder: boolean;
+  url: string;
+}
+
+async function scanUserFiles(userId: string): Promise<ScannedFile[]> {
+  const userDir = path.join(MEDIA_ROOT, userId);
+  const files: ScannedFile[] = [];
+
+  try { await fs.access(userDir); } catch { return files; }
+
+  const rootEntries = await fs.readdir(userDir, { withFileTypes: true });
+  for (const entry of rootEntries) {
+    if (entry.isFile()) {
+      const filePath = path.join(userDir, entry.name);
+      const stat = await fs.stat(filePath);
+      const mime = getMime(entry.name);
+      files.push({
+        name: entry.name, relativePath: entry.name, mime,
+        category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
+        createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
+        isTmpFolder: false, url: `/media/${userId}/${entry.name}`,
+      });
+    }
+  }
+
+  const tmpDir = path.join(userDir, "tmp");
+  try {
+    await fs.access(tmpDir);
+    const tmpEntries = await fs.readdir(tmpDir, { withFileTypes: true });
+    for (const entry of tmpEntries) {
+      if (entry.isFile()) {
+        const filePath = path.join(tmpDir, entry.name);
+        const stat = await fs.stat(filePath);
+        const mime = getMime(entry.name);
+        files.push({
+          name: entry.name, relativePath: `tmp/${entry.name}`, mime,
+          category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
+          createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
+          isTmpFolder: true, url: `/media/${userId}/tmp/${entry.name}`,
+        });
+      }
+    }
+  } catch { /* tmp dir doesn't exist */ }
+
+  return files;
+}
+
+async function computeInUseSet(workspaceId: string, files: ScannedFile[]): Promise<Set<string>> {
+  const sb = getServiceClient();
+  const inUseSet = new Set<string>();
+
+  const { data: flows } = await sb.from("chatbot_flows").select("nodes").eq("workspace_id", workspaceId);
+  if (flows) {
+    const json = JSON.stringify(flows);
+    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  }
+
+  const { data: rules } = await sb.from("boleto_recovery_rules").select("media_blocks").eq("workspace_id", workspaceId);
+  if (rules) {
+    const json = JSON.stringify(rules);
+    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  }
+
+  const { data: gsm } = await sb.from("group_scheduled_messages").select("content").eq("is_active", true);
+  if (gsm) {
+    const json = JSON.stringify(gsm);
+    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  }
+
+  const { data: products } = await sb.from("delivery_products").select("page_logo, member_cover_image").eq("workspace_id", workspaceId);
+  if (products) {
+    const json = JSON.stringify(products);
+    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  }
+
+  const { data: materials } = await sb.from("member_area_materials").select("file_url, thumbnail_url").eq("workspace_id", workspaceId);
+  if (materials) {
+    const json = JSON.stringify(materials);
+    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  }
+
+  return inUseSet;
+}
+
 // GET /api/media-manager/list
 router.get("/list", async (req, res) => {
   try {
@@ -40,140 +133,14 @@ router.get("/list", async (req, res) => {
     const workspaceId = req.headers["x-workspace-id"] as string;
     if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
 
-    const userDir = path.join(MEDIA_ROOT, userId);
+    const scanned = await scanUserFiles(userId);
+    const inUseSet = await computeInUseSet(workspaceId, scanned);
 
-    // Check if directory exists
-    try {
-      await fs.access(userDir);
-    } catch {
-      return res.json({ files: [], totalSize: 0 });
-    }
-
-    const files: any[] = [];
-
-    // Scan root level files
-    const rootEntries = await fs.readdir(userDir, { withFileTypes: true });
-    for (const entry of rootEntries) {
-      if (entry.isFile()) {
-        const filePath = path.join(userDir, entry.name);
-        const stat = await fs.stat(filePath);
-        const mime = getMime(entry.name);
-        files.push({
-          name: entry.name,
-          relativePath: entry.name,
-          mime,
-          category: getCategory(mime),
-          size: stat.size,
-          sizeFormatted: formatSize(stat.size),
-          createdAt: stat.birthtime.toISOString(),
-          modifiedAt: stat.mtime.toISOString(),
-          isTemporary: false,
-          url: `/media/${userId}/${entry.name}`,
-        });
-      }
-    }
-
-    // Scan tmp/ subfolder
-    const tmpDir = path.join(userDir, "tmp");
-    try {
-      await fs.access(tmpDir);
-      const tmpEntries = await fs.readdir(tmpDir, { withFileTypes: true });
-      for (const entry of tmpEntries) {
-        if (entry.isFile()) {
-          const filePath = path.join(tmpDir, entry.name);
-          const stat = await fs.stat(filePath);
-          const mime = getMime(entry.name);
-          files.push({
-            name: entry.name,
-            relativePath: `tmp/${entry.name}`,
-            mime,
-            category: getCategory(mime),
-            size: stat.size,
-            sizeFormatted: formatSize(stat.size),
-            createdAt: stat.birthtime.toISOString(),
-            modifiedAt: stat.mtime.toISOString(),
-            isTemporary: true,
-            url: `/media/${userId}/tmp/${entry.name}`,
-          });
-        }
-      }
-    } catch {
-      // tmp dir doesn't exist yet
-    }
-
-    // Check which files are "in use" by querying the database
-    const sb = getServiceClient();
-    const inUseSet = new Set<string>();
-
-    // Check chatbot_flows nodes for media references
-    const { data: flows } = await sb
-      .from("chatbot_flows")
-      .select("nodes")
-      .eq("workspace_id", workspaceId);
-
-    if (flows) {
-      const flowsJson = JSON.stringify(flows);
-      for (const f of files) {
-        if (flowsJson.includes(f.name)) inUseSet.add(f.relativePath);
-      }
-    }
-
-    // Check boleto_recovery_rules media_blocks
-    const { data: rules } = await sb
-      .from("boleto_recovery_rules")
-      .select("media_blocks")
-      .eq("workspace_id", workspaceId);
-
-    if (rules) {
-      const rulesJson = JSON.stringify(rules);
-      for (const f of files) {
-        if (rulesJson.includes(f.name)) inUseSet.add(f.relativePath);
-      }
-    }
-
-    // Check group_scheduled_messages content
-    const { data: gsm } = await sb
-      .from("group_scheduled_messages")
-      .select("content")
-      .eq("is_active", true);
-
-    if (gsm) {
-      const gsmJson = JSON.stringify(gsm);
-      for (const f of files) {
-        if (gsmJson.includes(f.name)) inUseSet.add(f.relativePath);
-      }
-    }
-
-    // Check delivery_products for logos/covers
-    const { data: products } = await sb
-      .from("delivery_products")
-      .select("page_logo, member_cover_image")
-      .eq("workspace_id", workspaceId);
-
-    if (products) {
-      const prodJson = JSON.stringify(products);
-      for (const f of files) {
-        if (prodJson.includes(f.name)) inUseSet.add(f.relativePath);
-      }
-    }
-
-    // Check member_area_materials
-    const { data: materials } = await sb
-      .from("member_area_materials")
-      .select("file_url, thumbnail_url")
-      .eq("workspace_id", workspaceId);
-
-    if (materials) {
-      const matJson = JSON.stringify(materials);
-      for (const f of files) {
-        if (matJson.includes(f.name)) inUseSet.add(f.relativePath);
-      }
-    }
-
-    // Mark in-use files
-    for (const f of files) {
-      f.inUse = inUseSet.has(f.relativePath);
-    }
+    const files = scanned.map((f) => ({
+      ...f,
+      inUse: inUseSet.has(f.relativePath),
+      isTemporary: !inUseSet.has(f.relativePath),
+    }));
 
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
 
@@ -204,24 +171,50 @@ router.delete("/delete", async (req, res) => {
     let failed = 0;
 
     for (const relPath of filePaths) {
-      // Security: prevent path traversal
       const resolved = path.resolve(userDir, relPath);
-      if (!resolved.startsWith(userDir)) {
-        failed++;
-        continue;
-      }
-
-      try {
-        await fs.unlink(resolved);
-        deleted++;
-      } catch {
-        failed++;
-      }
+      if (!resolved.startsWith(userDir)) { failed++; continue; }
+      try { await fs.unlink(resolved); deleted++; } catch { failed++; }
     }
 
     res.json({ deleted, failed });
   } catch (err: any) {
     console.error("[media-manager] delete error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/media-manager/cleanup — remove files not in use and older than 24h
+router.delete("/cleanup", async (req, res) => {
+  try {
+    const userId = req.headers["x-user-id"] as string;
+    const workspaceId = req.headers["x-workspace-id"] as string;
+    if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
+
+    const scanned = await scanUserFiles(userId);
+    const inUseSet = await computeInUseSet(workspaceId, scanned);
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const userDir = path.join(MEDIA_ROOT, userId);
+    let deleted = 0;
+    let freedBytes = 0;
+
+    for (const f of scanned) {
+      if (inUseSet.has(f.relativePath)) continue;
+      if (new Date(f.createdAt).getTime() > cutoff) continue;
+
+      const resolved = path.resolve(userDir, f.relativePath);
+      if (!resolved.startsWith(userDir)) continue;
+
+      try {
+        await fs.unlink(resolved);
+        deleted++;
+        freedBytes += f.size;
+      } catch { /* skip */ }
+    }
+
+    res.json({ deleted, freedBytes, freedFormatted: formatSize(freedBytes) });
+  } catch (err: any) {
+    console.error("[media-manager] cleanup error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
