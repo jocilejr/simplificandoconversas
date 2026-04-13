@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Pencil, Trash2, Radio, Zap, ZapOff, Users, MessageSquare, CalendarClock } from "lucide-react";
+import { useState, useRef } from "react";
+import { Plus, Pencil, Trash2, Radio, Zap, ZapOff, Users, MessageSquare, CalendarClock, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,22 +8,69 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import GroupCampaignDialog from "./GroupCampaignDialog";
 import GroupMessagesDialog from "./GroupMessagesDialog";
+import GroupImportDialog from "./GroupImportDialog";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export default function GroupCampaignsTab() {
   const { campaigns, isLoading, updateCampaign, deleteCampaign } = useGroupCampaigns();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editCampaign, setEditCampaign] = useState<any>(null);
   const [messagesCampaign, setMessagesCampaign] = useState<any>(null);
+  const [importData, setImportData] = useState<any>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleEdit = (c: any) => {
     setEditCampaign(c);
     setDialogOpen(true);
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      if (parsed.version !== 1) {
+        toast({ title: "Formato inválido", description: "Versão do backup não suportada.", variant: "destructive" });
+        return;
+      }
+
+      if (!parsed.data?.campaigns || !Array.isArray(parsed.data.campaigns)) {
+        toast({ title: "Formato inválido", description: "O arquivo não contém campanhas.", variant: "destructive" });
+        return;
+      }
+
+      setImportData(parsed);
+      setImportOpen(true);
+    } catch {
+      toast({ title: "Erro ao ler arquivo", description: "O arquivo não é um JSON válido.", variant: "destructive" });
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="h-4 w-4 mr-1" /> Importar
+        </Button>
         <Button
           size="sm"
           onClick={() => { setEditCampaign(null); setDialogOpen(true); }}
@@ -103,6 +150,7 @@ export default function GroupCampaignsTab() {
 
       <GroupCampaignDialog open={dialogOpen} onOpenChange={setDialogOpen} editData={editCampaign} />
       <GroupMessagesDialog open={!!messagesCampaign} onOpenChange={(v) => !v && setMessagesCampaign(null)} campaign={messagesCampaign} />
+      <GroupImportDialog open={importOpen} onOpenChange={setImportOpen} backupData={importData} />
     </div>
   );
 }
