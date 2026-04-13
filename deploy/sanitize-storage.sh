@@ -108,23 +108,52 @@ else
   log "Total de logs: ~${TOTAL_LOG_FREED} MB"
 fi
 
-# ── 5. Mídia efêmera > 30 dias no volume Docker ──
+# ── 5. Mídia TEMPORÁRIA (boletos e tmp) ──
+# IMPORTANTE: Nunca deletar arquivos fora de */boletos/* e */tmp/*
+# Fluxos, campanhas de grupos, leads, área de membros = PERMANENTE
 MEDIA_CONTAINER="deploy-backend-1"
 if docker ps --format '{{.Names}}' | grep -q "$MEDIA_CONTAINER"; then
-  EPHEMERAL_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f \( -name "*.ogg" -o -name "*.mp3" -o -name "*.mp4" -o -name "*.m4a" -o -name "*.webp" -o -name "*.jpg" -o -name "*.png" \) -mtime +30 2>/dev/null | wc -l || echo "0")
-  
-  if [ "$EPHEMERAL_COUNT" -gt 0 ]; then
-    EPHEMERAL_SIZE=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f \( -name "*.ogg" -o -name "*.mp3" -o -name "*.mp4" -o -name "*.m4a" -o -name "*.webp" -o -name "*.jpg" -o -name "*.png" \) -mtime +30 -exec du -ch {} + 2>/dev/null | tail -1 | cut -f1 || echo "?")
-    
+
+  # 5a. Boletos expirados > 30 dias (safety net)
+  BOLETO_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -path "*/boletos/*" -type f -mtime +30 2>/dev/null | wc -l || echo "0")
+  if [ "$BOLETO_COUNT" -gt 0 ]; then
+    BOLETO_SIZE=$(docker exec "$MEDIA_CONTAINER" find /media-files -path "*/boletos/*" -type f -mtime +30 -exec du -ch {} + 2>/dev/null | tail -1 | cut -f1 || echo "?")
     if $EXECUTE; then
-      docker exec "$MEDIA_CONTAINER" find /media-files -type f \( -name "*.ogg" -o -name "*.mp3" -o -name "*.mp4" -o -name "*.m4a" -o -name "*.webp" -o -name "*.jpg" -o -name "*.png" \) -mtime +30 -delete 2>/dev/null
-      ok "Removidos $EPHEMERAL_COUNT arquivos efêmeros ($EPHEMERAL_SIZE)"
+      docker exec "$MEDIA_CONTAINER" find /media-files -path "*/boletos/*" -type f -mtime +30 -delete 2>/dev/null
+      ok "Removidos $BOLETO_COUNT boletos expirados ($BOLETO_SIZE)"
     else
-      log "[DRY-RUN] Removeria $EPHEMERAL_COUNT arquivos efêmeros ($EPHEMERAL_SIZE)"
+      log "[DRY-RUN] Removeria $BOLETO_COUNT boletos expirados ($BOLETO_SIZE)"
     fi
   else
-    log "Nenhuma mídia efêmera > 30 dias"
+    log "Nenhum boleto expirado > 30 dias"
   fi
+
+  # 5b. Arquivos temporários (transcrições, downloads) > 1 dia
+  TMP_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -path "*/tmp/*" -type f -mtime +1 2>/dev/null | wc -l || echo "0")
+  if [ "$TMP_COUNT" -gt 0 ]; then
+    TMP_SIZE=$(docker exec "$MEDIA_CONTAINER" find /media-files -path "*/tmp/*" -type f -mtime +1 -exec du -ch {} + 2>/dev/null | tail -1 | cut -f1 || echo "?")
+    if $EXECUTE; then
+      docker exec "$MEDIA_CONTAINER" find /media-files -path "*/tmp/*" -type f -mtime +1 -delete 2>/dev/null
+      ok "Removidos $TMP_COUNT arquivos temporários ($TMP_SIZE)"
+    else
+      log "[DRY-RUN] Removeria $TMP_COUNT arquivos temporários ($TMP_SIZE)"
+    fi
+  else
+    log "Nenhum arquivo temporário > 1 dia"
+  fi
+
+  # 5c. Relatório de uso do armazenamento permanente (sem deletar)
+  echo ""
+  log "📊 Relatório de armazenamento permanente (NÃO será deletado):"
+  TOTAL_SIZE=$(docker exec "$MEDIA_CONTAINER" du -sh /media-files 2>/dev/null | cut -f1 || echo "?")
+  TOTAL_FILES=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f 2>/dev/null | wc -l || echo "?")
+  log "   Total: $TOTAL_SIZE em $TOTAL_FILES arquivos"
+  AUDIO_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f \( -name "*.ogg" -o -name "*.mp3" -o -name "*.m4a" \) -not -path "*/tmp/*" -not -path "*/boletos/*" 2>/dev/null | wc -l || echo "0")
+  IMAGE_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.webp" \) -not -path "*/tmp/*" -not -path "*/boletos/*" 2>/dev/null | wc -l || echo "0")
+  VIDEO_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f \( -name "*.mp4" -o -name "*.webm" \) -not -path "*/tmp/*" -not -path "*/boletos/*" 2>/dev/null | wc -l || echo "0")
+  PDF_COUNT=$(docker exec "$MEDIA_CONTAINER" find /media-files -type f -name "*.pdf" -not -path "*/tmp/*" -not -path "*/boletos/*" 2>/dev/null | wc -l || echo "0")
+  log "   Permanentes: $AUDIO_COUNT áudios, $IMAGE_COUNT imagens, $VIDEO_COUNT vídeos, $PDF_COUNT PDFs"
+
 else
   warn "Container $MEDIA_CONTAINER não está rodando, pulando limpeza de mídia"
 fi
