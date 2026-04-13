@@ -1021,20 +1021,35 @@ router.get("/smart-link-redirect", async (req: Request, res: Response) => {
       .filter((g: any) => g.invite_url && (g.member_count || 0) < maxMembers)
       .sort((a: any, b: any) => (a.member_count || 0) - (b.member_count || 0));
 
-    if (available.length === 0) return res.status(404).json({ error: "Todos os grupos estão lotados" });
+    let chosen: any = null;
 
-    const chosen = available[0];
+    if (available.length > 0) {
+      // Primary rule: group with fewest members
+      chosen = available[0];
+    } else {
+      // Fallback round-robin: distribute across ALL groups that have invite_url
+      const withUrl = groupLinks.filter((g: any) => g.invite_url);
+      if (withUrl.length === 0) return res.status(404).json({ error: "Nenhum grupo com URL de convite disponível" });
 
-    // Record click
-    try {
-      await sb.from("group_smart_link_clicks").insert({
-        smart_link_id: sl.id,
-        group_jid: chosen.group_jid,
-        redirected_to: chosen.invite_url,
-      });
-    } catch (e: any) {
-      console.warn("[smart-link] Failed to record click:", e.message);
+      const currentIndex = sl.current_group_index || 0;
+      chosen = withUrl[currentIndex % withUrl.length];
+
+      // Increment index for next access (fire-and-forget)
+      sb.from("group_smart_links")
+        .update({ current_group_index: (currentIndex + 1) % withUrl.length })
+        .eq("id", sl.id)
+        .then(() => {})
+        .catch((e: any) => console.warn("[smart-link] Failed to update index:", e.message));
+
+      console.log(`[smart-link] Fallback round-robin: slug=${slug} index=${currentIndex} → ${chosen.group_name}`);
     }
+
+    // Record click (fire-and-forget)
+    sb.from("group_smart_link_clicks").insert({
+      smart_link_id: sl.id,
+      group_jid: chosen.group_jid,
+      redirected_to: chosen.invite_url,
+    }).then(() => {}).catch((e: any) => console.warn("[smart-link] Failed to record click:", e.message));
 
     if (getText) {
       return res.type("text/plain").send(chosen.invite_url);
