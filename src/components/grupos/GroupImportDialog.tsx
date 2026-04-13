@@ -82,6 +82,7 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
       const messageIds: string[] = data.messageIds || [];
       let mediaUploaded = 0;
       let mediaFailed = 0;
+      const mediaErrors: string[] = [];
 
       // ── Etapa 2: Upload de mídias uma a uma via FormData ──
       if (mediaCount > 0 && file) {
@@ -99,7 +100,16 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
           try {
             // Convert data URI to File for FormData upload
             const ext = mediaPath.split('.').pop() || 'bin';
-            const mediaFile = dataUriToFile(dataUri, `import-${mediaIndex}.${ext}`);
+            const mediaFileName = `import-${mediaIndex}.${ext}`;
+            let mediaFile: File;
+            try {
+              mediaFile = dataUriToFile(dataUri, mediaFileName);
+            } catch (parseErr: any) {
+              console.warn(`[import] Parse error for ${mediaPath}:`, parseErr.message);
+              mediaFailed++;
+              if (mediaErrors.length < 5) mediaErrors.push(`${mediaPath}: ${parseErr.message}`);
+              continue;
+            }
 
             const formData = new FormData();
             formData.append("file", mediaFile);
@@ -117,12 +127,15 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
               mediaUrlMap[mediaData.oldPath] = mediaData.newUrl;
               mediaUploaded++;
             } else {
-              console.warn(`[import] Failed to upload media ${mediaPath}: ${mediaResp.status}`);
+              const errText = await mediaResp.text().catch(() => "");
+              console.warn(`[import] Failed to upload media ${mediaPath}: ${mediaResp.status} ${errText}`);
               mediaFailed++;
+              if (mediaErrors.length < 5) mediaErrors.push(`${mediaPath}: HTTP ${mediaResp.status} ${errText.substring(0, 100)}`);
             }
           } catch (e: any) {
             console.warn(`[import] Media upload error for ${mediaPath}:`, e.message);
             mediaFailed++;
+            if (mediaErrors.length < 5) mediaErrors.push(`${mediaPath}: ${e.message}`);
           }
         }
 
@@ -155,6 +168,7 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
         messagesImported: data.messagesImported,
         mediaUploaded,
         mediaFailed,
+        mediaErrors,
       };
       setResult(finalResult);
       queryClient.invalidateQueries({ queryKey: ["group-campaigns"] });
