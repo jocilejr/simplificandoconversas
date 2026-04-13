@@ -1,0 +1,1 @@
+ALTER TABLE public.boleto_settings ALTER COLUMN default_expiration_days SET DEFAULT 7;
