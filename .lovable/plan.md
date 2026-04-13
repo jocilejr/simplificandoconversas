@@ -2,57 +2,44 @@
 
 ## Problema
 
-O `scanUserFiles` só varre arquivos na raiz (`/media-files/{userId}/`) e na pasta `tmp/`. A pasta `boletos/` é ignorada, então os PDFs de boleto nunca aparecem no gerenciador.
+1. Botão "Limpar temporários" causa insegurança — não fica claro que arquivos de fluxos/membros estão protegidos
+2. Todos os arquivos aparecem misturados numa lista só
+3. Arquivos da área de membros (materiais no banco) não aparecem no gerenciador
 
-Além disso, boletos têm regra de retenção diferente: só devem ser deletados após **30 dias** (não 24h como os temporários comuns).
-
-## Solução
+## Solução: Abas por origem + campo `source` na API
 
 ### 1. Backend: `deploy/backend/src/routes/media-manager.ts`
 
-**Escanear a pasta `boletos/`** adicionando um bloco similar ao de `tmp/`:
+Refatorar `computeInUseSet` para retornar `Map<string, string>` (relativePath → source) em vez de `Set<string>`:
 
-```typescript
-const boletosDir = path.join(userDir, "boletos");
-try {
-  await fs.access(boletosDir);
-  const entries = await fs.readdir(boletosDir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.isFile()) {
-      const filePath = path.join(boletosDir, entry.name);
-      const stat = await fs.stat(filePath);
-      const mime = getMime(entry.name);
-      files.push({
-        name: entry.name,
-        relativePath: `boletos/${entry.name}`,
-        mime, category: getCategory(mime),
-        size: stat.size, sizeFormatted: formatSize(stat.size),
-        createdAt: stat.birthtime.toISOString(),
-        modifiedAt: stat.mtime.toISOString(),
-        isTmpFolder: false,
-        url: `/media/${userId}/boletos/${entry.name}`,
-      });
-    }
-  }
-} catch { /* boletos dir doesn't exist */ }
-```
+| Source | Tabelas verificadas |
+|--------|-------------------|
+| `"flow"` | `chatbot_flows`, `boleto_recovery_rules` |
+| `"member"` | `delivery_products`, `member_area_materials` |
+| `"group"` | `group_scheduled_messages` |
+| `"boleto"` | pasta `boletos/` |
+| `"temporary"` | todo o resto (sem referência no banco) |
 
-**Marcar boletos como "in use"** no `computeInUseSet`: verificar a tabela `transactions` onde `metadata->>'boleto_file'` referencia o arquivo.
-
-**Regra de cleanup diferenciada**: No endpoint `/cleanup`, boletos usam cutoff de **30 dias** em vez de 24h:
-
-```typescript
-const isBoleto = f.relativePath.startsWith("boletos/");
-const cutoff = isBoleto
-  ? Date.now() - 30 * 24 * 60 * 60 * 1000   // 30 dias
-  : Date.now() - 24 * 60 * 60 * 1000;        // 24h
-```
+Cada arquivo retornado pela API ganha o campo `source`. O endpoint `/cleanup` continua protegendo tudo que não seja `"temporary"` (>24h) ou `"boleto"` (>30d). Para boletos, matching por nome base (PDF↔JPG).
 
 ### 2. Frontend: `src/components/settings/MediaManagerSection.tsx`
 
-Adicionar filtro de categoria "Boleto" (já coberto pelo filtro "PDF" existente, mas podemos adicionar um badge visual "Boleto" para arquivos da pasta `boletos/`).
+Substituir os filtros "Local" por componente `<Tabs>` com 5 abas:
+
+| Aba | Filtra por | Contagem |
+|-----|-----------|----------|
+| **Todos** | sem filtro | total |
+| **Fluxos** | `source === "flow"` | N |
+| **Área de Membros** | `source === "member"` | N |
+| **Grupos** | `source === "group"` | N |
+| **Boletos** | `source === "boleto"` | N |
+| **Temporários** | `source === "temporary"` | N |
+
+- Botão "Limpar temporários (+24h)" aparece **somente** na aba Temporários
+- Badges mostram origem específica ("Fluxo", "Membros", "Grupo") em vez de genérico "Permanente"
+- Filtro de tipo (áudio/imagem/vídeo/PDF) permanece funcional dentro de cada aba
 
 ### Arquivos alterados
-- `deploy/backend/src/routes/media-manager.ts` — scan de `boletos/`, inUse via transactions, cleanup 30d
-- `src/components/settings/MediaManagerSection.tsx` — badge visual para boletos
+- `deploy/backend/src/routes/media-manager.ts` — `computeInUseMap`, campo `source`, matching base name boletos
+- `src/components/settings/MediaManagerSection.tsx` — abas por origem, cleanup só na aba temporários
 
