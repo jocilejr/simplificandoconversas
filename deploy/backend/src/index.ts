@@ -29,6 +29,7 @@ import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
 import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
+import mediaManagerRouter from "./routes/media-manager";
 
 const app = express();
 app.use(cors());
@@ -55,6 +56,7 @@ app.use("/api/groups", groupsApiRouter);
 app.use("/api/groups/webhook", groupsWebhookRouter);
 app.use("/api/member-access", memberAccessRouter);
 app.use("/api/member-purchase", memberPurchaseRouter);
+app.use("/api/media-manager", mediaManagerRouter);
 
 // Queue status (no auth — internal)
 app.get("/api/queue-status", (_, res) => res.json(getAllQueuesStatus()));

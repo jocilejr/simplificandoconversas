@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users, Percent, Crown, Package } from "lucide-react";
+import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users, Percent, Crown, Package, HardDrive } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
@@ -13,6 +13,7 @@ import { TeamSection } from "@/components/settings/TeamSection";
 import { FeesSection } from "@/components/settings/FeesSection";
 import { MemberAreaSettingsSection } from "@/components/settings/MemberAreaSettingsSection";
 import { DeliverySettingsSection } from "@/components/settings/DeliverySettingsSection";
+import { MediaManagerSection } from "@/components/settings/MediaManagerSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const allSections = [
