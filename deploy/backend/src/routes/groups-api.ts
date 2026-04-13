@@ -1352,6 +1352,7 @@ router.post("/import-backup", async (req: Request, res: Response) => {
 
 /* ─── POST /import-media (multipart/form-data) ─── */
 router.post("/import-media", async (req: Request, res: Response) => {
+  console.log("[import-media] ▶ Request received", { contentLength: req.headers["content-length"], contentType: req.headers["content-type"]?.substring(0, 60) });
   try {
     // Parse multipart form data manually using the built-in request
     const contentType = req.headers["content-type"] || "";
