@@ -41,6 +41,7 @@ const LOCATION_FILTERS = [
   { key: "all", label: "Todos" },
   { key: "permanent", label: "Permanentes" },
   { key: "temporary", label: "Temporários" },
+  { key: "boletos", label: "Boletos" },
 ];
 
 function CategoryIcon({ category }: { category: string }) {
@@ -132,8 +133,10 @@ export function MediaManagerSection() {
 
   const filtered = files.filter((f) => {
     if (categoryFilter !== "all" && f.category !== categoryFilter) return false;
-    if (locationFilter === "permanent" && f.isTemporary) return false;
-    if (locationFilter === "temporary" && !f.isTemporary) return false;
+    if (locationFilter === "permanent" && (f.isTemporary || f.isBoleto)) return false;
+    if (locationFilter === "temporary" && (!f.isTemporary || f.isBoleto)) return false;
+    if (locationFilter === "boletos" && !f.isBoleto) return false;
+    if (locationFilter !== "all" && locationFilter !== "boletos" && f.isBoleto) return false;
     return true;
   });
 
