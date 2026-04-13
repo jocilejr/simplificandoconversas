@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Download, User, Phone, Mail, FileText, Tag, Bell, MessageSquare, CreditCard, CheckCircle, XCircle, ChevronDown, ChevronRight, Smartphone, ShoppingBag, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Copy, Download, User, Phone, Mail, FileText, Tag, Bell, MessageSquare, CreditCard, CheckCircle, XCircle, ChevronDown, ChevronRight, Smartphone, ShoppingBag, ExternalLink, Pencil, Save, X, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
