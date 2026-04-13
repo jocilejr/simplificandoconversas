@@ -2,41 +2,48 @@
 
 ## Problema
 
-O `MediaManagerSection.tsx` faz fetch com headers customizados:
-```
-x-user-id: ...
-x-workspace-id: ...
-```
+Atualmente, o media-manager classifica arquivos como "Permanente" ou "Temporário" baseado apenas na **localização física** (`/media-files/{userId}/` = permanente, `tmp/` = temporário). Isso faz com que mídias recebidas via webhook do Evolution (áudios, imagens, vídeos de conversas) que ficam na raiz sejam marcadas como "Permanente", quando na verdade são efêmeras.
 
-Mas o bloco CORS do Nginx para `/functions/v1/` (linha 331) só permite:
-```
-authorization, x-client-info, apikey, content-type, accept, accept-profile, content-profile, x-supabase-api-version, prefer, range
-```
-
-O browser faz um preflight OPTIONS, o Nginx responde sem aceitar `x-user-id` / `x-workspace-id`, e o browser bloqueia a requisição → "Failed to fetch".
+O correto: **somente arquivos referenciados em fluxos de chatbot, regras de recuperação, produtos e materiais da área de membros** devem ser "Permanente". Todo o resto é temporário e pode ser limpo após 24h.
 
 ## Solução
 
-Adicionar `x-user-id, x-workspace-id` à lista de headers permitidos no CORS do Nginx, no bloco `/functions/v1/` do API_DOMAIN.
+### 1. Backend: `deploy/backend/src/routes/media-manager.ts`
 
-### Arquivo: `deploy/nginx/default.conf.template`
+Inverter a lógica de classificação:
 
-Na linha 331, alterar de:
+- **Antes**: `isTemporary` baseado na pasta (`tmp/` = temporário, raiz = permanente)
+- **Depois**: `isTemporary` baseado no `inUse` — só é permanente se estiver referenciado no banco (fluxos, regras, produtos, materiais, mensagens agendadas)
+
+Mudanças concretas:
+- Remover `isTemporary: false` e `isTemporary: true` hardcoded na montagem dos objetos de arquivo
+- Após calcular o `inUseSet`, definir: `isTemporary = !inUse` (arquivo em uso = permanente, arquivo não referenciado = temporário)
+
+### 2. Backend: Adicionar rota de auto-limpeza
+
+Criar endpoint `DELETE /api/media-manager/cleanup` que:
+- Lista todos os arquivos do usuário
+- Calcula o `inUseSet` (mesma lógica existente)
+- Deleta arquivos que **não estão em uso** E têm **mais de 24h** de criação
+- Retorna contagem de arquivos removidos e espaço liberado
+
+### 3. Frontend: `src/components/settings/MediaManagerSection.tsx`
+
+- Adicionar botão "Limpar temporários (+24h)" que chama o endpoint de cleanup
+- Exibir confirmação antes de executar
+
+### Resumo técnico
+
+```text
+Arquivo raiz (/media-files/{userId}/foto.jpg)
+  └─ Referenciado em chatbot_flows?     → Permanente ✅
+  └─ Referenciado em recovery_rules?    → Permanente ✅
+  └─ Referenciado em delivery_products? → Permanente ✅
+  └─ Referenciado em member_materials?  → Permanente ✅
+  └─ Referenciado em group_scheduled?   → Permanente ✅
+  └─ Nenhuma referência?                → Temporário 🕐 (limpar após 24h)
+
+Arquivo tmp (/media-files/{userId}/tmp/audio.ogg)
+  └─ Sempre temporário                  → Temporário 🕐
 ```
-'authorization, x-client-info, apikey, content-type, accept, accept-profile, content-profile, x-supabase-api-version, prefer, range'
-```
-
-Para:
-```
-'authorization, x-client-info, apikey, content-type, accept, accept-profile, content-profile, x-supabase-api-version, prefer, range, x-user-id, x-workspace-id'
-```
-
-### Após o deploy
-
-Na VPS, rodar:
-```bash
-cd ~/simplificandoconversas/deploy && bash update.sh
-```
-
-Isso vai rebuildar o Nginx com os novos headers CORS e o Gerenciador de Arquivos vai funcionar.
 
