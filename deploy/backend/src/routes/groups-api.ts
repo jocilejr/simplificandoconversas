@@ -449,6 +449,33 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
 router.delete("/campaigns/:id", async (req: Request, res: Response) => {
   try {
     const sb = getServiceClient();
+
+    // 1. Fetch scheduled messages to find media files before cascade deletes them
+    const { data: messages } = await sb
+      .from("group_scheduled_messages")
+      .select("msg_type, content")
+      .eq("campaign_id", req.params.id);
+
+    // 2. Collect storage paths from media messages
+    const mediaTypes = ["image", "video", "audio", "document"];
+    const storagePaths: string[] = [];
+    if (messages) {
+      for (const msg of messages) {
+        if (!mediaTypes.includes(msg.msg_type) || !msg.content) continue;
+        // Extract path after /chatbot-media/ from the URL
+        const match = msg.content.match(/\/chatbot-media\/(.+?)(?:\?|$)/);
+        if (match?.[1]) storagePaths.push(decodeURIComponent(match[1]));
+      }
+    }
+
+    // 3. Remove media files from storage (best-effort)
+    if (storagePaths.length > 0) {
+      const { error: rmErr } = await sb.storage.from("chatbot-media").remove(storagePaths);
+      if (rmErr) console.warn("[groups] Failed to clean media files:", rmErr.message);
+      else console.log(`[groups] Cleaned ${storagePaths.length} media file(s) for campaign ${req.params.id}`);
+    }
+
+    // 4. Delete campaign (cascade removes scheduled messages)
     const { error } = await sb.from("group_campaigns").delete().eq("id", req.params.id);
     if (error) throw error;
     res.json({ ok: true });
