@@ -1,79 +1,43 @@
 
-## Plano: corrigir a falha persistente na importação de mídias
 
-### Diagnóstico atual
-O fluxo de importação de campanhas/mensagens está funcionando, mas as mídias falham antes de completar o upload.
+## Plano: Corrigir importação de mídias — estrutura do backup incompatível
 
-A evidência no código aponta para o frontend:
-- `src/components/grupos/GroupImportDialog.tsx` captura a falha por mídia e só incrementa `mediaFailed`
-- `deploy/backend/src/routes/groups-api.ts` só loga algo quando `/import-media` realmente é atingido
-- o conversor atual `dataUriToFile()` em `src/lib/backupParser.ts` aceita apenas este formato rígido:
-```text
-data:<mime>;base64,<payload>
+### Causa raiz
+
+O parser atual (`backupParser.ts`) assume que o backup tem uma seção **top-level** com formato:
+```json
+{ "media": { "caminho/arquivo.png": "data:image/png;base64,..." } }
 ```
-Se o backup vier com `charset`, `name`, quebras de linha, base64 “cru” ou outra variação, ele falha no navegador antes do `fetch`
 
-### O que vou implementar
-1. **Tornar o parser de mídia resiliente**
-   - Reescrever `dataUriToFile()` em `src/lib/backupParser.ts`
-   - Aceitar variações como:
-     - `data:image/png;charset=utf-8;base64,...`
-     - `data:application/pdf;name=file.pdf;base64,...`
-     - base64 sem prefixo `data:`
-   - Remover whitespace/quebras de linha do base64 antes de decodificar
-   - Usar fallback de MIME pelo caminho/extensão quando necessário
-   - Retornar erros mais úteis, em vez de `Invalid data URI` genérico
+Mas o backup real do "whats-grupos" **não tem essa seção**. A primeira ocorrência de `"media": {` que o parser encontra pertence a uma **mensagem individual** e contém metadados como `group_id`, `message_type`, `fileName`, `mediaUrl` — que são tratados erroneamente como paths de arquivo. Resultado: "Invalid data URI" para cada chave.
 
-2. **Mostrar o motivo real da falha no diálogo**
-   - Atualizar `src/components/grupos/GroupImportDialog.tsx`
-   - Guardar os erros das mídias individualmente
-   - Exibir no resultado final pelo menos os primeiros erros reais
-   - Quando o backend responder erro, mostrar `status + texto da resposta`
+A mídia no backup está embutida **dentro de cada mensagem** (`content.mediaUrl` ou campo similar), provavelmente como data URI (base64) ou URL externa.
 
-3. **Adicionar rastreio mínimo no backend para validação na VPS**
-   - Ajustar `deploy/backend/src/routes/groups-api.ts`
-   - Logar no início da rota `/import-media` que a requisição chegou
-   - Logar falhas de parsing multipart com contexto suficiente para depuração
-   - Isso permite confirmar pela VPS se o problema ainda está no frontend ou já está chegando no servidor
+### Solução
 
-### Arquivos
+Abandonar a abordagem de "seção media top-level" e extrair mídias **diretamente das mensagens agendadas** já parseadas.
+
+### Mudanças
+
 | Arquivo | Ação |
 |---|---|
-| `src/lib/backupParser.ts` | Robustecer conversão de data URI/base64 para `File` |
-| `src/components/grupos/GroupImportDialog.tsx` | Exibir erros detalhados por mídia |
-| `deploy/backend/src/routes/groups-api.ts` | Adicionar logs de entrada/erro em `/import-media` |
+| `src/lib/backupParser.ts` | Reescrever `parseBackupSummary` para contar mídias a partir dos `scheduledMessages` (mensagens com `content.mediaUrl` começando com `data:`) em vez de `scanMediaKeys`. Remover `scanMediaKeys`, `extractKeysFromChunk` e `iterateMediaEntries` (não mais necessários). Adicionar nova função `extractMediaFromMessages` que itera sobre as mensagens e retorna `{ messageIndex, mediaUrl (data URI) }` |
+| `src/components/grupos/GroupImportDialog.tsx` | Alterar etapa 2 para iterar sobre `summary.scheduledMessages` em vez de `iterateMediaEntries(file)`. Para cada mensagem com `content.mediaUrl` em base64: converter via `dataUriToFile`, fazer upload via FormData, e guardar o mapeamento `oldDataUri → newUrl`. Na etapa 3 (remap), enviar o mapeamento para o backend atualizar `content.mediaUrl` nas mensagens do banco |
 
-### Verificação na VPS depois da implementação
-Como você usa só a VPS, a validação precisa ser feita aí:
+### Lógica detalhada
 
-```bash
-cd ~/simplificandoconversas
-git pull origin main
-bun install && bun run build
-rm -rf deploy/frontend/*
-cp -r dist/* deploy/frontend/
-cd deploy
-docker compose up -d backend --build
-docker compose restart nginx
-```
+1. **`parseBackupSummary`**: Após extrair `scheduledMessages`, contar quantas têm `content.mediaUrl` começando com `data:` — esse é o `mediaCount`. Não precisa mais do `scanMediaKeys`.
 
-#### Confirmar que o frontend novo foi publicado
-Vou deixar uma string de erro nova fácil de procurar no bundle. Depois rode:
-```bash
-docker exec -it $(docker ps --filter name=nginx -q | head -n1) sh -lc 'grep -R "Formato de mídia não reconhecido" /usr/share/nginx/html || true'
-```
+2. **Upload no diálogo**: 
+   - Iterar `summary.scheduledMessages` 
+   - Para cada msg com `content.mediaUrl` que começa com `data:`:
+     - Usar `dataUriToFile(content.mediaUrl, fileName)` para converter
+     - Upload via FormData para `/groups/import-media`
+     - Guardar `{ messageIndex → newUrl }`
+   - Mensagens com `mediaUrl` que é URL normal (http/https): ignorar, já está pronta
 
-#### Confirmar chegada das requisições no backend
-Antes de testar a importação:
-```bash
-cd ~/simplificandoconversas/deploy
-docker compose logs -f backend | grep -Ei "import-media|media upload|multipart"
-```
+3. **Remap**: Enviar lista de `{ messageId, newMediaUrl }` para o backend atualizar `content->'mediaUrl'` no banco
 
 ### Resultado esperado
-Depois dessa correção, vai acontecer um destes dois cenários:
-1. **As mídias passam a subir normalmente**, porque o formato do backup era incompatível com o parser rígido atual
-2. **A UI passa a mostrar exatamente por que cada mídia falhou**, e os logs da VPS dirão se a rota `/import-media` está sendo chamada ou não
+As mídias em base64 do backup serão corretamente extraídas das mensagens, enviadas para o servidor, e as referências atualizadas. Mídias que já são URLs externas serão preservadas sem alteração.
 
-### Observação técnica
-Não há necessidade de alterar banco, storage bucket ou nginx para esta correção. O problema mais provável está no tratamento do conteúdo da mídia no frontend e na falta de visibilidade do erro real.
