@@ -46,95 +46,118 @@ interface ScannedFile {
   modifiedAt: string;
   isTmpFolder: boolean;
   url: string;
+  ownerUserId: string;
 }
 
+/** Get all user IDs belonging to a workspace */
+async function getWorkspaceUserIds(workspaceId: string): Promise<string[]> {
+  const sb = getServiceClient();
+  const { data, error } = await sb
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId);
+  if (error) {
+    console.error("[media-manager] workspace_members error:", error.message);
+    return [];
+  }
+  return (data || []).map((r: any) => r.user_id);
+}
+
+/** Scan files for a single user directory */
 async function scanUserFiles(userId: string): Promise<ScannedFile[]> {
   const userDir = path.join(MEDIA_ROOT, userId);
   const files: ScannedFile[] = [];
 
   try { await fs.access(userDir); } catch { return files; }
 
+  const buildFile = async (filePath: string, relativePath: string, isTmp: boolean): Promise<ScannedFile> => {
+    const stat = await fs.stat(filePath);
+    const name = path.basename(filePath);
+    const mime = getMime(name);
+    return {
+      name, relativePath, mime,
+      category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
+      createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
+      isTmpFolder: isTmp, url: `/media/${userId}/${relativePath}`,
+      ownerUserId: userId,
+    };
+  };
+
+  // Scan root files
   const rootEntries = await fs.readdir(userDir, { withFileTypes: true });
   for (const entry of rootEntries) {
     if (entry.isFile()) {
-      const filePath = path.join(userDir, entry.name);
-      const stat = await fs.stat(filePath);
-      const mime = getMime(entry.name);
-      files.push({
-        name: entry.name, relativePath: entry.name, mime,
-        category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
-        createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
-        isTmpFolder: false, url: `/media/${userId}/${entry.name}`,
-      });
+      files.push(await buildFile(path.join(userDir, entry.name), entry.name, false));
     }
   }
 
-  const tmpDir = path.join(userDir, "tmp");
-  try {
-    await fs.access(tmpDir);
-    const tmpEntries = await fs.readdir(tmpDir, { withFileTypes: true });
-    for (const entry of tmpEntries) {
-      if (entry.isFile()) {
-        const filePath = path.join(tmpDir, entry.name);
-        const stat = await fs.stat(filePath);
-        const mime = getMime(entry.name);
-        files.push({
-          name: entry.name, relativePath: `tmp/${entry.name}`, mime,
-          category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
-          createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
-          isTmpFolder: true, url: `/media/${userId}/tmp/${entry.name}`,
-        });
+  // Scan subdirs: tmp, boletos
+  for (const sub of ["tmp", "boletos"] as const) {
+    const subDir = path.join(userDir, sub);
+    try {
+      await fs.access(subDir);
+      const entries = await fs.readdir(subDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile()) {
+          const relPath = `${sub}/${entry.name}`;
+          files.push(await buildFile(path.join(subDir, entry.name), relPath, sub === "tmp"));
+        }
       }
-    }
-  } catch { /* tmp dir doesn't exist */ }
-
-  // Scan boletos/ directory
-  const boletosDir = path.join(userDir, "boletos");
-  try {
-    await fs.access(boletosDir);
-    const boletosEntries = await fs.readdir(boletosDir, { withFileTypes: true });
-    for (const entry of boletosEntries) {
-      if (entry.isFile()) {
-        const filePath = path.join(boletosDir, entry.name);
-        const stat = await fs.stat(filePath);
-        const mime = getMime(entry.name);
-        files.push({
-          name: entry.name, relativePath: `boletos/${entry.name}`, mime,
-          category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
-          createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
-          isTmpFolder: false, url: `/media/${userId}/boletos/${entry.name}`,
-        });
-      }
-    }
-  } catch { /* boletos dir doesn't exist */ }
+    } catch { /* dir doesn't exist */ }
+  }
 
   return files;
 }
 
+/** Scan files for ALL users in a workspace */
+async function scanWorkspaceFiles(workspaceId: string): Promise<ScannedFile[]> {
+  const userIds = await getWorkspaceUserIds(workspaceId);
+  if (userIds.length === 0) return [];
+
+  const allFiles: ScannedFile[] = [];
+  for (const uid of userIds) {
+    const userFiles = await scanUserFiles(uid);
+    allFiles.push(...userFiles);
+  }
+  return allFiles;
+}
+
 /**
- * Returns a Map<relativePath, source> indicating where each file is used.
- * Priority: flow > member > group > (boleto folder) > temporary
+ * Returns a Map<key, source> indicating where each file is used.
+ * Key = ownerUserId + "/" + relativePath
  */
 async function computeSourceMap(workspaceId: string, files: ScannedFile[]): Promise<Map<string, FileSource>> {
   const sb = getServiceClient();
   const sourceMap = new Map<string, FileSource>();
+  const fileKey = (f: ScannedFile) => `${f.ownerUserId}/${f.relativePath}`;
 
   // 1. Check chatbot_flows + boleto_recovery_rules → "flow"
-  const { data: flows } = await sb.from("chatbot_flows").select("nodes").eq("workspace_id", workspaceId);
-  const { data: rules } = await sb.from("boleto_recovery_rules").select("media_blocks").eq("workspace_id", workspaceId);
+  const { data: flows, error: e1 } = await sb.from("chatbot_flows").select("nodes").eq("workspace_id", workspaceId);
+  const { data: rules, error: e2 } = await sb.from("boleto_recovery_rules").select("media_blocks").eq("workspace_id", workspaceId);
+  if (e1) console.error("[media-manager] chatbot_flows error:", e1.message);
+  if (e2) console.error("[media-manager] boleto_recovery_rules error:", e2.message);
   const flowJson = JSON.stringify(flows || []) + JSON.stringify(rules || []);
   for (const f of files) {
-    if (flowJson.includes(f.name)) sourceMap.set(f.relativePath, "flow");
+    if (flowJson.includes(f.name)) sourceMap.set(fileKey(f), "flow");
   }
 
-  // 2. Check delivery_products + member_area_materials → "member"
-  const { data: products } = await sb.from("delivery_products").select("page_logo, member_cover_image").eq("workspace_id", workspaceId);
-  const { data: materials } = await sb.from("member_product_materials").select("content_url").eq("workspace_id", workspaceId);
-  const { data: offers } = await sb.from("member_area_offers").select("image_url").eq("workspace_id", workspaceId);
+  // 2. Check delivery_products + member_product_materials + member_area_offers → "member"
+  const { data: products, error: e3 } = await sb.from("delivery_products").select("page_logo, member_cover_image").eq("workspace_id", workspaceId);
+  const { data: materials, error: e4 } = await sb.from("member_product_materials").select("content_url").eq("workspace_id", workspaceId);
+  const { data: offers, error: e5 } = await sb.from("member_area_offers").select("image_url").eq("workspace_id", workspaceId);
+  if (e3) console.error("[media-manager] delivery_products error:", e3.message);
+  if (e4) console.error("[media-manager] member_product_materials error:", e4.message);
+  if (e5) console.error("[media-manager] member_area_offers error:", e5.message);
   const memberJson = JSON.stringify(products || []) + JSON.stringify(materials || []) + JSON.stringify(offers || []);
+
+  console.log("[media-manager] source counts:", {
+    flows: (flows || []).length, rules: (rules || []).length,
+    products: (products || []).length, materials: (materials || []).length, offers: (offers || []).length,
+  });
+
   for (const f of files) {
-    if (!sourceMap.has(f.relativePath) && memberJson.includes(f.name)) {
-      sourceMap.set(f.relativePath, "member");
+    if (!sourceMap.has(fileKey(f)) && memberJson.includes(f.name)) {
+      sourceMap.set(fileKey(f), "member");
     }
   }
 
@@ -142,27 +165,22 @@ async function computeSourceMap(workspaceId: string, files: ScannedFile[]): Prom
   const { data: gsm } = await sb.from("group_scheduled_messages").select("content").eq("is_active", true);
   const groupJson = JSON.stringify(gsm || []);
   for (const f of files) {
-    if (!sourceMap.has(f.relativePath) && groupJson.includes(f.name)) {
-      sourceMap.set(f.relativePath, "group");
+    if (!sourceMap.has(fileKey(f)) && groupJson.includes(f.name)) {
+      sourceMap.set(fileKey(f), "group");
     }
   }
 
-  // 4. Boletos folder — check transactions for base name matching
-  const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
-  const txnJson = JSON.stringify(txns || []);
+  // 4. Boletos folder
   for (const f of files) {
     if (!f.relativePath.startsWith("boletos/")) continue;
-    if (sourceMap.has(f.relativePath)) continue;
-    const baseName = path.parse(f.name).name;
-    // Mark as boleto; if referenced in transactions it's still "boleto" but inUse
-    sourceMap.set(f.relativePath, "boleto");
-    // We'll track inUse separately below
+    if (sourceMap.has(fileKey(f))) continue;
+    sourceMap.set(fileKey(f), "boleto");
   }
 
   // 5. Everything else → "temporary"
   for (const f of files) {
-    if (!sourceMap.has(f.relativePath)) {
-      sourceMap.set(f.relativePath, "temporary");
+    if (!sourceMap.has(fileKey(f))) {
+      sourceMap.set(fileKey(f), "temporary");
     }
   }
 
@@ -182,7 +200,7 @@ router.get("/list", async (req, res) => {
     const workspaceId = req.headers["x-workspace-id"] as string;
     if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
 
-    const scanned = await scanUserFiles(userId);
+    const scanned = await scanWorkspaceFiles(workspaceId);
     const sourceMap = await computeSourceMap(workspaceId, scanned);
 
     // For boleto inUse check
@@ -190,8 +208,10 @@ router.get("/list", async (req, res) => {
     const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
     const txnJson = JSON.stringify(txns || []);
 
+    const fileKey = (f: ScannedFile) => `${f.ownerUserId}/${f.relativePath}`;
+
     const files = scanned.map((f) => {
-      const source = sourceMap.get(f.relativePath) || "temporary";
+      const source = sourceMap.get(fileKey(f)) || "temporary";
       const inUse = source === "boleto"
         ? isBoletoInUse(f.name, txnJson)
         : source !== "temporary";
@@ -220,19 +240,27 @@ router.get("/list", async (req, res) => {
 router.delete("/delete", async (req, res) => {
   try {
     const userId = req.headers["x-user-id"] as string;
-    if (!userId) return res.status(401).json({ error: "Missing x-user-id" });
+    const workspaceId = req.headers["x-workspace-id"] as string;
+    if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
 
-    const { files: filePaths } = req.body as { files: string[] };
-    if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
+    // Validate workspace membership
+    const validUserIds = new Set(await getWorkspaceUserIds(workspaceId));
+    if (!validUserIds.has(userId)) return res.status(403).json({ error: "Not a workspace member" });
+
+    const { files: fileEntries } = req.body as { files: { ownerUserId: string; relativePath: string }[] };
+    if (!fileEntries || !Array.isArray(fileEntries) || fileEntries.length === 0) {
       return res.status(400).json({ error: "files array required" });
     }
 
-    const userDir = path.join(MEDIA_ROOT, userId);
     let deleted = 0;
     let failed = 0;
 
-    for (const relPath of filePaths) {
-      const resolved = path.resolve(userDir, relPath);
+    for (const entry of fileEntries) {
+      // Validate the ownerUserId belongs to this workspace
+      if (!validUserIds.has(entry.ownerUserId)) { failed++; continue; }
+
+      const userDir = path.join(MEDIA_ROOT, entry.ownerUserId);
+      const resolved = path.resolve(userDir, entry.relativePath);
       if (!resolved.startsWith(userDir)) { failed++; continue; }
       try { await fs.unlink(resolved); deleted++; } catch { failed++; }
     }
@@ -251,7 +279,7 @@ router.delete("/cleanup", async (req, res) => {
     const workspaceId = req.headers["x-workspace-id"] as string;
     if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
 
-    const scanned = await scanUserFiles(userId);
+    const scanned = await scanWorkspaceFiles(workspaceId);
     const sourceMap = await computeSourceMap(workspaceId, scanned);
 
     // For boleto inUse check
@@ -259,20 +287,19 @@ router.delete("/cleanup", async (req, res) => {
     const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
     const txnJson = JSON.stringify(txns || []);
 
+    const fileKey = (f: ScannedFile) => `${f.ownerUserId}/${f.relativePath}`;
     const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
     const cutoff30d = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const userDir = path.join(MEDIA_ROOT, userId);
     let deleted = 0;
     let freedBytes = 0;
 
     for (const f of scanned) {
-      const source = sourceMap.get(f.relativePath) || "temporary";
+      const source = sourceMap.get(fileKey(f)) || "temporary";
 
       // NEVER touch flow, member, group files
       if (source === "flow" || source === "member" || source === "group") continue;
 
       if (source === "boleto") {
-        // Only delete unlinked boletos older than 30 days
         if (isBoletoInUse(f.name, txnJson)) continue;
         if (new Date(f.createdAt).getTime() > cutoff30d) continue;
       } else {
@@ -280,6 +307,7 @@ router.delete("/cleanup", async (req, res) => {
         if (new Date(f.createdAt).getTime() > cutoff24h) continue;
       }
 
+      const userDir = path.join(MEDIA_ROOT, f.ownerUserId);
       const resolved = path.resolve(userDir, f.relativePath);
       if (!resolved.startsWith(userDir)) continue;
 
