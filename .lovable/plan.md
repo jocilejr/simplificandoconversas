@@ -1,54 +1,95 @@
 
 
-## Plano: Sanitização manual + Título dinâmico + Notificações
+## Plano: Smart Link + Melhorias no Módulo de Grupos
 
-### 1. Script `deploy/sanitize-storage.sh` (manual, sem cron)
+### Conceito do Smart Link
 
-Script para rodar manualmente quando quiser liberar espaço. Dois modos:
+Inspirado no repositório `whats-grupos`, o **Smart Link** é um rotacionador inteligente de grupos WhatsApp. Você cria uma URL única (ex: `seudominio.com/r/meu-link`) e o sistema redireciona automaticamente para o grupo com menos membros, respeitando um limite máximo por grupo. Quando um grupo lota, o link direciona para o próximo.
 
-```text
-./sanitize-storage.sh          → mostra o que seria apagado (dry-run)
-./sanitize-storage.sh --execute → executa a limpeza de verdade
+A implementação será **nova e adaptada** ao seu sistema existente (workspace, Evolution API via VPS backend, tabelas `group_campaigns`/`group_selected`).
+
+### Diferenças da implementação original
+
+| Original (whats-grupos) | Nossa implementação |
+|---|---|
+| Supabase direto (sem VPS) | Backend Express na VPS |
+| Tabela `campaign_smart_links` separada | Tabela `group_smart_links` vinculada a campanhas |
+| Edge function `smart-link-redirect` | Rota Express `/groups/smart-link-redirect` |
+| Busca `invite_url` via Baileys | Busca via Evolution API `inviteCode` |
+| Sem workspace | Multi-workspace com RLS |
+
+---
+
+### 1. Migração de banco — nova tabela `group_smart_links`
+
+```sql
+CREATE TABLE public.group_smart_links (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  campaign_id uuid REFERENCES public.group_campaigns(id) ON DELETE CASCADE,
+  slug text NOT NULL,
+  max_members_per_group int NOT NULL DEFAULT 200,
+  group_links jsonb NOT NULL DEFAULT '[]',
+  current_group_id text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, slug)
+);
+
+CREATE TABLE public.group_smart_link_clicks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  smart_link_id uuid NOT NULL REFERENCES public.group_smart_links(id) ON DELETE CASCADE,
+  group_id text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 ```
 
-Ações do script:
-- `docker builder prune -a -f` → ~26.5 GB
-- `docker rmi atendai/evolution-api:v2.2.3` → 1.37 GB
-- `docker rmi joseluisq/static-web-server:2-alpine` → 28 MB
-- `docker image prune -f` → só dangling (~452 MB)
-- Truncar logs de containers > 50MB → ~2.2 GB
-- Mídia efêmera > 30 dias no volume → ~7 MB
-- Mostra `df -h` antes e depois
+RLS para ambas seguindo o padrão `is_workspace_member` / `can_write_workspace`.
 
-Nenhum cron, nenhum agendamento. Só roda quando você executar.
+### 2. Backend — novas rotas em `deploy/backend/src/routes/groups-api.ts`
 
-### 2. Título dinâmico — `src/hooks/useUnseenTransactions.ts`
+- **`GET /groups/smart-link-redirect?slug=xxx`** — rota pública (sem auth), resolve o slug, busca `member_count` dos grupos via `group_selected`, aplica lógica de rotação (grupo com menos membros abaixo do limite), registra clique, retorna `{ redirect_url }`.
+- **`POST /groups/smart-links`** — cria smart link para uma campanha.
+- **`PUT /groups/smart-links/:id`** — atualiza slug, max_members, group_links.
+- **`GET /groups/smart-links?campaignId=xxx`** — busca smart link de uma campanha.
+- **`DELETE /groups/smart-links/:id`** — remove smart link.
+- **`POST /groups/sync-invite-links`** — busca invite code de cada grupo via Evolution API (`/group/inviteCode/{instance}?groupJid=xxx`), atualiza `group_links[].invite_url`.
+- **`GET /groups/smart-link-stats?smartLinkId=xxx`** — cliques e entradas por grupo.
 
-`useEffect` que altera `document.title`:
-- Com novas: `(3) Nova transação! | Simplificando`
-- Sem novas: restaura título original
+### 3. Frontend — novo componente `GroupSmartLinkDialog.tsx`
 
-### 3. Notificações nativas — `src/hooks/useTransactionNotifications.ts`
+Dialog acessível via botão "Smart Link" no card de campanha (ao lado de "Programação"). Contém:
 
-- Pede permissão via `Notification.requestPermission()`
-- Escuta INSERT em `transactions` via realtime
-- Dispara notificação por tipo/status:
-  - 📄 Boleto gerado / ✅ Boleto pago / ❌ Boleto falhou
-  - 💠 PIX gerado / ✅ PIX recebido
-  - 💳 Cartão gerado / ✅ Cartão aprovado / ❌ Cartão recusado
-  - 🛒 Carrinho abandonado
-- Corpo: nome do cliente + valor em R$
+- **Configuração**: campo slug, limite max_members_per_group
+- **URL pública**: preview + botão copiar (`seudominio.com/r/{slug}`)
+- **Tabela de grupos**: nome, membros atuais, invite URL (com status), cliques, entradas
+- **Botão "Sincronizar URLs"**: busca invite codes via Evolution API para cada grupo da campanha
+- **Cards de resumo**: total de cliques, total de entradas
 
-### 4. Integração — `src/components/AppLayout.tsx`
+### 4. Frontend — página de redirect `SmartLinkRedirect.tsx`
 
-Monta o hook de notificações para funcionar em todas as páginas.
+Página pública (sem login) em `/r/:slug`:
+- Chama `GET /groups/smart-link-redirect?slug=xxx`
+- Se sucesso: redireciona para a URL de convite do grupo
+- Se erro: mostra mensagem amigável
+- Suporta modo `-get` (slug termina com `-get`) que retorna a URL em texto plano
+
+### 5. Integração na rota e no card de campanha
+
+- Adicionar rota `/r/:slug` no `App.tsx`
+- Adicionar botão "Smart Link" no `GroupCampaignsTab.tsx` (ícone Link, ao lado de Programação)
 
 ### Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| `deploy/sanitize-storage.sh` | Criar |
-| `src/hooks/useUnseenTransactions.ts` | Alterar (document.title) |
-| `src/hooks/useTransactionNotifications.ts` | Criar |
-| `src/components/AppLayout.tsx` | Alterar |
+| Migração SQL (2 tabelas + RLS) | Criar |
+| `deploy/backend/src/routes/groups-api.ts` | Alterar (adicionar rotas smart link) |
+| `src/components/grupos/GroupSmartLinkDialog.tsx` | Criar |
+| `src/hooks/useGroupSmartLinks.ts` | Criar |
+| `src/pages/SmartLinkRedirect.tsx` | Criar |
+| `src/components/grupos/GroupCampaignsTab.tsx` | Alterar (botão Smart Link) |
+| `src/App.tsx` | Alterar (rota `/r/:slug`) |
 
