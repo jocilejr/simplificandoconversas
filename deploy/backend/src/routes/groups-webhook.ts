@@ -65,12 +65,43 @@ router.post("/events", async (req: Request, res: Response) => {
           .eq("group_jid", groupJid)
           .maybeSingle();
         if (current) {
+          const newCount = Math.max(0, (current.member_count || 0) + increment);
           await sb
             .from("group_selected")
-            .update({ member_count: Math.max(0, (current.member_count || 0) + increment) })
+            .update({ member_count: newCount })
             .eq("workspace_id", inst.workspace_id)
             .eq("group_jid", groupJid);
         }
+      }
+    }
+
+    // ── Update member_count inside group_smart_links JSONB (real-time) ──
+    const incrementSL = action === "add" ? participants.length : action === "remove" ? -participants.length : 0;
+    if (incrementSL !== 0) {
+      try {
+        const { data: affectedLinks } = await sb
+          .from("group_smart_links")
+          .select("id, group_links")
+          .eq("workspace_id", inst.workspace_id)
+          .eq("is_active", true);
+
+        if (affectedLinks && affectedLinks.length > 0) {
+          for (const sl of affectedLinks) {
+            const groupLinks = (sl.group_links as any[]) || [];
+            let changed = false;
+            for (const gl of groupLinks) {
+              if (gl.group_jid === groupJid) {
+                gl.member_count = Math.max(0, (gl.member_count || 0) + incrementSL);
+                changed = true;
+              }
+            }
+            if (changed) {
+              await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", sl.id);
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn("[groups-webhook] Failed to update smart link member_count:", e.message);
       }
     }
 
