@@ -9,6 +9,7 @@ export interface SmartLink {
   workspace_id: string;
   user_id: string;
   campaign_id: string | null;
+  instance_name: string | null;
   slug: string;
   max_members_per_group: number;
   group_links: GroupLink[];
@@ -25,17 +26,16 @@ export interface GroupLink {
   invite_url: string;
 }
 
-export function useGroupSmartLinks(campaignId?: string) {
+export function useGroupSmartLinks() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
 
   const { data: smartLinks = [], isLoading } = useQuery({
-    queryKey: ["group-smart-links", workspaceId, campaignId],
+    queryKey: ["group-smart-links", workspaceId],
     enabled: !!workspaceId,
     queryFn: async () => {
       const params = new URLSearchParams({ workspaceId: workspaceId! });
-      if (campaignId) params.set("campaignId", campaignId);
       const resp = await fetch(apiUrl(`groups/smart-links?${params}`));
       if (!resp.ok) throw new Error(await resp.text());
       return resp.json() as Promise<SmartLink[]>;
@@ -43,7 +43,7 @@ export function useGroupSmartLinks(campaignId?: string) {
   });
 
   const createSmartLink = useMutation({
-    mutationFn: async (payload: { slug: string; maxMembersPerGroup?: number; campaignId?: string }) => {
+    mutationFn: async (payload: { slug: string; maxMembersPerGroup?: number; instanceName: string; groupLinks: GroupLink[] }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
       const resp = await fetch(apiUrl("groups/smart-links"), {
