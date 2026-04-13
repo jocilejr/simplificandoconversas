@@ -1,60 +1,135 @@
 
+## Diagnóstico provável
 
-## Plano: Gerenciador de arquivos de mídia nas Configurações
+O erro do seu `curl` não aponta, por enquanto, para bug no JSON da rota. Ele aponta para **endpoint errado no teste**.
 
-### Resumo
+Pelo código do deploy atual:
 
-Criar uma nova aba "Arquivos" nas Configurações que lista todos os arquivos de mídia do volume `/media-files/{userId}/`, permitindo visualizar preview, selecionar e deletar arquivos. A aba separa visualmente arquivos permanentes (raiz) de temporários (`tmp/`).
+- o backend escuta em **3001 dentro do container**
+- a aplicação expõe a API publicamente pelo **API_DOMAIN** em `/functions/v1/...`
+- no `docker-compose.yml` **não existe porta 3010 publicada no host**
 
-### Arquivos a criar/alterar
+Então este comando:
 
-#### 1. Backend — Nova rota `deploy/backend/src/routes/media-manager.ts`
-
-API REST para gerenciar arquivos no filesystem:
-
-- **`GET /api/media-manager/list`** — Lista todos os arquivos do `userId` com metadata (nome, tamanho, data de criação, path relativo, tipo MIME, se está em `tmp/` ou raiz). Retorna JSON com array de arquivos.
-- **`DELETE /api/media-manager/delete`** — Recebe array de filenames e deleta do filesystem. Aceita `{ files: ["uuid.ogg", "tmp/uuid.mp3"] }`.
-- Autenticação via header `x-user-id` + `x-workspace-id` (mesmo padrão das rotas existentes como `whatsapp-proxy`).
-
-#### 2. Backend — Registrar rota em `deploy/backend/src/index.ts`
-
-Adicionar `import mediaManagerRouter` e `app.use("/api/media-manager", mediaManagerRouter)`.
-
-#### 3. Frontend — Novo componente `src/components/settings/MediaManagerSection.tsx`
-
-- Tabela com colunas: Preview (thumbnail/ícone), Nome, Tipo, Tamanho, Data, Localização (permanente/temporário)
-- Checkbox para seleção múltipla + botão "Deletar selecionados"
-- Preview inline: imagens mostram thumbnail, áudios mostram player, PDFs mostram ícone com link
-- Filtros por tipo (áudio, imagem, vídeo, PDF, todos) e localização (permanente/temporário)
-- Indicador visual de quais arquivos estão referenciados no banco (fluxos/campanhas) com badge "Em uso"
-- Confirmação antes de deletar
-
-#### 4. Frontend — Atualizar `src/pages/SettingsPage.tsx`
-
-Adicionar seção `{ key: "media", label: "Arquivos", icon: HardDrive, minRole: "admin" }` e o case correspondente no `renderContent`.
-
-#### 5. Nginx — Já configurado
-
-A rota `/media/` já serve os arquivos estáticos. O proxy `/functions/v1/` já redireciona para o backend. Nenhuma mudança necessária.
-
-### Fluxo de dados
-
-```text
-Frontend (MediaManagerSection)
-  → GET /functions/v1/media-manager/list
-  → Backend lê /media-files/{userId}/ recursivamente
-  → Retorna lista com metadata
-  
-Frontend (botão deletar)
-  → DELETE /functions/v1/media-manager/delete
-  → Backend remove arquivos do filesystem
-  → Frontend atualiza lista
+```bash
+curl -s http://localhost:3010/api/media-manager/list ...
 ```
 
-### Detalhes técnicos
+muito provavelmente está retornando **corpo vazio** (ou falha silenciosa), e por isso o `python3 -m json.tool` respondeu:
 
-- O backend usa `fs.readdir` recursivo para listar arquivos, ignorando subdiretórios que não sejam `tmp/`
-- Preview de imagens usa a URL pública existente (`/media/{userId}/{filename}`)
-- Para verificar se um arquivo está "em uso", o backend consulta `chatbot_flows.nodes`, `group_scheduled_messages.content` e `boleto_recovery_rules.media_blocks` buscando o filename
-- Arquivos em `tmp/` recebem badge "Temporário" e os da raiz recebem "Permanente"
+```bash
+Expecting value: line 1 column 1 (char 0)
+```
 
+## O que verificar agora na VPS
+
+### 1. Confirmar a URL real da API
+Rode dentro da VPS:
+
+```bash
+cd ~/simplificandoconversas/deploy
+source .env
+echo "$API_URL"
+```
+
+### 2. Testar a rota pública correta, sem esconder erro
+Use a URL da API, não `localhost:3010`:
+
+```bash
+cd ~/simplificandoconversas/deploy
+source .env
+
+curl -iS "${API_URL}/functions/v1/media-manager/list" \
+  -H "x-user-id: 46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6" \
+  -H "x-workspace-id: 65698ec3-731a-436e-84cf-8997e4ed9b41"
+```
+
+O esperado aqui é:
+- `HTTP/1.1 200 OK`
+- `content-type: application/json`
+- corpo com `{ "files": ... }`
+
+### 3. Testar direto dentro do container do backend
+Isso isola Nginx/Traefik e confirma se a rota existe mesmo no backend:
+
+```bash
+docker exec deploy-backend-1 wget -qO- \
+  --header="x-user-id: 46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6" \
+  --header="x-workspace-id: 65698ec3-731a-436e-84cf-8997e4ed9b41" \
+  http://localhost:3001/api/media-manager/list
+```
+
+## Como interpretar o resultado
+
+### Cenário A — backend responde JSON no passo 3, mas falha no passo 2
+Isso significa que o problema está no caminho público da VPS:
+- API domain
+- proxy do Nginx
+- roteamento Traefik
+- certificado/domínio
+
+Nesse caso, a próxima correção será no deploy/rede, não no componente React.
+
+### Cenário B — backend também falha no passo 3
+Aí o problema está no próprio backend deployado:
+- container antigo ainda rodando
+- build sem a rota nova
+- erro em runtime dentro de `media-manager.ts`
+
+Se acontecer isso, rode também:
+
+```bash
+docker logs deploy-backend-1 --tail 100 | grep media-manager
+```
+
+e:
+
+```bash
+docker exec deploy-backend-1 ls /app/dist/routes
+```
+
+Eu espero ver o arquivo compilado da rota no `dist/routes`.
+
+## O que o código já confirma
+
+Pelo que revisei no projeto:
+
+- `deploy/backend/src/index.ts` registra corretamente:
+```ts
+app.use("/api/media-manager", mediaManagerRouter);
+```
+
+- `src/lib/api.ts` monta a URL do frontend para VPS assim:
+```ts
+${VITE_SUPABASE_URL}/functions/v1/...
+```
+
+- `deploy/nginx/default.conf.template` já possui proxy:
+```nginx
+location /functions/v1/ {
+    proxy_pass http://backend:3001/api/;
+}
+```
+
+Ou seja: **a implementação está coerente**. O ponto suspeito agora é mesmo o teste usando `localhost:3010`.
+
+## Próximo passo objetivo
+
+Me envie o resultado exato destes 2 comandos na VPS:
+
+```bash
+cd ~/simplificandoconversas/deploy
+source .env
+curl -iS "${API_URL}/functions/v1/media-manager/list" \
+  -H "x-user-id: 46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6" \
+  -H "x-workspace-id: 65698ec3-731a-436e-84cf-8997e4ed9b41"
+```
+
+```bash
+docker exec deploy-backend-1 wget -qO- \
+  --header="x-user-id: 46ed58c8-fb6b-4eb5-ad02-bd54a6c098d6" \
+  --header="x-workspace-id: 65698ec3-731a-436e-84cf-8997e4ed9b41" \
+  http://localhost:3001/api/media-manager/list
+```
+
+Com isso eu consigo te dizer exatamente se a falha está no backend ou no roteamento da VPS.
