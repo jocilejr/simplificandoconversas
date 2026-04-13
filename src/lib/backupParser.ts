@@ -1,58 +1,77 @@
 /**
  * Backup parser for "whats-grupos" backup files.
- * Extracts campaigns, scheduled messages, and detects inline media
- * (base64 data URIs embedded in message content).
+ *
+ * Backup format (from original whats-grupos source):
+ * {
+ *   "version": 1,
+ *   "source_url": "https://xxx.supabase.co",
+ *   "data": {
+ *     "campaigns": [...],
+ *     "scheduled_messages": [...]
+ *   },
+ *   "media": {
+ *     "userId/1234-foto.png": "data:image/png;base64,iVBOR...",
+ *     ...
+ *   }
+ * }
+ *
+ * Messages reference media via full Supabase Storage URLs like:
+ * https://xxx.supabase.co/storage/v1/object/public/media/userId/1234-foto.png
  */
 
 export interface MediaEntry {
   messageIndex: number;
-  fieldName: string;      // e.g. "mediaUrl", "image", "media_url"
+  fieldName: string;
   fileName: string;
   dataUri: string;
 }
 
 export interface BackupSummary {
   version: number;
+  sourceUrl: string;
   campaigns: any[];
   scheduledMessages: any[];
-  mediaKeys: string[];          // kept for backward compat (now derived)
-  mediaEntries: MediaEntry[];   // new: actual extractable media
+  topLevelMedia: Record<string, string>;   // path → dataUri
+  mediaKeys: string[];                     // Object.keys(topLevelMedia)
+  mediaEntries: MediaEntry[];              // kept for backward compat (inline media fallback)
 }
 
 /**
- * Parse backup file and extract summary including inline media from messages.
+ * Parse backup file and extract summary including top-level media section.
  */
 export async function parseBackupSummary(file: File): Promise<BackupSummary> {
-  const INITIAL_CHUNK = 10 * 1024 * 1024;
-  const initialSlice = file.slice(0, Math.min(INITIAL_CHUNK, file.size));
-  const initialText = await initialSlice.text();
+  const text = await file.text();
 
   // Extract version
-  const versionMatch = initialText.match(/"version"\s*:\s*(\d+)/);
+  const versionMatch = text.match(/"version"\s*:\s*(\d+)/);
   const version = versionMatch ? parseInt(versionMatch[1]) : 0;
 
   if (version !== 1) {
     throw new Error(`Versão do backup não suportada: ${version}`);
   }
 
+  // Extract source_url
+  const sourceUrlMatch = text.match(/"source_url"\s*:\s*"([^"]+)"/);
+  const sourceUrl = sourceUrlMatch ? sourceUrlMatch[1] : '';
+
   let campaigns: any[] = [];
   let scheduledMessages: any[] = [];
 
   // Find the "data" key position
-  const dataMatch = initialText.match(/"data"\s*:\s*\{/);
+  const dataMatch = text.match(/"data"\s*:\s*\{/);
   if (!dataMatch || dataMatch.index === undefined) {
     throw new Error("O arquivo não contém seção 'data'");
   }
 
   // Extract campaigns
-  const campaignsStart = initialText.indexOf('"campaigns"', dataMatch.index);
+  const campaignsStart = text.indexOf('"campaigns"', dataMatch.index);
   if (campaignsStart !== -1) {
-    const arrStart = initialText.indexOf('[', campaignsStart);
+    const arrStart = text.indexOf('[', campaignsStart);
     if (arrStart !== -1) {
-      const arrEnd = findMatchingBracket(initialText, arrStart);
+      const arrEnd = findMatchingBracket(text, arrStart);
       if (arrEnd !== -1) {
         try {
-          campaigns = JSON.parse(initialText.substring(arrStart, arrEnd + 1));
+          campaigns = JSON.parse(text.substring(arrStart, arrEnd + 1));
         } catch {
           console.warn("[backupParser] Failed to parse campaigns array");
         }
@@ -61,14 +80,14 @@ export async function parseBackupSummary(file: File): Promise<BackupSummary> {
   }
 
   // Extract scheduled_messages
-  const msgsStart = initialText.indexOf('"scheduled_messages"', dataMatch.index);
+  const msgsStart = text.indexOf('"scheduled_messages"', dataMatch.index);
   if (msgsStart !== -1) {
-    const arrStart = initialText.indexOf('[', msgsStart);
+    const arrStart = text.indexOf('[', msgsStart);
     if (arrStart !== -1) {
-      const arrEnd = findMatchingBracket(initialText, arrStart);
+      const arrEnd = findMatchingBracket(text, arrStart);
       if (arrEnd !== -1) {
         try {
-          scheduledMessages = JSON.parse(initialText.substring(arrStart, arrEnd + 1));
+          scheduledMessages = JSON.parse(text.substring(arrStart, arrEnd + 1));
         } catch {
           console.warn("[backupParser] Failed to parse scheduled_messages array");
         }
@@ -80,42 +99,79 @@ export async function parseBackupSummary(file: File): Promise<BackupSummary> {
     throw new Error("O arquivo não contém campanhas.");
   }
 
-  // Extract media from messages instead of top-level media section
+  // Extract top-level "media" section (outside "data")
+  // The media section is at the same level as "data" and "version"
+  let topLevelMedia: Record<string, string> = {};
+
+  // Find the end of the "data" section to search for "media" after it
+  const dataObjStart = text.indexOf('{', dataMatch.index! + dataMatch[0].length - 1);
+  const dataObjEnd = dataObjStart !== -1 ? findMatchingBracket(text, dataObjStart) : -1;
+
+  if (dataObjEnd !== -1) {
+    // Search for "media" after the data section ends
+    const mediaKeyIdx = text.indexOf('"media"', dataObjEnd);
+    if (mediaKeyIdx !== -1) {
+      const mediaObjStart = text.indexOf('{', mediaKeyIdx);
+      if (mediaObjStart !== -1) {
+        const mediaObjEnd = findMatchingBracket(text, mediaObjStart);
+        if (mediaObjEnd !== -1) {
+          try {
+            topLevelMedia = JSON.parse(text.substring(mediaObjStart, mediaObjEnd + 1));
+          } catch {
+            console.warn("[backupParser] Failed to parse top-level media object");
+          }
+        }
+      }
+    }
+  }
+
+  // Also try searching before "data" in case media comes first
+  if (Object.keys(topLevelMedia).length === 0) {
+    const mediaBeforeData = text.substring(0, dataMatch.index).lastIndexOf('"media"');
+    if (mediaBeforeData !== -1) {
+      const mediaObjStart = text.indexOf('{', mediaBeforeData);
+      if (mediaObjStart !== -1) {
+        const mediaObjEnd = findMatchingBracket(text, mediaObjStart);
+        if (mediaObjEnd !== -1) {
+          try {
+            topLevelMedia = JSON.parse(text.substring(mediaObjStart, mediaObjEnd + 1));
+          } catch {
+            console.warn("[backupParser] Failed to parse top-level media object (before data)");
+          }
+        }
+      }
+    }
+  }
+
+  const mediaKeys = Object.keys(topLevelMedia);
+
+  // Fallback: also extract inline media from messages (backward compat)
   const mediaEntries = extractMediaFromMessages(scheduledMessages);
-  const mediaKeys = mediaEntries.map((e, i) => e.fileName || `media-${i}`);
 
-  console.log(`[backupParser] Found ${campaigns.length} campaigns, ${scheduledMessages.length} messages, ${mediaEntries.length} inline media`);
+  console.log(`[backupParser] Found ${campaigns.length} campaigns, ${scheduledMessages.length} messages, ${mediaKeys.length} top-level media, ${mediaEntries.length} inline media, sourceUrl: ${sourceUrl}`);
 
-  return { version, campaigns, scheduledMessages, mediaKeys, mediaEntries };
+  return { version, sourceUrl, campaigns, scheduledMessages, topLevelMedia, mediaKeys, mediaEntries };
 }
 
 // Known field names that may contain media data URIs
 const MEDIA_FIELDS = ['mediaUrl', 'media_url', 'image', 'imageUrl', 'image_url', 'fileUrl', 'file_url', 'video', 'videoUrl', 'audio', 'audioUrl'];
 
 /**
- * Scan scheduled messages for inline base64 media (data: URIs).
+ * Scan scheduled messages for inline base64 media (data: URIs) — fallback only.
  */
 function extractMediaFromMessages(messages: any[]): MediaEntry[] {
   const entries: MediaEntry[] = [];
-
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (!msg) continue;
-
-    // Check direct fields on the message
     scanObjectForMedia(msg, i, entries);
-
-    // Check nested content object
     if (msg.content && typeof msg.content === 'object') {
       scanObjectForMedia(msg.content, i, entries);
     }
-
-    // Check nested media object
     if (msg.media && typeof msg.media === 'object') {
       scanObjectForMedia(msg.media, i, entries);
     }
   }
-
   return entries;
 }
 

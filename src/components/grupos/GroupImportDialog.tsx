@@ -40,8 +40,10 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
 
   const campaigns = summary.campaigns;
   const messages = summary.scheduledMessages;
-  const mediaEntries = summary.mediaEntries || [];
-  const mediaCount = mediaEntries.length;
+  const topLevelMedia = summary.topLevelMedia || {};
+  const topLevelMediaKeys = Object.keys(topLevelMedia);
+  // Total media = top-level + inline fallback
+  const mediaCount = topLevelMediaKeys.length + (summary.mediaEntries?.length || 0);
 
   const handleImport = async () => {
     setImporting(true);
@@ -85,20 +87,78 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
       let mediaFailed = 0;
       const mediaErrors: string[] = [];
 
-      // ── Step 2: Upload inline media from messages ──
-      if (mediaCount > 0) {
+      // ── Step 2: Upload top-level media ──
+      const urlRemapMap: Record<string, string> = {}; // oldUrl → newUrl
+
+      if (topLevelMediaKeys.length > 0) {
         setStage("media");
-        setProgressLabel("Preparando mídias...");
+        const totalMedia = topLevelMediaKeys.length;
 
-        const mediaUrlMap: Record<string, string> = {};
-
-        for (let idx = 0; idx < mediaEntries.length; idx++) {
-          const entry = mediaEntries[idx];
-          setProgress(Math.round(((idx + 1) / mediaCount) * 100));
-          setProgressLabel(`Enviando mídia ${idx + 1} de ${mediaCount}...`);
+        for (let idx = 0; idx < totalMedia; idx++) {
+          const path = topLevelMediaKeys[idx];
+          const dataUri = topLevelMedia[path];
+          setProgress(Math.round(((idx + 1) / totalMedia) * 100));
+          setProgressLabel(`Enviando mídia ${idx + 1} de ${totalMedia}...`);
 
           try {
-            // Derive extension from data URI mime type
+            // Extract filename from path (e.g. "userId/1234-foto.png" → "1234-foto.png")
+            const fileName = path.split('/').pop() || `media-${idx}`;
+
+            let mediaFile: File;
+            try {
+              mediaFile = dataUriToFile(dataUri, fileName);
+            } catch (parseErr: any) {
+              console.warn(`[import] Parse error for media "${path}":`, parseErr.message);
+              mediaFailed++;
+              if (mediaErrors.length < 5) mediaErrors.push(`${path}: ${parseErr.message}`);
+              continue;
+            }
+
+            console.log(`[import] Uploading media ${idx + 1}/${totalMedia}: ${fileName} (${mediaFile.size} bytes)`);
+
+            const formData = new FormData();
+            formData.append("file", mediaFile);
+            formData.append("workspaceId", workspaceId!);
+            formData.append("userId", user.id);
+            formData.append("path", fileName);
+
+            const mediaResp = await fetch(apiUrl("groups/import-media"), {
+              method: "POST",
+              body: formData,
+            });
+
+            if (mediaResp.ok) {
+              const mediaData = await mediaResp.json();
+              // Build the old URL that messages reference
+              const oldUrl = summary.sourceUrl
+                ? `${summary.sourceUrl}/storage/v1/object/public/media/${path}`
+                : path;
+              urlRemapMap[oldUrl] = mediaData.newUrl;
+              mediaUploaded++;
+              console.log(`[import] Media ${idx + 1} uploaded: ${oldUrl} → ${mediaData.newUrl}`);
+            } else {
+              const errText = await mediaResp.text().catch(() => "");
+              console.warn(`[import] Failed to upload media ${fileName}: ${mediaResp.status} ${errText}`);
+              mediaFailed++;
+              if (mediaErrors.length < 5) mediaErrors.push(`${fileName}: HTTP ${mediaResp.status}`);
+            }
+          } catch (e: any) {
+            console.warn(`[import] Media upload error for "${path}":`, e.message);
+            mediaFailed++;
+            if (mediaErrors.length < 5) mediaErrors.push(`${path}: ${e.message}`);
+          }
+        }
+      }
+
+      // ── Step 2b: Upload inline media fallback (backward compat) ──
+      const inlineEntries = summary.mediaEntries || [];
+      if (inlineEntries.length > 0) {
+        setStage("media");
+        for (let idx = 0; idx < inlineEntries.length; idx++) {
+          const entry = inlineEntries[idx];
+          setProgressLabel(`Enviando mídia inline ${idx + 1} de ${inlineEntries.length}...`);
+
+          try {
             const mimeMatch = entry.dataUri.match(/^data:([^;,]+)/);
             const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
             const extMap: Record<string, string> = {
@@ -109,18 +169,7 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
             const ext = extMap[mime] || entry.fileName.split('.').pop() || 'bin';
             const mediaFileName = `import-msg${entry.messageIndex}-${entry.fieldName}.${ext}`;
 
-            let mediaFile: File;
-            try {
-              mediaFile = dataUriToFile(entry.dataUri, mediaFileName);
-            } catch (parseErr: any) {
-              console.warn(`[import] Parse error for msg ${entry.messageIndex}/${entry.fieldName}:`, parseErr.message);
-              mediaFailed++;
-              if (mediaErrors.length < 5) mediaErrors.push(`msg[${entry.messageIndex}].${entry.fieldName}: ${parseErr.message}`);
-              continue;
-            }
-
-            console.log(`[import] Uploading media ${idx + 1}/${mediaCount}: ${mediaFileName} (${mediaFile.size} bytes)`);
-
+            const mediaFile = dataUriToFile(entry.dataUri, mediaFileName);
             const formData = new FormData();
             formData.append("file", mediaFile);
             formData.append("workspaceId", workspaceId!);
@@ -133,57 +182,35 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
             });
 
             if (mediaResp.ok) {
-              const mediaData = await mediaResp.json();
-              // Map: messageIndex + fieldName -> new URL
-              const mapKey = `${entry.messageIndex}:${entry.fieldName}`;
-              mediaUrlMap[mapKey] = mediaData.newUrl;
               mediaUploaded++;
-              console.log(`[import] Media ${idx + 1} uploaded: ${mediaData.newUrl}`);
             } else {
-              const errText = await mediaResp.text().catch(() => "");
-              console.warn(`[import] Failed to upload media ${mediaFileName}: ${mediaResp.status} ${errText}`);
               mediaFailed++;
-              if (mediaErrors.length < 5) mediaErrors.push(`${mediaFileName}: HTTP ${mediaResp.status} ${errText.substring(0, 100)}`);
             }
-          } catch (e: any) {
-            console.warn(`[import] Media upload error for msg ${entry.messageIndex}:`, e.message);
+          } catch {
             mediaFailed++;
-            if (mediaErrors.length < 5) mediaErrors.push(`msg[${entry.messageIndex}]: ${e.message}`);
           }
         }
+      }
 
-        // ── Step 3: Remap media URLs in messages ──
-        if (Object.keys(mediaUrlMap).length > 0 && messageIds.length > 0) {
-          setStage("remap");
-          setProgressLabel("Atualizando referências de mídia...");
-          setProgress(0);
+      // ── Step 3: Remap media URLs in messages ──
+      if (Object.keys(urlRemapMap).length > 0 && messageIds.length > 0) {
+        setStage("remap");
+        setProgressLabel("Atualizando referências de mídia...");
+        setProgress(0);
 
-          // Build remap payload: for each entry that was uploaded, update the corresponding message
-          const remapEntries: { messageId: string; fieldName: string; newUrl: string }[] = [];
-          for (const [mapKey, newUrl] of Object.entries(mediaUrlMap)) {
-            const [msgIdxStr, fieldName] = mapKey.split(':');
-            const msgIdx = parseInt(msgIdxStr);
-            if (msgIdx < messageIds.length) {
-              remapEntries.push({ messageId: messageIds[msgIdx], fieldName, newUrl });
-            }
-          }
-
-          if (remapEntries.length > 0) {
-            try {
-              console.log(`[import] Remapping ${remapEntries.length} media references`);
-              await fetch(apiUrl("groups/import-remap-media"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  workspaceId,
-                  messageIds,
-                  remapEntries,
-                }),
-              });
-            } catch (e: any) {
-              console.warn("[import] Remap error:", e.message);
-            }
-          }
+        try {
+          console.log(`[import] Remapping ${Object.keys(urlRemapMap).length} media URLs across ${messageIds.length} messages`);
+          await fetch(apiUrl("groups/import-remap-media"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workspaceId,
+              messageIds,
+              urlRemapMap,
+            }),
+          });
+        } catch (e: any) {
+          console.warn("[import] Remap error:", e.message);
         }
       }
 
@@ -258,7 +285,7 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
               </p>
               {mediaCount > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  As mídias embutidas nas mensagens serão enviadas ao servidor automaticamente.
+                  As mídias do backup serão enviadas ao servidor e as referências atualizadas automaticamente.
                 </p>
               )}
             </div>
