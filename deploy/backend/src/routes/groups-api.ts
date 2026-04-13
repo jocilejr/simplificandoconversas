@@ -1091,6 +1091,92 @@ router.get("/smart-link-stats", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── POST /smart-links/sync-all — sync periódico (cron) de member_count e invite_url ─── */
+router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
+  try {
+    const sb = getServiceClient();
+    const { data: smartLinks, error } = await sb.from("group_smart_links").select("*").eq("is_active", true);
+    if (error) throw error;
+    if (!smartLinks || smartLinks.length === 0) return res.json({ synced: 0, message: "No active smart links" });
+
+    const results: any[] = [];
+
+    for (const sl of smartLinks) {
+      const instanceName = (sl as any).instance_name;
+      if (!instanceName) {
+        results.push({ id: sl.id, slug: sl.slug, status: "skipped", reason: "no instance" });
+        continue;
+      }
+
+      try {
+        const { baseUrl, apiKey } = await getEvolutionConfig(sl.workspace_id);
+        const encoded = encodeURIComponent(instanceName);
+        const groupLinks = (sl.group_links as any[]) || [];
+        let synced = 0;
+
+        for (const gl of groupLinks) {
+          try {
+            // Fetch real participant count
+            const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+              headers: { apikey: apiKey },
+              signal: AbortSignal.timeout(5000),
+            });
+            if (infoResp.ok) {
+              const info: any = await infoResp.json();
+              const participants = info?.participants || [];
+              if (Array.isArray(participants) && participants.length > 0) {
+                gl.member_count = participants.length;
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[sync-all] Failed to get info for ${gl.group_jid}:`, e.message);
+          }
+
+          try {
+            // Refresh invite code
+            const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+              headers: { apikey: apiKey },
+              signal: AbortSignal.timeout(5000),
+            });
+            if (r.ok) {
+              const body: any = await r.json();
+              const code = body?.inviteCode || body?.code || body?.invite || "";
+              if (code) {
+                gl.invite_url = `https://chat.whatsapp.com/${code}`;
+                synced++;
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[sync-all] Failed to get invite for ${gl.group_jid}:`, e.message);
+          }
+        }
+
+        await sb.from("group_smart_links").update({
+          group_links: groupLinks,
+          last_successful_sync_at: new Date().toISOString(),
+          last_sync_error: null,
+          last_sync_error_at: null,
+        }).eq("id", sl.id);
+
+        results.push({ id: sl.id, slug: sl.slug, status: "ok", synced });
+      } catch (e: any) {
+        console.error(`[sync-all] Error syncing smart link ${sl.id}:`, e.message);
+        await sb.from("group_smart_links").update({
+          last_sync_error: e.message || "Unknown error",
+          last_sync_error_at: new Date().toISOString(),
+        }).eq("id", sl.id);
+        results.push({ id: sl.id, slug: sl.slug, status: "error", error: e.message });
+      }
+    }
+
+    console.log(`[sync-all] Processed ${results.length} smart links`);
+    res.json({ results });
+  } catch (err: any) {
+    console.error("[sync-all] error:", err?.message);
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { computeNextRunAfterExecution, getEvolutionConfig };
 
