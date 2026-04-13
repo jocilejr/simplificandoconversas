@@ -154,6 +154,11 @@ router.post("/", async (req, res) => {
         };
       }
 
+      // Set 7-day expiration
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + 7);
+      paymentBody.date_of_expiration = expDate.toISOString();
+
       console.log("[member-purchase] Creating MP boleto...");
 
       const mpResp = await fetch(`${MP_API}/v1/payments`, {

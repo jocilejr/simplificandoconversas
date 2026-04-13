@@ -208,8 +208,12 @@ router.post("/create", async (req: Request, res: Response) => {
       },
     };
 
-    // Inject random address for boleto
+    // Inject expiration + random address for boleto
     if (type === "boleto") {
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + 7);
+      paymentBody.date_of_expiration = expDate.toISOString();
+
       try {
         const cep = getRandomCep();
         const addr = await lookupCep(cep);
