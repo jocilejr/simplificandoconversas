@@ -2,53 +2,33 @@
 
 ## Problema
 
-O e-mail e CPF do lead vêm exclusivamente das transações. Ao deletar transações, esses dados somem. A tabela `conversations` já tem campo `email` mas não `document`, e nenhum dos dois é consultado no `useLeads.ts`.
+A máscara `maskPhone` no `GerarBoleto.tsx` usa `slice(0, 11)` para limitar os dígitos. Se o número do usuário tem mais de 11 dígitos (ex: ele digita o número completo com um dígito extra), o último é cortado antes mesmo de enviar.
 
 ## Solução
 
-Persistir email e CPF na tabela `conversations` como **backup** — as fontes primárias de deduplicação continuam sendo **CPF e telefone** (sem usar email como chave de merge).
+Alterar o limite do `slice` e ajustar a regex da máscara para aceitar números de até **11 dígitos** corretamente, garantindo que nenhum dígito seja descartado.
 
-### 1. Migração: adicionar coluna `document` em `conversations` + backfill
+### Arquivo: `src/pages/GerarBoleto.tsx`
 
-```sql
-ALTER TABLE conversations ADD COLUMN IF NOT EXISTS document text;
+Substituir a função `maskPhone` (linhas 14-18):
 
--- Backfill: copiar CPF e email das transações para conversations que ainda não têm
-UPDATE conversations c
-SET
-  email = COALESCE(c.email, sub.customer_email),
-  document = sub.customer_document
-FROM (
-  SELECT DISTINCT ON (t.customer_phone)
-    t.customer_phone, t.customer_email, t.customer_document
-  FROM transactions t
-  WHERE t.customer_document IS NOT NULL
-  ORDER BY t.customer_phone, t.created_at DESC
-) sub
-WHERE c.document IS NULL
-  AND replace(c.remote_jid, '@s.whatsapp.net', '') LIKE '%' || right(replace(sub.customer_phone, '+', ''), 8);
+```typescript
+const maskPhone = (v: string) => {
+  const d = v.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return d.replace(/(\d{2})(\d)/, "($1) $2");
+  if (d.length <= 10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+  return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
+};
 ```
 
-### 2. `src/hooks/useLeads.ts`
+A lógica continua limitando a 11 dígitos (padrão brasileiro), mas as regexes agora capturam todos os grupos corretamente sem perder o último dígito.
 
-- **Query** (linha 72): incluir `email, document` no `.select()`
-- **Construção do lead** (linhas 266-267): usar `c.email` / `c.document` como fallback quando não houver transações:
-  ```
-  customer_email: firstTxWithData?.customer_email || c.email || null,
-  customer_document: cpf || c.document || null,
-  ```
-- **Merge de lead existente** (linhas 216-222): mesmo padrão — preencher do conversation se transação não tiver
+**Se o número real do usuário tinha mais de 11 dígitos** (ex: ele já incluiu o "55" do código do país no campo), a solução seria aumentar o `slice` para 13:
 
-### 3. `src/components/leads/LeadDetailDialog.tsx`
+```typescript
+const d = v.replace(/\D/g, "").slice(0, 13);
+```
 
-- No `saveEdits`, incluir `document` na atualização da tabela `conversations`:
-  ```
-  .update({ contact_name, phone_number, email, document })
-  ```
-
-### Resultado
-
-- Deduplicação continua por **CPF → telefone → últimos 8 dígitos** (sem email)
-- Email e CPF ficam salvos na conversa como backup
-- Deletar transações não apaga mais esses dados do lead
+E ajustar a máscara para lidar com 13 dígitos (55 + DDD + número). Me avise se esse é o caso.
 
