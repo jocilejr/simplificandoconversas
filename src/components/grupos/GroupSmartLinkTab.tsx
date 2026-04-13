@@ -289,13 +289,28 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
         <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
       </Button>
 
-      {/* URL */}
-      <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-        <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
-        <code className="text-sm flex-1 truncate">{publicUrl}</code>
-        <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0">
-          <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
-        </Button>
+      {/* URLs */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+          <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL Pública (redirect)</p>
+            <code className="text-sm truncate block">{publicUrl}</code>
+          </div>
+          <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0">
+            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
+          </Button>
+        </div>
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+          <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL GET (retorna link como texto)</p>
+            <code className="text-sm truncate block">{publicUrl}-get</code>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(`${publicUrl}-get`); toast({ title: "URL GET copiada!" }); }} className="shrink-0">
+            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
+          </Button>
+        </div>
       </div>
 
       {/* Sync error banner */}
