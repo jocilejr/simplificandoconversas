@@ -84,8 +84,8 @@ function FilePreview({ file, baseUrl }: { file: MediaFile; baseUrl: string }) {
 }
 
 export function MediaManagerSection() {
-  const { session } = useAuth();
-  const { currentWorkspace } = useWorkspace();
+  const { user } = useAuth();
+  const { workspaceId } = useWorkspace();
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [totalSizeFormatted, setTotalSizeFormatted] = useState("");
   const [loading, setLoading] = useState(false);
@@ -95,7 +95,6 @@ export function MediaManagerSection() {
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Build base URL for media (same origin on VPS)
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
   const baseUrl = supabaseUrl.includes(".supabase.co") ? "" : supabaseUrl.replace(/\/+$/, "").replace(/\/functions\/v1$/, "");
 
@@ -105,8 +104,8 @@ export function MediaManagerSection() {
     try {
       const resp = await fetch(apiUrl("media-manager/list"), {
         headers: {
-          "x-user-id": session.user.id,
-          "x-workspace-id": currentWorkspace.id,
+          "x-user-id": user.id,
+          "x-workspace-id": workspaceId,
         },
       });
       if (!resp.ok) throw new Error(await resp.text());
@@ -156,7 +155,7 @@ export function MediaManagerSection() {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          "x-user-id": session.user.id,
+          "x-user-id": user.id,
         },
         body: JSON.stringify({ files: Array.from(selected) }),
       });
