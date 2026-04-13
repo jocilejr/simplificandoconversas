@@ -13,6 +13,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Trash2, RefreshCw, FileAudio, FileImage, FileVideo, FileText, File, Loader2,
   Bot, Users, Receipt, Clock, LayoutGrid, ShieldCheck,
 } from "lucide-react";
@@ -103,6 +106,7 @@ export function MediaManagerSection() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
   const baseUrl = supabaseUrl.includes(".supabase.co") ? "" : supabaseUrl.replace(/\/+$/, "").replace(/\/functions\/v1$/, "");
