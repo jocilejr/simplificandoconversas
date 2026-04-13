@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceProvider } from "@/hooks/useWorkspace";
 import { PermissionGate } from "@/components/PermissionGate";
 import Auth from "./pages/Auth";
+import SmartLinkRedirect from "./pages/SmartLinkRedirect";
 import Dashboard from "./pages/Dashboard";
 import Leads from "./pages/Leads";
 import ChatbotBuilder from "./pages/ChatbotBuilder";
@@ -46,6 +47,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/r/g/:slug" element={<SmartLinkRedirect />} />
             <Route path="/r/:code" element={<LinkRedirect />} />
              <Route path="/a/entrega/:phone" element={<MemberAccess />} />
              <Route path="/membros/:phone" element={<MemberAccess />} />
