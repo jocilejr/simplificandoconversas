@@ -1,42 +1,60 @@
 
 
-## Plano: Limpar áudios de conversas WhatsApp após 24h
+## Plano: Gerenciador de arquivos de mídia nas Configurações
 
-### Diagnóstico confirmado
+### Resumo
 
-O `webhook.ts` (linha 68-73) salva **toda mídia recebida** de conversas WhatsApp em `/media-files/{userId}/` — a mesma raiz dos arquivos permanentes. Após a transcrição, o arquivo fica no disco para sempre. Dos 308 áudios, apenas 47 são permanentes (fluxos + campanhas). Os ~261 restantes são de conversas e podem ser deletados após 24h.
+Criar uma nova aba "Arquivos" nas Configurações que lista todos os arquivos de mídia do volume `/media-files/{userId}/`, permitindo visualizar preview, selecionar e deletar arquivos. A aba separa visualmente arquivos permanentes (raiz) de temporários (`tmp/`).
 
-### Solução: duas mudanças
+### Arquivos a criar/alterar
 
-#### 1. `webhook.ts` — Salvar mídia de conversas em subpasta `tmp/`
+#### 1. Backend — Nova rota `deploy/backend/src/routes/media-manager.ts`
 
-Alterar a função `downloadAndUploadMedia` (linha 68) para salvar em `/media-files/{userId}/tmp/` ao invés de `/media-files/{userId}/`:
+API REST para gerenciar arquivos no filesystem:
 
-```typescript
-// ANTES:
-const mediaDir = path.join("/media-files", userId);
+- **`GET /api/media-manager/list`** — Lista todos os arquivos do `userId` com metadata (nome, tamanho, data de criação, path relativo, tipo MIME, se está em `tmp/` ou raiz). Retorna JSON com array de arquivos.
+- **`DELETE /api/media-manager/delete`** — Recebe array de filenames e deleta do filesystem. Aceita `{ files: ["uuid.ogg", "tmp/uuid.mp3"] }`.
+- Autenticação via header `x-user-id` + `x-workspace-id` (mesmo padrão das rotas existentes como `whatsapp-proxy`).
 
-// DEPOIS:
-const mediaDir = path.join("/media-files", userId, "tmp");
+#### 2. Backend — Registrar rota em `deploy/backend/src/index.ts`
+
+Adicionar `import mediaManagerRouter` e `app.use("/api/media-manager", mediaManagerRouter)`.
+
+#### 3. Frontend — Novo componente `src/components/settings/MediaManagerSection.tsx`
+
+- Tabela com colunas: Preview (thumbnail/ícone), Nome, Tipo, Tamanho, Data, Localização (permanente/temporário)
+- Checkbox para seleção múltipla + botão "Deletar selecionados"
+- Preview inline: imagens mostram thumbnail, áudios mostram player, PDFs mostram ícone com link
+- Filtros por tipo (áudio, imagem, vídeo, PDF, todos) e localização (permanente/temporário)
+- Indicador visual de quais arquivos estão referenciados no banco (fluxos/campanhas) com badge "Em uso"
+- Confirmação antes de deletar
+
+#### 4. Frontend — Atualizar `src/pages/SettingsPage.tsx`
+
+Adicionar seção `{ key: "media", label: "Arquivos", icon: HardDrive, minRole: "admin" }` e o case correspondente no `renderContent`.
+
+#### 5. Nginx — Já configurado
+
+A rota `/media/` já serve os arquivos estáticos. O proxy `/functions/v1/` já redireciona para o backend. Nenhuma mudança necessária.
+
+### Fluxo de dados
+
+```text
+Frontend (MediaManagerSection)
+  → GET /functions/v1/media-manager/list
+  → Backend lê /media-files/{userId}/ recursivamente
+  → Retorna lista com metadata
+  
+Frontend (botão deletar)
+  → DELETE /functions/v1/media-manager/delete
+  → Backend remove arquivos do filesystem
+  → Frontend atualiza lista
 ```
 
-A URL na tabela `messages` continuará funcionando por 24h. Após a limpeza, a mídia some mas a transcrição e o texto permanecem no banco.
+### Detalhes técnicos
 
-Arquivos permanentes (uploads via `media-upload` do frontend — fluxos, campanhas, área de membros) continuam salvando na raiz `/media-files/{userId}/`, sem alteração.
-
-#### 2. `sanitize-storage.sh` — Já está correto
-
-O script atualizado já deleta arquivos em `*/tmp/*` com mais de 1 dia. Nenhuma mudança necessária aqui.
-
-### Resultado
-
-- Áudios/imagens/vídeos de conversas WhatsApp → salvos em `tmp/`, deletados automaticamente após 24h
-- Áudios de fluxos, campanhas, membros → continuam na raiz, nunca deletados
-- Economia estimada: ~261 arquivos de áudio + imagens/vídeos de conversas que estavam acumulando
-
-### Arquivos alterados
-
-| Arquivo | Mudança |
-|---|---|
-| `deploy/backend/src/routes/webhook.ts` | Linha 68: `path.join("/media-files", userId)` → `path.join("/media-files", userId, "tmp")` |
+- O backend usa `fs.readdir` recursivo para listar arquivos, ignorando subdiretórios que não sejam `tmp/`
+- Preview de imagens usa a URL pública existente (`/media/{userId}/{filename}`)
+- Para verificar se um arquivo está "em uso", o backend consulta `chatbot_flows.nodes`, `group_scheduled_messages.content` e `boleto_recovery_rules.media_blocks` buscando o filename
+- Arquivos em `tmp/` recebem badge "Temporário" e os da raiz recebem "Permanente"
 
