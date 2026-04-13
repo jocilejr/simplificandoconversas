@@ -1,82 +1,92 @@
 
+Objetivo
 
-## Plano: Suportar importação de backup de 300MB
+Corrigir de verdade a importação de backup grande na aba de Grupos, porque hoje o fluxo ainda quebra com 413 e ainda carrega o arquivo inteiro na memória do navegador.
 
-### Problema
-O arquivo de backup tem 300MB porque inclui mídias em base64 no campo `media`. O frontend tenta carregar tudo na memória com `file.text()` e enviar num único POST, que estoura o limite do Nginx (50MB) e também trava o navegador.
+Problema atual identificado no código
 
-### Solução: Importação em 3 etapas
+- `src/components/grupos/GroupCampaignsTab.tsx` ainda faz `await file.text()` + `JSON.parse(fullText)` para ler o resumo. Isso continua carregando os 300MB no browser.
+- `src/components/grupos/GroupImportDialog.tsx` faz `await file.text()` de novo para ler a seção `media`. Ou seja: segunda leitura inteira do arquivo.
+- `deploy/backend/src/routes/groups-api.ts` em `/import-media` ainda recebe `{ dataUri }` em JSON. Isso continua mandando base64 pelo corpo da requisição.
+- `deploy/backend/src/index.ts` usa `express.json({ limit: "50mb" })`.
+- `deploy/nginx/default.conf.template` também está com `client_max_body_size 50M`.
 
-O frontend lê o JSON via streaming (sem carregar tudo na memória de uma vez), separa dados de mídia, e envia em partes.
+Conclusão: o plano anterior foi só parcialmente aplicado. O gargalo principal continua existindo.
 
-### Mudanças
+Plano de implementação
 
-#### 1. Frontend — `GroupCampaignsTab.tsx`
-- Trocar `file.text()` + `JSON.parse()` por leitura streaming do arquivo
-- Extrair apenas `version`, `data.campaigns`, `data.scheduled_messages` e a lista de chaves de `media` (sem o conteúdo base64) para exibir o resumo no diálogo
-- Passar o `File` original para o diálogo em vez do JSON completo parseado
+1. Criar um parser incremental do backup no frontend
+- Adicionar um helper dedicado para ler o `File` em stream e parsear o JSON por partes.
+- Esse helper vai:
+  - extrair `version`
+  - coletar `data.campaigns`
+  - coletar `data.scheduled_messages`
+  - iterar `media` sem precisar fazer `file.text()`
+- O resumo da importação vai mostrar apenas contagens, sem manter o JSON inteiro no estado do React.
 
-#### 2. Frontend — `GroupImportDialog.tsx`
-Importação em 3 etapas com progresso real:
+2. Corrigir `GroupCampaignsTab.tsx`
+- Remover a leitura completa do arquivo.
+- Trocar por leitura incremental só para validar a estrutura e montar o resumo.
+- Manter apenas o `File` original + resumo leve no estado.
 
-**Etapa 1**: Enviar apenas metadados (campanhas + mensagens, sem mídia) para `POST /groups/import-backup`
-- O backend já funciona sem mídia — simplesmente não terá remapeamento de URLs
+3. Corrigir `GroupImportDialog.tsx`
+- Na etapa 1, enviar somente campanhas + mensagens, sem `media`.
+- Na etapa 2, iterar as mídias do backup uma a uma usando o parser incremental.
+- Converter cada item de mídia para `Blob/File` no navegador.
+- Enviar cada mídia em `FormData`, não mais em JSON com `dataUri`.
+- Na etapa 3, chamar o remapeamento final das URLs nas mensagens.
+- Melhorar a UI de progresso para deixar claro em qual etapa está e quantas mídias faltam.
 
-**Etapa 2**: Para cada mídia do backup, enviar individualmente via `POST /groups/import-media` (FormData com o arquivo binário)
-- Ler o JSON novamente mas só extrair o campo `media`, iterando chave por chave
-- Converter cada data URI para Blob e enviar como FormData
-- Coletar o mapa oldPath→newUrl
+4. Corrigir backend de importação
+- Alterar `/groups/import-media` para receber `multipart/form-data`.
+- Salvar a mídia no bucket `chatbot-media` e retornar `{ oldPath, newUrl }`.
+- Manter `/import-backup` apenas para dados estruturais.
+- Manter `/import-remap-media` para atualizar o `content` das mensagens.
+- Se necessário, fazer o remapeamento em lotes para evitar payload grande quando houver muitas mídias.
 
-**Etapa 3**: Enviar `POST /groups/import-remap-media` com o mapa de URLs para atualizar o conteúdo das mensagens já inseridas
+5. Ajustar a VPS apenas onde faz sentido
+- Não resolver só “aumentando limite”.
+- Subir o limite apenas para a rota de upload de mídia, porque ela vai receber arquivo binário individual.
+- Manter o restante da API mais restrito.
 
-Progresso: barra com porcentagem real (X de Y mídias enviadas)
+Arquivos que vou alterar
 
-#### 3. Backend — `groups-api.ts`
+- `src/components/grupos/GroupCampaignsTab.tsx`
+- `src/components/grupos/GroupImportDialog.tsx`
+- `src/lib/...` novo helper de parser incremental do backup
+- `deploy/backend/src/routes/groups-api.ts`
+- `deploy/backend/package.json`
+- `deploy/nginx/default.conf.template`
 
-**Rota `POST /import-backup`** (modificar):
-- Remover processamento de mídia (campo `media` do body)
-- Manter apenas criação de campanhas + mensagens
-- Retornar também o `campaignIdMap` e lista de `messageIds` inseridos para o remapeamento posterior
+Detalhes técnicos
 
-**Nova rota `POST /import-media`**:
-- Recebe FormData: `file` (binário), `path` (string original), `workspaceId`, `userId`
-- Faz upload ao volume via whatsapp-proxy (media-upload action) ou direto ao filesystem
-- Retorna `{ oldPath, newUrl }`
+- Vou trocar o envio de mídia de JSON/base64 para binário via `FormData`.
+- Vou adicionar um parser streaming no frontend, porque hoje o maior problema é o `file.text()` em dois pontos.
+- O limite de `express.json` pode continuar em 50MB para JSON normal, porque upload de mídia não deve mais passar por esse parser.
+- No Nginx, o ajuste ideal é específico para `/functions/v1/groups/import-media`, não global para tudo.
+- Se existir alguma mídia individual acima do novo limite por requisição, eu também vou deixar tratamento explícito para falha amigável em vez de erro genérico 413.
 
-**Nova rota `POST /import-remap-media`**:
-- Recebe `{ workspaceId, messageIds: string[], mediaUrlMap: Record<string, string> }`
-- Busca cada mensagem pelo ID, faz string replace no `content` JSONB, e atualiza
+Validação na sua VPS
 
-#### 4. Nginx — `default.conf.template`
-- No bloco do API_DOMAIN `/functions/v1/`, já tem `client_max_body_size 50M` herdado do server. Isso é suficiente pois agora cada request individual será pequeno (uma mídia por vez, max ~20MB)
+Quero validar isso pela VPS, não pelo ambiente hospedado. Depois da implementação, a checagem ideal é esta:
 
-### Arquivos
-
-| Arquivo | Ação |
-|---------|------|
-| `deploy/backend/src/routes/groups-api.ts` | Separar import-backup (sem media), nova rota import-media, nova rota import-remap-media |
-| `src/components/grupos/GroupCampaignsTab.tsx` | Leitura streaming do arquivo, passar File ao diálogo |
-| `src/components/grupos/GroupImportDialog.tsx` | Importação em 3 etapas com progresso real |
-
-### Fluxo
-
-```text
-Usuário seleciona arquivo .json (300MB)
-  │
-  ├─ Frontend lê parcialmente → extrai resumo (campanhas, msgs, nº mídias)
-  ├─ Mostra diálogo de confirmação
-  │
-  └─ Usuário clica "Importar"
-      │
-      ├─ Etapa 1: POST /import-backup (só data, ~1MB) → campanhas + msgs criadas
-      │   └─ Retorna messageIds + campaignIdMap
-      │
-      ├─ Etapa 2: Para cada mídia (1 por vez):
-      │   POST /import-media (FormData, ~5MB cada)
-      │   └─ Retorna { oldPath, newUrl }
-      │   └─ Progresso: "Enviando mídia 3 de 47..."
-      │
-      └─ Etapa 3: POST /import-remap-media
-          └─ Atualiza URLs no content das mensagens
+```bash
+docker compose logs -f nginx | grep -Ei "413|too large|client intended to send too large body"
 ```
 
+```bash
+docker compose logs -f backend | grep -Ei "import-backup|import-media|import-remap-media"
+```
+
+```bash
+docker exec -it $(docker ps --filter name=nginx -q | head -n1) nginx -T | grep -n "client_max_body_size"
+```
+
+Critério de sucesso
+
+- selecionar backup de 300MB sem travar o navegador
+- resumo abrir sem ler o arquivo inteiro em memória
+- `import-backup` responder rápido com campanhas + mensagens
+- mídias subirem uma a uma sem 413
+- remapeamento final atualizar os conteúdos corretamente
+- campanhas importadas aparecerem na aba de grupos no final
