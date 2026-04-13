@@ -32,6 +32,7 @@ interface MediaFile {
   inUse: boolean;
   url: string;
   source: FileSource;
+  ownerUserId: string;
 }
 
 const SOURCE_TABS: { key: FileSource | "all"; label: string; icon: React.ReactNode }[] = [
@@ -59,6 +60,11 @@ const CATEGORY_FILTERS = [
   { key: "pdf", label: "PDF" },
   { key: "other", label: "Outro" },
 ];
+
+/** Unique key for a file: ownerUserId + relativePath */
+function fileKey(file: MediaFile): string {
+  return `${file.ownerUserId}::${file.relativePath}`;
+}
 
 function CategoryIcon({ category }: { category: string }) {
   switch (category) {
@@ -135,27 +141,37 @@ export function MediaManagerSection() {
     }),
   [files, sourceTab, categoryFilter]);
 
-  const toggleSelect = (relPath: string) => {
+  const toggleSelect = (key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(relPath)) next.delete(relPath); else next.add(relPath);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
 
   const toggleAll = () => {
     if (selected.size === filtered.length) setSelected(new Set());
-    else setSelected(new Set(filtered.map((f) => f.relativePath)));
+    else setSelected(new Set(filtered.map((f) => fileKey(f))));
   };
 
   const handleDelete = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !workspaceId) return;
     setDeleting(true);
     try {
+      // Build entries with ownerUserId + relativePath
+      const entries = Array.from(selected).map((key) => {
+        const file = files.find((f) => fileKey(f) === key);
+        return file ? { ownerUserId: file.ownerUserId, relativePath: file.relativePath } : null;
+      }).filter(Boolean);
+
       const resp = await fetch(apiUrl("media-manager/delete"), {
         method: "DELETE",
-        headers: { "Content-Type": "application/json", "x-user-id": user.id },
-        body: JSON.stringify({ files: Array.from(selected) }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": user.id,
+          "x-workspace-id": workspaceId,
+        },
+        body: JSON.stringify({ files: entries }),
       });
       if (!resp.ok) throw new Error(await resp.text());
       const result = await resp.json();
@@ -190,8 +206,8 @@ export function MediaManagerSection() {
     }
   };
 
-  const selectedInUseCount = Array.from(selected).filter((p) =>
-    files.find((f) => f.relativePath === p)?.inUse
+  const selectedInUseCount = Array.from(selected).filter((key) =>
+    files.find((f) => fileKey(f) === key)?.inUse
   ).length;
 
   return (
@@ -266,7 +282,7 @@ export function MediaManagerSection() {
           )}
         </div>
 
-        {/* File table — shared across all tab contents */}
+        {/* File table */}
         <div className="mt-3">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -293,10 +309,11 @@ export function MediaManagerSection() {
                 <TableBody>
                   {filtered.map((file) => {
                     const sl = SOURCE_LABELS[file.source];
+                    const fk = fileKey(file);
                     return (
-                      <TableRow key={file.relativePath}>
+                      <TableRow key={fk}>
                         <TableCell>
-                          <Checkbox checked={selected.has(file.relativePath)} onCheckedChange={() => toggleSelect(file.relativePath)} />
+                          <Checkbox checked={selected.has(fk)} onCheckedChange={() => toggleSelect(fk)} />
                         </TableCell>
                         <TableCell>
                           <FilePreview file={file} baseUrl={baseUrl} />
