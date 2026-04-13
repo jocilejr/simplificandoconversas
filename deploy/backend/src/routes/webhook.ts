@@ -64,8 +64,8 @@ async function downloadAndUploadMedia(
       bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    // Salvar no filesystem (volume compartilhado com Nginx)
-    const mediaDir = path.join("/media-files", userId);
+    // Salvar no filesystem — subpasta tmp/ para mídia efêmera de conversas
+    const mediaDir = path.join("/media-files", userId, "tmp");
     await fs.mkdir(mediaDir, { recursive: true });
 
     const localFileName = `${crypto.randomUUID()}.${ext}`;
@@ -74,7 +74,7 @@ async function downloadAndUploadMedia(
 
     // URL pública servida pelo Nginx
     const externalBase = process.env.API_URL || "";
-    return `${externalBase}/media/${userId}/${localFileName}`;
+    return `${externalBase}/media/${userId}/tmp/${localFileName}`;
   } catch (e: any) {
     console.error("Media download/upload error:", e.message);
     return null;
