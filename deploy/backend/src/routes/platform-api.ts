@@ -1133,6 +1133,11 @@ router.post("/generate-payment", async (req, res) => {
           neighborhood: "Sé", city: "São Paulo", federal_unit: "SP",
         };
       }
+
+      // Set 7-day expiration for boleto
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + 7);
+      paymentBody.date_of_expiration = expDate.toISOString();
     }
 
     const mpResp = await fetch(`${MP_API}/v1/payments`, {
