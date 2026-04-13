@@ -1,8 +1,9 @@
-import { UsersRound } from "lucide-react";
+import { UsersRound, Link2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import GroupDashboardTab from "@/components/grupos/GroupDashboardTab";
 import GroupCampaignsTab from "@/components/grupos/GroupCampaignsTab";
 import GroupQueueTab from "@/components/grupos/GroupQueueTab";
+import GroupSmartLinkTab from "@/components/grupos/GroupSmartLinkTab";
 
 const GruposPage = () => (
   <div className="space-y-6">
@@ -23,6 +24,10 @@ const GruposPage = () => (
         <TabsTrigger value="overview">Visão Geral</TabsTrigger>
         <TabsTrigger value="campaigns">Campanhas</TabsTrigger>
         <TabsTrigger value="queue">Fila</TabsTrigger>
+        <TabsTrigger value="smart-link" className="gap-1.5">
+          <Link2 className="h-3.5 w-3.5" />
+          Smart Link
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="mt-4">
@@ -33,6 +38,9 @@ const GruposPage = () => (
       </TabsContent>
       <TabsContent value="queue" className="mt-4">
         <GroupQueueTab />
+      </TabsContent>
+      <TabsContent value="smart-link" className="mt-4">
+        <GroupSmartLinkTab />
       </TabsContent>
     </Tabs>
   </div>

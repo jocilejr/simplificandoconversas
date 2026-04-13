@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Play, Radio, Zap, ZapOff, Users, MessageSquare, CalendarClock, Link2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Play, Radio, Zap, ZapOff, Users, MessageSquare, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import GroupCampaignDialog from "./GroupCampaignDialog";
 import GroupMessagesDialog from "./GroupMessagesDialog";
-import GroupSmartLinkDialog from "./GroupSmartLinkDialog";
+
 import { format } from "date-fns";
 
 export default function GroupCampaignsTab() {
@@ -16,7 +16,7 @@ export default function GroupCampaignsTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editCampaign, setEditCampaign] = useState<any>(null);
   const [messagesCampaign, setMessagesCampaign] = useState<any>(null);
-  const [smartLinkCampaign, setSmartLinkCampaign] = useState<any>(null);
+  
 
   const handleEdit = (c: any) => {
     setEditCampaign(c);
@@ -77,10 +77,6 @@ export default function GroupCampaignsTab() {
                   <div className="flex items-center gap-2 shrink-0">
                     <Switch checked={c.is_active} onCheckedChange={(checked) => updateCampaign.mutate({ id: c.id, isActive: checked })} />
                     <div className="flex gap-1 border-l border-border/50 pl-2 ml-1">
-                      <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 px-2.5" onClick={() => setSmartLinkCampaign(c)}>
-                        <Link2 className="h-3.5 w-3.5" />
-                        Smart Link
-                      </Button>
                       <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 px-2.5" onClick={() => setMessagesCampaign(c)}>
                         <CalendarClock className="h-3.5 w-3.5" />
                         Programação
@@ -114,7 +110,7 @@ export default function GroupCampaignsTab() {
 
       <GroupCampaignDialog open={dialogOpen} onOpenChange={setDialogOpen} editData={editCampaign} />
       <GroupMessagesDialog open={!!messagesCampaign} onOpenChange={(v) => !v && setMessagesCampaign(null)} campaign={messagesCampaign} />
-      <GroupSmartLinkDialog open={!!smartLinkCampaign} onOpenChange={(v) => !v && setSmartLinkCampaign(null)} campaign={smartLinkCampaign} />
+      
     </div>
   );
 }

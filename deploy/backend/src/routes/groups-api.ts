@@ -869,14 +869,16 @@ router.get("/smart-links", async (req: Request, res: Response) => {
 
 router.post("/smart-links", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, userId, campaignId, slug, maxMembersPerGroup } = req.body;
+    const { workspaceId, userId, slug, maxMembersPerGroup, instanceName, groupLinks: inputGroupLinks, campaignId } = req.body;
     if (!workspaceId || !userId || !slug) return res.status(400).json({ error: "Missing fields" });
 
     const sb = getServiceClient();
 
-    // Build group_links from campaign's group_jids + group_selected
-    let groupLinks: any[] = [];
-    if (campaignId) {
+    // Accept groupLinks directly from body (standalone mode)
+    let groupLinks: any[] = inputGroupLinks || [];
+
+    // Fallback: build from campaign if campaignId provided and no groupLinks
+    if (groupLinks.length === 0 && campaignId) {
       const { data: campaign } = await sb.from("group_campaigns").select("group_jids, instance_name").eq("id", campaignId).single();
       if (campaign?.group_jids) {
         for (const jid of campaign.group_jids) {
@@ -896,6 +898,7 @@ router.post("/smart-links", async (req: Request, res: Response) => {
       workspace_id: workspaceId,
       user_id: userId,
       campaign_id: campaignId || null,
+      instance_name: instanceName || null,
       slug,
       max_members_per_group: maxMembersPerGroup || 200,
       group_links: groupLinks,
@@ -944,11 +947,16 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     if (!smartLinkId || !workspaceId) return res.status(400).json({ error: "smartLinkId and workspaceId required" });
 
     const sb = getServiceClient();
-    const { data: sl, error: slErr } = await sb.from("group_smart_links").select("*, group_campaigns(instance_name)").eq("id", smartLinkId).single();
+    const { data: sl, error: slErr } = await sb.from("group_smart_links").select("*").eq("id", smartLinkId).single();
     if (slErr || !sl) return res.status(404).json({ error: "Smart link not found" });
 
-    const instanceName = (sl as any).group_campaigns?.instance_name;
-    if (!instanceName) return res.status(400).json({ error: "No instance linked to campaign" });
+    // Use instance_name from smart link directly, fallback to campaign
+    let instanceName = (sl as any).instance_name;
+    if (!instanceName && (sl as any).campaign_id) {
+      const { data: camp } = await sb.from("group_campaigns").select("instance_name").eq("id", (sl as any).campaign_id).maybeSingle();
+      instanceName = camp?.instance_name;
+    }
+    if (!instanceName) return res.status(400).json({ error: "No instance linked" });
 
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
@@ -972,7 +980,7 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
         console.warn(`[smart-link] Failed to get invite for ${gl.group_jid}:`, e.message);
       }
 
-      // Also update member_count
+      // Also update member_count from group_selected
       try {
         const { data: gs } = await sb.from("group_selected").select("member_count")
           .eq("workspace_id", workspaceId).eq("group_jid", gl.group_jid).maybeSingle();

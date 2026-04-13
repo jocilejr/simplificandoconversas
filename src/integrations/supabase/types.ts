@@ -2092,6 +2092,7 @@ export type Database = {
           current_group_index: number
           group_links: Json
           id: string
+          instance_name: string | null
           is_active: boolean
           max_members_per_group: number
           slug: string
@@ -2105,6 +2106,7 @@ export type Database = {
           current_group_index?: number
           group_links?: Json
           id?: string
+          instance_name?: string | null
           is_active?: boolean
           max_members_per_group?: number
           slug: string
@@ -2118,6 +2120,7 @@ export type Database = {
           current_group_index?: number
           group_links?: Json
           id?: string
+          instance_name?: string | null
           is_active?: boolean
           max_members_per_group?: number
           slug?: string
