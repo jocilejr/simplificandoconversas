@@ -1,34 +1,54 @@
 
 
-## Problema encontrado
+## Problema
 
-A rota `platform-api.ts` (usada por requisições externas/API) **não define `date_of_expiration`** ao criar boletos no Mercado Pago. Diferente de `payment.ts` e `member-purchase.ts` que já têm 7 dias, esta rota envia o boleto sem prazo — e o Mercado Pago aplica o default de 3 dias.
+O e-mail e CPF do lead vêm exclusivamente das transações. Ao deletar transações, esses dados somem. A tabela `conversations` já tem campo `email` mas não `document`, e nenhum dos dois é consultado no `useLeads.ts`.
 
-## Correção
+## Solução
 
-### Arquivo: `deploy/backend/src/routes/platform-api.ts`
+Persistir email e CPF na tabela `conversations` como **backup** — as fontes primárias de deduplicação continuam sendo **CPF e telefone** (sem usar email como chave de merge).
 
-Adicionar a expiração de 7 dias logo após o bloco de endereço (após linha 1136):
+### 1. Migração: adicionar coluna `document` em `conversations` + backfill
 
-```typescript
-if (paymentType === "boleto") {
-  // ... existing address block ...
+```sql
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS document text;
 
-  // Set 7-day expiration
-  const expDate = new Date();
-  expDate.setDate(expDate.getDate() + 7);
-  paymentBody.date_of_expiration = expDate.toISOString();
-}
+-- Backfill: copiar CPF e email das transações para conversations que ainda não têm
+UPDATE conversations c
+SET
+  email = COALESCE(c.email, sub.customer_email),
+  document = sub.customer_document
+FROM (
+  SELECT DISTINCT ON (t.customer_phone)
+    t.customer_phone, t.customer_email, t.customer_document
+  FROM transactions t
+  WHERE t.customer_document IS NOT NULL
+  ORDER BY t.customer_phone, t.created_at DESC
+) sub
+WHERE c.document IS NULL
+  AND replace(c.remote_jid, '@s.whatsapp.net', '') LIKE '%' || right(replace(sub.customer_phone, '+', ''), 8);
 ```
 
-Isso alinha o comportamento com as outras duas rotas que já funcionam corretamente.
+### 2. `src/hooks/useLeads.ts`
 
-## Após o deploy
+- **Query** (linha 72): incluir `email, document` no `.select()`
+- **Construção do lead** (linhas 266-267): usar `c.email` / `c.document` como fallback quando não houver transações:
+  ```
+  customer_email: firstTxWithData?.customer_email || c.email || null,
+  customer_document: cpf || c.document || null,
+  ```
+- **Merge de lead existente** (linhas 216-222): mesmo padrão — preencher do conversation se transação não tiver
 
-Rode na VPS para confirmar:
-```bash
-docker exec -i deploy-backend-1 grep -n "getDate" /app/src/routes/platform-api.ts
-```
+### 3. `src/components/leads/LeadDetailDialog.tsx`
 
-Deve retornar a linha com `+ 7`.
+- No `saveEdits`, incluir `document` na atualização da tabela `conversations`:
+  ```
+  .update({ contact_name, phone_number, email, document })
+  ```
+
+### Resultado
+
+- Deduplicação continua por **CPF → telefone → últimos 8 dígitos** (sem email)
+- Email e CPF ficam salvos na conversa como backup
+- Deletar transações não apaga mais esses dados do lead
 
