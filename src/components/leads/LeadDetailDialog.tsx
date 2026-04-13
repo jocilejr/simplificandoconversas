@@ -137,7 +137,116 @@ function InstanceMessageHistory({ conversationId }: { conversationId: string }) 
 
 export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const { workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", document: "" });
+  const [newTag, setNewTag] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const startEditing = () => {
+    if (!lead) return;
+    setEditForm({
+      name: lead.contact_name || "",
+      phone: lead.phone_number || formatPhone(lead.remote_jid),
+      email: lead.customer_email || "",
+      document: lead.customer_document || "",
+    });
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setNewTag("");
+  };
+
+  const saveEdits = async () => {
+    if (!lead || !workspaceId) return;
+    setSaving(true);
+    try {
+      // Update all conversations for this lead
+      const convIds = lead.instances.map((i) => i.conversation_id);
+      if (convIds.length > 0) {
+        const { error } = await supabase
+          .from("conversations")
+          .update({
+            contact_name: editForm.name || null,
+            phone_number: editForm.phone || null,
+            email: editForm.email || null,
+          })
+          .in("id", convIds);
+        if (error) throw error;
+      }
+
+      // Update customer_document on transactions if changed
+      if (editForm.document !== (lead.customer_document || "")) {
+        const txIds = lead.transactions.map((t) => t.id);
+        if (txIds.length > 0) {
+          const { error } = await supabase
+            .from("transactions" as any)
+            .update({ customer_document: editForm.document || null } as any)
+            .in("id", txIds);
+          if (error) throw error;
+        }
+      }
+
+      // Update customer_email on transactions if changed
+      if (editForm.email !== (lead.customer_email || "")) {
+        const txIds = lead.transactions.map((t) => t.id);
+        if (txIds.length > 0) {
+          const { error } = await supabase
+            .from("transactions" as any)
+            .update({ customer_email: editForm.email || null } as any)
+            .in("id", txIds);
+          if (error) throw error;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["leads-conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-transactions"] });
+      toast.success("Dados atualizados!");
+      setEditing(false);
+    } catch (err: any) {
+      toast.error("Erro ao salvar: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addTag = async () => {
+    if (!lead || !workspaceId || !newTag.trim()) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from("contact_tags").insert({
+      remote_jid: lead.remote_jid,
+      tag_name: newTag.trim(),
+      user_id: user.id,
+      workspace_id: workspaceId,
+    });
+    if (error) {
+      toast.error("Erro ao adicionar tag");
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["leads-tags"] });
+    toast.success("Tag adicionada!");
+    setNewTag("");
+  };
+
+  const removeTag = async (tagName: string) => {
+    if (!lead || !workspaceId) return;
+    const { error } = await supabase
+      .from("contact_tags")
+      .delete()
+      .eq("remote_jid", lead.remote_jid)
+      .eq("tag_name", tagName)
+      .eq("workspace_id", workspaceId);
+    if (error) {
+      toast.error("Erro ao remover tag");
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["leads-tags"] });
+    toast.success("Tag removida!");
+  };
 
   const { data: deliverySettings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
@@ -209,7 +318,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const instances = lead.instances || [];
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); } }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); cancelEditing(); } }}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
         {/* ─── Header fixo ─── */}
         <div className="shrink-0 px-6 pt-6 pb-4 border-b">
@@ -239,26 +348,96 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
         <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 space-y-1">
 
           {/* Dados Pessoais */}
-          <SectionDivider icon={User} title="Dados Pessoais" />
-          <div className="rounded-xl border divide-y overflow-hidden">
-            <InfoRow icon={User} label="Nome" value={lead.contact_name} />
-            <InfoRow icon={Phone} label="Telefone" value={lead.phone_number || formatPhone(lead.remote_jid)} copyable />
-            <InfoRow icon={FileText} label="CPF / Documento" value={lead.customer_document} copyable />
-            <InfoRow icon={Mail} label="Email" value={lead.customer_email} copyable />
-            {lead.tags.length > 0 && (
+          <div className="flex items-center justify-between">
+            <SectionDivider icon={User} title="Dados Pessoais" />
+            {!editing ? (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5" onClick={startEditing}>
+                <Pencil className="h-3 w-3" /> Editar
+              </Button>
+            ) : (
+              <div className="flex gap-1.5">
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={cancelEditing} disabled={saving}>
+                  <X className="h-3 w-3" /> Cancelar
+                </Button>
+                <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEdits} disabled={saving}>
+                  <Save className="h-3 w-3" /> {saving ? "Salvando..." : "Salvar"}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {editing ? (
+            <div className="rounded-xl border divide-y overflow-hidden">
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Nome</p>
+                  <Input className="h-8 text-sm" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="Nome do lead" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Telefone</p>
+                  <Input className="h-8 text-sm font-mono" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="5511999999999" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">CPF / Documento</p>
+                  <Input className="h-8 text-sm font-mono" value={editForm.document} onChange={(e) => setEditForm({ ...editForm, document: e.target.value })} placeholder="000.000.000-00" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Email</p>
+                  <Input className="h-8 text-sm" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} placeholder="email@exemplo.com" />
+                </div>
+              </div>
               <div className="flex items-center gap-3 px-3 py-2.5">
                 <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Tags</p>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 mb-2">
                     {lead.tags.map((t) => (
-                      <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                      <Badge key={t} variant="secondary" className="text-xs gap-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => removeTag(t)}>
+                        {t} <X className="h-2.5 w-2.5" />
+                      </Badge>
                     ))}
+                    {lead.tags.length === 0 && <span className="text-xs text-muted-foreground italic">Nenhuma tag</span>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Input className="h-7 text-xs flex-1" value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Nova tag..." onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} />
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={addTag} disabled={!newTag.trim()}>
+                      <Plus className="h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border divide-y overflow-hidden">
+              <InfoRow icon={User} label="Nome" value={lead.contact_name} />
+              <InfoRow icon={Phone} label="Telefone" value={lead.phone_number || formatPhone(lead.remote_jid)} copyable />
+              <InfoRow icon={FileText} label="CPF / Documento" value={lead.customer_document} copyable />
+              <InfoRow icon={Mail} label="Email" value={lead.customer_email} copyable />
+              {lead.tags.length > 0 && (
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Tags</p>
+                    <div className="flex flex-wrap gap-1">
+                      {lead.tags.map((t) => (
+                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Produtos Liberados */}
           <div className="pt-3">
