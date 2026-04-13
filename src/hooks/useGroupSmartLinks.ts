@@ -115,24 +115,25 @@ export function useGroupSmartLinks() {
     },
   });
 
-  const { data: stats } = useQuery({
-    queryKey: ["group-smart-link-stats", smartLinks?.[0]?.id],
-    enabled: !!smartLinks?.[0]?.id,
-    queryFn: async () => {
-      const resp = await fetch(apiUrl(`groups/smart-link-stats?smartLinkId=${smartLinks[0].id}`));
-      if (!resp.ok) throw new Error(await resp.text());
-      return resp.json();
-    },
-  });
-
   return {
     smartLinks,
-    smartLink: smartLinks[0] || null,
     isLoading,
-    stats,
     createSmartLink,
     updateSmartLink,
     deleteSmartLink,
     syncInviteLinks,
   };
+}
+
+export function useSmartLinkStats(smartLinkId: string | null) {
+  const { data: stats } = useQuery({
+    queryKey: ["group-smart-link-stats", smartLinkId],
+    enabled: !!smartLinkId,
+    queryFn: async () => {
+      const resp = await fetch(apiUrl(`groups/smart-link-stats?smartLinkId=${smartLinkId}`));
+      if (!resp.ok) throw new Error(await resp.text());
+      return resp.json();
+    },
+  });
+  return stats;
 }
