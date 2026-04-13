@@ -1035,21 +1035,20 @@ router.get("/smart-link-redirect", async (req: Request, res: Response) => {
       chosen = withUrl[currentIndex % withUrl.length];
 
       // Increment index for next access (fire-and-forget)
-      sb.from("group_smart_links")
+      Promise.resolve(sb.from("group_smart_links")
         .update({ current_group_index: (currentIndex + 1) % withUrl.length })
-        .eq("id", sl.id)
-        .then(() => {})
+        .eq("id", sl.id))
         .catch((e: any) => console.warn("[smart-link] Failed to update index:", e.message));
 
       console.log(`[smart-link] Fallback round-robin: slug=${slug} index=${currentIndex} → ${chosen.group_name}`);
     }
 
     // Record click (fire-and-forget)
-    sb.from("group_smart_link_clicks").insert({
+    Promise.resolve(sb.from("group_smart_link_clicks").insert({
       smart_link_id: sl.id,
       group_jid: chosen.group_jid,
       redirected_to: chosen.invite_url,
-    }).then(() => {}).catch((e: any) => console.warn("[smart-link] Failed to record click:", e.message));
+    })).catch((e: any) => console.warn("[smart-link] Failed to record click:", e.message));
 
     if (getText) {
       return res.type("text/plain").send(chosen.invite_url);
