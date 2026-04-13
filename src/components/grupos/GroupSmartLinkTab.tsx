@@ -47,23 +47,18 @@ export default function GroupSmartLinkTab() {
     );
   }
 
-  // ─── List view ───
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-sm">Smart Links</h3>
-          <p className="text-xs text-muted-foreground">Links inteligentes que distribuem leads entre grupos WhatsApp</p>
-        </div>
+      <div className="flex justify-end">
         <Button size="sm" onClick={() => setView("create")}>
           <Plus className="h-4 w-4 mr-1" /> Novo Smart Link
         </Button>
       </div>
 
       {smartLinks.length === 0 ? (
-        <Card>
+        <Card className="border-border/50">
           <CardContent className="p-8 text-center">
-            <Link2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <Link2 className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Nenhum Smart Link criado ainda.</p>
             <Button size="sm" className="mt-3" onClick={() => setView("create")}>
               <Plus className="h-4 w-4 mr-1" /> Criar primeiro Smart Link
@@ -81,11 +76,10 @@ export default function GroupSmartLinkTab() {
   );
 }
 
-// ─── Card Component ───
 function SmartLinkCard({ smartLink, onClick }: { smartLink: SmartLink; onClick: () => void }) {
   const stats = useSmartLinkStats(smartLink.id);
   return (
-    <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={onClick}>
+    <Card className="cursor-pointer hover:border-primary/40 border-border/50 transition-colors" onClick={onClick}>
       <CardContent className="p-4 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -101,14 +95,13 @@ function SmartLinkCard({ smartLink, onClick }: { smartLink: SmartLink; onClick: 
           <span className="flex items-center gap-1"><MousePointerClick className="h-3.5 w-3.5" /> {stats?.totalClicks || 0} cliques</span>
         </div>
         {smartLink.instance_name && (
-          <Badge variant="outline" className="text-xs">{smartLink.instance_name}</Badge>
+          <Badge variant="outline" className="text-xs border-border/50">{smartLink.instance_name}</Badge>
         )}
       </CardContent>
     </Card>
   );
 }
 
-// ─── Create Form ───
 function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void; onCreated: () => void; createSmartLink: any }) {
   const { toast } = useToast();
   const { workspaceId } = useWorkspace();
@@ -160,85 +153,85 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-4 max-w-2xl">
       <Button variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
       </Button>
-      <Card>
-        <CardContent className="p-6 space-y-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Link2 className="h-5 w-5 text-primary" />
-            <h3 className="font-semibold text-sm">Criar Smart Link</h3>
+      <Card className="border-border/50">
+        <CardContent className="p-0">
+          <div className="px-5 py-3 border-b border-border/50 flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-primary" />
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Criar Smart Link</p>
           </div>
-
-          <div className="space-y-1.5">
-            <Label>1. Selecione a instância</Label>
-            <div className="flex gap-2">
-              <Select value={instanceName} onValueChange={setInstanceName}>
-                <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {instances.map((inst: any) => (
-                    <SelectItem key={inst.instance_name} value={inst.instance_name}>{inst.instance_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" onClick={handleFetchGroups} disabled={!instanceName || fetching}>
-                <Search className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} /> Buscar Grupos
-              </Button>
-            </div>
-          </div>
-
-          {fetchedGroups.length > 0 && (
+          <div className="p-5 space-y-5">
             <div className="space-y-1.5">
-              <Label>2. Selecione os grupos ({selectedJids.size} selecionados)</Label>
-              <div className="rounded-md border max-h-60 overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10"></TableHead>
-                      <TableHead>Grupo</TableHead>
-                      <TableHead className="text-center w-24">Membros</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fetchedGroups.map(g => (
-                      <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleGroup(g.jid)}>
-                        <TableCell><Checkbox checked={selectedJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} /></TableCell>
-                        <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
-                        <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
-                      </TableRow>
+              <Label className="text-xs">Selecione a instância</Label>
+              <div className="flex gap-2">
+                <Select value={instanceName} onValueChange={setInstanceName}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {instances.map((inst: any) => (
+                      <SelectItem key={inst.instance_name} value={inst.instance_name}>{inst.instance_name}</SelectItem>
                     ))}
-                  </TableBody>
-                </Table>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={handleFetchGroups} disabled={!instanceName || fetching} className="border-border/50">
+                  <Search className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} /> Buscar Grupos
+                </Button>
               </div>
             </div>
-          )}
 
-          {selectedJids.size > 0 && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>3. Slug do link</Label>
-                  <Input value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="meu-grupo" />
-                  <p className="text-xs text-muted-foreground">{window.location.origin}/r/g/{slug || "..."}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Máx. membros/grupo</Label>
-                  <Input type="number" value={maxMembers} onChange={e => setMaxMembers(Number(e.target.value))} min={1} />
+            {fetchedGroups.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">{selectedJids.size} grupo(s) selecionado(s)</Label>
+                <div className="rounded-md border border-border/50 max-h-60 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10"></TableHead>
+                        <TableHead>Grupo</TableHead>
+                        <TableHead className="text-center w-24">Membros</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fetchedGroups.map(g => (
+                        <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleGroup(g.jid)}>
+                          <TableCell><Checkbox checked={selectedJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} /></TableCell>
+                          <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
+                          <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
-              <Button onClick={handleCreate} disabled={createSmartLink.isPending} className="w-full">
-                <Plus className="h-4 w-4 mr-1" /> Criar Smart Link
-              </Button>
-            </>
-          )}
+            )}
+
+            {selectedJids.size > 0 && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Slug do link</Label>
+                    <Input value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="meu-grupo" />
+                    <p className="text-xs text-muted-foreground">{window.location.origin}/r/g/{slug || "..."}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Máx. membros/grupo</Label>
+                    <Input type="number" value={maxMembers} onChange={e => setMaxMembers(Number(e.target.value))} min={1} />
+                  </div>
+                </div>
+                <Button onClick={handleCreate} disabled={createSmartLink.isPending} className="w-full">
+                  <Plus className="h-4 w-4 mr-1" /> Criar Smart Link
+                </Button>
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-// ─── Detail View ───
 function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, syncInviteLinks, onDeleted }: {
   smartLink: SmartLink;
   onBack: () => void;
@@ -267,9 +260,9 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
   const byGroup: Record<string, number> = stats?.byGroup || {};
   const publicUrl = `${window.location.origin}/r/g/${smartLink.slug}`;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(publicUrl);
-    toast({ title: "URL copiada!" });
+  const handleCopy = (url: string, label: string) => {
+    navigator.clipboard.writeText(url);
+    toast({ title: `${label} copiada!` });
   };
 
   const startEdit = () => {
@@ -290,35 +283,37 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
       </Button>
 
       {/* URLs */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-          <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL Pública (redirect)</p>
-            <code className="text-sm truncate block">{publicUrl}</code>
+      <Card className="border-border/50">
+        <CardContent className="p-0 divide-y divide-border/30">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Link2 className="h-4 w-4 text-primary shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL Pública (redirect)</p>
+              <code className="text-sm truncate block">{publicUrl}</code>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => handleCopy(publicUrl, "URL")} className="shrink-0 border-border/50">
+              <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
+            </Button>
           </div>
-          <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0">
-            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
-          </Button>
-        </div>
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-          <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL GET (retorna link como texto)</p>
-            <code className="text-sm truncate block">{publicUrl}-get</code>
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL GET (retorna link como texto)</p>
+              <code className="text-sm truncate block">{publicUrl}-get</code>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => handleCopy(`${publicUrl}-get`, "URL GET")} className="shrink-0 border-border/50">
+              <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
+            </Button>
           </div>
-          <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(`${publicUrl}-get`); toast({ title: "URL GET copiada!" }); }} className="shrink-0">
-            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
-          </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Sync error banner */}
+      {/* Sync error */}
       {(smartLink as any).last_sync_error && (
         <Alert className="border-yellow-500/50 bg-yellow-500/10">
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="text-sm">
-            Problema na sincronização com a instância. O sistema está distribuindo links em rodízio.
+            Problema na sincronização. O sistema está distribuindo links em rodízio.
             {(smartLink as any).last_sync_error_at && (
               <span className="text-xs text-muted-foreground ml-1">
                 (último erro: {new Date((smartLink as any).last_sync_error_at).toLocaleString("pt-BR")})
@@ -327,87 +322,99 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <MousePointerClick className="h-5 w-5 text-primary" />
-          <div><p className="text-lg font-bold">{totalClicks}</p><p className="text-xs text-muted-foreground">Cliques totais</p></div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <Users className="h-5 w-5 text-primary" />
-          <div><p className="text-lg font-bold">{groupLinks.length}</p><p className="text-xs text-muted-foreground">Grupos vinculados</p></div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <Badge variant="outline" className="text-xs">{smartLink.instance_name || "—"}</Badge>
-          <div><p className="text-xs text-muted-foreground">Instância</p></div>
-        </CardContent></Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3 flex items-center gap-3">
+            <MousePointerClick className="h-5 w-5 text-primary" />
+            <div><p className="text-lg font-bold">{totalClicks}</p><p className="text-xs text-muted-foreground">Cliques totais</p></div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3 flex items-center gap-3">
+            <Users className="h-5 w-5 text-primary" />
+            <div><p className="text-lg font-bold">{groupLinks.length}</p><p className="text-xs text-muted-foreground">Grupos vinculados</p></div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3 flex items-center gap-3">
+            <Badge variant="outline" className="text-xs border-border/50">{smartLink.instance_name || "—"}</Badge>
+            <div><p className="text-xs text-muted-foreground">Instância</p></div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Edit */}
       {editing && (
-        <Card><CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Slug</Label>
-              <Input value={editSlug} onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} />
+        <Card className="border-border/50">
+          <CardContent className="p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Slug</Label>
+                <Input value={editSlug} onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Máx. membros/grupo</Label>
+                <Input type="number" value={editMaxMembers} onChange={e => setEditMaxMembers(Number(e.target.value))} min={1} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Máx. membros/grupo</Label>
-              <Input type="number" value={editMaxMembers} onChange={e => setEditMaxMembers(Number(e.target.value))} min={1} />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSaveEdit} disabled={updateSmartLink.isPending}>Salvar</Button>
+              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleSaveEdit} disabled={updateSmartLink.isPending}>Salvar</Button>
-            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
-          </div>
-        </CardContent></Card>
+          </CardContent>
+        </Card>
       )}
 
       {/* Groups Table */}
       {groupLinks.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Grupos</Label>
-            <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending} className="text-xs">
-              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncInviteLinks.isPending ? "animate-spin" : ""}`} /> Sincronizar URLs
-            </Button>
-          </div>
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Grupo</TableHead>
-                  <TableHead className="text-center w-24">Membros</TableHead>
-                  <TableHead className="text-center w-20">Cliques</TableHead>
-                  <TableHead className="text-center w-16">URL</TableHead>
-                  <TableHead className="text-center w-20">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groupLinks.map(gl => {
-                  const isFull = (gl.member_count || 0) >= maxMembersLimit;
-                  const isActive = gl.group_jid === activeGroupJid;
-                  return (
-                    <TableRow key={gl.group_jid} className={isActive ? "bg-primary/5" : ""}>
-                      <TableCell className="text-sm truncate max-w-[200px]">{gl.group_name || gl.group_jid}</TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
-                      </TableCell>
-                      <TableCell className="text-center text-sm">{byGroup[gl.group_jid] || 0}</TableCell>
-                      <TableCell className="text-center">
-                        {gl.invite_url ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : <XCircle className="h-4 w-4 text-muted-foreground mx-auto" />}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">► Ativo</Badge>
-                          : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
-                          : <span className="text-xs text-muted-foreground">Espera</span>}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
+        <Card className="border-border/50">
+          <CardContent className="p-0">
+            <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos</p>
+              <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending} className="text-xs border-border/50 h-7">
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncInviteLinks.isPending ? "animate-spin" : ""}`} /> Sincronizar
+              </Button>
+            </div>
+            <div className="overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Grupo</TableHead>
+                    <TableHead className="text-center w-24">Membros</TableHead>
+                    <TableHead className="text-center w-20">Cliques</TableHead>
+                    <TableHead className="text-center w-16">URL</TableHead>
+                    <TableHead className="text-center w-20">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {groupLinks.map(gl => {
+                    const isFull = (gl.member_count || 0) >= maxMembersLimit;
+                    const isActive = gl.group_jid === activeGroupJid;
+                    return (
+                      <TableRow key={gl.group_jid} className={isActive ? "bg-primary/5" : ""}>
+                        <TableCell className="text-sm truncate max-w-[200px]">{gl.group_name || gl.group_jid}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
+                        </TableCell>
+                        <TableCell className="text-center text-sm">{byGroup[gl.group_jid] || 0}</TableCell>
+                        <TableCell className="text-center">
+                          {gl.invite_url ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : <XCircle className="h-4 w-4 text-muted-foreground mx-auto" />}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Ativo</Badge>
+                            : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
+                            : <span className="text-xs text-muted-foreground">Espera</span>}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Actions */}
@@ -432,7 +439,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        {!editing && <Button variant="outline" size="sm" onClick={startEdit}>Editar configuração</Button>}
+        {!editing && <Button variant="outline" size="sm" className="border-border/50" onClick={startEdit}>Editar configuração</Button>}
       </div>
     </div>
   );

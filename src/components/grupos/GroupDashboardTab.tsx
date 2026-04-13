@@ -1,7 +1,6 @@
 import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, ShieldCheck, ShieldMinus } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { StatCard } from "@/components/transactions/StatCard";
 import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
@@ -26,32 +25,31 @@ export default function GroupDashboardTab() {
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Grupos Monitorados" value={String(selectedGroups.length)} icon={UsersRound} iconColor="text-blue-500" />
-        <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-green-500" />
-        <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-purple-500" />
+        <StatCard title="Grupos Monitorados" value={String(selectedGroups.length)} icon={UsersRound} iconColor="text-primary" />
+        <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
+        <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Grupos Monitorados</CardTitle>
-          </CardHeader>
-          <Separator />
-          <CardContent className="pt-3">
+        <Card className="border-border/50">
+          <CardContent className="p-0">
+            <div className="px-4 py-3 border-b border-border/50">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos Monitorados</p>
+            </div>
             {selectedGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum grupo adicionado.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">Nenhum grupo adicionado.</p>
             ) : (
-              <div className="space-y-1 max-h-[320px] overflow-y-auto">
+              <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {selectedGroups.map((g) => (
-                  <div key={g.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/30 transition-colors">
+                  <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{g.group_name}</p>
                       <p className="text-xs text-muted-foreground">{g.instance_name}</p>
                     </div>
-                    <Badge variant="outline" className="shrink-0 text-xs">{g.member_count}</Badge>
+                    <Badge variant="outline" className="shrink-0 text-xs border-border/50">{g.member_count}</Badge>
                   </div>
                 ))}
               </div>
@@ -59,21 +57,20 @@ export default function GroupDashboardTab() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Eventos Recentes</CardTitle>
-          </CardHeader>
-          <Separator />
-          <CardContent className="pt-3">
+        <Card className="border-border/50">
+          <CardContent className="p-0">
+            <div className="px-4 py-3 border-b border-border/50">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Eventos Recentes</p>
+            </div>
             {events.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum evento registrado.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">Nenhum evento registrado.</p>
             ) : (
-              <div className="space-y-1 max-h-[320px] overflow-y-auto">
+              <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {events.slice(0, 20).map((e: any) => {
                   const cfg = actionConfig[e.action] || actionConfig.add;
                   const Icon = cfg.icon;
                   return (
-                    <div key={e.id} className="flex items-center gap-2.5 p-2 rounded-md hover:bg-muted/30 transition-colors">
+                    <div key={e.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/20 transition-colors">
                       <div className={`p-1.5 rounded-md shrink-0 ${cfg.color}`}>
                         <Icon className="h-3.5 w-3.5" />
                       </div>
