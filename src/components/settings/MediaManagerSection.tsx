@@ -174,6 +174,29 @@ export function MediaManagerSection() {
     }
   };
 
+  const handleCleanup = async () => {
+    if (!user?.id || !workspaceId) return;
+    setCleaning(true);
+    try {
+      const resp = await fetch(apiUrl("media-manager/cleanup"), {
+        method: "DELETE",
+        headers: {
+          "x-user-id": user.id,
+          "x-workspace-id": workspaceId,
+        },
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const result = await resp.json();
+      toast.success(`${result.deleted} arquivo(s) removido(s) • ${result.freedFormatted} liberado(s)`);
+      fetchFiles();
+    } catch (err: any) {
+      toast.error("Erro ao limpar: " + err.message);
+    } finally {
+      setCleaning(false);
+      setCleanupConfirmOpen(false);
+    }
+  };
+
   const selectedInUseCount = Array.from(selected).filter((p) =>
     files.find((f) => f.relativePath === p)?.inUse
   ).length;
@@ -347,6 +370,26 @@ export function MediaManagerSection() {
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
               {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Deletar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cleanup confirm dialog */}
+      <AlertDialog open={cleanupConfirmOpen} onOpenChange={setCleanupConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Limpar temporários</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso vai remover todos os arquivos <strong>não referenciados</strong> em fluxos, regras ou produtos que tenham mais de 24h.
+              <span className="block mt-1">Esta ação não pode ser desfeita.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCleanup} className="bg-destructive text-destructive-foreground">
+              {cleaning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Limpar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
