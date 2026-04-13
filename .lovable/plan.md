@@ -1,95 +1,74 @@
 
 
-## Plano: Smart Link + Melhorias no Módulo de Grupos
+## Plano: Smart Link como Subsecção Independente
 
-### Conceito do Smart Link
+### Conceito
 
-Inspirado no repositório `whats-grupos`, o **Smart Link** é um rotacionador inteligente de grupos WhatsApp. Você cria uma URL única (ex: `seudominio.com/r/meu-link`) e o sistema redireciona automaticamente para o grupo com menos membros, respeitando um limite máximo por grupo. Quando um grupo lota, o link direciona para o próximo.
+O Smart Link deixa de estar atrelado a campanhas e passa a ser uma **aba própria** dentro da página de Grupos. O fluxo será:
 
-A implementação será **nova e adaptada** ao seu sistema existente (workspace, Evolution API via VPS backend, tabelas `group_campaigns`/`group_selected`).
+1. Selecionar a instância WhatsApp
+2. Selecionar os grupos desejados (similar ao GroupSelectorTab)
+3. Definir slug e limite de membros
+4. Ao salvar, o sistema sincroniza automaticamente os invite codes e mostra em tempo real: membros atuais de cada grupo, qual grupo está recebendo leads, e cliques totais
 
-### Diferenças da implementação original
+### Mudanças
 
-| Original (whats-grupos) | Nossa implementação |
-|---|---|
-| Supabase direto (sem VPS) | Backend Express na VPS |
-| Tabela `campaign_smart_links` separada | Tabela `group_smart_links` vinculada a campanhas |
-| Edge function `smart-link-redirect` | Rota Express `/groups/smart-link-redirect` |
-| Busca `invite_url` via Baileys | Busca via Evolution API `inviteCode` |
-| Sem workspace | Multi-workspace com RLS |
+#### 1. Página de Grupos — nova aba "Smart Link"
+**`src/pages/GruposPage.tsx`** — Adicionar aba `smart-link` com ícone Link2.
 
----
+#### 2. Novo componente `GroupSmartLinkTab.tsx`
+**`src/components/grupos/GroupSmartLinkTab.tsx`** — Componente completo com:
 
-### 1. Migração de banco — nova tabela `group_smart_links`
+- **Se não tem smart link criado**: formulário de criação
+  - Select de instância (reutiliza `useWhatsAppInstances`)
+  - Botão "Buscar Grupos" → lista grupos com checkbox (reutiliza lógica do GroupSelectorTab)
+  - Campo slug + campo max membros/grupo
+  - Botão "Criar Smart Link"
 
+- **Se já tem smart link**: dashboard ao vivo
+  - URL pública com botão copiar
+  - Cards de estatísticas: cliques totais, grupos vinculados
+  - **Tabela de grupos** mostrando em cada linha:
+    - Nome do grupo
+    - Membros atuais (com badge vermelho se lotado)
+    - Invite URL (check/x)
+    - Cliques recebidos
+    - Indicador visual "► Ativo" no grupo que está recebendo leads (o com menos membros abaixo do limite)
+  - Botões: Sincronizar URLs, Editar (slug/limite), Excluir
+
+#### 3. Refatorar hook `useGroupSmartLinks.ts`
+**`src/hooks/useGroupSmartLinks.ts`** — Remover dependência de `campaignId`:
+- Query busca por `workspaceId` apenas (sem filtro de campanha)
+- `createSmartLink` aceita `groupJids` + `instanceName` direto (sem campaignId)
+- Manter CRUD, sync e stats
+
+#### 4. Backend — desacoplar de campanha
+**`deploy/backend/src/routes/groups-api.ts`**:
+- `POST /smart-links`: aceitar `groupJids` e `instanceName` direto no body (sem depender de campaignId)
+- `POST /smart-links/sync-invite`: usar `instanceName` salvo no smart link (sem buscar via campaign)
+- Adicionar campo `instance_name` no insert/update do smart link
+- Redirect e stats permanecem iguais
+
+#### 5. Migração SQL
+Adicionar coluna `instance_name` à tabela `group_smart_links`:
 ```sql
-CREATE TABLE public.group_smart_links (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  user_id uuid NOT NULL,
-  campaign_id uuid REFERENCES public.group_campaigns(id) ON DELETE CASCADE,
-  slug text NOT NULL,
-  max_members_per_group int NOT NULL DEFAULT 200,
-  group_links jsonb NOT NULL DEFAULT '[]',
-  current_group_id text,
-  is_active boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(workspace_id, slug)
-);
-
-CREATE TABLE public.group_smart_link_clicks (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  smart_link_id uuid NOT NULL REFERENCES public.group_smart_links(id) ON DELETE CASCADE,
-  group_id text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+ALTER TABLE group_smart_links ADD COLUMN IF NOT EXISTS instance_name text;
+ALTER TABLE group_smart_links ALTER COLUMN campaign_id DROP NOT NULL;
 ```
 
-RLS para ambas seguindo o padrão `is_workspace_member` / `can_write_workspace`.
-
-### 2. Backend — novas rotas em `deploy/backend/src/routes/groups-api.ts`
-
-- **`GET /groups/smart-link-redirect?slug=xxx`** — rota pública (sem auth), resolve o slug, busca `member_count` dos grupos via `group_selected`, aplica lógica de rotação (grupo com menos membros abaixo do limite), registra clique, retorna `{ redirect_url }`.
-- **`POST /groups/smart-links`** — cria smart link para uma campanha.
-- **`PUT /groups/smart-links/:id`** — atualiza slug, max_members, group_links.
-- **`GET /groups/smart-links?campaignId=xxx`** — busca smart link de uma campanha.
-- **`DELETE /groups/smart-links/:id`** — remove smart link.
-- **`POST /groups/sync-invite-links`** — busca invite code de cada grupo via Evolution API (`/group/inviteCode/{instance}?groupJid=xxx`), atualiza `group_links[].invite_url`.
-- **`GET /groups/smart-link-stats?smartLinkId=xxx`** — cliques e entradas por grupo.
-
-### 3. Frontend — novo componente `GroupSmartLinkDialog.tsx`
-
-Dialog acessível via botão "Smart Link" no card de campanha (ao lado de "Programação"). Contém:
-
-- **Configuração**: campo slug, limite max_members_per_group
-- **URL pública**: preview + botão copiar (`seudominio.com/r/{slug}`)
-- **Tabela de grupos**: nome, membros atuais, invite URL (com status), cliques, entradas
-- **Botão "Sincronizar URLs"**: busca invite codes via Evolution API para cada grupo da campanha
-- **Cards de resumo**: total de cliques, total de entradas
-
-### 4. Frontend — página de redirect `SmartLinkRedirect.tsx`
-
-Página pública (sem login) em `/r/:slug`:
-- Chama `GET /groups/smart-link-redirect?slug=xxx`
-- Se sucesso: redireciona para a URL de convite do grupo
-- Se erro: mostra mensagem amigável
-- Suporta modo `-get` (slug termina com `-get`) que retorna a URL em texto plano
-
-### 5. Integração na rota e no card de campanha
-
-- Adicionar rota `/r/:slug` no `App.tsx`
-- Adicionar botão "Smart Link" no `GroupCampaignsTab.tsx` (ícone Link, ao lado de Programação)
+#### 6. Remover integração antiga
+- **`src/components/grupos/GroupCampaignsTab.tsx`**: Remover botão "Smart Link" dos cards de campanha
+- **`src/components/grupos/GroupSmartLinkDialog.tsx`**: Deletar (substituído pelo Tab)
 
 ### Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| Migração SQL (2 tabelas + RLS) | Criar |
-| `deploy/backend/src/routes/groups-api.ts` | Alterar (adicionar rotas smart link) |
-| `src/components/grupos/GroupSmartLinkDialog.tsx` | Criar |
-| `src/hooks/useGroupSmartLinks.ts` | Criar |
-| `src/pages/SmartLinkRedirect.tsx` | Criar |
-| `src/components/grupos/GroupCampaignsTab.tsx` | Alterar (botão Smart Link) |
-| `src/App.tsx` | Alterar (rota `/r/:slug`) |
+| Migração SQL (add `instance_name`) | Criar |
+| `src/components/grupos/GroupSmartLinkTab.tsx` | Criar |
+| `src/pages/GruposPage.tsx` | Alterar (nova aba) |
+| `src/hooks/useGroupSmartLinks.ts` | Refatorar |
+| `deploy/backend/src/routes/groups-api.ts` | Alterar (desacoplar) |
+| `src/components/grupos/GroupCampaignsTab.tsx` | Alterar (remover botão) |
+| `src/components/grupos/GroupSmartLinkDialog.tsx` | Deletar |
 
