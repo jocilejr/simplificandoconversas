@@ -17,6 +17,9 @@ export interface SmartLink {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  last_sync_error: string | null;
+  last_sync_error_at: string | null;
+  last_successful_sync_at: string | null;
 }
 
 export interface GroupLink {

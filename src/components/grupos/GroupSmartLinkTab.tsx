@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
-import { Link2, Copy, RefreshCw, Users, MousePointerClick, CheckCircle2, XCircle, Trash2, Search, Plus, ArrowLeft } from "lucide-react";
+import { Link2, Copy, RefreshCw, Users, MousePointerClick, CheckCircle2, XCircle, Trash2, Search, Plus, ArrowLeft, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -297,7 +298,20 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
         </Button>
       </div>
 
-      {/* Stats */}
+      {/* Sync error banner */}
+      {(smartLink as any).last_sync_error && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="text-sm">
+            Problema na sincronização com a instância. O sistema está distribuindo links em rodízio.
+            {(smartLink as any).last_sync_error_at && (
+              <span className="text-xs text-muted-foreground ml-1">
+                (último erro: {new Date((smartLink as any).last_sync_error_at).toLocaleString("pt-BR")})
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="grid grid-cols-3 gap-3">
         <Card><CardContent className="p-3 flex items-center gap-3">
           <MousePointerClick className="h-5 w-5 text-primary" />
