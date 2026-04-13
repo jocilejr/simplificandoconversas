@@ -12,8 +12,18 @@ const maskCPF = (v: string) =>
   v.replace(/\D/g, "").slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 
 const maskPhone = (v: string) => {
-  const d = v.replace(/\D/g, "").slice(0, 11);
+  const d = v.replace(/\D/g, "");
   if (d.length <= 2) return d;
+  // Com código de país (55...) — formato: +55 (DD) XXXXX-XXXX
+  if (d.length >= 12 && d.startsWith("55")) {
+    const cc = d.slice(0, 2);
+    const ddd = d.slice(2, 4);
+    const rest = d.slice(4);
+    if (rest.length <= 4) return `+${cc} (${ddd}) ${rest}`;
+    if (rest.length <= 8) return `+${cc} (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    return `+${cc} (${ddd}) ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
+  }
+  // Sem código de país — formato: (DD) XXXXX-XXXX
   if (d.length <= 6) return d.replace(/(\d{2})(\d)/, "($1) $2");
   if (d.length <= 10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
   return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
