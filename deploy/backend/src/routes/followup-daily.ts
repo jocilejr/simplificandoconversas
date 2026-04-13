@@ -164,7 +164,7 @@ async function processWorkspace(
     .eq("workspace_id", workspaceId)
     .maybeSingle();
 
-  const expirationDays = boletoSettings?.default_expiration_days || 3;
+  const expirationDays = boletoSettings?.default_expiration_days || 7;
 
   // 3. Load pending boletos
   const { data: boletos } = await sb
