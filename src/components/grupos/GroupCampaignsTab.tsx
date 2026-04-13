@@ -9,15 +9,9 @@ import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import GroupCampaignDialog from "./GroupCampaignDialog";
 import GroupMessagesDialog from "./GroupMessagesDialog";
 import GroupImportDialog from "./GroupImportDialog";
+import { parseBackupSummary, type BackupSummary } from "@/lib/backupParser";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-
-interface BackupSummary {
-  version: number;
-  campaigns: any[];
-  scheduledMessages: any[];
-  mediaKeys: string[];
-}
 
 export default function GroupCampaignsTab() {
   const { campaigns, isLoading, updateCampaign, deleteCampaign } = useGroupCampaigns();
@@ -43,40 +37,16 @@ export default function GroupCampaignsTab() {
     setParsing(true);
 
     try {
-      // Read only the first ~5MB to extract metadata (not the full 300MB)
-      const CHUNK_SIZE = 5 * 1024 * 1024;
-      const slice = file.slice(0, CHUNK_SIZE);
-      const partialText = await slice.text();
-
-      // Try to extract version
-      const versionMatch = partialText.match(/"version"\s*:\s*(\d+)/);
-      const version = versionMatch ? parseInt(versionMatch[1]) : 0;
-
-      if (version !== 1) {
-        toast({ title: "Formato inválido", description: "Versão do backup não suportada.", variant: "destructive" });
-        return;
-      }
-
-      // For the metadata, we need to read the full file but parse only data section
-      // Use a streaming approach: read as text but extract campaigns/messages with regex boundaries
-      // For files up to 300MB, we'll read the full text but only keep what we need
-      const fullText = await file.text();
-      const parsed = JSON.parse(fullText);
-
-      const campaigns = parsed.data?.campaigns || [];
-      const scheduledMessages = parsed.data?.scheduled_messages || [];
-      const mediaKeys = Object.keys(parsed.media || {});
-
-      if (!Array.isArray(campaigns) || campaigns.length === 0) {
-        toast({ title: "Formato inválido", description: "O arquivo não contém campanhas.", variant: "destructive" });
-        return;
-      }
-
-      setImportSummary({ version, campaigns, scheduledMessages, mediaKeys });
+      const summary = await parseBackupSummary(file);
+      setImportSummary(summary);
       setImportFile(file);
       setImportOpen(true);
-    } catch {
-      toast({ title: "Erro ao ler arquivo", description: "O arquivo não é um JSON válido.", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao ler arquivo",
+        description: err.message || "O arquivo não é um backup válido.",
+        variant: "destructive",
+      });
     } finally {
       setParsing(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

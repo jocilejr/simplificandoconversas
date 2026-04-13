@@ -8,13 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { apiUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-
-interface BackupSummary {
-  version: number;
-  campaigns: any[];
-  scheduledMessages: any[];
-  mediaKeys: string[];
-}
+import { iterateMediaEntries, dataUriToFile, type BackupSummary } from "@/lib/backupParser";
 
 interface Props {
   open: boolean;
@@ -60,7 +54,7 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
       if (!user) throw new Error("Não autenticado");
 
       // ── Etapa 1: Enviar apenas dados (sem mídia) ──
-      const backupWithoutMedia = {
+      const backupPayload = {
         version: summary.version,
         data: {
           campaigns: summary.campaigns,
@@ -74,7 +68,7 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
         body: JSON.stringify({
           workspaceId,
           userId: user.id,
-          backup: backupWithoutMedia,
+          backup: backupPayload,
         }),
       });
 
@@ -88,33 +82,33 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
       let mediaUploaded = 0;
       let mediaFailed = 0;
 
-      // ── Etapa 2: Upload de mídias uma a uma ──
+      // ── Etapa 2: Upload de mídias uma a uma via FormData ──
       if (mediaCount > 0 && file) {
         setStage("media");
-        setProgressLabel("Lendo mídias do arquivo...");
+        setProgressLabel("Preparando mídias...");
 
-        // Re-read the file to extract media section
-        const fullText = await file.text();
-        const parsed = JSON.parse(fullText);
-        const media = parsed.media || {};
-        const mediaEntries = Object.entries(media);
         const mediaUrlMap: Record<string, string> = {};
+        let mediaIndex = 0;
 
-        for (let i = 0; i < mediaEntries.length; i++) {
-          const [path, dataUri] = mediaEntries[i];
-          setProgress(Math.round(((i + 1) / mediaEntries.length) * 100));
-          setProgressLabel(`Enviando mídia ${i + 1} de ${mediaEntries.length}...`);
+        for await (const { path: mediaPath, dataUri } of iterateMediaEntries(file)) {
+          mediaIndex++;
+          setProgress(Math.round((mediaIndex / mediaCount) * 100));
+          setProgressLabel(`Enviando mídia ${mediaIndex} de ${mediaCount}...`);
 
           try {
+            // Convert data URI to File for FormData upload
+            const ext = mediaPath.split('.').pop() || 'bin';
+            const mediaFile = dataUriToFile(dataUri, `import-${mediaIndex}.${ext}`);
+
+            const formData = new FormData();
+            formData.append("file", mediaFile);
+            formData.append("workspaceId", workspaceId!);
+            formData.append("userId", user.id);
+            formData.append("path", mediaPath);
+
             const mediaResp = await fetch(apiUrl("groups/import-media"), {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workspaceId,
-                userId: user.id,
-                path,
-                dataUri,
-              }),
+              body: formData,
             });
 
             if (mediaResp.ok) {
@@ -122,11 +116,11 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
               mediaUrlMap[mediaData.oldPath] = mediaData.newUrl;
               mediaUploaded++;
             } else {
-              console.warn(`[import] Failed to upload media ${path}`);
+              console.warn(`[import] Failed to upload media ${mediaPath}: ${mediaResp.status}`);
               mediaFailed++;
             }
           } catch (e: any) {
-            console.warn(`[import] Media upload error for ${path}:`, e.message);
+            console.warn(`[import] Media upload error for ${mediaPath}:`, e.message);
             mediaFailed++;
           }
         }
@@ -181,6 +175,12 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
     onOpenChange(false);
   };
 
+  const stageLabels: Record<string, string> = {
+    data: "Etapa 1/3 — Criando campanhas e mensagens",
+    media: "Etapa 2/3 — Enviando mídias",
+    remap: "Etapa 3/3 — Atualizando referências",
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
@@ -224,6 +224,9 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
 
             {importing && (
               <div className="space-y-2">
+                <p className="text-xs font-medium text-primary text-center">
+                  {stageLabels[stage] || ""}
+                </p>
                 <Progress value={stage === "data" ? undefined : progress} className="h-2" />
                 <p className="text-xs text-muted-foreground text-center">{progressLabel}</p>
               </div>
