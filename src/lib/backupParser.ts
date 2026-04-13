@@ -430,19 +430,72 @@ export async function* iterateMediaEntries(file: File): AsyncGenerator<{ path: s
 }
 
 /**
- * Convert a data URI to a File object for FormData upload.
+ * Infer MIME type from file extension.
+ */
+function mimeFromExt(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const map: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+    mp4: 'video/mp4', webm: 'video/webm', avi: 'video/x-msvideo',
+    mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4',
+    pdf: 'application/pdf', doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    txt: 'text/plain', csv: 'text/csv', json: 'application/json',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+/**
+ * Convert a data URI (or raw base64) to a File object for FormData upload.
+ * Handles variations: charset params, name params, whitespace in base64, raw base64 without data: prefix.
  */
 export function dataUriToFile(dataUri: string, filename: string): File {
-  const match = dataUri.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) throw new Error("Invalid data URI");
+  let mimeType = 'application/octet-stream';
+  let base64Payload = '';
 
-  const mimeType = match[1];
-  const base64 = match[2];
-  const binaryStr = atob(base64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
+  if (dataUri.startsWith('data:')) {
+    // Find the comma that separates header from payload
+    const commaIdx = dataUri.indexOf(',');
+    if (commaIdx === -1) {
+      throw new Error(`Formato de mídia não reconhecido: sem separador de dados no data URI (${filename})`);
+    }
+    const header = dataUri.substring(5, commaIdx); // after "data:" and before ","
+    base64Payload = dataUri.substring(commaIdx + 1);
+
+    // header can be: "image/png;base64" or "image/png;charset=utf-8;base64" or "image/png;name=file.png;base64"
+    const headerParts = header.split(';');
+    if (headerParts.length > 0 && headerParts[0].includes('/')) {
+      mimeType = headerParts[0];
+    }
+  } else {
+    // Raw base64 without data: prefix — try to use it directly
+    base64Payload = dataUri;
+    mimeType = mimeFromExt(filename);
   }
 
-  return new File([bytes], filename, { type: mimeType });
+  // Clean whitespace/newlines from base64 payload
+  base64Payload = base64Payload.replace(/[\s\r\n]/g, '');
+
+  if (!base64Payload) {
+    throw new Error(`Mídia vazia para ${filename}`);
+  }
+
+  // Fallback: if mime is generic, try from filename
+  if (mimeType === 'application/octet-stream') {
+    mimeType = mimeFromExt(filename);
+  }
+
+  try {
+    const binaryStr = atob(base64Payload);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return new File([bytes], filename, { type: mimeType });
+  } catch (e: any) {
+    throw new Error(`Falha ao decodificar base64 para ${filename}: ${e.message}`);
+  }
 }

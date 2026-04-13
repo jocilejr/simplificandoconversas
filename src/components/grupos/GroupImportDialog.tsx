@@ -22,6 +22,7 @@ interface ImportResult {
   messagesImported: number;
   mediaUploaded: number;
   mediaFailed: number;
+  mediaErrors: string[];
 }
 
 export default function GroupImportDialog({ open, onOpenChange, summary, file }: Props) {
