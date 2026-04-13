@@ -129,8 +129,9 @@ async function computeSourceMap(workspaceId: string, files: ScannedFile[]): Prom
 
   // 2. Check delivery_products + member_area_materials → "member"
   const { data: products } = await sb.from("delivery_products").select("page_logo, member_cover_image").eq("workspace_id", workspaceId);
-  const { data: materials } = await sb.from("member_area_materials").select("file_url, thumbnail_url").eq("workspace_id", workspaceId);
-  const memberJson = JSON.stringify(products || []) + JSON.stringify(materials || []);
+  const { data: materials } = await sb.from("member_product_materials").select("content_url").eq("workspace_id", workspaceId);
+  const { data: offers } = await sb.from("member_area_offers").select("image_url").eq("workspace_id", workspaceId);
+  const memberJson = JSON.stringify(products || []) + JSON.stringify(materials || []) + JSON.stringify(offers || []);
   for (const f of files) {
     if (!sourceMap.has(f.relativePath) && memberJson.includes(f.name)) {
       sourceMap.set(f.relativePath, "member");
