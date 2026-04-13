@@ -1323,29 +1323,68 @@ router.post("/import-backup", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /import-media ─── */
+/* ─── POST /import-media (multipart/form-data) ─── */
 router.post("/import-media", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, userId, path: mediaPath, dataUri } = req.body;
-    if (!workspaceId || !userId || !mediaPath || !dataUri) {
-      return res.status(400).json({ error: "Missing workspaceId, userId, path or dataUri" });
+    // Parse multipart form data manually using the built-in request
+    const contentType = req.headers["content-type"] || "";
+
+    let workspaceId: string | undefined;
+    let userId: string | undefined;
+    let mediaPath: string | undefined;
+    let fileBuffer: Buffer | undefined;
+    let fileMimeType = "application/octet-stream";
+
+    if (contentType.includes("multipart/form-data")) {
+      // Use busboy-style parsing or raw buffer approach
+      const boundary = contentType.split("boundary=")[1];
+      if (!boundary) return res.status(400).json({ error: "Missing boundary" });
+
+      const rawBody = await new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => resolve(Buffer.concat(chunks)));
+        req.on("error", reject);
+      });
+
+      // Parse multipart parts
+      const parts = parseMultipart(rawBody, boundary);
+      for (const part of parts) {
+        if (part.name === "workspaceId") workspaceId = part.data.toString("utf-8");
+        else if (part.name === "userId") userId = part.data.toString("utf-8");
+        else if (part.name === "path") mediaPath = part.data.toString("utf-8");
+        else if (part.name === "file") {
+          fileBuffer = part.data;
+          fileMimeType = part.contentType || "application/octet-stream";
+        }
+      }
+    } else {
+      // Fallback: JSON body with dataUri (legacy support)
+      const { workspaceId: wId, userId: uId, path: p, dataUri } = req.body;
+      workspaceId = wId;
+      userId = uId;
+      mediaPath = p;
+
+      if (dataUri) {
+        const base64Match = (dataUri as string).match(/^data:([^;]+);base64,(.+)$/);
+        if (base64Match) {
+          fileMimeType = base64Match[1];
+          fileBuffer = Buffer.from(base64Match[2], "base64");
+        }
+      }
     }
 
-    const base64Match = (dataUri as string).match(/^data:([^;]+);base64,(.+)$/);
-    if (!base64Match) {
-      return res.status(400).json({ error: "Invalid data URI format" });
+    if (!workspaceId || !userId || !mediaPath || !fileBuffer) {
+      return res.status(400).json({ error: "Missing workspaceId, userId, path or file" });
     }
 
-    const mimeType = base64Match[1];
-    const base64Data = base64Match[2];
-    const buffer = Buffer.from(base64Data, "base64");
-    const ext = mimeType.split("/")[1]?.split("+")[0] || "bin";
+    const ext = fileMimeType.split("/")[1]?.split("+")[0] || "bin";
     const storagePath = `${userId}/import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
     const sb = getServiceClient();
     const { error: uploadErr } = await sb.storage
       .from("chatbot-media")
-      .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+      .upload(storagePath, fileBuffer, { contentType: fileMimeType, upsert: true });
 
     if (uploadErr) {
       console.error(`[import-media] Upload error for ${mediaPath}:`, uploadErr.message);
@@ -1360,6 +1399,69 @@ router.post("/import-media", async (req: Request, res: Response) => {
     res.status(500).json({ error: err?.message || "Unknown error" });
   }
 });
+
+/* ─── Multipart parser helper ─── */
+interface MultipartPart {
+  name: string;
+  filename?: string;
+  contentType?: string;
+  data: Buffer;
+}
+
+function parseMultipart(body: Buffer, boundary: string): MultipartPart[] {
+  const parts: MultipartPart[] = [];
+  const boundaryBuf = Buffer.from(`--${boundary}`);
+  const endBuf = Buffer.from(`--${boundary}--`);
+
+  let pos = 0;
+  // Find first boundary
+  pos = body.indexOf(boundaryBuf, pos);
+  if (pos === -1) return parts;
+  pos += boundaryBuf.length;
+
+  while (pos < body.length) {
+    // Skip CRLF after boundary
+    if (body[pos] === 0x0d && body[pos + 1] === 0x0a) pos += 2;
+    else if (body[pos] === 0x0a) pos += 1;
+
+    // Check for end boundary
+    if (body.indexOf(endBuf, pos - boundaryBuf.length - 4) !== -1 && body.indexOf(endBuf, pos - boundaryBuf.length - 4) < pos) {
+      break;
+    }
+
+    // Parse headers
+    const headerEnd = body.indexOf(Buffer.from("\r\n\r\n"), pos);
+    if (headerEnd === -1) break;
+    const headerStr = body.subarray(pos, headerEnd).toString("utf-8");
+    pos = headerEnd + 4;
+
+    // Find next boundary
+    const nextBoundary = body.indexOf(boundaryBuf, pos);
+    if (nextBoundary === -1) break;
+
+    // Data is between current pos and 2 bytes before next boundary (CRLF)
+    let dataEnd = nextBoundary - 2; // skip trailing CRLF before boundary
+    if (dataEnd < pos) dataEnd = pos;
+    const data = body.subarray(pos, dataEnd);
+    pos = nextBoundary + boundaryBuf.length;
+
+    // Parse header fields
+    const nameMatch = headerStr.match(/name="([^"]+)"/);
+    const filenameMatch = headerStr.match(/filename="([^"]+)"/);
+    const ctMatch = headerStr.match(/Content-Type:\s*(.+)/i);
+
+    if (nameMatch) {
+      parts.push({
+        name: nameMatch[1],
+        filename: filenameMatch?.[1],
+        contentType: ctMatch?.[1]?.trim(),
+        data,
+      });
+    }
+  }
+
+  return parts;
+}
 
 /* ─── POST /import-remap-media ─── */
 router.post("/import-remap-media", async (req: Request, res: Response) => {
