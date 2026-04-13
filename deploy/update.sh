@@ -28,9 +28,9 @@ docker exec deploy-backend-1 tar czf - /media-files 2>/dev/null > "$BACKUP_FILE"
 ls -t "$BACKUP_DIR"/media-*.tar.gz 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
 
 # ============================================================
-# [2/5] Database migrations FIRST (before builds!)
+# [3/6] Database migrations FIRST (before builds!)
 # ============================================================
-echo "[2/5] Running database migrations..."
+echo "[3/6] Running database migrations..."
 cd "$DEPLOY_DIR"
 echo "   → Applying base schema updates (non-blocking)..."
 docker compose exec -T postgres psql -U postgres -d postgres <<'EOSQL'
@@ -503,9 +503,9 @@ docker compose restart postgrest 2>/dev/null || echo "⚠ PostgREST não encontr
 echo "✓ PostgREST schema recarregado"
 
 # ============================================================
-# [3/5] Rebuild frontend
+# [4/6] Rebuild frontend
 # ============================================================
-echo "[3/5] Rebuilding frontend..."
+echo "[4/6] Rebuilding frontend..."
 cd "$REPO_ROOT"
 cat > .env.production << EOF
 VITE_SUPABASE_URL=${API_URL}
@@ -534,17 +534,17 @@ cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
 echo "✓ Frontend copiado com sucesso"
 
 # ============================================================
-# [4/5] Rebuild containers
+# [5/6] Rebuild containers
 # ============================================================
-echo "[4/5] Rebuilding containers..."
+echo "[5/6] Rebuilding containers..."
 cd "$DEPLOY_DIR"
 docker compose build --no-cache backend
 docker compose build
 
 # ============================================================
-# [5/5] Restart + health check
+# [6/6] Restart + health check
 # ============================================================
-echo "[5/5] Restarting..."
+echo "[6/6] Restarting..."
 docker compose up -d
 
 # Force restart Nginx to guarantee bind mount refresh
