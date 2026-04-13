@@ -1,17 +1,23 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Trash2, RefreshCw, FileAudio, FileImage, FileVideo, FileText, File, Loader2 } from "lucide-react";
+import {
+  Trash2, RefreshCw, FileAudio, FileImage, FileVideo, FileText, File, Loader2,
+  Bot, Users, Receipt, Clock, LayoutGrid, ShieldCheck,
+} from "lucide-react";
+
+type FileSource = "flow" | "member" | "group" | "boleto" | "temporary";
 
 interface MediaFile {
   name: string;
@@ -25,8 +31,25 @@ interface MediaFile {
   isTemporary: boolean;
   inUse: boolean;
   url: string;
-  isBoleto?: boolean;
+  source: FileSource;
 }
+
+const SOURCE_TABS: { key: FileSource | "all"; label: string; icon: React.ReactNode }[] = [
+  { key: "all", label: "Todos", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+  { key: "flow", label: "Fluxos", icon: <Bot className="h-3.5 w-3.5" /> },
+  { key: "member", label: "Membros", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+  { key: "group", label: "Grupos", icon: <Users className="h-3.5 w-3.5" /> },
+  { key: "boleto", label: "Boletos", icon: <Receipt className="h-3.5 w-3.5" /> },
+  { key: "temporary", label: "Temporários", icon: <Clock className="h-3.5 w-3.5" /> },
+];
+
+const SOURCE_LABELS: Record<FileSource, { label: string; className: string }> = {
+  flow: { label: "Fluxo", className: "border-blue-500 text-blue-600" },
+  member: { label: "Membros", className: "border-green-500 text-green-600" },
+  group: { label: "Grupo", className: "border-purple-500 text-purple-600" },
+  boleto: { label: "Boleto", className: "border-amber-500 text-amber-600" },
+  temporary: { label: "Temporário", className: "" },
+};
 
 const CATEGORY_FILTERS = [
   { key: "all", label: "Todos" },
@@ -35,13 +58,6 @@ const CATEGORY_FILTERS = [
   { key: "video", label: "Vídeo" },
   { key: "pdf", label: "PDF" },
   { key: "other", label: "Outro" },
-];
-
-const LOCATION_FILTERS = [
-  { key: "all", label: "Todos" },
-  { key: "permanent", label: "Permanentes" },
-  { key: "temporary", label: "Temporários" },
-  { key: "boletos", label: "Boletos" },
 ];
 
 function CategoryIcon({ category }: { category: string }) {
@@ -56,32 +72,15 @@ function CategoryIcon({ category }: { category: string }) {
 
 function FilePreview({ file, baseUrl }: { file: MediaFile; baseUrl: string }) {
   const fullUrl = `${baseUrl}${file.url}`;
-
   if (file.category === "image") {
-    return (
-      <img
-        src={fullUrl}
-        alt={file.name}
-        className="h-10 w-10 rounded object-cover border border-border"
-        loading="lazy"
-      />
-    );
+    return <img src={fullUrl} alt={file.name} className="h-10 w-10 rounded object-cover border border-border" loading="lazy" />;
   }
-
   if (file.category === "audio") {
     return <audio src={fullUrl} controls preload="none" className="h-8 w-40" />;
   }
-
   if (file.category === "video") {
-    return (
-      <video
-        src={fullUrl}
-        className="h-10 w-14 rounded object-cover border border-border"
-        preload="none"
-      />
-    );
+    return <video src={fullUrl} className="h-10 w-14 rounded object-cover border border-border" preload="none" />;
   }
-
   return <CategoryIcon category={file.category} />;
 }
 
@@ -93,7 +92,7 @@ export function MediaManagerSection() {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [locationFilter, setLocationFilter] = useState("all");
+  const [sourceTab, setSourceTab] = useState<FileSource | "all">("all");
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -107,18 +106,11 @@ export function MediaManagerSection() {
     setLoading(true);
     try {
       const resp = await fetch(apiUrl("media-manager/list"), {
-        headers: {
-          "x-user-id": user.id,
-          "x-workspace-id": workspaceId,
-        },
+        headers: { "x-user-id": user.id, "x-workspace-id": workspaceId },
       });
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
-      const enriched = (data.files || []).map((f: MediaFile) => ({
-        ...f,
-        isBoleto: f.relativePath.startsWith("boletos/"),
-      }));
-      setFiles(enriched);
+      setFiles(data.files || []);
       setTotalSizeFormatted(data.totalSizeFormatted || "0 B");
     } catch (err: any) {
       toast.error("Erro ao carregar arquivos: " + err.message);
@@ -127,34 +119,33 @@ export function MediaManagerSection() {
     }
   }, [user?.id, workspaceId]);
 
-  useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
-  const filtered = files.filter((f) => {
-    if (categoryFilter !== "all" && f.category !== categoryFilter) return false;
-    if (locationFilter === "permanent" && (f.isTemporary || f.isBoleto)) return false;
-    if (locationFilter === "temporary" && (!f.isTemporary || f.isBoleto)) return false;
-    if (locationFilter === "boletos" && !f.isBoleto) return false;
-    if (locationFilter !== "all" && locationFilter !== "boletos" && f.isBoleto) return false;
-    return true;
-  });
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: files.length, flow: 0, member: 0, group: 0, boleto: 0, temporary: 0 };
+    for (const f of files) c[f.source] = (c[f.source] || 0) + 1;
+    return c;
+  }, [files]);
+
+  const filtered = useMemo(() =>
+    files.filter((f) => {
+      if (sourceTab !== "all" && f.source !== sourceTab) return false;
+      if (categoryFilter !== "all" && f.category !== categoryFilter) return false;
+      return true;
+    }),
+  [files, sourceTab, categoryFilter]);
 
   const toggleSelect = (relPath: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(relPath)) next.delete(relPath);
-      else next.add(relPath);
+      if (next.has(relPath)) next.delete(relPath); else next.add(relPath);
       return next;
     });
   };
 
   const toggleAll = () => {
-    if (selected.size === filtered.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(filtered.map((f) => f.relativePath)));
-    }
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map((f) => f.relativePath)));
   };
 
   const handleDelete = async () => {
@@ -163,10 +154,7 @@ export function MediaManagerSection() {
     try {
       const resp = await fetch(apiUrl("media-manager/delete"), {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": user.id,
-        },
+        headers: { "Content-Type": "application/json", "x-user-id": user.id },
         body: JSON.stringify({ files: Array.from(selected) }),
       });
       if (!resp.ok) throw new Error(await resp.text());
@@ -188,10 +176,7 @@ export function MediaManagerSection() {
     try {
       const resp = await fetch(apiUrl("media-manager/cleanup"), {
         method: "DELETE",
-        headers: {
-          "x-user-id": user.id,
-          "x-workspace-id": workspaceId,
-        },
+        headers: { "x-user-id": user.id, "x-workspace-id": workspaceId },
       });
       if (!resp.ok) throw new Error(await resp.text());
       const result = await resp.json();
@@ -224,9 +209,24 @@ export function MediaManagerSection() {
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4">
-        <div className="flex items-center gap-1">
+      {/* Source Tabs */}
+      <Tabs value={sourceTab} onValueChange={(v) => { setSourceTab(v as FileSource | "all"); setSelected(new Set()); }}>
+        <TabsList className="h-10 bg-card border border-border/50 p-0.5 gap-0.5 flex-wrap">
+          {SOURCE_TABS.map((tab) => (
+            <TabsTrigger
+              key={tab.key}
+              value={tab.key}
+              className="gap-1.5 text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              {tab.icon}
+              {tab.label}
+              <span className="ml-0.5 text-[10px] opacity-60">({counts[tab.key] || 0})</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Type filter */}
+        <div className="flex items-center gap-1 mt-3">
           <span className="text-xs text-muted-foreground mr-1">Tipo:</span>
           {CATEGORY_FILTERS.map((f) => (
             <Button
@@ -240,130 +240,109 @@ export function MediaManagerSection() {
             </Button>
           ))}
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground mr-1">Local:</span>
-          {LOCATION_FILTERS.map((f) => (
-            <Button
-              key={f.key}
-              variant={locationFilter === f.key ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs px-2"
-              onClick={() => setLocationFilter(f.key)}
-            >
-              {f.label}
+
+        {/* Actions bar */}
+        <div className="flex items-center gap-2 p-2 bg-muted rounded-md flex-wrap mt-3">
+          {selected.size > 0 && (
+            <>
+              <span className="text-sm font-medium">{selected.size} selecionado(s)</span>
+              <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)} disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                Deletar selecionados
+              </Button>
+            </>
+          )}
+          {sourceTab === "temporary" && (
+            <Button variant="outline" size="sm" onClick={() => setCleanupConfirmOpen(true)} disabled={cleaning}>
+              {cleaning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Limpar temporários (+24h)
             </Button>
-          ))}
+          )}
+          {sourceTab !== "temporary" && sourceTab !== "all" && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <ShieldCheck className="h-3.5 w-3.5 text-green-600" />
+              Arquivos protegidos — não serão removidos pela limpeza automática
+            </span>
+          )}
         </div>
-      </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 p-2 bg-muted rounded-md flex-wrap">
-        {selected.size > 0 && (
-          <>
-            <span className="text-sm font-medium">{selected.size} selecionado(s)</span>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setConfirmOpen(true)}
-              disabled={deleting}
-            >
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-              Deletar selecionados
-            </Button>
-          </>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCleanupConfirmOpen(true)}
-          disabled={cleaning}
-        >
-          {cleaning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-          Limpar temporários (+24h)
-        </Button>
-      </div>
-
-      {/* Table */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        {/* File table — shared across all tab contents */}
+        <div className="mt-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhum arquivo encontrado</p>
+          ) : (
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8">
+                      <Checkbox checked={selected.size === filtered.length && filtered.length > 0} onCheckedChange={toggleAll} />
+                    </TableHead>
+                    <TableHead className="w-16">Preview</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead className="w-20">Tipo</TableHead>
+                    <TableHead className="w-20">Tamanho</TableHead>
+                    <TableHead className="w-28">Data</TableHead>
+                    <TableHead className="w-28">Origem</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((file) => {
+                    const sl = SOURCE_LABELS[file.source];
+                    return (
+                      <TableRow key={file.relativePath}>
+                        <TableCell>
+                          <Checkbox checked={selected.has(file.relativePath)} onCheckedChange={() => toggleSelect(file.relativePath)} />
+                        </TableCell>
+                        <TableCell>
+                          <FilePreview file={file} baseUrl={baseUrl} />
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs font-mono break-all">{file.name}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <CategoryIcon category={file.category} />
+                            <span className="text-xs capitalize">{file.category}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs">{file.sizeFormatted}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(file.modifiedAt).toLocaleDateString("pt-BR")}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {file.inUse && (
+                              <Badge variant="default" className="text-[10px] w-fit">Em uso</Badge>
+                            )}
+                            <Badge
+                              variant={file.source === "temporary" ? "secondary" : "outline"}
+                              className={`text-[10px] w-fit ${sl.className}`}
+                            >
+                              {sl.label}
+                              {file.source === "boleto" && " (30d)"}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-8">Nenhum arquivo encontrado</p>
-      ) : (
-        <div className="border rounded-md">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8">
-                  <Checkbox
-                    checked={selected.size === filtered.length && filtered.length > 0}
-                    onCheckedChange={toggleAll}
-                  />
-                </TableHead>
-                <TableHead className="w-16">Preview</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead className="w-20">Tipo</TableHead>
-                <TableHead className="w-20">Tamanho</TableHead>
-                <TableHead className="w-28">Data</TableHead>
-                <TableHead className="w-28">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((file) => (
-                <TableRow key={file.relativePath}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selected.has(file.relativePath)}
-                      onCheckedChange={() => toggleSelect(file.relativePath)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <FilePreview file={file} baseUrl={baseUrl} />
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs font-mono break-all">{file.name}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <CategoryIcon category={file.category} />
-                      <span className="text-xs capitalize">{file.category}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs">{file.sizeFormatted}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(file.modifiedAt).toLocaleDateString("pt-BR")}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {file.inUse && (
-                        <Badge variant="default" className="text-[10px] w-fit">Em uso</Badge>
-                      )}
-                      {file.isBoleto && (
-                        <Badge variant="outline" className="text-[10px] w-fit border-amber-500 text-amber-600">
-                          Boleto (30d)
-                        </Badge>
-                      )}
-                      <Badge
-                        variant={file.isTemporary ? "secondary" : "outline"}
-                        className="text-[10px] w-fit"
-                      >
-                        {file.isTemporary ? "Temporário" : "Permanente"}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      </Tabs>
 
-      {/* Confirm dialog */}
+      {/* Confirm delete dialog */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -372,7 +351,7 @@ export function MediaManagerSection() {
               Tem certeza que deseja deletar {selected.size} arquivo(s)?
               {selectedInUseCount > 0 && (
                 <span className="block mt-2 text-destructive font-medium">
-                  ⚠️ {selectedInUseCount} arquivo(s) estão marcados como "Em uso" em fluxos ou campanhas.
+                  ⚠️ {selectedInUseCount} arquivo(s) estão marcados como "Em uso" em fluxos, membros ou grupos.
                 </span>
               )}
               <span className="block mt-1">Esta ação não pode ser desfeita.</span>
@@ -394,7 +373,10 @@ export function MediaManagerSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>Limpar temporários</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso vai remover todos os arquivos <strong>não referenciados</strong> em fluxos, regras ou produtos que tenham mais de 24h.
+              Isso vai remover <strong>apenas arquivos temporários</strong> com mais de 24h.
+              <span className="block mt-2 text-sm">
+                ✅ Arquivos de <strong>fluxos</strong>, <strong>área de membros</strong> e <strong>grupos</strong> são protegidos e <strong>nunca</strong> serão removidos.
+              </span>
               <span className="block mt-1">Esta ação não pode ser desfeita.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
