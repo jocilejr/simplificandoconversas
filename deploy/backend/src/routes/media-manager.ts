@@ -86,6 +86,26 @@ async function scanUserFiles(userId: string): Promise<ScannedFile[]> {
     }
   } catch { /* tmp dir doesn't exist */ }
 
+  // Scan boletos/ directory
+  const boletosDir = path.join(userDir, "boletos");
+  try {
+    await fs.access(boletosDir);
+    const boletosEntries = await fs.readdir(boletosDir, { withFileTypes: true });
+    for (const entry of boletosEntries) {
+      if (entry.isFile()) {
+        const filePath = path.join(boletosDir, entry.name);
+        const stat = await fs.stat(filePath);
+        const mime = getMime(entry.name);
+        files.push({
+          name: entry.name, relativePath: `boletos/${entry.name}`, mime,
+          category: getCategory(mime), size: stat.size, sizeFormatted: formatSize(stat.size),
+          createdAt: stat.birthtime.toISOString(), modifiedAt: stat.mtime.toISOString(),
+          isTmpFolder: false, url: `/media/${userId}/boletos/${entry.name}`,
+        });
+      }
+    }
+  } catch { /* boletos dir doesn't exist */ }
+
   return files;
 }
 
@@ -121,6 +141,17 @@ async function computeInUseSet(workspaceId: string, files: ScannedFile[]): Promi
   if (materials) {
     const json = JSON.stringify(materials);
     for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  }
+
+  // Check transactions for boleto references
+  const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
+  if (txns) {
+    const json = JSON.stringify(txns);
+    for (const f of files) {
+      if (f.relativePath.startsWith("boletos/") && json.includes(f.name)) {
+        inUseSet.add(f.relativePath);
+      }
+    }
   }
 
   return inUseSet;
@@ -193,13 +224,16 @@ router.delete("/cleanup", async (req, res) => {
     const scanned = await scanUserFiles(userId);
     const inUseSet = await computeInUseSet(workspaceId, scanned);
 
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+    const cutoff30d = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const userDir = path.join(MEDIA_ROOT, userId);
     let deleted = 0;
     let freedBytes = 0;
 
     for (const f of scanned) {
       if (inUseSet.has(f.relativePath)) continue;
+      const isBoleto = f.relativePath.startsWith("boletos/");
+      const cutoff = isBoleto ? cutoff30d : cutoff24h;
       if (new Date(f.createdAt).getTime() > cutoff) continue;
 
       const resolved = path.resolve(userDir, f.relativePath);

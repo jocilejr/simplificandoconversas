@@ -25,6 +25,7 @@ interface MediaFile {
   isTemporary: boolean;
   inUse: boolean;
   url: string;
+  isBoleto?: boolean;
 }
 
 const CATEGORY_FILTERS = [
@@ -112,7 +113,11 @@ export function MediaManagerSection() {
       });
       if (!resp.ok) throw new Error(await resp.text());
       const data = await resp.json();
-      setFiles(data.files || []);
+      const enriched = (data.files || []).map((f: MediaFile) => ({
+        ...f,
+        isBoleto: f.relativePath.startsWith("boletos/"),
+      }));
+      setFiles(enriched);
       setTotalSizeFormatted(data.totalSizeFormatted || "0 B");
     } catch (err: any) {
       toast.error("Erro ao carregar arquivos: " + err.message);
@@ -334,6 +339,11 @@ export function MediaManagerSection() {
                     <div className="flex flex-col gap-1">
                       {file.inUse && (
                         <Badge variant="default" className="text-[10px] w-fit">Em uso</Badge>
+                      )}
+                      {file.isBoleto && (
+                        <Badge variant="outline" className="text-[10px] w-fit border-amber-500 text-amber-600">
+                          Boleto (30d)
+                        </Badge>
                       )}
                       <Badge
                         variant={file.isTemporary ? "secondary" : "outline"}
