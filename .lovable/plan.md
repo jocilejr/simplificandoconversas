@@ -1,52 +1,34 @@
 
 
-## Problema
+## Problema encontrado
 
-O gerenciador de mídia só escaneia `/media-files/<userId-logado>`. Mas num workspace multi-tenant, arquivos são enviados por diferentes usuários. Capas de produtos e materiais de membros podem estar em `/media-files/<outro-userId>`, e por isso não aparecem.
+A rota `platform-api.ts` (usada por requisições externas/API) **não define `date_of_expiration`** ao criar boletos no Mercado Pago. Diferente de `payment.ts` e `member-purchase.ts` que já têm 7 dias, esta rota envia o boleto sem prazo — e o Mercado Pago aplica o default de 3 dias.
 
-O cleanup também opera apenas sobre a pasta do usuário logado, não cobrindo todo o workspace.
+## Correção
 
-## Solução: Scan workspace-aware
+### Arquivo: `deploy/backend/src/routes/platform-api.ts`
 
-### Backend: `deploy/backend/src/routes/media-manager.ts`
+Adicionar a expiração de 7 dias logo após o bloco de endereço (após linha 1136):
 
-**1. Nova função `getWorkspaceUserIds(workspaceId)`**
-- Query `workspace_members` filtrando pelo `workspace_id`
-- Retorna array de `user_id` de todos os membros
+```typescript
+if (paymentType === "boleto") {
+  // ... existing address block ...
 
-**2. Nova função `scanWorkspaceFiles(userIds)`**
-- Itera sobre cada `userId` do workspace
-- Chama `scanUserFiles(userId)` para cada um
-- Concatena todos os resultados, incluindo o `ownerUserId` em cada `ScannedFile`
+  // Set 7-day expiration
+  const expDate = new Date();
+  expDate.setDate(expDate.getDate() + 7);
+  paymentBody.date_of_expiration = expDate.toISOString();
+}
+```
 
-**3. Adicionar campo `ownerUserId` ao `ScannedFile`**
-- Para que delete/cleanup saibam em qual pasta física o arquivo está
+Isso alinha o comportamento com as outras duas rotas que já funcionam corretamente.
 
-**4. Atualizar endpoint `GET /list`**
-- Substituir `scanUserFiles(userId)` por `scanWorkspaceFiles(allUserIds)`
-- O `computeSourceMap` já recebe `workspaceId`, então funciona sem mudança
+## Após o deploy
 
-**5. Atualizar endpoint `DELETE /delete`**
-- O body agora precisa receber `ownerUserId` + `relativePath` (ou o path completo incluindo o userId)
-- Validar que o `ownerUserId` pertence ao workspace do usuário logado
+Rode na VPS para confirmar:
+```bash
+docker exec -i deploy-backend-1 grep -n "getDate" /app/src/routes/platform-api.ts
+```
 
-**6. Atualizar endpoint `DELETE /cleanup`**
-- Substituir `scanUserFiles(userId)` por `scanWorkspaceFiles(allUserIds)`
-- A lógica de proteção (flow/member/group) continua igual
-- Deleta temporários de TODOS os membros do workspace, não só do logado
-
-### Frontend: `src/components/settings/MediaManagerSection.tsx`
-
-**7. Adaptar `handleDelete`**
-- Enviar `ownerUserId` junto com cada arquivo no request de delete
-- Ou enviar o `url` completo e deixar o backend extrair o userId do path
-
-### Resultado
-- Ao abrir o gerenciador: lista TODOS os arquivos de TODOS os membros do workspace
-- Limpeza: remove temporários de todo o workspace, não de toda a VPS
-- Classificação: continua igual, baseada em referências do banco
-
-### Arquivos alterados
-- `deploy/backend/src/routes/media-manager.ts`
-- `src/components/settings/MediaManagerSection.tsx`
+Deve retornar a linha com `+ 7`.
 
