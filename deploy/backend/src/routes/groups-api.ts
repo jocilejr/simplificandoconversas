@@ -1217,6 +1217,145 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── POST /import-backup ─── */
+router.post("/import-backup", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, userId, backup } = req.body;
+    if (!workspaceId || !userId || !backup) {
+      return res.status(400).json({ error: "Missing workspaceId, userId or backup" });
+    }
+
+    if (backup.version !== 1) {
+      return res.status(400).json({ error: `Unsupported backup version: ${backup.version}` });
+    }
+
+    const data = backup.data || {};
+    const media = backup.media || {};
+    const campaigns = data.campaigns || [];
+    const scheduledMessages = data.scheduled_messages || [];
+
+    const sb = getServiceClient();
+
+    // 1. Upload media files from base64 and build URL map
+    const mediaUrlMap: Record<string, string> = {};
+    for (const [path, dataUri] of Object.entries(media)) {
+      try {
+        const base64Match = (dataUri as string).match(/^data:([^;]+);base64,(.+)$/);
+        if (!base64Match) continue;
+
+        const mimeType = base64Match[1];
+        const base64Data = base64Match[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const ext = mimeType.split("/")[1]?.split("+")[0] || "bin";
+        const storagePath = `${userId}/import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+        const { error: uploadErr } = await sb.storage
+          .from("chatbot-media")
+          .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+
+        if (!uploadErr) {
+          const { data: urlData } = sb.storage.from("chatbot-media").getPublicUrl(storagePath);
+          mediaUrlMap[path] = urlData.publicUrl;
+        } else {
+          console.warn(`[import-backup] Failed to upload media ${path}:`, uploadErr.message);
+        }
+      } catch (e: any) {
+        console.warn(`[import-backup] Media upload error for ${path}:`, e.message);
+      }
+    }
+
+    // 2. Create campaigns and map old IDs to new IDs
+    const campaignIdMap: Record<string, string> = {};
+    let campaignsImported = 0;
+
+    for (const c of campaigns) {
+      const oldId = c.id;
+      const { data: newCampaign, error: cErr } = await sb
+        .from("group_campaigns")
+        .insert({
+          workspace_id: workspaceId,
+          user_id: userId,
+          name: c.name || "Campanha Importada",
+          description: c.description || "",
+          instance_name: c.instance_name || "default",
+          group_jids: c.group_ids || c.group_jids || [],
+          is_active: false, // always inactive on import
+        })
+        .select("id")
+        .single();
+
+      if (cErr) {
+        console.error(`[import-backup] Campaign insert error:`, cErr.message);
+        continue;
+      }
+
+      campaignIdMap[oldId] = newCampaign.id;
+      campaignsImported++;
+    }
+
+    // 3. Create scheduled messages with remapped campaign IDs and media URLs
+    let messagesImported = 0;
+
+    for (const msg of scheduledMessages) {
+      const newCampaignId = campaignIdMap[msg.campaign_id];
+      if (!newCampaignId) {
+        console.warn(`[import-backup] Skipping message with unknown campaign_id: ${msg.campaign_id}`);
+        continue;
+      }
+
+      // Remap media URLs in content
+      let content = msg.content || {};
+      if (typeof content === "object") {
+        const contentStr = JSON.stringify(content);
+        let remapped = contentStr;
+        for (const [oldPath, newUrl] of Object.entries(mediaUrlMap)) {
+          remapped = remapped.split(oldPath).join(newUrl);
+        }
+        content = JSON.parse(remapped);
+      }
+
+      const scheduleType = msg.schedule_type || "once";
+      const scheduledAt = msg.scheduled_at || null;
+      const cronExpression = msg.cron_expression || null;
+      const intervalMinutes = msg.interval_minutes || null;
+      const nextRunAt = computeNextRunAt(scheduleType, scheduledAt, cronExpression, intervalMinutes);
+
+      const { error: mErr } = await sb
+        .from("group_scheduled_messages")
+        .insert({
+          campaign_id: newCampaignId,
+          workspace_id: workspaceId,
+          user_id: userId,
+          message_type: msg.message_type || "text",
+          content,
+          schedule_type: scheduleType,
+          scheduled_at: scheduledAt,
+          cron_expression: cronExpression,
+          interval_minutes: intervalMinutes,
+          is_active: msg.is_active ?? true,
+          next_run_at: nextRunAt,
+        });
+
+      if (mErr) {
+        console.error(`[import-backup] Message insert error:`, mErr.message);
+        continue;
+      }
+
+      messagesImported++;
+    }
+
+    console.log(`[import-backup] Done: ${campaignsImported} campaigns, ${messagesImported} messages, ${Object.keys(mediaUrlMap).length} media files`);
+    res.json({
+      campaignsImported,
+      messagesImported,
+      mediaUploaded: Object.keys(mediaUrlMap).length,
+    });
+  } catch (err: any) {
+    console.error("[import-backup] error:", err?.message || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { computeNextRunAfterExecution, getEvolutionConfig };
 
