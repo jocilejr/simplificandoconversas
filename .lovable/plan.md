@@ -2,35 +2,60 @@
 
 ## Problema
 
-A máscara atual faz `slice(0, 11)` — trunca qualquer número maior que 11 dígitos. Quando o usuário cola `+55 89 98134-0810` (13 dígitos), perde os últimos 2. Além disso, força formato fixo que não funciona para todos os casos.
+O sistema atual de notificações (`useTransactionNotifications`) depende do **Supabase Realtime** (canais WebSocket) que **não existe na VPS**. Por isso, nenhuma notificação é disparada. Além disso, só usa a API nativa `Notification` do navegador — sem popup visual na interface.
 
 ## Solução
 
-Remover o limite de caracteres e fazer a máscara aceitar qualquer tamanho de número, formatando visualmente sem restringir a entrada.
+Reescrever o sistema de notificações baseando-se no Finance Hub, usando **polling** (que já funciona na VPS) em vez de Realtime, com:
 
-### Arquivo: `src/pages/GerarBoleto.tsx`
+1. **Popup visual in-app** (NotificationPopup) no header
+2. **Tab title piscando** quando há transações novas em background
+3. **Notificação do navegador** como complemento (não dependência principal)
 
-Substituir a função `maskPhone` (linhas 14-20) por uma versão sem `slice`:
+## Arquivos a criar/alterar
 
-```typescript
-const maskPhone = (v: string) => {
-  const d = v.replace(/\D/g, "");
-  if (d.length <= 2) return d;
-  // Com código de país (55...) — formato: +55 (DD) XXXXX-XXXX
-  if (d.length >= 12 && d.startsWith("55")) {
-    const cc = d.slice(0, 2);
-    const ddd = d.slice(2, 4);
-    const rest = d.slice(4);
-    if (rest.length <= 4) return `+${cc} (${ddd}) ${rest}`;
-    if (rest.length <= 8) return `+${cc} (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
-    return `+${cc} (${ddd}) ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
-  }
-  // Sem código de país — formato: (DD) XXXXX-XXXX
-  if (d.length <= 6) return d.replace(/(\d{2})(\d)/, "($1) $2");
-  if (d.length <= 10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-  return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
-};
+### 1. Criar `src/components/layout/NotificationPopup.tsx`
+- Componente Popover no header mostrando lista de notificações recentes
+- Ícones por tipo (boleto/pix/cartão) e cores por status
+- Botão "Ver todas" navegando para `/transacoes`
+- Botão dismiss para limpar
+
+### 2. Reescrever `src/hooks/useTransactionNotifications.ts`
+- Trocar canal Realtime por **polling** (comparação de IDs a cada 15s)
+- Manter um `Set<string>` de IDs já vistos (inicializado com transações atuais)
+- Quando detectar IDs novos: criar notificação in-app + browser notification (se permitida)
+- Expor `notifications[]`, `dismissAllNotifications()` para o popup
+- Incluir lógica de tab title piscando (como `useTabNotification` do Finance Hub)
+
+### 3. Alterar `src/components/AppLayout.tsx`
+- Importar `NotificationPopup`
+- Renderizar o popup no header ao lado do `SidebarTrigger`
+- Passar `notifications` e `onDismiss` do hook reescrito
+
+### Detalhes técnicos
+
+**Polling em vez de Realtime:**
+```
+- A cada 15s, buscar transações recentes (últimas 24h) com viewed_at IS NULL
+- Comparar com Set de IDs já conhecidos
+- Novos IDs → gerar notificação
+- Usar refetchInterval do React Query que já está em uso no projeto
 ```
 
-Isso permite colar qualquer formato (`+55 89 98134-0810`, `5589981340810`, `89981340810`) e formata bonito sem cortar dígitos.
+**Estrutura da notificação:**
+```typescript
+interface TransactionNotification {
+  id: string;
+  type: string;      // boleto, pix, cartao, card, yampi_cart
+  status: string;    // pendente, aprovado, rejeitado, abandonado
+  customerName: string;
+  amount: number;
+  timestamp: Date;
+}
+```
+
+**Tab title piscando:**
+- Quando tab está em background e há notificações pendentes
+- Alterna entre `🔔 (N) Nova Venda!` e título original a cada 1s
+- Reseta ao voltar para a tab
 
