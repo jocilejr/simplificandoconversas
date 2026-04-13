@@ -27,7 +27,9 @@ const allSections = [
   { key: "fees", label: "Taxas", icon: Percent, minRole: "admin" },
   { key: "member_area", label: "Área de Membros", icon: Crown, minRole: "admin" },
   { key: "delivery", label: "Ajustes Entrega", icon: Package, minRole: "admin" },
+  { key: "media", label: "Arquivos", icon: HardDrive, minRole: "admin" },
   { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
+
 ];
 
 const SettingsPage = () => {
@@ -52,7 +54,9 @@ const SettingsPage = () => {
       case "fees": return <FeesSection />;
       case "member_area": return <MemberAreaSettingsSection />;
       case "delivery": return <DeliverySettingsSection />;
+      case "media": return <MediaManagerSection />;
       case "app": return <AppSection />;
+
       default: return null;
     }
   };
