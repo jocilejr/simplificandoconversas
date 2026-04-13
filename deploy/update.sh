@@ -10,10 +10,22 @@ echo "═══ Atualizando deploy ═══"
 source "$DEPLOY_DIR/.env"
 
 # Pull latest code
-echo "[1/5] Pulling latest code..."
+echo "[1/6] Pulling latest code..."
 cd "$REPO_ROOT"
 git checkout -- .
 git pull origin main
+
+# ============================================================
+# [2/6] Backup de mídia antes do deploy
+# ============================================================
+echo "[2/6] Backing up media files..."
+BACKUP_DIR="/root/backups"
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/media-$(date +%Y%m%d-%H%M%S).tar.gz"
+docker exec deploy-backend-1 tar czf - /media-files 2>/dev/null > "$BACKUP_FILE" && \
+  echo "   → Backup: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))" || \
+  echo "   → Aviso: backup falhou (continuando deploy)"
+ls -t "$BACKUP_DIR"/media-*.tar.gz 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
 
 # ============================================================
 # [2/5] Database migrations FIRST (before builds!)
