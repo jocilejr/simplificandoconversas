@@ -2,48 +2,35 @@
 
 ## Problema
 
-Atualmente, o media-manager classifica arquivos como "Permanente" ou "Temporário" baseado apenas na **localização física** (`/media-files/{userId}/` = permanente, `tmp/` = temporário). Isso faz com que mídias recebidas via webhook do Evolution (áudios, imagens, vídeos de conversas) que ficam na raiz sejam marcadas como "Permanente", quando na verdade são efêmeras.
+O `update.sh` tem dois gargalos sérios:
 
-O correto: **somente arquivos referenciados em fluxos de chatbot, regras de recuperação, produtos e materiais da área de membros** devem ser "Permanente". Todo o resto é temporário e pode ser limpo após 24h.
+1. **Backup de mídia (passo 2)** — faz `tar czf` de **toda** a pasta `/media-files` dentro do container a cada deploy. Se você tem GBs de mídia de webhook, isso demora dezenas de minutos e é desnecessário (já implementamos o cleanup de temporários).
+
+2. **500+ linhas de SQL idempotente (passo 3)** — roda `CREATE TABLE IF NOT EXISTS` para ~20 tabelas + políticas + índices toda vez. São operações baratas individualmente, mas o overhead de 3 `psql` separados + validação tabela-por-tabela soma tempo.
 
 ## Solução
 
-### 1. Backend: `deploy/backend/src/routes/media-manager.ts`
+### 1. Remover o backup de mídia do deploy
 
-Inverter a lógica de classificação:
+O passo `[2/6]` (linhas 18-28) será **removido completamente**. Justificativa:
+- Arquivos permanentes (fluxos, produtos) já estão no volume Docker persistente
+- Arquivos temporários (+24h) agora podem ser limpos pelo botão na interface
+- Backup de mídia deve ser feito por cron separado, não a cada deploy
+- O `sanitize-storage.sh` já protege arquivos referenciados no banco
 
-- **Antes**: `isTemporary` baseado na pasta (`tmp/` = temporário, raiz = permanente)
-- **Depois**: `isTemporary` baseado no `inUse` — só é permanente se estiver referenciado no banco (fluxos, regras, produtos, materiais, mensagens agendadas)
+### 2. Otimizar as migrações SQL
 
-Mudanças concretas:
-- Remover `isTemporary: false` e `isTemporary: true` hardcoded na montagem dos objetos de arquivo
-- Após calcular o `inUseSet`, definir: `isTemporary = !inUse` (arquivo em uso = permanente, arquivo não referenciado = temporário)
+- Consolidar os 3 blocos `psql` separados (schema base, migrate-workspace, fix-member-tables) em **uma única execução** com `cat ... | psql`
+- Remover a validação tabela-por-tabela (loop de 17 tabelas com `psql` individual) — as migrations já são idempotentes com `IF NOT EXISTS`
+- Manter apenas a verificação de orphan users (1 query) e o restart do PostgREST
 
-### 2. Backend: Adicionar rota de auto-limpeza
+### 3. Resultado esperado
 
-Criar endpoint `DELETE /api/media-manager/cleanup` que:
-- Lista todos os arquivos do usuário
-- Calcula o `inUseSet` (mesma lógica existente)
-- Deleta arquivos que **não estão em uso** E têm **mais de 24h** de criação
-- Retorna contagem de arquivos removidos e espaço liberado
+O script passará de **6 passos** para **5 passos** com tempo estimado:
+- Antes: git pull + backup (10-30min) + SQL (1-2min) + build + containers + restart
+- Depois: git pull + SQL consolidado (30s) + build + containers + restart
 
-### 3. Frontend: `src/components/settings/MediaManagerSection.tsx`
+### Arquivos alterados
 
-- Adicionar botão "Limpar temporários (+24h)" que chama o endpoint de cleanup
-- Exibir confirmação antes de executar
-
-### Resumo técnico
-
-```text
-Arquivo raiz (/media-files/{userId}/foto.jpg)
-  └─ Referenciado em chatbot_flows?     → Permanente ✅
-  └─ Referenciado em recovery_rules?    → Permanente ✅
-  └─ Referenciado em delivery_products? → Permanente ✅
-  └─ Referenciado em member_materials?  → Permanente ✅
-  └─ Referenciado em group_scheduled?   → Permanente ✅
-  └─ Nenhuma referência?                → Temporário 🕐 (limpar após 24h)
-
-Arquivo tmp (/media-files/{userId}/tmp/audio.ogg)
-  └─ Sempre temporário                  → Temporário 🕐
-```
+- `deploy/update.sh` — reescrita dos passos 2-3, renumeração para 5 passos
 
