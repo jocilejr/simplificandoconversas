@@ -9,44 +9,64 @@ import { apiUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-interface BackupData {
+interface BackupSummary {
   version: number;
-  data: {
-    campaigns?: any[];
-    scheduled_messages?: any[];
-    [key: string]: any;
-  };
-  media?: Record<string, string>;
+  campaigns: any[];
+  scheduledMessages: any[];
+  mediaKeys: string[];
 }
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  backupData: BackupData | null;
+  summary: BackupSummary | null;
+  file: File | null;
 }
 
-export default function GroupImportDialog({ open, onOpenChange, backupData }: Props) {
+interface ImportResult {
+  campaignsImported: number;
+  messagesImported: number;
+  mediaUploaded: number;
+  mediaFailed: number;
+}
+
+export default function GroupImportDialog({ open, onOpenChange, summary, file }: Props) {
   const { workspaceId } = useWorkspace();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ campaignsImported: number; messagesImported: number; mediaUploaded: number } | null>(null);
+  const [stage, setStage] = useState<"idle" | "data" | "media" | "remap" | "done">("idle");
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
+  const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!backupData) return null;
+  if (!summary) return null;
 
-  const campaigns = backupData.data?.campaigns || [];
-  const messages = backupData.data?.scheduled_messages || [];
-  const mediaCount = Object.keys(backupData.media || {}).length;
+  const campaigns = summary.campaigns;
+  const messages = summary.scheduledMessages;
+  const mediaCount = summary.mediaKeys.length;
 
   const handleImport = async () => {
     setImporting(true);
     setError(null);
     setResult(null);
+    setStage("data");
+    setProgress(0);
+    setProgressLabel("Importando campanhas e mensagens...");
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
+
+      // ── Etapa 1: Enviar apenas dados (sem mídia) ──
+      const backupWithoutMedia = {
+        version: summary.version,
+        data: {
+          campaigns: summary.campaigns,
+          scheduled_messages: summary.scheduledMessages,
+        },
+      };
 
       const resp = await fetch(apiUrl("groups/import-backup"), {
         method: "POST",
@@ -54,7 +74,7 @@ export default function GroupImportDialog({ open, onOpenChange, backupData }: Pr
         body: JSON.stringify({
           workspaceId,
           userId: user.id,
-          backup: backupData,
+          backup: backupWithoutMedia,
         }),
       });
 
@@ -64,7 +84,84 @@ export default function GroupImportDialog({ open, onOpenChange, backupData }: Pr
       }
 
       const data = await resp.json();
-      setResult(data);
+      const messageIds: string[] = data.messageIds || [];
+      let mediaUploaded = 0;
+      let mediaFailed = 0;
+
+      // ── Etapa 2: Upload de mídias uma a uma ──
+      if (mediaCount > 0 && file) {
+        setStage("media");
+        setProgressLabel("Lendo mídias do arquivo...");
+
+        // Re-read the file to extract media section
+        const fullText = await file.text();
+        const parsed = JSON.parse(fullText);
+        const media = parsed.media || {};
+        const mediaEntries = Object.entries(media);
+        const mediaUrlMap: Record<string, string> = {};
+
+        for (let i = 0; i < mediaEntries.length; i++) {
+          const [path, dataUri] = mediaEntries[i];
+          setProgress(Math.round(((i + 1) / mediaEntries.length) * 100));
+          setProgressLabel(`Enviando mídia ${i + 1} de ${mediaEntries.length}...`);
+
+          try {
+            const mediaResp = await fetch(apiUrl("groups/import-media"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workspaceId,
+                userId: user.id,
+                path,
+                dataUri,
+              }),
+            });
+
+            if (mediaResp.ok) {
+              const mediaData = await mediaResp.json();
+              mediaUrlMap[mediaData.oldPath] = mediaData.newUrl;
+              mediaUploaded++;
+            } else {
+              console.warn(`[import] Failed to upload media ${path}`);
+              mediaFailed++;
+            }
+          } catch (e: any) {
+            console.warn(`[import] Media upload error for ${path}:`, e.message);
+            mediaFailed++;
+          }
+        }
+
+        // ── Etapa 3: Remapear URLs nas mensagens ──
+        if (Object.keys(mediaUrlMap).length > 0 && messageIds.length > 0) {
+          setStage("remap");
+          setProgressLabel("Atualizando referências de mídia...");
+          setProgress(0);
+
+          try {
+            await fetch(apiUrl("groups/import-remap-media"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workspaceId,
+                messageIds,
+                mediaUrlMap,
+              }),
+            });
+          } catch (e: any) {
+            console.warn("[import] Remap error:", e.message);
+          }
+        }
+      }
+
+      setStage("done");
+      setProgress(100);
+      const finalResult: ImportResult = {
+        campaignsImported: data.campaignsImported,
+        messagesImported: data.messagesImported,
+        mediaUploaded,
+        mediaFailed,
+      };
+      setResult(finalResult);
       queryClient.invalidateQueries({ queryKey: ["group-campaigns"] });
       toast({ title: `${data.campaignsImported} campanhas importadas!` });
     } catch (err: any) {
@@ -78,6 +175,9 @@ export default function GroupImportDialog({ open, onOpenChange, backupData }: Pr
   const handleClose = () => {
     setResult(null);
     setError(null);
+    setStage("idle");
+    setProgress(0);
+    setProgressLabel("");
     onOpenChange(false);
   };
 
@@ -115,12 +215,17 @@ export default function GroupImportDialog({ open, onOpenChange, backupData }: Pr
               <p className="text-xs text-muted-foreground mt-2">
                 As campanhas serão importadas como <strong>inativas</strong>. Ative-as após configurar a instância.
               </p>
+              {mediaCount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  As mídias serão enviadas individualmente após a criação das campanhas.
+                </p>
+              )}
             </div>
 
             {importing && (
               <div className="space-y-2">
-                <Progress value={undefined} className="h-2" />
-                <p className="text-xs text-muted-foreground text-center">Importando...</p>
+                <Progress value={stage === "data" ? undefined : progress} className="h-2" />
+                <p className="text-xs text-muted-foreground text-center">{progressLabel}</p>
               </div>
             )}
           </div>
@@ -136,6 +241,9 @@ export default function GroupImportDialog({ open, onOpenChange, backupData }: Pr
               <li>{result.campaignsImported} campanhas importadas</li>
               <li>{result.messagesImported} mensagens agendadas</li>
               <li>{result.mediaUploaded} mídias enviadas</li>
+              {result.mediaFailed > 0 && (
+                <li className="text-destructive">{result.mediaFailed} mídias falharam</li>
+              )}
             </ul>
           </div>
         )}
