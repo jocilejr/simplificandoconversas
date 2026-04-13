@@ -2053,6 +2053,95 @@ export type Database = {
           },
         ]
       }
+      group_smart_link_clicks: {
+        Row: {
+          created_at: string
+          group_jid: string
+          id: string
+          redirected_to: string | null
+          smart_link_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_jid: string
+          id?: string
+          redirected_to?: string | null
+          smart_link_id: string
+        }
+        Update: {
+          created_at?: string
+          group_jid?: string
+          id?: string
+          redirected_to?: string | null
+          smart_link_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_smart_link_clicks_smart_link_id_fkey"
+            columns: ["smart_link_id"]
+            isOneToOne: false
+            referencedRelation: "group_smart_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_smart_links: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          current_group_index: number
+          group_links: Json
+          id: string
+          is_active: boolean
+          max_members_per_group: number
+          slug: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          current_group_index?: number
+          group_links?: Json
+          id?: string
+          is_active?: boolean
+          max_members_per_group?: number
+          slug: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          current_group_index?: number
+          group_links?: Json
+          id?: string
+          is_active?: boolean
+          max_members_per_group?: number
+          slug?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_smart_links_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_smart_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           color: string
