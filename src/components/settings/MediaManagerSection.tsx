@@ -224,20 +224,31 @@ export function MediaManagerSection() {
       </div>
 
       {/* Actions */}
-      {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-          <span className="text-sm font-medium">{selected.size} selecionado(s)</span>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setConfirmOpen(true)}
-            disabled={deleting}
-          >
-            {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-            Deletar selecionados
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-2 p-2 bg-muted rounded-md flex-wrap">
+        {selected.size > 0 && (
+          <>
+            <span className="text-sm font-medium">{selected.size} selecionado(s)</span>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setConfirmOpen(true)}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Deletar selecionados
+            </Button>
+          </>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCleanupConfirmOpen(true)}
+          disabled={cleaning}
+        >
+          {cleaning ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+          Limpar temporários (+24h)
+        </Button>
+      </div>
 
       {/* Table */}
       {loading ? (
