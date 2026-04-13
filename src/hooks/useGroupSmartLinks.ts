@@ -37,6 +37,7 @@ export function useGroupSmartLinks() {
   const { data: smartLinks = [], isLoading } = useQuery({
     queryKey: ["group-smart-links", workspaceId],
     enabled: !!workspaceId,
+    refetchInterval: 15000,
     queryFn: async () => {
       const params = new URLSearchParams({ workspaceId: workspaceId! });
       const resp = await fetch(apiUrl(`groups/smart-links?${params}`));
@@ -132,6 +133,7 @@ export function useSmartLinkStats(smartLinkId: string | null) {
   const { data: stats } = useQuery({
     queryKey: ["group-smart-link-stats", smartLinkId],
     enabled: !!smartLinkId,
+    refetchInterval: 15000,
     queryFn: async () => {
       const resp = await fetch(apiUrl(`groups/smart-link-stats?smartLinkId=${smartLinkId}`));
       if (!resp.ok) throw new Error(await resp.text());

@@ -1018,7 +1018,7 @@ router.get("/smart-link-redirect", async (req: Request, res: Response) => {
 
     // Find best group: least members below limit
     const available = groupLinks
-      .filter((g: any) => g.invite_url && (g.member_count || 0) < maxMembers)
+      .filter((g: any) => g.invite_url && g.status !== "banned" && (g.member_count || 0) < maxMembers)
       .sort((a: any, b: any) => (a.member_count || 0) - (b.member_count || 0));
 
     let chosen: any = null;
@@ -1028,7 +1028,7 @@ router.get("/smart-link-redirect", async (req: Request, res: Response) => {
       chosen = available[0];
     } else {
       // Fallback round-robin: distribute across ALL groups that have invite_url
-      const withUrl = groupLinks.filter((g: any) => g.invite_url);
+      const withUrl = groupLinks.filter((g: any) => g.invite_url && g.status !== "banned");
       if (withUrl.length === 0) return res.status(404).json({ error: "Nenhum grupo com URL de convite disponível" });
 
       const currentIndex = sl.current_group_index || 0;
@@ -1113,6 +1113,33 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
         const groupLinks = (sl.group_links as any[]) || [];
         let synced = 0;
 
+        // ── Check instance connection state before processing groups ──
+        let instanceOnline = false;
+        try {
+          const stateResp = await fetch(`${baseUrl}/instance/connectionState/${encoded}`, {
+            headers: { apikey: apiKey },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (stateResp.ok) {
+            const stateBody: any = await stateResp.json();
+            const connState = stateBody?.state || stateBody?.instance?.state || "";
+            instanceOnline = connState === "open";
+          }
+        } catch (e: any) {
+          console.warn(`[sync-all] Failed to check connectionState for ${instanceName}:`, e.message);
+        }
+
+        if (!instanceOnline) {
+          // Instance offline — don't touch group statuses, just record the error
+          await sb.from("group_smart_links").update({
+            last_sync_error: `Instância desconectada (${instanceName})`,
+            last_sync_error_at: new Date().toISOString(),
+          }).eq("id", sl.id);
+          results.push({ id: sl.id, slug: sl.slug, status: "instance_offline", instanceName });
+          continue;
+        }
+
+        // ── Instance is ONLINE — process each group ──
         for (const gl of groupLinks) {
           try {
             // Fetch real participant count
@@ -1142,11 +1169,25 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
               const code = body?.inviteCode || body?.code || body?.invite || "";
               if (code) {
                 gl.invite_url = `https://chat.whatsapp.com/${code}`;
+                gl.status = "active";
                 synced++;
+              } else {
+                // Instance online but no code returned — mark as banned
+                gl.status = "banned";
+                gl.invite_url = "";
+                console.warn(`[sync-all] Group ${gl.group_jid} returned empty inviteCode — marked as banned`);
               }
+            } else {
+              // Instance online but inviteCode request failed — mark as banned
+              gl.status = "banned";
+              gl.invite_url = "";
+              console.warn(`[sync-all] Group ${gl.group_jid} inviteCode failed (${r.status}) — marked as banned`);
             }
           } catch (e: any) {
-            console.warn(`[sync-all] Failed to get invite for ${gl.group_jid}:`, e.message);
+            // Instance online but request error — mark as banned
+            gl.status = "banned";
+            gl.invite_url = "";
+            console.warn(`[sync-all] Group ${gl.group_jid} inviteCode error — marked as banned:`, e.message);
           }
         }
 

@@ -316,7 +316,7 @@ cron.schedule("*/30 * * * * *", async () => {
 });
 
 // ─── Smart Link Sync Cron (5min): sync member_count and invite_url ───
-cron.schedule("*/5 * * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     const resp = await fetch(`http://localhost:${PORT}/api/groups/smart-links/sync-all`, {
       method: "POST",
