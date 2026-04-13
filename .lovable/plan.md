@@ -1,74 +1,39 @@
 
 
-## Plano: Smart Link como Subsecção Independente
+## Plano: Múltiplos Smart Links com Cards + Detalhe
 
 ### Conceito
 
-O Smart Link deixa de estar atrelado a campanhas e passa a ser uma **aba própria** dentro da página de Grupos. O fluxo será:
+A aba Smart Link passa a ter 3 estados visuais:
 
-1. Selecionar a instância WhatsApp
-2. Selecionar os grupos desejados (similar ao GroupSelectorTab)
-3. Definir slug e limite de membros
-4. Ao salvar, o sistema sincroniza automaticamente os invite codes e mostra em tempo real: membros atuais de cada grupo, qual grupo está recebendo leads, e cliques totais
+1. **Lista de cards** — cada smart link criado aparece como um card compacto mostrando slug, instância, quantidade de grupos e cliques. Botão "+" para criar novo.
+2. **Formulário de criação** — mesmo fluxo atual (selecionar instância → buscar grupos → slug → criar). Botão voltar retorna à lista.
+3. **Detalhe do smart link** — ao clicar num card, abre o dashboard completo (URL, stats, tabela de grupos, editar, excluir). Botão voltar retorna à lista.
 
 ### Mudanças
 
-#### 1. Página de Grupos — nova aba "Smart Link"
-**`src/pages/GruposPage.tsx`** — Adicionar aba `smart-link` com ícone Link2.
+#### 1. `src/components/grupos/GroupSmartLinkTab.tsx` — reescrever
 
-#### 2. Novo componente `GroupSmartLinkTab.tsx`
-**`src/components/grupos/GroupSmartLinkTab.tsx`** — Componente completo com:
+Substituir a lógica atual de "smartLink único" por navegação interna com `useState<"list" | "create" | string>`:
 
-- **Se não tem smart link criado**: formulário de criação
-  - Select de instância (reutiliza `useWhatsAppInstances`)
-  - Botão "Buscar Grupos" → lista grupos com checkbox (reutiliza lógica do GroupSelectorTab)
-  - Campo slug + campo max membros/grupo
-  - Botão "Criar Smart Link"
+- **`view === "list"`**: grid de cards (`smartLinks.map(...)`) + botão "Novo Smart Link"
+  - Cada card mostra: slug, instância, nº de grupos, badge ativo/inativo
+  - `onClick` → `setView(smartLink.id)`
+- **`view === "create"`**: formulário de criação (código atual do form, sem alterações na lógica)
+  - Após criar com sucesso → volta para `"list"`
+- **`view === id`**: dashboard do smart link selecionado (código atual do dashboard)
+  - Busca `smartLinks.find(s => s.id === view)`
+  - Botão "← Voltar" no topo
 
-- **Se já tem smart link**: dashboard ao vivo
-  - URL pública com botão copiar
-  - Cards de estatísticas: cliques totais, grupos vinculados
-  - **Tabela de grupos** mostrando em cada linha:
-    - Nome do grupo
-    - Membros atuais (com badge vermelho se lotado)
-    - Invite URL (check/x)
-    - Cliques recebidos
-    - Indicador visual "► Ativo" no grupo que está recebendo leads (o com menos membros abaixo do limite)
-  - Botões: Sincronizar URLs, Editar (slug/limite), Excluir
+#### 2. `src/hooks/useGroupSmartLinks.ts` — stats por link
 
-#### 3. Refatorar hook `useGroupSmartLinks.ts`
-**`src/hooks/useGroupSmartLinks.ts`** — Remover dependência de `campaignId`:
-- Query busca por `workspaceId` apenas (sem filtro de campanha)
-- `createSmartLink` aceita `groupJids` + `instanceName` direto (sem campaignId)
-- Manter CRUD, sync e stats
-
-#### 4. Backend — desacoplar de campanha
-**`deploy/backend/src/routes/groups-api.ts`**:
-- `POST /smart-links`: aceitar `groupJids` e `instanceName` direto no body (sem depender de campaignId)
-- `POST /smart-links/sync-invite`: usar `instanceName` salvo no smart link (sem buscar via campaign)
-- Adicionar campo `instance_name` no insert/update do smart link
-- Redirect e stats permanecem iguais
-
-#### 5. Migração SQL
-Adicionar coluna `instance_name` à tabela `group_smart_links`:
-```sql
-ALTER TABLE group_smart_links ADD COLUMN IF NOT EXISTS instance_name text;
-ALTER TABLE group_smart_links ALTER COLUMN campaign_id DROP NOT NULL;
-```
-
-#### 6. Remover integração antiga
-- **`src/components/grupos/GroupCampaignsTab.tsx`**: Remover botão "Smart Link" dos cards de campanha
-- **`src/components/grupos/GroupSmartLinkDialog.tsx`**: Deletar (substituído pelo Tab)
+- Alterar a query de stats para aceitar um `smartLinkId` dinâmico em vez de usar fixo `smartLinks[0]`
+- Exportar `useSmartLinkStats(id)` separado ou passar o ID como parâmetro
 
 ### Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| Migração SQL (add `instance_name`) | Criar |
-| `src/components/grupos/GroupSmartLinkTab.tsx` | Criar |
-| `src/pages/GruposPage.tsx` | Alterar (nova aba) |
-| `src/hooks/useGroupSmartLinks.ts` | Refatorar |
-| `deploy/backend/src/routes/groups-api.ts` | Alterar (desacoplar) |
-| `src/components/grupos/GroupCampaignsTab.tsx` | Alterar (remover botão) |
-| `src/components/grupos/GroupSmartLinkDialog.tsx` | Deletar |
+| `src/components/grupos/GroupSmartLinkTab.tsx` | Reescrever (lista + detalhe) |
+| `src/hooks/useGroupSmartLinks.ts` | Ajustar stats query |
 
