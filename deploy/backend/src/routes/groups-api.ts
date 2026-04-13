@@ -1040,6 +1040,12 @@ router.get("/smart-link-redirect", async (req: Request, res: Response) => {
       return res.type("text/plain").send(chosen.invite_url);
     }
 
+    // If accessed directly via browser (nginx proxy from /r/g/), redirect 302
+    const acceptHeader = (req.headers.accept || "").toLowerCase();
+    if (!acceptHeader.includes("application/json")) {
+      return res.redirect(302, chosen.invite_url);
+    }
+
     res.json({ redirect_url: chosen.invite_url, group_name: chosen.group_name });
   } catch (err: any) {
     console.error("[smart-link] redirect error:", err?.message);
