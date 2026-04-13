@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users, Percent, Crown, Package } from "lucide-react";
+import { User, Plug, Brain, Code, Mail, AppWindow, Puzzle, Users, Percent, Crown, Package, HardDrive } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
@@ -13,6 +13,7 @@ import { TeamSection } from "@/components/settings/TeamSection";
 import { FeesSection } from "@/components/settings/FeesSection";
 import { MemberAreaSettingsSection } from "@/components/settings/MemberAreaSettingsSection";
 import { DeliverySettingsSection } from "@/components/settings/DeliverySettingsSection";
+import { MediaManagerSection } from "@/components/settings/MediaManagerSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const allSections = [
@@ -26,7 +27,9 @@ const allSections = [
   { key: "fees", label: "Taxas", icon: Percent, minRole: "admin" },
   { key: "member_area", label: "Área de Membros", icon: Crown, minRole: "admin" },
   { key: "delivery", label: "Ajustes Entrega", icon: Package, minRole: "admin" },
+  { key: "media", label: "Arquivos", icon: HardDrive, minRole: "admin" },
   { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
+
 ];
 
 const SettingsPage = () => {
@@ -51,7 +54,9 @@ const SettingsPage = () => {
       case "fees": return <FeesSection />;
       case "member_area": return <MemberAreaSettingsSection />;
       case "delivery": return <DeliverySettingsSection />;
+      case "media": return <MediaManagerSection />;
       case "app": return <AppSection />;
+
       default: return null;
     }
   };
