@@ -33,6 +33,8 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export type FileSource = "flow" | "member" | "group" | "boleto" | "temporary";
+
 interface ScannedFile {
   name: string;
   relativePath: string;
@@ -109,52 +111,67 @@ async function scanUserFiles(userId: string): Promise<ScannedFile[]> {
   return files;
 }
 
-async function computeInUseSet(workspaceId: string, files: ScannedFile[]): Promise<Set<string>> {
+/**
+ * Returns a Map<relativePath, source> indicating where each file is used.
+ * Priority: flow > member > group > (boleto folder) > temporary
+ */
+async function computeSourceMap(workspaceId: string, files: ScannedFile[]): Promise<Map<string, FileSource>> {
   const sb = getServiceClient();
-  const inUseSet = new Set<string>();
+  const sourceMap = new Map<string, FileSource>();
 
+  // 1. Check chatbot_flows + boleto_recovery_rules → "flow"
   const { data: flows } = await sb.from("chatbot_flows").select("nodes").eq("workspace_id", workspaceId);
-  if (flows) {
-    const json = JSON.stringify(flows);
-    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
-  }
-
   const { data: rules } = await sb.from("boleto_recovery_rules").select("media_blocks").eq("workspace_id", workspaceId);
-  if (rules) {
-    const json = JSON.stringify(rules);
-    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
+  const flowJson = JSON.stringify(flows || []) + JSON.stringify(rules || []);
+  for (const f of files) {
+    if (flowJson.includes(f.name)) sourceMap.set(f.relativePath, "flow");
   }
 
-  const { data: gsm } = await sb.from("group_scheduled_messages").select("content").eq("is_active", true);
-  if (gsm) {
-    const json = JSON.stringify(gsm);
-    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
-  }
-
+  // 2. Check delivery_products + member_area_materials → "member"
   const { data: products } = await sb.from("delivery_products").select("page_logo, member_cover_image").eq("workspace_id", workspaceId);
-  if (products) {
-    const json = JSON.stringify(products);
-    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
-  }
-
   const { data: materials } = await sb.from("member_area_materials").select("file_url, thumbnail_url").eq("workspace_id", workspaceId);
-  if (materials) {
-    const json = JSON.stringify(materials);
-    for (const f of files) { if (json.includes(f.name)) inUseSet.add(f.relativePath); }
-  }
-
-  // Check transactions for boleto references
-  const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
-  if (txns) {
-    const json = JSON.stringify(txns);
-    for (const f of files) {
-      if (f.relativePath.startsWith("boletos/") && json.includes(f.name)) {
-        inUseSet.add(f.relativePath);
-      }
+  const memberJson = JSON.stringify(products || []) + JSON.stringify(materials || []);
+  for (const f of files) {
+    if (!sourceMap.has(f.relativePath) && memberJson.includes(f.name)) {
+      sourceMap.set(f.relativePath, "member");
     }
   }
 
-  return inUseSet;
+  // 3. Check group_scheduled_messages → "group"
+  const { data: gsm } = await sb.from("group_scheduled_messages").select("content").eq("is_active", true);
+  const groupJson = JSON.stringify(gsm || []);
+  for (const f of files) {
+    if (!sourceMap.has(f.relativePath) && groupJson.includes(f.name)) {
+      sourceMap.set(f.relativePath, "group");
+    }
+  }
+
+  // 4. Boletos folder — check transactions for base name matching
+  const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
+  const txnJson = JSON.stringify(txns || []);
+  for (const f of files) {
+    if (!f.relativePath.startsWith("boletos/")) continue;
+    if (sourceMap.has(f.relativePath)) continue;
+    const baseName = path.parse(f.name).name;
+    // Mark as boleto; if referenced in transactions it's still "boleto" but inUse
+    sourceMap.set(f.relativePath, "boleto");
+    // We'll track inUse separately below
+  }
+
+  // 5. Everything else → "temporary"
+  for (const f of files) {
+    if (!sourceMap.has(f.relativePath)) {
+      sourceMap.set(f.relativePath, "temporary");
+    }
+  }
+
+  return sourceMap;
+}
+
+/** Check if a boleto file is referenced in transactions (by base name) */
+function isBoletoInUse(fileName: string, txnJson: string): boolean {
+  const baseName = path.parse(fileName).name;
+  return txnJson.includes(fileName) || txnJson.includes(baseName + ".pdf") || txnJson.includes(baseName + ".jpg");
 }
 
 // GET /api/media-manager/list
@@ -165,13 +182,25 @@ router.get("/list", async (req, res) => {
     if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
 
     const scanned = await scanUserFiles(userId);
-    const inUseSet = await computeInUseSet(workspaceId, scanned);
+    const sourceMap = await computeSourceMap(workspaceId, scanned);
 
-    const files = scanned.map((f) => ({
-      ...f,
-      inUse: inUseSet.has(f.relativePath),
-      isTemporary: !inUseSet.has(f.relativePath),
-    }));
+    // For boleto inUse check
+    const sb = getServiceClient();
+    const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
+    const txnJson = JSON.stringify(txns || []);
+
+    const files = scanned.map((f) => {
+      const source = sourceMap.get(f.relativePath) || "temporary";
+      const inUse = source === "boleto"
+        ? isBoletoInUse(f.name, txnJson)
+        : source !== "temporary";
+      return {
+        ...f,
+        source,
+        inUse,
+        isTemporary: source === "temporary",
+      };
+    });
 
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
 
@@ -214,7 +243,7 @@ router.delete("/delete", async (req, res) => {
   }
 });
 
-// DELETE /api/media-manager/cleanup — remove files not in use and older than 24h
+// DELETE /api/media-manager/cleanup — remove ONLY temporary (>24h) and unlinked boletos (>30d)
 router.delete("/cleanup", async (req, res) => {
   try {
     const userId = req.headers["x-user-id"] as string;
@@ -222,7 +251,12 @@ router.delete("/cleanup", async (req, res) => {
     if (!userId || !workspaceId) return res.status(401).json({ error: "Missing auth headers" });
 
     const scanned = await scanUserFiles(userId);
-    const inUseSet = await computeInUseSet(workspaceId, scanned);
+    const sourceMap = await computeSourceMap(workspaceId, scanned);
+
+    // For boleto inUse check
+    const sb = getServiceClient();
+    const { data: txns } = await sb.from("transactions").select("metadata").eq("workspace_id", workspaceId);
+    const txnJson = JSON.stringify(txns || []);
 
     const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
     const cutoff30d = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -231,10 +265,19 @@ router.delete("/cleanup", async (req, res) => {
     let freedBytes = 0;
 
     for (const f of scanned) {
-      if (inUseSet.has(f.relativePath)) continue;
-      const isBoleto = f.relativePath.startsWith("boletos/");
-      const cutoff = isBoleto ? cutoff30d : cutoff24h;
-      if (new Date(f.createdAt).getTime() > cutoff) continue;
+      const source = sourceMap.get(f.relativePath) || "temporary";
+
+      // NEVER touch flow, member, group files
+      if (source === "flow" || source === "member" || source === "group") continue;
+
+      if (source === "boleto") {
+        // Only delete unlinked boletos older than 30 days
+        if (isBoletoInUse(f.name, txnJson)) continue;
+        if (new Date(f.createdAt).getTime() > cutoff30d) continue;
+      } else {
+        // temporary: only if older than 24h
+        if (new Date(f.createdAt).getTime() > cutoff24h) continue;
+      }
 
       const resolved = path.resolve(userDir, f.relativePath);
       if (!resolved.startsWith(userDir)) continue;
