@@ -262,6 +262,13 @@ export default function GroupImportDialog({ open, onOpenChange, summary, file }:
               {result.mediaFailed > 0 && (
                 <li className="text-destructive">{result.mediaFailed} mídias falharam</li>
               )}
+              {result.mediaErrors.length > 0 && (
+                <li className="mt-2 space-y-1">
+                  {result.mediaErrors.map((err, i) => (
+                    <p key={i} className="text-xs text-destructive/80 break-all">{err}</p>
+                  ))}
+                </li>
+              )}
             </ul>
           </div>
         )}
