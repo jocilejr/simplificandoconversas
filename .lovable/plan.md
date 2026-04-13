@@ -1,43 +1,56 @@
 
 
-## Plano: Corrigir importação de mídias — estrutura do backup incompatível
+## Plano: Corrigir importação para usar a seção `media` top-level do backup
 
-### Causa raiz
+### Causa raiz confirmada
 
-O parser atual (`backupParser.ts`) assume que o backup tem uma seção **top-level** com formato:
-```json
-{ "media": { "caminho/arquivo.png": "data:image/png;base64,..." } }
+Analisei o código fonte original do `whats-grupos` (`src/lib/backup.ts`). O formato do backup é:
+
+```text
+{
+  "version": 1,
+  "source_url": "https://xxx.supabase.co",
+  "data": {
+    "campaigns": [...],
+    "scheduled_messages": [...]
+  },
+  "media": {
+    "userId/1234-foto.png": "data:image/png;base64,iVBOR...",
+    "userId/5678-video.mp4": "data:video/mp4;base64,AAAA..."
+  }
+}
 ```
 
-Mas o backup real do "whats-grupos" **não tem essa seção**. A primeira ocorrência de `"media": {` que o parser encontra pertence a uma **mensagem individual** e contém metadados como `group_id`, `message_type`, `fileName`, `mediaUrl` — que são tratados erroneamente como paths de arquivo. Resultado: "Invalid data URI" para cada chave.
+As mídias ficam no dicionário **top-level `media`** (não dentro das mensagens). As mensagens referenciam mídias via URLs completas do Supabase Storage, como:
+`https://xxx.supabase.co/storage/v1/object/public/media/userId/1234-foto.png`
 
-A mídia no backup está embutida **dentro de cada mensagem** (`content.mediaUrl` ou campo similar), provavelmente como data URI (base64) ou URL externa.
+O parser atual ignora completamente a seção `media` top-level e procura `data:` URIs dentro dos campos das mensagens — que não existem. Por isso `mediaCount = 0`.
 
 ### Solução
 
-Abandonar a abordagem de "seção media top-level" e extrair mídias **diretamente das mensagens agendadas** já parseadas.
+Reescrever o parser para extrair a seção `media` top-level e o `source_url`, e adaptar o fluxo de upload para fazer o remapeamento de URLs correto.
 
 ### Mudanças
 
 | Arquivo | Ação |
 |---|---|
-| `src/lib/backupParser.ts` | Reescrever `parseBackupSummary` para contar mídias a partir dos `scheduledMessages` (mensagens com `content.mediaUrl` começando com `data:`) em vez de `scanMediaKeys`. Remover `scanMediaKeys`, `extractKeysFromChunk` e `iterateMediaEntries` (não mais necessários). Adicionar nova função `extractMediaFromMessages` que itera sobre as mensagens e retorna `{ messageIndex, mediaUrl (data URI) }` |
-| `src/components/grupos/GroupImportDialog.tsx` | Alterar etapa 2 para iterar sobre `summary.scheduledMessages` em vez de `iterateMediaEntries(file)`. Para cada mensagem com `content.mediaUrl` em base64: converter via `dataUriToFile`, fazer upload via FormData, e guardar o mapeamento `oldDataUri → newUrl`. Na etapa 3 (remap), enviar o mapeamento para o backend atualizar `content.mediaUrl` nas mensagens do banco |
+| `src/lib/backupParser.ts` | Adicionar extração da seção `media` top-level (dicionário `path → dataUri`) e do `source_url`. Mudar `BackupSummary` para incluir `topLevelMedia: Record<string, string>` e `sourceUrl: string`. Manter `mediaEntries` como fallback mas priorizar `topLevelMedia`. Contar mídias = `Object.keys(topLevelMedia).length` |
+| `src/components/grupos/GroupImportDialog.tsx` | Reescrever Step 2 para iterar sobre `summary.topLevelMedia` (chave=path, valor=dataUri), converter cada um via `dataUriToFile`, fazer upload, e montar um mapa de `oldUrl → newUrl` (onde `oldUrl = sourceUrl + /storage/v1/object/public/media/ + path`). No Step 3, enviar esse mapa para o backend fazer `replaceUrls` no conteúdo das mensagens |
 
 ### Lógica detalhada
 
-1. **`parseBackupSummary`**: Após extrair `scheduledMessages`, contar quantas têm `content.mediaUrl` começando com `data:` — esse é o `mediaCount`. Não precisa mais do `scanMediaKeys`.
+**Parser (`backupParser.ts`)**:
+1. Após extrair `campaigns` e `scheduled_messages`, procurar `"media"\s*:\s*{` no texto (fora da seção `data`)
+2. Usar `findMatchingBracket` para extrair o objeto JSON
+3. Parsear como `Record<string, string>` — cada chave é um path de storage, cada valor é um data URI
+4. Extrair `source_url` do backup com regex `"source_url"\s*:\s*"([^"]+)"`
+5. `mediaKeys = Object.keys(topLevelMedia)`
 
-2. **Upload no diálogo**: 
-   - Iterar `summary.scheduledMessages` 
-   - Para cada msg com `content.mediaUrl` que começa com `data:`:
-     - Usar `dataUriToFile(content.mediaUrl, fileName)` para converter
-     - Upload via FormData para `/groups/import-media`
-     - Guardar `{ messageIndex → newUrl }`
-   - Mensagens com `mediaUrl` que é URL normal (http/https): ignorar, já está pronta
-
-3. **Remap**: Enviar lista de `{ messageId, newMediaUrl }` para o backend atualizar `content->'mediaUrl'` no banco
+**Upload (`GroupImportDialog.tsx`)**:
+1. Para cada `[path, dataUri]` em `topLevelMedia`: extrair nome do arquivo de `path`, converter com `dataUriToFile`, upload via FormData
+2. Montar mapa: `oldUrl` (`${sourceUrl}/storage/v1/object/public/media/${path}`) → `newUrl` (retornado pelo backend)
+3. Enviar mapa de remapeamento para o backend atualizar as URLs nas mensagens
 
 ### Resultado esperado
-As mídias em base64 do backup serão corretamente extraídas das mensagens, enviadas para o servidor, e as referências atualizadas. Mídias que já são URLs externas serão preservadas sem alteração.
+As mídias do backup serão corretamente detectadas (contagem correta na UI), enviadas ao servidor, e as referências nas mensagens atualizadas com as novas URLs.
 
