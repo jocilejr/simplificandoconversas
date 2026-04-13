@@ -315,6 +315,27 @@ cron.schedule("*/30 * * * * *", async () => {
   }
 });
 
+// ─── Smart Link Sync Cron (5min): sync member_count and invite_url ───
+cron.schedule("*/5 * * * *", async () => {
+  try {
+    const resp = await fetch(`http://localhost:${PORT}/api/groups/smart-links/sync-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!resp.ok) {
+      console.error("[cron] smart-link-sync error:", await resp.text());
+    } else {
+      const result = await resp.json() as any;
+      const count = result?.results?.length || 0;
+      if (count > 0) {
+        console.log(`[cron] 🔗 Smart link sync: ${count} link(s) processed`);
+      }
+    }
+  } catch (err: any) {
+    console.error("[cron] smart-link-sync error:", err.message);
+  }
+});
+
 const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
