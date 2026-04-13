@@ -69,7 +69,7 @@ export function useLeads() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at")
+        .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, email, document")
         .eq("workspace_id", workspaceId!)
         .not("remote_jid", "like", "%@lid")
         .order("last_message_at", { ascending: false });
