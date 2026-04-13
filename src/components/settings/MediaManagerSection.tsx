@@ -13,6 +13,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Trash2, RefreshCw, FileAudio, FileImage, FileVideo, FileText, File, Loader2,
   Bot, Users, Receipt, Clock, LayoutGrid, ShieldCheck,
 } from "lucide-react";
@@ -103,6 +106,7 @@ export function MediaManagerSection() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [cleanupConfirmOpen, setCleanupConfirmOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
   const baseUrl = supabaseUrl.includes(".supabase.co") ? "" : supabaseUrl.replace(/\/+$/, "").replace(/\/functions\/v1$/, "");
@@ -311,8 +315,8 @@ export function MediaManagerSection() {
                     const sl = SOURCE_LABELS[file.source];
                     const fk = fileKey(file);
                     return (
-                      <TableRow key={fk}>
-                        <TableCell>
+                      <TableRow key={fk} className="cursor-pointer hover:bg-muted/50" onClick={() => setPreviewFile(file)}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Checkbox checked={selected.has(fk)} onCheckedChange={() => toggleSelect(fk)} />
                         </TableCell>
                         <TableCell>
@@ -406,6 +410,70 @@ export function MediaManagerSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Preview dialog */}
+      <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-mono break-all">{previewFile?.name}</DialogTitle>
+          </DialogHeader>
+          {previewFile && (() => {
+            const fullUrl = `${baseUrl}${previewFile.url}`;
+            const sl = SOURCE_LABELS[previewFile.source];
+            return (
+              <div className="space-y-4">
+                {/* Metadata */}
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span>{previewFile.sizeFormatted}</span>
+                  <span>•</span>
+                  <span className="capitalize">{previewFile.category}</span>
+                  <span>•</span>
+                  <span>{new Date(previewFile.modifiedAt).toLocaleDateString("pt-BR")}</span>
+                  <span>•</span>
+                  <Badge variant={previewFile.source === "temporary" ? "secondary" : "outline"} className={`text-[10px] ${sl.className}`}>
+                    {sl.label}
+                  </Badge>
+                  {previewFile.inUse && <Badge variant="default" className="text-[10px]">Em uso</Badge>}
+                </div>
+
+                {/* Content preview */}
+                <div className="flex items-center justify-center bg-muted/30 rounded-lg p-4 min-h-[200px]">
+                  {previewFile.category === "image" && (
+                    <img src={fullUrl} alt={previewFile.name} className="max-w-full max-h-[65vh] rounded object-contain" />
+                  )}
+                  {previewFile.category === "audio" && (
+                    <audio src={fullUrl} controls className="w-full max-w-md" />
+                  )}
+                  {previewFile.category === "video" && (
+                    <video src={fullUrl} controls className="max-w-full max-h-[65vh] rounded" />
+                  )}
+                  {previewFile.category === "pdf" && (
+                    <iframe src={fullUrl} className="w-full h-[65vh] rounded border border-border" title={previewFile.name} />
+                  )}
+                  {!["image", "audio", "video", "pdf"].includes(previewFile.category) && (
+                    <div className="text-center space-y-2">
+                      <File className="h-16 w-16 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">Preview não disponível para este tipo de arquivo</p>
+                      <a href={fullUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline">
+                        Abrir em nova aba
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Open in new tab */}
+                {["image", "audio", "video", "pdf"].includes(previewFile.category) && (
+                  <div className="text-center">
+                    <a href={fullUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
+                      Abrir em nova aba ↗
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
