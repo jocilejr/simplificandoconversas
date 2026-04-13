@@ -24,10 +24,10 @@ echo "[2/5] Running database migrations..."
 cd "$DEPLOY_DIR"
 
 echo "   → Applying all SQL migrations in a single pass..."
-cat "$DEPLOY_DIR/../deploy/init-db.sql" \
+cat "$DEPLOY_DIR/init-db.sql" \
     "$DEPLOY_DIR/migrate-workspace.sql" \
     "$DEPLOY_DIR/fix-member-tables.sql" \
-  2>/dev/null | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
+  | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
 echo "✓ Migrações aplicadas"
 
 # Validate workspace membership exists for all users
