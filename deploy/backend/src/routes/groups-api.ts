@@ -1230,41 +1230,12 @@ router.post("/import-backup", async (req: Request, res: Response) => {
     }
 
     const data = backup.data || {};
-    const media = backup.media || {};
     const campaigns = data.campaigns || [];
     const scheduledMessages = data.scheduled_messages || [];
 
     const sb = getServiceClient();
 
-    // 1. Upload media files from base64 and build URL map
-    const mediaUrlMap: Record<string, string> = {};
-    for (const [path, dataUri] of Object.entries(media)) {
-      try {
-        const base64Match = (dataUri as string).match(/^data:([^;]+);base64,(.+)$/);
-        if (!base64Match) continue;
-
-        const mimeType = base64Match[1];
-        const base64Data = base64Match[2];
-        const buffer = Buffer.from(base64Data, "base64");
-        const ext = mimeType.split("/")[1]?.split("+")[0] || "bin";
-        const storagePath = `${userId}/import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-        const { error: uploadErr } = await sb.storage
-          .from("chatbot-media")
-          .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
-
-        if (!uploadErr) {
-          const { data: urlData } = sb.storage.from("chatbot-media").getPublicUrl(storagePath);
-          mediaUrlMap[path] = urlData.publicUrl;
-        } else {
-          console.warn(`[import-backup] Failed to upload media ${path}:`, uploadErr.message);
-        }
-      } catch (e: any) {
-        console.warn(`[import-backup] Media upload error for ${path}:`, e.message);
-      }
-    }
-
-    // 2. Create campaigns and map old IDs to new IDs
+    // 1. Create campaigns and map old IDs to new IDs
     const campaignIdMap: Record<string, string> = {};
     let campaignsImported = 0;
 
@@ -1279,7 +1250,7 @@ router.post("/import-backup", async (req: Request, res: Response) => {
           description: c.description || "",
           instance_name: c.instance_name || "default",
           group_jids: c.group_ids || c.group_jids || [],
-          is_active: false, // always inactive on import
+          is_active: false,
         })
         .select("id")
         .single();
@@ -1293,8 +1264,9 @@ router.post("/import-backup", async (req: Request, res: Response) => {
       campaignsImported++;
     }
 
-    // 3. Create scheduled messages with remapped campaign IDs and media URLs
+    // 2. Create scheduled messages with remapped campaign IDs
     let messagesImported = 0;
+    const messageIds: string[] = [];
 
     for (const msg of scheduledMessages) {
       const newCampaignId = campaignIdMap[msg.campaign_id];
@@ -1303,24 +1275,14 @@ router.post("/import-backup", async (req: Request, res: Response) => {
         continue;
       }
 
-      // Remap media URLs in content
-      let content = msg.content || {};
-      if (typeof content === "object") {
-        const contentStr = JSON.stringify(content);
-        let remapped = contentStr;
-        for (const [oldPath, newUrl] of Object.entries(mediaUrlMap)) {
-          remapped = remapped.split(oldPath).join(newUrl);
-        }
-        content = JSON.parse(remapped);
-      }
-
+      const content = msg.content || {};
       const scheduleType = msg.schedule_type || "once";
       const scheduledAt = msg.scheduled_at || null;
       const cronExpression = msg.cron_expression || null;
       const intervalMinutes = msg.interval_minutes || null;
       const nextRunAt = computeNextRunAt(scheduleType, scheduledAt, cronExpression, intervalMinutes);
 
-      const { error: mErr } = await sb
+      const { data: newMsg, error: mErr } = await sb
         .from("group_scheduled_messages")
         .insert({
           campaign_id: newCampaignId,
@@ -1334,24 +1296,114 @@ router.post("/import-backup", async (req: Request, res: Response) => {
           interval_minutes: intervalMinutes,
           is_active: msg.is_active ?? true,
           next_run_at: nextRunAt,
-        });
+        })
+        .select("id")
+        .single();
 
       if (mErr) {
         console.error(`[import-backup] Message insert error:`, mErr.message);
         continue;
       }
 
+      messageIds.push(newMsg.id);
       messagesImported++;
     }
 
-    console.log(`[import-backup] Done: ${campaignsImported} campaigns, ${messagesImported} messages, ${Object.keys(mediaUrlMap).length} media files`);
+    console.log(`[import-backup] Done: ${campaignsImported} campaigns, ${messagesImported} messages`);
     res.json({
       campaignsImported,
       messagesImported,
-      mediaUploaded: Object.keys(mediaUrlMap).length,
+      mediaUploaded: 0,
+      campaignIdMap,
+      messageIds,
     });
   } catch (err: any) {
     console.error("[import-backup] error:", err?.message || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
+/* ─── POST /import-media ─── */
+router.post("/import-media", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, userId, path: mediaPath, dataUri } = req.body;
+    if (!workspaceId || !userId || !mediaPath || !dataUri) {
+      return res.status(400).json({ error: "Missing workspaceId, userId, path or dataUri" });
+    }
+
+    const base64Match = (dataUri as string).match(/^data:([^;]+);base64,(.+)$/);
+    if (!base64Match) {
+      return res.status(400).json({ error: "Invalid data URI format" });
+    }
+
+    const mimeType = base64Match[1];
+    const base64Data = base64Match[2];
+    const buffer = Buffer.from(base64Data, "base64");
+    const ext = mimeType.split("/")[1]?.split("+")[0] || "bin";
+    const storagePath = `${userId}/import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const sb = getServiceClient();
+    const { error: uploadErr } = await sb.storage
+      .from("chatbot-media")
+      .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+
+    if (uploadErr) {
+      console.error(`[import-media] Upload error for ${mediaPath}:`, uploadErr.message);
+      return res.status(500).json({ error: uploadErr.message });
+    }
+
+    const { data: urlData } = sb.storage.from("chatbot-media").getPublicUrl(storagePath);
+    console.log(`[import-media] Uploaded ${mediaPath} → ${urlData.publicUrl}`);
+    res.json({ oldPath: mediaPath, newUrl: urlData.publicUrl });
+  } catch (err: any) {
+    console.error("[import-media] error:", err?.message || JSON.stringify(err));
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
+/* ─── POST /import-remap-media ─── */
+router.post("/import-remap-media", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, messageIds, mediaUrlMap } = req.body;
+    if (!workspaceId || !messageIds || !mediaUrlMap) {
+      return res.status(400).json({ error: "Missing workspaceId, messageIds or mediaUrlMap" });
+    }
+
+    const sb = getServiceClient();
+    let remapped = 0;
+
+    for (const msgId of messageIds) {
+      const { data: msg, error: fetchErr } = await sb
+        .from("group_scheduled_messages")
+        .select("content")
+        .eq("id", msgId)
+        .eq("workspace_id", workspaceId)
+        .single();
+
+      if (fetchErr || !msg) continue;
+
+      let contentStr = JSON.stringify(msg.content || {});
+      let changed = false;
+      for (const [oldPath, newUrl] of Object.entries(mediaUrlMap)) {
+        if (contentStr.includes(oldPath)) {
+          contentStr = contentStr.split(oldPath).join(newUrl as string);
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        await sb
+          .from("group_scheduled_messages")
+          .update({ content: JSON.parse(contentStr) })
+          .eq("id", msgId);
+        remapped++;
+      }
+    }
+
+    console.log(`[import-remap-media] Remapped ${remapped} messages`);
+    res.json({ remapped });
+  } catch (err: any) {
+    console.error("[import-remap-media] error:", err?.message || JSON.stringify(err));
     res.status(500).json({ error: err?.message || "Unknown error" });
   }
 });
