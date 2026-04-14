@@ -1,31 +1,71 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api";
 
 export function useMetaAdSpend(startDate?: Date, endDate?: Date) {
   const { workspaceId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const syncedRef = useRef<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  return useQuery({
-    queryKey: ["meta-ad-spend", workspaceId, startDate?.toISOString(), endDate?.toISOString()],
+  const startStr = startDate?.toISOString().split("T")[0];
+  const endStr = endDate?.toISOString().split("T")[0];
+  const syncKey = `${workspaceId}-${startStr}-${endStr}`;
+
+  // Auto-sync when dates/workspace change
+  useEffect(() => {
+    if (!workspaceId || !startStr || !endStr) return;
+    if (syncedRef.current === syncKey) return;
+    syncedRef.current = syncKey;
+
+    const doSync = async () => {
+      setIsSyncing(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        await fetch(apiUrl("sync-meta-ads"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            workspace_id: workspaceId,
+            start_date: startStr,
+            end_date: endStr,
+          }),
+        });
+        queryClient.invalidateQueries({ queryKey: ["meta-ad-spend"] });
+      } catch (e) {
+        console.warn("Meta Ads sync failed:", e);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+    doSync();
+  }, [workspaceId, startStr, endStr, syncKey, queryClient]);
+
+  const query = useQuery({
+    queryKey: ["meta-ad-spend", workspaceId, startStr, endStr],
     enabled: !!workspaceId,
     queryFn: async () => {
-      let query = supabase
+      let q = supabase
         .from("meta_ad_spend")
         .select("*")
         .eq("workspace_id", workspaceId!);
 
-      if (startDate) {
-        query = query.gte("date", startDate.toISOString().split("T")[0]);
-      }
-      if (endDate) {
-        query = query.lte("date", endDate.toISOString().split("T")[0]);
-      }
+      if (startDate) q = q.gte("date", startStr!);
+      if (endDate) q = q.lte("date", endStr!);
 
-      const { data, error } = await query;
+      const { data, error } = await q;
       if (error) throw error;
 
       const totalSpend = (data || []).reduce((sum, row) => sum + Number(row.spend), 0);
       return { rows: data || [], totalSpend };
     },
   });
+
+  return { ...query, isSyncing };
 }
