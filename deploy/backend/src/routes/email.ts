@@ -779,11 +779,15 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
 
     if (!userId) return res.status(401).json({ error: "API Key inválida" });
 
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado para este usuário" });
+
     const { event, data } = req.body;
 
     // Log the request
     await supabase.from("api_request_logs").insert({
       user_id: userId,
+      workspace_id: workspaceId,
       method: "POST",
       path: "/api/email/webhook/inbound",
       status_code: 200,
@@ -805,6 +809,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .from("email_sends")
           .insert({
             user_id: userId,
+            workspace_id: workspaceId,
             template_id: templateId || null,
             recipient_email: to,
             recipient_name: recipientName || null,
@@ -824,7 +829,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
 
         if (sendLog) {
           await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-          await logEvent(sendLog.id, userId, "sent");
+          await logEvent(sendLog.id, userId, "sent", undefined, workspaceId);
         }
         return res.json({ ok: true, sendId: sendLog?.id });
       }
@@ -857,6 +862,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
             await supabase.from("email_follow_up_sends").insert({
               follow_up_id: fu.id,
               user_id: userId,
+              workspace_id: workspaceId,
               recipient_email: email,
               status: "pending",
               scheduled_at: scheduledAt.toISOString(),
@@ -888,6 +894,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .upsert(
             {
               user_id: userId,
+              workspace_id: workspaceId,
               email: normalized.email,
               name: regName || null,
               tags: regTags || [],
@@ -929,6 +936,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
                 try {
                   await supabase.from("email_queue").insert({
                     user_id: userId,
+                    workspace_id: workspaceId,
                     campaign_id: camp.id,
                     template_id: template.id,
                     smtp_config_id: camp.smtp_config_id || null,
