@@ -1,333 +1,431 @@
-import { useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
-  MessageSquare, Image, Video, Mic, FileText, Sticker, MapPin,
-  Contact, BarChart3, List, CheckCheck, Sparkles,
-  Play, FileIcon, User, Phone, VideoIcon, MoreVertical, Search
+  Sparkles, Play, Mic, MapPin, User, BarChart3, List,
+  CheckCheck, File,
 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
-interface LinkPreviewData {
-  title?: string;
-  description?: string;
-  image?: string;
-  logo?: string;
-  url?: string;
-}
-
-interface Props {
+export interface WhatsAppPreviewProps {
   messageType: string;
-  content: any;
+  textContent?: string;
+  mediaUrl?: string;
+  caption?: string;
+  locName?: string;
+  locAddress?: string;
+  locLat?: string;
+  locLng?: string;
+  contactName?: string;
+  contactPhone?: string;
+  pollName?: string;
+  pollOptions?: string[];
+  listTitle?: string;
+  listDescription?: string;
+  listButtonText?: string;
+  listFooter?: string;
+  listSections?: { title: string; rows: { title: string; description: string }[] }[];
   mentionAll?: boolean;
   forceLinkPreview?: boolean;
 }
 
-function extractUrl(text: string): string | null {
-  const match = text.match(/https?:\/\/[^\s]+/);
-  return match ? match[0] : null;
+function TimeStamp() {
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1.5 align-bottom whitespace-nowrap" style={{ float: 'right', marginTop: '3px' }}>
+      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.55)', lineHeight: 1 }}>12:00</span>
+      <CheckCheck style={{ width: '14px', height: '14px', color: '#53bdeb' }} />
+    </span>
+  );
 }
 
-function formatWhatsAppText(text: string): string {
-  if (!text) return "";
-  return text
-    .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
-    .replace(/_([^_]+)_/g, '<em>$1</em>')
-    .replace(/~([^~]+)~/g, '<del>$1</del>')
-    .replace(/```([^`]+)```/g, '<code class="bg-black/30 px-0.5 rounded text-[10px] font-mono">$1</code>')
-    .replace(/\n/g, '<br/>');
+function Bubble({ children, noBubble = false }: { children: React.ReactNode; noBubble?: boolean }) {
+  if (noBubble) {
+    return <div className="flex justify-end px-3 py-0.5">{children}</div>;
+  }
+  return (
+    <div className="flex justify-end px-[18px] py-[1px]">
+      <div
+        style={{
+          backgroundColor: '#005c4b',
+          borderRadius: '7.5px',
+          borderTopRightRadius: 0,
+          maxWidth: '95%',
+          padding: '6px 7px 8px 9px',
+          position: 'relative',
+          boxShadow: '0 1px 0.5px rgba(0,0,0,0.13)',
+        }}
+      >
+        <svg
+          viewBox="0 0 8 13"
+          height="13"
+          width="8"
+          style={{ position: 'absolute', top: 0, right: '-8px' }}
+        >
+          <path opacity=".13" d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z" />
+          <path fill="#005c4b" d="M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z" />
+        </svg>
+        {children}
+      </div>
+    </div>
+  );
 }
 
-function getDomain(url: string): string {
-  try { return new URL(url).hostname; } catch { return url; }
+function EmptyState() {
+  return (
+    <div className="flex items-center justify-center" style={{ minHeight: '180px' }}>
+      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', textAlign: 'center' }}>
+        Componha uma mensagem<br />para ver o preview
+      </p>
+    </div>
+  );
 }
 
-export default function WhatsAppPreview({ messageType, content, mentionAll, forceLinkPreview }: Props) {
-  const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+const WAVEFORM_HEIGHTS = Array.from({ length: 30 }, (_, i) =>
+  Math.sin(i * 0.6) * 10 + Math.cos(i * 1.2) * 5 + 8
+);
 
-  const text = content?.text || "";
-  const url = extractUrl(text);
+function formatWhatsAppText(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const regex = /```([\s\S]*?)```|\*([^*]+)\*|_([^_]+)_|~([^~]+)~/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    if (match[1] !== undefined) {
+      parts.push(<code key={key++} style={{ fontFamily: 'monospace', fontSize: '13px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', padding: '1px 3px' }}>{match[1]}</code>);
+    } else if (match[2] !== undefined) {
+      parts.push(<strong key={key++} style={{ fontWeight: 700 }}>{match[2]}</strong>);
+    } else if (match[3] !== undefined) {
+      parts.push(<em key={key++}>{match[3]}</em>);
+    } else if (match[4] !== undefined) {
+      parts.push(<del key={key++}>{match[4]}</del>);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
+const URL_REGEX = /https?:\/\/[^\s]+/i;
+
+function LinkPreviewCard({ url }: { url: string }) {
+  const [ogData, setOgData] = useState<{ image?: string; title?: string; domain?: string } | null>(null);
+
+  const domain = useMemo(() => {
+    try { return new URL(url).hostname.replace('www.', ''); } catch { return url; }
+  }, [url]);
 
   useEffect(() => {
-    if (messageType !== "text" || !url || !forceLinkPreview) {
-      setLinkPreview(null);
-      return;
-    }
+    setOgData(null);
     const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      setLoadingPreview(true);
-      fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`, { signal: controller.signal })
-        .then(r => r.json())
-        .then(data => {
-          if (data.status === "success" && data.data) {
-            setLinkPreview({
-              title: data.data.title,
-              description: data.data.description,
-              image: data.data.image?.url,
-              logo: data.data.logo?.url,
-              url: data.data.url,
-            });
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingPreview(false));
-    }, 600);
-    return () => { clearTimeout(timeout); controller.abort(); };
-  }, [url, forceLinkPreview, messageType]);
+    fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(res => {
+        if (res.status === 'success' && res.data) {
+          setOgData({
+            image: res.data.image?.url || res.data.logo?.url,
+            title: res.data.title,
+            domain: res.data.publisher || domain,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [url, domain]);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+  return (
+    <div style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: '4px', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ background: '#0b141a', position: 'relative', overflow: 'hidden' }}>
+        {ogData?.image ? (
+          <img
+            src={ogData.image}
+            alt=""
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : (
+          <div style={{ width: '100%', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={faviconUrl} alt="" style={{ width: '32px', height: '32px', opacity: 0.4 }} />
+          </div>
+        )}
+      </div>
+      <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <img
+          src={faviconUrl}
+          alt=""
+          style={{ width: '16px', height: '16px', borderRadius: '2px', flexShrink: 0 }}
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', textTransform: 'lowercase', lineHeight: 1.2 }}>{domain}</p>
+          <p style={{ fontSize: '12.5px', color: '#e9edef', fontWeight: 500, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {ogData?.title || domain.charAt(0).toUpperCase() + domain.slice(1)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
+  const {
+    messageType, textContent, mediaUrl, caption,
+    locName, locAddress, locLat, locLng,
+    contactName, contactPhone, pollName, pollOptions,
+    listTitle, listDescription, listButtonText, listFooter,
+    mentionAll, forceLinkPreview,
+  } = props;
+
+  const detectedUrl = useMemo(() => {
+    if (messageType === 'text' && textContent && forceLinkPreview !== false) {
+      const match = textContent.match(URL_REGEX);
+      return match ? match[0] : null;
     }
-  }, [content, messageType, mentionAll, linkPreview]);
+    return null;
+  }, [messageType, textContent, forceLinkPreview]);
 
   const hasContent = () => {
     switch (messageType) {
-      case "text": return !!text;
-      case "image": case "video": case "audio": case "document": case "sticker":
-        return !!content?.mediaUrl;
-      case "contact": return !!content?.contactName;
-      case "location": return !!content?.latitude;
-      case "poll": return !!content?.question;
-      case "list": return !!content?.title;
+      case "text": return !!textContent?.trim();
+      case "image": case "video": case "document": case "audio": case "sticker": return !!mediaUrl;
+      case "location": return !!locLat && !!locLng;
+      case "contact": return !!contactName;
+      case "poll": return !!pollName;
+      case "list": return !!listTitle;
       default: return false;
     }
   };
 
-  const renderBubbleContent = () => {
+  const renderContent = () => {
     switch (messageType) {
       case "text":
         return (
-          <div className="space-y-0">
-            {linkPreview && (
-              <div className="rounded overflow-hidden mb-1 border border-white/5">
-                {linkPreview.image && (
-                  <div className="w-full h-[100px] bg-black/20 overflow-hidden">
-                    <img src={linkPreview.image} alt="" className="w-full h-full object-cover" />
-                  </div>
-                )}
-                <div className="p-1.5 bg-[#1d2a21]">
-                  <p className="text-[9px] text-[#8696a0] uppercase tracking-wide">{getDomain(url!)}</p>
-                  <p className="text-[10px] text-[#e9edef] font-medium leading-tight mt-0.5 line-clamp-2">{linkPreview.title}</p>
-                  {linkPreview.description && (
-                    <p className="text-[9px] text-[#8696a0] leading-tight mt-0.5 line-clamp-2">{linkPreview.description}</p>
-                  )}
-                </div>
-              </div>
-            )}
-            {loadingPreview && (
-              <div className="rounded p-2 mb-1 bg-[#1d2a21] animate-pulse">
-                <div className="h-1.5 bg-white/10 rounded w-16 mb-1" />
-                <div className="h-2 bg-white/10 rounded w-full mb-0.5" />
-                <div className="h-1.5 bg-white/10 rounded w-3/4" />
-              </div>
-            )}
-            {mentionAll && <span className="text-[#53bdeb] text-[11px]">@todos </span>}
-            <span className="text-[11px] text-[#e9edef] leading-[16px] break-words" dangerouslySetInnerHTML={{ __html: formatWhatsAppText(text) }} />
-          </div>
+          <Bubble>
+            {detectedUrl && <LinkPreviewCard url={detectedUrl} />}
+            {mentionAll && <span style={{ color: '#53bdeb', fontSize: '14.2px' }}>@todos </span>}
+            <span style={{ fontSize: '14.2px', color: '#e9edef', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '19px' }}>
+              {formatWhatsAppText(textContent || '')}
+            </span>
+            <TimeStamp />
+          </Bubble>
         );
 
       case "image":
         return (
-          <div className="space-y-0.5">
-            <div className="w-full h-[120px] bg-[#1d2a21] rounded overflow-hidden flex items-center justify-center">
-              {content?.mediaUrl ? (
-                <img src={content.mediaUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              ) : (
-                <Image className="h-5 w-5 text-[#8696a0]" />
-              )}
+          <Bubble>
+            <div style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: caption ? '4px' : '0' }}>
+              <img src={mediaUrl} alt="" style={{ width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }} />
             </div>
-            {mentionAll && <span className="text-[#53bdeb] text-[11px]">@todos </span>}
-            {content?.caption && <p className="text-[11px] text-[#e9edef]">{content.caption}</p>}
-          </div>
+            {mentionAll && <span style={{ color: '#53bdeb', fontSize: '14.2px' }}>@todos </span>}
+            {caption && (
+              <span style={{ fontSize: '14.2px', color: '#e9edef', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '19px' }}>
+                {formatWhatsAppText(caption)}
+              </span>
+            )}
+            <TimeStamp />
+          </Bubble>
         );
 
       case "video":
         return (
-          <div className="space-y-0.5">
-            <div className="w-full h-[120px] bg-[#1d2a21] rounded flex items-center justify-center relative">
-              <div className="h-8 w-8 rounded-full bg-black/60 flex items-center justify-center">
-                <Play className="h-3.5 w-3.5 text-white ml-0.5" />
+          <Bubble>
+            <div style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: caption ? '4px' : '0', height: '140px', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.5))' }} />
+              <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
+                <Play style={{ width: '20px', height: '20px', color: 'white', fill: 'white', marginLeft: '2px' }} />
               </div>
             </div>
-            {mentionAll && <span className="text-[#53bdeb] text-[11px]">@todos </span>}
-            {content?.caption && <p className="text-[11px] text-[#e9edef]">{content.caption}</p>}
-          </div>
+            {mentionAll && <span style={{ color: '#53bdeb', fontSize: '14.2px' }}>@todos </span>}
+            {caption && (
+              <span style={{ fontSize: '14.2px', color: '#e9edef', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '19px' }}>
+                {formatWhatsAppText(caption)}
+              </span>
+            )}
+            <TimeStamp />
+          </Bubble>
         );
 
       case "audio":
         return (
-          <div className="flex items-center gap-1.5 min-w-[180px]">
-            <div className="h-8 w-8 rounded-full bg-[#00a884]/20 flex items-center justify-center shrink-0">
-              <User className="h-3.5 w-3.5 text-[#00a884]" />
-            </div>
-            <div className="flex-1 space-y-0.5">
-              <div className="flex items-center gap-1">
-                <Play className="h-3 w-3 text-[#8696a0]" />
-                <div className="flex-1 h-[4px] bg-[#374045] rounded-full overflow-hidden">
-                  <div className="h-full w-1/3 bg-[#8696a0] rounded-full" />
+          <Bubble>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '220px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#374045', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <User style={{ width: '20px', height: '20px', color: '#8696a0' }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Play style={{ width: '16px', height: '16px', color: '#8696a0', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', alignItems: 'end', gap: '1px', flex: 1, height: '24px' }}>
+                    {WAVEFORM_HEIGHTS.map((h, i) => (
+                      <div key={i} style={{ width: '3px', borderRadius: '1.5px', background: '#8696a0', height: `${h}%` }} />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>0:00</span>
+                  <Mic style={{ width: '14px', height: '14px', color: '#53bdeb' }} />
                 </div>
               </div>
-              <p className="text-[8px] text-[#8696a0]">0:00</p>
             </div>
-          </div>
+            <TimeStamp />
+          </Bubble>
         );
 
       case "document":
         return (
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1.5 p-2 bg-[#1d2a21] rounded">
-              <div className="h-7 w-7 rounded bg-[#00a884]/15 flex items-center justify-center shrink-0">
-                <FileIcon className="h-3.5 w-3.5 text-[#00a884]" />
+          <Bubble>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', padding: '10px', marginBottom: caption ? '4px' : '0' }}>
+              <div style={{ width: '36px', height: '44px', background: '#374045', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <File style={{ width: '18px', height: '18px', color: '#8696a0' }} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-[#e9edef] truncate">{content?.mediaUrl?.split("/").pop() || "documento.pdf"}</p>
-                <p className="text-[8px] text-[#8696a0]">PDF</p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: '13px', color: '#e9edef', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {mediaUrl?.split("/").pop() || "documento.pdf"}
+                </p>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '1px' }}>PDF</p>
               </div>
             </div>
-            {content?.caption && <p className="text-[11px] text-[#e9edef]">{content.caption}</p>}
-          </div>
+            {caption && (
+              <span style={{ fontSize: '14.2px', color: '#e9edef', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '19px' }}>
+                {formatWhatsAppText(caption)}
+              </span>
+            )}
+            <TimeStamp />
+          </Bubble>
         );
 
       case "sticker":
         return (
-          <div className="w-[90px] h-[90px] flex items-center justify-center">
-            {content?.mediaUrl ? (
-              <img src={content.mediaUrl} alt="sticker" className="max-w-full max-h-full" />
-            ) : (
-              <Sticker className="h-12 w-12 text-[#8696a0]/30" />
-            )}
-          </div>
+          <Bubble noBubble>
+            <div style={{ width: '140px', height: '140px' }}>
+              <img src={mediaUrl} alt="sticker" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+          </Bubble>
         );
 
       case "location":
         return (
-          <div className="space-y-0.5">
-            <div className="w-full h-[90px] bg-[#1d2a21] rounded flex items-center justify-center">
-              <MapPin className="h-6 w-6 text-[#00a884]" />
+          <Bubble>
+            <div style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: '4px', background: '#1a2a1e' }}>
+              <div style={{ height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #1a2e1e 0%, #0b141a 100%)' }}>
+                <MapPin style={{ width: '28px', height: '28px', color: '#25d366' }} />
+              </div>
+              <div style={{ padding: '8px 10px' }}>
+                {locName && <p style={{ fontSize: '13px', color: '#e9edef', fontWeight: 500 }}>{locName}</p>}
+                {locAddress && <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '1px' }}>{locAddress}</p>}
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>{locLat}, {locLng}</p>
+              </div>
             </div>
-            {content?.name && <p className="text-[11px] text-[#e9edef] font-medium">{content.name}</p>}
-            {content?.address && <p className="text-[9px] text-[#8696a0]">{content.address}</p>}
-          </div>
+            <TimeStamp />
+          </Bubble>
         );
 
       case "contact":
         return (
-          <div className="min-w-[160px]">
-            <div className="flex items-center gap-1.5 pb-1.5 border-b border-white/10">
-              <div className="h-7 w-7 rounded-full bg-[#374045] flex items-center justify-center">
-                <User className="h-3.5 w-3.5 text-[#8696a0]" />
+          <Bubble>
+            <div style={{ minWidth: '200px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#374045', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <User style={{ width: '20px', height: '20px', color: '#8696a0' }} />
+                </div>
+                <div>
+                  <p style={{ fontSize: '14px', color: '#e9edef', fontWeight: 500 }}>{contactName || "Contato"}</p>
+                  <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>{contactPhone || "+55..."}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] text-[#e9edef] font-medium">{content?.contactName || "Contato"}</p>
-                <p className="text-[9px] text-[#8696a0]">{content?.contactPhone || "+55..."}</p>
+              <div style={{ textAlign: 'center', paddingTop: '8px' }}>
+                <span style={{ fontSize: '13px', color: '#53bdeb' }}>Enviar mensagem</span>
               </div>
             </div>
-            <div className="w-full text-center py-1 mt-0.5">
-              <span className="text-[10px] text-[#53bdeb]">Enviar mensagem</span>
-            </div>
-          </div>
+            <TimeStamp />
+          </Bubble>
         );
 
       case "poll":
         return (
-          <div className="min-w-[180px] space-y-1.5">
-            <div className="flex items-center gap-1">
-              <BarChart3 className="h-2.5 w-2.5 text-[#00a884]" />
-              <span className="text-[8px] text-[#00a884] uppercase font-medium tracking-wide">Enquete</span>
+          <Bubble>
+            <div style={{ minWidth: '220px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <BarChart3 style={{ width: '14px', height: '14px', color: '#25d366' }} />
+                <span style={{ fontSize: '11px', color: '#25d366', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>Enquete</span>
+              </div>
+              <p style={{ fontSize: '14.2px', color: '#e9edef', fontWeight: 500, marginBottom: '8px' }}>{pollName || "Pergunta?"}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {(pollOptions || []).filter(Boolean).map((opt, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
+                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #8696a0', flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', color: '#e9edef' }}>{opt}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className="text-[11px] text-[#e9edef] font-medium">{content?.question || "Pergunta?"}</p>
-            <div className="space-y-0.5">
-              {(content?.options || []).filter(Boolean).map((opt: string, i: number) => (
-                <div key={i} className="flex items-center gap-1.5 p-1 rounded bg-[#1d2a21] border border-white/5">
-                  <div className="h-3 w-3 rounded-full border border-[#8696a0] shrink-0" />
-                  <span className="text-[10px] text-[#e9edef]">{opt}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+            <TimeStamp />
+          </Bubble>
         );
 
       case "list":
         return (
-          <div className="min-w-[180px] space-y-1.5">
-            <p className="text-[11px] text-[#e9edef] font-medium">{content?.title || "Lista"}</p>
-            {content?.description && <p className="text-[10px] text-[#8696a0]">{content.description}</p>}
-            <button className="w-full py-1.5 rounded bg-[#1d2a21] border border-white/10 flex items-center justify-center gap-1">
-              <List className="h-2.5 w-2.5 text-[#53bdeb]" />
-              <span className="text-[10px] text-[#53bdeb]">{content?.buttonText || "Ver opções"}</span>
-            </button>
-            {content?.footer && <p className="text-[8px] text-[#8696a0] text-center">{content.footer}</p>}
-          </div>
+          <Bubble>
+            <div style={{ minWidth: '220px' }}>
+              <p style={{ fontSize: '14.2px', color: '#e9edef', fontWeight: 500 }}>{listTitle || "Lista"}</p>
+              {listDescription && <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>{listDescription}</p>}
+              <button style={{ width: '100%', padding: '8px', marginTop: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer' }}>
+                <List style={{ width: '14px', height: '14px', color: '#53bdeb' }} />
+                <span style={{ fontSize: '13px', color: '#53bdeb' }}>{listButtonText || "Ver opções"}</span>
+              </button>
+              {listFooter && <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: '4px' }}>{listFooter}</p>}
+            </div>
+            <TimeStamp />
+          </Bubble>
         );
 
       default:
-        return <span className="text-[11px] text-[#8696a0]">Mensagem</span>;
+        return null;
     }
   };
 
-  const isSticker = messageType === "sticker";
+  // WhatsApp wallpaper pattern
+  const wallpaperStyle = {
+    backgroundImage: `url("data:image/svg+xml,%3Csvg width='300' height='300' viewBox='0 0 300 300' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.015'%3E%3Cpath d='M60 60l20-20v20H60zm80 0l20-20v20h-20zm80 0l20-20v20h-20zM60 140l20-20v20H60zm80 0l20-20v20h-20zm80 0l20-20v20h-20zM60 220l20-20v20H60zm80 0l20-20v20h-20zm80 0l20-20v20h-20z'/%3E%3C/g%3E%3C/svg%3E")`,
+    backgroundColor: '#0b141a',
+  };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden" style={{ background: "#0b141a" }}>
-      {/* WhatsApp Header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 shrink-0" style={{ background: "#202c33" }}>
-        <div className="h-7 w-7 rounded-full flex items-center justify-center" style={{ background: "#374045" }}>
-          <MessageSquare className="h-3 w-3 text-[#8696a0]" />
+    <div className="flex flex-col w-full h-full rounded-xl overflow-hidden shadow-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', minHeight: '300px' }}>
+      {/* Header */}
+      <div style={{ background: '#202c33', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#374045', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <User style={{ width: '18px', height: '18px', color: '#8696a0' }} />
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] text-[#e9edef] font-medium truncate">Preview do Grupo</p>
-          <p className="text-[8px] text-[#8696a0]">membros do grupo</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Search className="h-3 w-3 text-[#8696a0]" />
-          <MoreVertical className="h-3 w-3 text-[#8696a0]" />
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: '14px', color: '#e9edef', fontWeight: 500 }}>Preview do Grupo</p>
+          <p style={{ fontSize: '12px', color: '#8696a0' }}>membros do grupo</p>
         </div>
       </div>
 
-      {/* Chat area - scrollable */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-3 flex flex-col justify-end"
-        style={{
-          background: "#0b141a",
-          backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")",
-        }}
-      >
+      {/* Chat area */}
+      <div className="flex-1 overflow-y-auto" style={{ ...wallpaperStyle, padding: '12px 0' }}>
         {!hasContent() ? (
-          <div className="flex flex-col items-center justify-center h-full gap-1.5 text-[#8696a0]/40">
-            <Sparkles className="h-6 w-6" />
-            <p className="text-[9px] text-center leading-tight">
-              Componha uma mensagem<br />para ver o preview
-            </p>
-          </div>
+          <EmptyState />
         ) : (
-          <div className="flex justify-end">
-            <div className={`relative max-w-[240px] ${isSticker ? "" : "rounded-lg rounded-tr-none p-1.5 shadow-sm"}`}
-              style={isSticker ? {} : { background: "#005c4b" }}
-            >
-              {!isSticker && (
-                <div className="absolute -right-1.5 top-0 w-0 h-0" style={{ borderLeft: "6px solid #005c4b", borderTop: "6px solid transparent" }} />
-              )}
-              {renderBubbleContent()}
-              {!isSticker && (
-                <div className="flex items-center justify-end gap-0.5 mt-0.5">
-                  <span className="text-[8px] text-[#ffffff99]">12:00</span>
-                  <CheckCheck className="h-2.5 w-2.5 text-[#53bdeb]" />
-                </div>
-              )}
-            </div>
+          <div className="py-2">
+            {renderContent()}
           </div>
         )}
       </div>
 
       {/* Bottom bar */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 shrink-0" style={{ background: "#202c33" }}>
-        <div className="flex-1 h-6 rounded-full flex items-center px-2.5" style={{ background: "#2a3942" }}>
-          <span className="text-[9px] text-[#8696a0]">Digite uma mensagem</span>
+      <div style={{ background: '#202c33', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ flex: 1, height: '36px', borderRadius: '18px', background: '#2a3942', display: 'flex', alignItems: 'center', paddingLeft: '14px' }}>
+          <span style={{ fontSize: '13px', color: '#8696a0' }}>Digite uma mensagem</span>
         </div>
-        <div className="h-6 w-6 rounded-full flex items-center justify-center" style={{ background: "#00a884" }}>
-          <Mic className="h-3 w-3 text-[#0b141a]" />
+        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Mic style={{ width: '18px', height: '18px', color: '#0b141a' }} />
         </div>
       </div>
     </div>
