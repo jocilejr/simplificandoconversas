@@ -722,6 +722,8 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
       .single();
     if (error) throw error;
     console.log(`[groups-api] Created message ${data.id}: type=${st}, next_run=${nextRunAt}`);
+    // Register with in-memory scheduler
+    groupScheduler.scheduleMessage({ id: data.id, schedule_type: st, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: true });
     res.json(data);
   } catch (err: any) {
     console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
