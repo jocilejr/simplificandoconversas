@@ -344,7 +344,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
       <GroupScheduledMessageForm
         open={formOpen}
         onOpenChange={(o) => { setFormOpen(o); if (!o) setEditingMsg(null); }}
-        scheduleType={activeTab}
+        scheduleType={editingMsg?.schedule_type || activeTab}
         editData={editingMsg}
         onSave={handleSave}
         isPending={createMessage.isPending || updateMessage.isPending}

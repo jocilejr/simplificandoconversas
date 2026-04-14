@@ -118,7 +118,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
         setScheduledAt("");
       }
 
-      if (editData.content?.weekdays) setWeekdays(editData.content.weekdays);
+      if (editData.content?.weekdays || editData.content?.weekDays) setWeekdays(editData.content.weekdays || editData.content.weekDays);
       else if (editData.cron_expression) {
         // Parse weekdays from cron: M H * * 0,1,2,...
         const parts = editData.cron_expression.split(" ");
