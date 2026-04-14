@@ -271,41 +271,11 @@ const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, async () => {
   console.log(`Backend running on port ${PORT}`);
 
-  // ─── Self-heal: fix active messages with NULL next_run_at on startup ───
+  // ─── Initialize in-memory group scheduler (replaces old cron + self-heal) ───
   try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const sb = createClient(
-      process.env.SUPABASE_URL || "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-    );
-
-    const { data: broken } = await sb
-      .from("group_scheduled_messages")
-      .select("id, schedule_type, content")
-      .eq("is_active", true)
-      .is("next_run_at", null);
-
-    if (broken && broken.length > 0) {
-      console.log(`[self-heal] 🔧 Found ${broken.length} active messages with NULL next_run_at`);
-
-      for (const msg of broken) {
-        if (msg.schedule_type === "once") {
-          // Once messages with NULL next_run_at should be deactivated
-          await sb.from("group_scheduled_messages").update({ is_active: false }).eq("id", msg.id);
-          console.log(`[self-heal] ⏹ Deactivated once msg ${msg.id} (expired)`);
-          continue;
-        }
-
-        const nextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
-        if (nextRun) {
-          await sb.from("group_scheduled_messages").update({ next_run_at: nextRun }).eq("id", msg.id);
-          console.log(`[self-heal] ✅ Fixed msg ${msg.id}: next_run=${nextRun}`);
-        } else {
-          console.warn(`[self-heal] ⚠️ Could not compute next_run for msg ${msg.id} (type=${msg.schedule_type})`);
-        }
-      }
-    }
+    await groupScheduler.loadAll();
+    console.log(`[scheduler] 🚀 Scheduler initialized with ${groupScheduler.activeCount} active timer(s)`);
   } catch (err: any) {
-    console.error("[self-heal] Error:", err.message);
+    console.error("[scheduler] Initialization error:", err.message);
   }
 });
