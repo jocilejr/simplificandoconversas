@@ -224,6 +224,20 @@ cron.schedule("* * * * *", async () => {
       const queueItems: any[] = [];
 
       for (const jid of (campaign.group_jids || [])) {
+        // ─── Deduplication: skip if already queued recently ───
+        const { count: existing } = await sb
+          .from("group_message_queue")
+          .select("id", { count: "exact", head: true })
+          .eq("scheduled_message_id", msg.id)
+          .eq("group_jid", jid)
+          .in("status", ["pending", "processing", "sent"])
+          .gte("created_at", new Date(Date.now() - 5 * 60000).toISOString());
+
+        if ((existing || 0) > 0) {
+          console.log(`[cron] ⏭ Dedup: msg ${msg.id} → ${jid} already queued`);
+          continue;
+        }
+
         const { data: sg } = await sb
           .from("group_selected")
           .select("group_name")
