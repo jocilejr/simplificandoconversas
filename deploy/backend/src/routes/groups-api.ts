@@ -767,13 +767,9 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
       .select()
       .single();
     if (error) throw error;
+    // Update in-memory scheduler
+    groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: data.is_active });
     res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.delete("/campaigns/:id/messages/:msgId", async (req: Request, res: Response) => {
   try {
     const sb = getServiceClient();
     const { error } = await sb
