@@ -1,43 +1,36 @@
 
 
-## Redesign do Dialog de Programação (Grupos)
+## Correções: Filtro de dia da semana + Exibição de horário/dia
 
-Baseado no repositório de referência `jocilejr/whats-grupos`, vou redesenhar completamente o `GroupMessagesDialog` e o `GroupScheduledMessageForm` para seguir o padrão do projeto de referência.
+### Problema 1 — Falta o filtro por dia da semana na aba "Semanal"
+O repo de referência tem uma barra de filtro com botões "Todos | Dom | Seg | Ter | Qua | Qui | Sex | Sáb" que aparece apenas na aba Semanal. Clicar em um dia filtra as mensagens que rodam naquele dia. Isso não existe no código atual.
 
-### Problemas atuais
-1. O formulário de edição abre **inline no final da lista** — deveria abrir como **popup (Dialog separado)**
-2. Preview da mensagem é uma linha truncada de 80 chars — deveria ser **card expansível** com conteúdo completo
-3. Layout CSS continua quebrando com muitos itens
+### Problema 2 — Horário e dias não aparecem corretamente nos cards
+O `getTimeLabel` para mensagens semanais retorna `msg.content?.time` mas não exibe de forma proeminente. No repo de referência, o horário aparece como um badge destacado antes do ícone de tipo, e os dias da semana aparecem como pills compactas.
 
-### Mudanças planejadas
+### Alterações em `src/components/grupos/GroupMessagesDialog.tsx`
 
-#### 1. `GroupMessagesDialog.tsx` — Redesign completo
-- Cada card de mensagem agora é **expansível** (clique para expandir/recolher)
-- Card colapsado mostra: badge de horário, ícone do tipo, preview do texto, pills dos dias da semana (se weekly), switch ativo/inativo
-- Card expandido mostra **duas sub-abas**: "Conteúdo" (texto completo, mídia, flags) e "Programação" (detalhes do agendamento)
-- Botões de ação (editar, excluir, enviar agora) aparecem na barra inferior do card expandido
-- Botão "Editar" abre o formulário como **Dialog separado** (popup centralizado na tela)
-- Filtro de dia da semana na aba "Semanal" (botões Dom-Sáb para filtrar mensagens)
+1. **Adicionar estado `weekdayFilter`**: `useState<number | null>(null)` — resetar ao trocar de aba.
 
-#### 2. `GroupScheduledMessageForm.tsx` — Converter para Dialog
-- Envolver todo o formulário em um `<Dialog>` próprio com `open`/`onOpenChange`
-- Manter o layout grid atual (form + WhatsApp preview) dentro do DialogContent
-- Props mudam: recebe `open`, `onOpenChange` em vez de `onCancel`
+2. **Renderizar barra de filtro na aba "weekly"**: Entre o subheader (descrição + botão Adicionar) e a lista de mensagens, adicionar uma row de botões:
+   - Botão "Todos" (ativo quando `weekdayFilter === null`)
+   - 7 botões Dom-Sáb (ativo quando `weekdayFilter === d.value`)
+   - Estilo: `px-2.5 py-1 rounded-md text-[11px] font-medium border`, com `border-primary bg-primary/10 text-primary` quando ativo
 
-#### 3. Interface do `GroupMessagesDialog`
-- Remover `showForm` e `editMsg` do estado local do dialog principal
-- Adicionar `formOpen`, `editingMsg`, `formScheduleType` como estado
-- Adicionar `weekdayFilter` para a aba semanal
-- O `handleEdit` seta `editingMsg` e abre o form dialog
-- O `handleAdd` limpa `editingMsg` e abre o form dialog
+3. **Filtrar mensagens por dia**: Na aba weekly, depois de filtrar por `schedule_type`, aplicar filtro adicional:
+   ```typescript
+   let displayMessages = tabMessages;
+   if (tab.value === "weekly" && weekdayFilter != null) {
+     displayMessages = tabMessages.filter((m: any) => 
+       (m.content?.weekdays || []).includes(weekdayFilter)
+     );
+   }
+   ```
 
-### Arquivos alterados
-- `src/components/grupos/GroupMessagesDialog.tsx` — redesign completo dos cards
-- `src/components/grupos/GroupScheduledMessageForm.tsx` — envolver em Dialog
+4. **Melhorar exibição do horário no card**: Trocar o span de horário por um badge mais proeminente, similar ao repo de referência — badge com fundo `bg-primary/10` e texto `text-primary` mostrando o horário.
 
-### Resultado esperado
-- Cards expansíveis com conteúdo completo visível
-- Formulário de edição/criação abre como popup na tela
-- Filtro por dia da semana na aba Semanal
-- Layout contido e responsivo, sem overflow
+5. **Resetar filtro ao trocar aba**: No `onValueChange` do Tabs, adicionar `setWeekdayFilter(null)`.
+
+### Arquivo alterado
+- `src/components/grupos/GroupMessagesDialog.tsx`
 
