@@ -43,7 +43,7 @@ export function useUnseenTransactions() {
       };
     },
     enabled: !!user && !!workspaceId,
-    refetchInterval: 15_000,
+    refetchInterval: 3_000,
   });
 
   const counts = query.data || { aprovados: 0, "boletos-gerados": 0, "pix-cartao-pendentes": 0, rejeitados: 0 };
