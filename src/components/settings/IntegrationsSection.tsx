@@ -261,11 +261,21 @@ export function IntegrationsSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Integrações</h2>
-          <p className="text-xs text-muted-foreground">Conecte serviços externos à plataforma</p>
-        </div>
+      <div>
+        <h2 className="text-lg font-semibold">Integrações</h2>
+        <p className="text-xs text-muted-foreground">Conecte serviços externos e configure módulos da plataforma</p>
+      </div>
+
+      <Tabs defaultValue="platforms" className="w-full">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="platforms" className="gap-1.5 text-xs"><Puzzle className="h-3.5 w-3.5" />Plataformas</TabsTrigger>
+          <TabsTrigger value="ai" className="gap-1.5 text-xs"><Brain className="h-3.5 w-3.5" />IA</TabsTrigger>
+          <TabsTrigger value="api" className="gap-1.5 text-xs"><Code className="h-3.5 w-3.5" />API</TabsTrigger>
+          <TabsTrigger value="email" className="gap-1.5 text-xs"><Mail className="h-3.5 w-3.5" />E-mail</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="platforms" className="mt-4">
+    <div className="space-y-4">
         <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => {}}>
           <Plus className="h-3.5 w-3.5" />
           Nova Integração
