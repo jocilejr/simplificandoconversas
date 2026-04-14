@@ -73,13 +73,14 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
   const getScheduleDetail = (msg: any) => {
     if (msg.schedule_type === "once") return `Data: ${getTimeLabel(msg)}`;
-    if (msg.schedule_type === "daily") return `Diário às ${msg.content?.time || "—"}`;
+    const t = msg.content?.runTime || msg.content?.time || "—";
+    if (msg.schedule_type === "daily") return `Diário às ${t}`;
     if (msg.schedule_type === "weekly") {
-      const days = (msg.content?.weekdays || []).map((d: number) => WEEKDAY_LABELS[d]).join(", ");
-      return `${days} às ${msg.content?.time || "—"}`;
+      const days = (msg.content?.weekDays || msg.content?.weekdays || []).map((d: number) => WEEKDAY_LABELS[d]).join(", ");
+      return `${days} às ${t}`;
     }
-    if (msg.schedule_type === "monthly") return `Dia ${msg.content?.monthDay || "—"} às ${msg.content?.time || "—"}`;
-    if (msg.schedule_type === "custom") return `Dias ${msg.content?.customDays || "—"} às ${msg.content?.time || "—"}`;
+    if (msg.schedule_type === "monthly") return `Dia ${msg.content?.monthDay || "—"} às ${t}`;
+    if (msg.schedule_type === "custom") return `Dias ${msg.content?.customDays || "—"} às ${t}`;
     return msg.cron_expression || "";
   };
 
