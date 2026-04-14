@@ -590,7 +590,6 @@ export function IntegrationsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
         </TabsContent>
 
         <TabsContent value="ai" className="mt-4">
