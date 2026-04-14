@@ -51,6 +51,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
   const [formOpen, setFormOpen] = useState(false);
   const [editingMsg, setEditingMsg] = useState<any>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [weekdayFilter, setWeekdayFilter] = useState<number | null>(null);
 
   const getPreview = (msg: any) => {
     const c = msg.content || {};
