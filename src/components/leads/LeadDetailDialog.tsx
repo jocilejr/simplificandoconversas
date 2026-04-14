@@ -1,12 +1,19 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Download, User, Phone, Mail, FileText, Tag, Bell, MessageSquare, CreditCard, CheckCircle, XCircle, ChevronDown, ChevronRight, Smartphone, ShoppingBag, ExternalLink, Pencil, Save, X, Plus } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Copy, Download, User, Phone, Mail, FileText, Tag, Bell,
+  MessageSquare, CreditCard, CheckCircle, XCircle, ChevronDown,
+  ChevronRight, Smartphone, ShoppingBag, ExternalLink, Pencil,
+  Save, X, Plus, DollarSign, Calendar,
+} from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -18,6 +25,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { generatePhoneVariations, findExistingMemberPhone } from "@/lib/phoneNormalization";
 import { normalizePhone } from "@/lib/normalizePhone";
+import { Label } from "@/components/ui/label";
 
 const statusColors: Record<string, string> = {
   aprovado: "bg-green-500/10 text-green-600 border-green-500/30",
@@ -39,60 +47,48 @@ interface Props {
   onClose: () => void;
 }
 
-function InfoRow({ icon: Icon, label, value, copyable = false }: { icon: any; label: string; value: string | null | undefined; copyable?: boolean }) {
+/* ─── Sub-components ─── */
+
+function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 group">
-      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">{label}</p>
-        <p className="text-sm font-medium break-all leading-snug">{value || "-"}</p>
-      </div>
-      {copyable && value && (
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-          onClick={() => { navigator.clipboard.writeText(value); toast.success("Copiado!"); }}
-        >
-          <Copy className="h-3 w-3" />
-        </Button>
-      )}
+    <div className="rounded-lg border bg-card p-3 text-center space-y-1">
+      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className={`text-lg font-bold font-mono ${color || "text-foreground"}`}>{value}</p>
     </div>
   );
 }
 
-function SectionDivider({ icon: Icon, title, count }: { icon: any; title: string; count?: number }) {
+function TxCard({ tx }: { tx: any }) {
   return (
-    <div className="flex items-center gap-2.5 pt-5 pb-2 px-1">
-      <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <Icon className="h-3.5 w-3.5 text-primary" />
-      </div>
-      <h3 className="text-sm font-semibold flex-1">{title}</h3>
-      {count !== undefined && (
-        <span className="text-xs font-mono text-muted-foreground bg-muted rounded-full px-2.5 py-0.5">{count}</span>
-      )}
-    </div>
-  );
-}
-
-function CollapsibleSection({ icon: Icon, title, count, children, defaultOpen = false }: {
-  icon: any; title: string; count?: number; children: React.ReactNode; defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2.5 w-full py-3 px-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-        {open ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-          <Icon className="h-3.5 w-3.5 text-primary" />
+    <div className="rounded-lg border bg-card p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{typeLabels[tx.type] || tx.type}</Badge>
+          <Badge className={`text-[10px] px-1.5 py-0 ${statusColors[tx.status] || ""}`} variant="outline">{tx.status}</Badge>
         </div>
-        <span className="text-sm font-semibold flex-1 text-left">{title}</span>
-        {count !== undefined && (
-          <span className="text-xs font-mono text-muted-foreground bg-muted rounded-full px-2.5 py-0.5">{count}</span>
-        )}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-3 pl-2">{children}</CollapsibleContent>
-    </Collapsible>
+        <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
+      </div>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Calendar className="h-3 w-3" />
+        {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+        {tx.description && <span className="truncate">— {tx.description}</span>}
+      </div>
+      {tx.payment_url && (
+        <div className="flex gap-1.5 pt-1">
+          <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" asChild>
+            <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
+              <Download className="h-3 w-3 mr-1" /> PDF
+            </a>
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => {
+            navigator.clipboard.writeText(tx.payment_url!);
+            toast.success("Link copiado!");
+          }}>
+            <Copy className="h-3 w-3 mr-1" /> Link
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -116,17 +112,17 @@ function InstanceMessageHistory({ conversationId }: { conversationId: string }) 
   if (messages.length === 0) return <div className="text-xs text-muted-foreground py-4 text-center">Nenhuma mensagem encontrada.</div>;
 
   return (
-    <ScrollArea className="h-[400px] border rounded-lg p-3">
-      <div className="space-y-2">
+    <ScrollArea className="h-[350px] border rounded-lg p-3">
+      <div className="space-y-1.5">
         {messages.map((m, i) => (
-          <div key={i} className={`text-xs p-2.5 rounded-lg max-w-[85%] ${
+          <div key={i} className={`text-xs p-2 rounded-lg max-w-[80%] ${
             m.direction === "inbound"
               ? "bg-muted/60 mr-auto"
               : "bg-primary/10 ml-auto"
           }`}>
-            <p className="break-all">{m.content || `[${m.message_type}]`}</p>
-            <span className="text-[10px] text-muted-foreground mt-1 block">
-              {format(new Date(m.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+            <p className="break-all leading-relaxed">{m.content || `[${m.message_type}]`}</p>
+            <span className="text-[10px] text-muted-foreground mt-0.5 block">
+              {format(new Date(m.created_at), "dd/MM HH:mm")}
             </span>
           </div>
         ))}
@@ -134,6 +130,8 @@ function InstanceMessageHistory({ conversationId }: { conversationId: string }) 
     </ScrollArea>
   );
 }
+
+/* ─── Main Dialog ─── */
 
 export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const { workspaceId } = useWorkspace();
@@ -143,6 +141,12 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", document: "" });
   const [newTag, setNewTag] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Manual payment state
+  const [paymentForm, setPaymentForm] = useState({ amount: "", description: "", type: "pix", status: "aprovado" });
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+
+  const formatPhone = (jid: string) => jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
 
   const startEditing = () => {
     if (!lead) return;
@@ -155,16 +159,12 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
     setEditing(true);
   };
 
-  const cancelEditing = () => {
-    setEditing(false);
-    setNewTag("");
-  };
+  const cancelEditing = () => { setEditing(false); setNewTag(""); };
 
   const saveEdits = async () => {
     if (!lead || !workspaceId) return;
     setSaving(true);
     try {
-      // Update all conversations for this lead
       const convIds = lead.instances.map((i) => i.conversation_id);
       if (convIds.length > 0) {
         const { error } = await supabase
@@ -178,31 +178,18 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
           .in("id", convIds);
         if (error) throw error;
       }
-
-      // Update customer_document on transactions if changed
       if (editForm.document !== (lead.customer_document || "")) {
         const txIds = lead.transactions.map((t) => t.id);
         if (txIds.length > 0) {
-          const { error } = await supabase
-            .from("transactions" as any)
-            .update({ customer_document: editForm.document || null } as any)
-            .in("id", txIds);
-          if (error) throw error;
+          await supabase.from("transactions" as any).update({ customer_document: editForm.document || null } as any).in("id", txIds);
         }
       }
-
-      // Update customer_email on transactions if changed
       if (editForm.email !== (lead.customer_email || "")) {
         const txIds = lead.transactions.map((t) => t.id);
         if (txIds.length > 0) {
-          const { error } = await supabase
-            .from("transactions" as any)
-            .update({ customer_email: editForm.email || null } as any)
-            .in("id", txIds);
-          if (error) throw error;
+          await supabase.from("transactions" as any).update({ customer_email: editForm.email || null } as any).in("id", txIds);
         }
       }
-
       queryClient.invalidateQueries({ queryKey: ["leads-conversations"] });
       queryClient.invalidateQueries({ queryKey: ["leads-transactions"] });
       toast.success("Dados atualizados!");
@@ -219,15 +206,9 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { error } = await supabase.from("contact_tags").insert({
-      remote_jid: lead.remote_jid,
-      tag_name: newTag.trim(),
-      user_id: user.id,
-      workspace_id: workspaceId,
+      remote_jid: lead.remote_jid, tag_name: newTag.trim(), user_id: user.id, workspace_id: workspaceId,
     });
-    if (error) {
-      toast.error("Erro ao adicionar tag");
-      return;
-    }
+    if (error) { toast.error("Erro ao adicionar tag"); return; }
     queryClient.invalidateQueries({ queryKey: ["leads-tags"] });
     toast.success("Tag adicionada!");
     setNewTag("");
@@ -235,35 +216,58 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
 
   const removeTag = async (tagName: string) => {
     if (!lead || !workspaceId) return;
-    const { error } = await supabase
-      .from("contact_tags")
-      .delete()
-      .eq("remote_jid", lead.remote_jid)
-      .eq("tag_name", tagName)
-      .eq("workspace_id", workspaceId);
-    if (error) {
-      toast.error("Erro ao remover tag");
-      return;
-    }
+    const { error } = await supabase.from("contact_tags").delete()
+      .eq("remote_jid", lead.remote_jid).eq("tag_name", tagName).eq("workspace_id", workspaceId);
+    if (error) { toast.error("Erro ao remover tag"); return; }
     queryClient.invalidateQueries({ queryKey: ["leads-tags"] });
     toast.success("Tag removida!");
   };
+
+  // Manual payment mutation
+  const addPayment = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !workspaceId || !lead) throw new Error("Dados insuficientes");
+      const amount = parseFloat(paymentForm.amount.replace(",", "."));
+      if (isNaN(amount) || amount <= 0) throw new Error("Valor inválido");
+      const phone = lead.phone_number || formatPhone(lead.remote_jid);
+      const { error } = await supabase.from("transactions" as any).insert({
+        user_id: user.id,
+        workspace_id: workspaceId,
+        amount,
+        type: paymentForm.type,
+        status: paymentForm.status,
+        description: paymentForm.description || "Pagamento manual",
+        customer_name: lead.contact_name || null,
+        customer_phone: phone,
+        normalized_phone: phone.replace(/\D/g, ""),
+        customer_email: lead.customer_email || null,
+        customer_document: lead.customer_document || null,
+        source: "manual",
+        webhook_source: "manual",
+        paid_at: paymentForm.status === "aprovado" ? new Date().toISOString() : null,
+      } as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      toast.success("Pagamento adicionado!");
+      setPaymentForm({ amount: "", description: "", type: "pix", status: "aprovado" });
+      setShowPaymentForm(false);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   const { data: deliverySettings } = useQuery({
     queryKey: ["delivery-settings", workspaceId],
     enabled: !!workspaceId,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("delivery_settings")
-        .select("custom_domain")
-        .eq("workspace_id", workspaceId!)
-        .maybeSingle();
+      const { data } = await supabase.from("delivery_settings").select("custom_domain").eq("workspace_id", workspaceId!).maybeSingle();
       return data;
     },
   });
-
-  const formatPhone = (jid: string) => jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
 
   const paidTxs = lead?.transactions.filter((t) => t.status === "aprovado") || [];
   const unpaidTxs = lead?.transactions.filter((t) => t.status !== "aprovado") || [];
@@ -271,11 +275,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   const { data: reminders = [], isLoading: isLoadingReminders } = useQuery({
     queryKey: ["lead-reminders", lead?.remote_jid],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("reminders")
-        .select("*")
-        .eq("remote_jid", lead!.remote_jid)
-        .order("due_date", { ascending: false });
+      const { data, error } = await supabase.from("reminders").select("*").eq("remote_jid", lead!.remote_jid).order("due_date", { ascending: false });
       if (error) throw error;
       return data || [];
     },
@@ -288,10 +288,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
       const ids = lead!.instances.map((i) => i.conversation_id);
       const counts: Record<string, number> = {};
       for (const id of ids) {
-        const { count, error } = await supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true })
-          .eq("conversation_id", id);
+        const { count, error } = await supabase.from("messages").select("id", { count: "exact", head: true }).eq("conversation_id", id);
         if (!error && count !== null) counts[id] = count;
       }
       return counts;
@@ -317,168 +314,290 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
   if (!lead) return null;
 
   const instances = lead.instances || [];
+  const activeInstances = instances.filter((inst) => (conversationMsgCounts[inst.conversation_id] ?? 0) > 0);
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); cancelEditing(); } }}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
-        {/* ─── Header fixo ─── */}
-        <div className="shrink-0 px-6 pt-6 pb-4 border-b">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              {lead.contact_name || "Lead sem nome"}
-            </DialogTitle>
-            <DialogDescription asChild>
-              <div className="flex items-center gap-2 mt-1">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); cancelEditing(); setShowPaymentForm(false); } }}>
+      <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
+
+        {/* ─── Header ─── */}
+        <div className="shrink-0 px-5 pt-5 pb-4 border-b bg-card">
+          <DialogHeader className="space-y-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-base truncate">{lead.contact_name || "Lead sem nome"}</DialogTitle>
+                  <DialogDescription className="flex items-center gap-1.5 mt-0.5">
+                    <span className="font-mono text-xs">{lead.phone_number || formatPhone(lead.remote_jid)}</span>
+                    <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                      navigator.clipboard.writeText(lead.phone_number || formatPhone(lead.remote_jid));
+                      toast.success("Copiado!");
+                    }}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
                 {lead.hasPaid ? (
-                  <Badge className="bg-green-500/10 text-green-600 border-green-500/30" variant="outline">✅ Pagou</Badge>
+                  <Badge className="bg-green-500/10 text-green-600 border-green-500/30" variant="outline">Pagou</Badge>
                 ) : (
-                  <Badge variant="outline">❌ Não pagou</Badge>
-                )}
-                {lead.hasPaid && (
-                  <span className="ml-auto font-mono text-base font-semibold text-foreground">
-                    {formatCurrency(lead.totalPaid)}
-                  </span>
+                  <Badge variant="outline" className="text-muted-foreground">Sem pagamento</Badge>
                 )}
               </div>
-            </DialogDescription>
+            </div>
           </DialogHeader>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            <StatCard label="Total Pago" value={formatCurrency(lead.totalPaid)} color="text-green-600" />
+            <StatCard label="Pedidos" value={String(paidTxs.length)} />
+            <StatCard label="Pendentes" value={String(unpaidTxs.length)} color="text-yellow-600" />
+          </div>
         </div>
 
-        {/* ─── Corpo scrollável ─── */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 space-y-1">
-
-          {/* Dados Pessoais */}
-          <div className="flex items-center justify-between">
-            <SectionDivider icon={User} title="Dados Pessoais" />
-            {!editing ? (
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5" onClick={startEditing}>
-                <Pencil className="h-3 w-3" /> Editar
-              </Button>
-            ) : (
-              <div className="flex gap-1.5">
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={cancelEditing} disabled={saving}>
-                  <X className="h-3 w-3" /> Cancelar
-                </Button>
-                <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEdits} disabled={saving}>
-                  <Save className="h-3 w-3" /> {saving ? "Salvando..." : "Salvar"}
-                </Button>
-              </div>
-            )}
+        {/* ─── Tabbed Content ─── */}
+        <Tabs defaultValue="info" className="flex-1 flex flex-col min-h-0">
+          <div className="shrink-0 border-b px-5">
+            <TabsList className="h-9 bg-transparent p-0 gap-0">
+              <TabsTrigger value="info" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
+                Dados
+              </TabsTrigger>
+              <TabsTrigger value="financial" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
+                Financeiro
+              </TabsTrigger>
+              <TabsTrigger value="products" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
+                Produtos
+              </TabsTrigger>
+              <TabsTrigger value="history" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
+                Conversas
+              </TabsTrigger>
+              <TabsTrigger value="reminders" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
+                Agendamentos
+              </TabsTrigger>
+            </TabsList>
           </div>
 
-          {editing ? (
-            <div className="rounded-xl border divide-y overflow-hidden">
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <User className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Nome</p>
-                  <Input className="h-8 text-sm" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="Nome do lead" />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Telefone</p>
-                  <Input className="h-8 text-sm font-mono" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="5511999999999" />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">CPF / Documento</p>
-                  <Input className="h-8 text-sm font-mono" value={editForm.document} onChange={(e) => setEditForm({ ...editForm, document: e.target.value })} placeholder="000.000.000-00" />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Email</p>
-                  <Input className="h-8 text-sm" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} placeholder="email@exemplo.com" />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 px-3 py-2.5">
-                <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Tags</p>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {lead.tags.map((t) => (
-                      <Badge key={t} variant="secondary" className="text-xs gap-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => removeTag(t)}>
-                        {t} <X className="h-2.5 w-2.5" />
-                      </Badge>
-                    ))}
-                    {lead.tags.length === 0 && <span className="text-xs text-muted-foreground italic">Nenhuma tag</span>}
-                  </div>
-                  <div className="flex gap-1.5">
-                    <Input className="h-7 text-xs flex-1" value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Nova tag..." onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} />
-                    <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={addTag} disabled={!newTag.trim()}>
-                      <Plus className="h-3 w-3" />
+          <div className="flex-1 overflow-y-auto min-h-0">
+
+            {/* ─── TAB: Dados ─── */}
+            <TabsContent value="info" className="px-5 py-4 space-y-4 mt-0">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Informações Pessoais</h3>
+                {!editing ? (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={startEditing}>
+                    <Pencil className="h-3 w-3" /> Editar
+                  </Button>
+                ) : (
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={cancelEditing} disabled={saving}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEdits} disabled={saving}>
+                      <Save className="h-3 w-3" /> {saving ? "..." : "Salvar"}
                     </Button>
                   </div>
-                </div>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border divide-y overflow-hidden">
-              <InfoRow icon={User} label="Nome" value={lead.contact_name} />
-              <InfoRow icon={Phone} label="Telefone" value={lead.phone_number || formatPhone(lead.remote_jid)} copyable />
-              <InfoRow icon={FileText} label="CPF / Documento" value={lead.customer_document} copyable />
-              <InfoRow icon={Mail} label="Email" value={lead.customer_email} copyable />
-              {lead.tags.length > 0 && (
-                <div className="flex items-center gap-3 px-3 py-2.5">
-                  <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-1">Tags</p>
-                    <div className="flex flex-wrap gap-1">
-                      {lead.tags.map((t) => (
-                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
-          {/* Produtos Liberados */}
-          <div className="pt-3">
-            <CollapsibleSection icon={ShoppingBag} title="Produtos Liberados" count={isLoadingProducts ? undefined : memberProducts.length}>
-              {isLoadingProducts ? (
-                <div className="space-y-2">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="rounded-lg border p-3">
-                      <Skeleton className="h-4 w-40" />
+              {editing ? (
+                <div className="grid gap-3">
+                  {[
+                    { icon: User, label: "Nome", key: "name" as const, placeholder: "Nome do lead" },
+                    { icon: Phone, label: "Telefone", key: "phone" as const, placeholder: "5511999999999", mono: true },
+                    { icon: FileText, label: "CPF / Documento", key: "document" as const, placeholder: "000.000.000-00", mono: true },
+                    { icon: Mail, label: "Email", key: "email" as const, placeholder: "email@exemplo.com" },
+                  ].map(({ icon: Icon, label, key, placeholder, mono }) => (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Icon className="h-3 w-3" /> {label}
+                      </Label>
+                      <Input
+                        className={`h-8 text-sm ${mono ? "font-mono" : ""}`}
+                        value={editForm[key]}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                        placeholder={placeholder}
+                      />
                     </div>
                   ))}
                 </div>
-              ) : memberProducts.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-3">Nenhum produto liberado</p>
               ) : (
+                <div className="grid gap-0.5">
+                  {[
+                    { icon: User, label: "Nome", value: lead.contact_name },
+                    { icon: Phone, label: "Telefone", value: lead.phone_number || formatPhone(lead.remote_jid), copy: true, mono: true },
+                    { icon: FileText, label: "CPF", value: lead.customer_document, copy: true, mono: true },
+                    { icon: Mail, label: "Email", value: lead.customer_email, copy: true },
+                  ].map(({ icon: Icon, label, value, copy, mono }) => (
+                    <div key={label} className="flex items-center gap-3 py-2 group rounded-md hover:bg-muted/50 px-2 -mx-2 transition-colors">
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
+                        <p className={`text-sm ${mono ? "font-mono" : ""} ${value ? "" : "text-muted-foreground italic"}`}>
+                          {value || "Não informado"}
+                        </p>
+                      </div>
+                      {copy && value && (
+                        <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={() => { navigator.clipboard.writeText(value); toast.success("Copiado!"); }}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Tags */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5" /> Tags
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {lead.tags.map((t) => (
+                    <Badge key={t} variant="secondary" className="text-xs gap-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive transition-colors" onClick={() => removeTag(t)}>
+                      {t} <X className="h-2.5 w-2.5" />
+                    </Badge>
+                  ))}
+                  {lead.tags.length === 0 && <span className="text-xs text-muted-foreground italic">Nenhuma tag</span>}
+                </div>
+                <div className="flex gap-1.5">
+                  <Input className="h-7 text-xs flex-1" value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Nova tag..."
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} />
+                  <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={addTag} disabled={!newTag.trim()}>
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ─── TAB: Financeiro ─── */}
+            <TabsContent value="financial" className="px-5 py-4 space-y-4 mt-0">
+              {/* Add payment button */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Pagamentos</h3>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowPaymentForm(!showPaymentForm)}>
+                  <DollarSign className="h-3 w-3" /> {showPaymentForm ? "Cancelar" : "Inserir Pagamento"}
+                </Button>
+              </div>
+
+              {/* Manual payment form */}
+              {showPaymentForm && (
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Valor (R$) *</Label>
+                      <Input
+                        className="h-8 text-sm font-mono"
+                        placeholder="0,00"
+                        value={paymentForm.amount}
+                        onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tipo</Label>
+                      <Select value={paymentForm.type} onValueChange={(v) => setPaymentForm({ ...paymentForm, type: v })}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pix">PIX</SelectItem>
+                          <SelectItem value="cartao">Cartão</SelectItem>
+                          <SelectItem value="boleto">Boleto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Descrição</Label>
+                      <Input
+                        className="h-8 text-sm"
+                        placeholder="Descrição do pagamento"
+                        value={paymentForm.description}
+                        onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Status</Label>
+                      <Select value={paymentForm.status} onValueChange={(v) => setPaymentForm({ ...paymentForm, status: v })}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="aprovado">Aprovado</SelectItem>
+                          <SelectItem value="pendente">Pendente</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button size="sm" className="w-full h-8 text-xs" onClick={() => addPayment.mutate()} disabled={addPayment.isPending || !paymentForm.amount}>
+                    {addPayment.isPending ? "Salvando..." : "Confirmar Pagamento"}
+                  </Button>
+                </div>
+              )}
+
+              {/* Paid transactions */}
+              {paidTxs.length > 0 && (
                 <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                    <p className="text-xs font-semibold text-green-600">Aprovados ({paidTxs.length})</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {paidTxs.map((tx) => <TxCard key={tx.id} tx={tx} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Unpaid transactions */}
+              {unpaidTxs.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-3.5 w-3.5 text-yellow-500" />
+                    <p className="text-xs font-semibold text-yellow-600">Pendentes / Rejeitados ({unpaidTxs.length})</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {unpaidTxs.map((tx) => <TxCard key={tx.id} tx={tx} />)}
+                  </div>
+                </div>
+              )}
+
+              {paidTxs.length === 0 && unpaidTxs.length === 0 && !showPaymentForm && (
+                <div className="text-center py-8 space-y-2">
+                  <CreditCard className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+                  <p className="text-xs text-muted-foreground">Nenhum pagamento registrado</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowPaymentForm(true)}>
+                    <Plus className="h-3 w-3" /> Inserir primeiro pagamento
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ─── TAB: Produtos ─── */}
+            <TabsContent value="products" className="px-5 py-4 space-y-3 mt-0">
+              {isLoadingProducts ? (
+                <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}</div>
+              ) : memberProducts.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <ShoppingBag className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+                  <p className="text-xs text-muted-foreground">Nenhum produto liberado</p>
+                </div>
+              ) : (
+                <>
                   <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full h-8 text-xs gap-1.5"
+                    size="sm" variant="outline" className="w-full h-8 text-xs gap-1.5"
                     onClick={() => {
                       const phoneRaw = lead.phone_number || formatPhone(lead.remote_jid);
                       const normalized = normalizePhone(phoneRaw);
-                      if (normalized === "-") {
-                        toast.error("Telefone inválido para gerar o link");
-                        return;
-                      }
-                      if (!deliverySettings?.custom_domain) {
-                        toast.error("Configure o domínio da Área de Membros nas configurações");
-                        return;
-                      }
-                      // Use the phone already saved in member_products if it exists
+                      if (normalized === "-") { toast.error("Telefone inválido"); return; }
+                      if (!deliverySettings?.custom_domain) { toast.error("Configure o domínio nas configurações"); return; }
                       const existingPhone = findExistingMemberPhone(
-                        (memberProducts || []).map((mp: any) => ({
-                          phone: mp.phone || "",
-                          is_active: mp.is_active ?? true,
-                          product_id: mp.product_id || mp.delivery_products?.id || "",
-                        })),
-                        phoneRaw,
-                        memberProducts?.[0]?.product_id || ""
+                        (memberProducts || []).map((mp: any) => ({ phone: mp.phone || "", is_active: mp.is_active ?? true, product_id: mp.product_id || mp.delivery_products?.id || "" })),
+                        phoneRaw, memberProducts?.[0]?.product_id || ""
                       );
                       const phoneForUrl = existingPhone || normalized;
                       let domain = deliverySettings.custom_domain;
@@ -488,222 +607,89 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                       toast.success("Link de acesso copiado!");
                     }}
                   >
-                    <ExternalLink className="h-3 w-3" />
-                    Copiar link de acesso
+                    <ExternalLink className="h-3 w-3" /> Copiar link de acesso
                   </Button>
-                  {memberProducts.map((mp: any) => {
-                    const productName = mp.delivery_products?.name || "Produto";
-                    return (
-                      <div key={mp.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="text-sm font-medium truncate">{productName}</span>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className={mp.is_active
-                            ? "bg-green-500/10 text-green-600 border-green-500/30 text-xs shrink-0"
-                            : "bg-red-500/10 text-red-600 border-red-500/30 text-xs shrink-0"
-                          }
-                        >
-                          {mp.is_active ? "Ativo" : "Inativo"}
-                        </Badge>
+                  {memberProducts.map((mp: any) => (
+                    <div key={mp.id} className="rounded-lg border bg-card p-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium truncate">{mp.delivery_products?.name || "Produto"}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CollapsibleSection>
-          </div>
-
-          {/* Resumo Financeiro */}
-          <SectionDivider icon={CreditCard} title="Resumo Financeiro" />
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-xl border p-3 text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Total Pago</p>
-              <p className="text-base font-bold font-mono text-green-600 mt-0.5">{formatCurrency(lead.totalPaid)}</p>
-            </div>
-            <div className="rounded-xl border p-3 text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Pedidos Pagos</p>
-              <p className="text-base font-bold text-foreground mt-0.5">{paidTxs.length}</p>
-            </div>
-            <div className="rounded-xl border p-3 text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Não Pagos</p>
-              <p className="text-base font-bold text-yellow-600 mt-0.5">{unpaidTxs.length}</p>
-            </div>
-          </div>
-
-          {/* Pagamentos */}
-          {(paidTxs.length > 0 || unpaidTxs.length > 0) && (
-            <div className="pt-3">
-              <CollapsibleSection icon={CreditCard} title="Pagamentos" count={paidTxs.length + unpaidTxs.length}>
-                {paidTxs.length > 0 && (
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                      <p className="text-xs font-semibold text-green-600">Pagas ({paidTxs.length})</p>
-                    </div>
-                    <div className="space-y-2">
-                      {paidTxs.map((tx) => (
-                        <div key={tx.id} className="rounded-lg border p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">{typeLabels[tx.type] || tx.type}</Badge>
-                              <Badge className={statusColors[tx.status] || ""} variant="outline" >{tx.status}</Badge>
-                            </div>
-                            <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                            {tx.description && ` — ${tx.description}`}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {unpaidTxs.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <XCircle className="h-3.5 w-3.5 text-yellow-500" />
-                      <p className="text-xs font-semibold text-yellow-600">Pendentes/Rejeitadas ({unpaidTxs.length})</p>
-                    </div>
-                    <div className="space-y-2">
-                      {unpaidTxs.map((tx) => (
-                        <div key={tx.id} className="rounded-lg border p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">{typeLabels[tx.type] || tx.type}</Badge>
-                              <Badge className={statusColors[tx.status] || ""} variant="outline">{tx.status}</Badge>
-                            </div>
-                            <span className="font-mono text-sm font-semibold">{formatCurrency(tx.amount)}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                            {tx.description && ` — ${tx.description}`}
-                          </p>
-                          {tx.payment_url && (
-                            <div className="flex gap-2 pt-2">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
-                                <a href={tx.payment_url} target="_blank" rel="noopener noreferrer">
-                                  <Download className="h-3 w-3 mr-1" /> PDF
-                                </a>
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => {
-                                navigator.clipboard.writeText(tx.payment_url!);
-                                toast.success("Link copiado!");
-                              }}>
-                                <Copy className="h-3 w-3 mr-1" /> Link
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CollapsibleSection>
-            </div>
-          )}
-
-          {/* Agendamentos */}
-          <div className="pt-3">
-            <CollapsibleSection icon={Bell} title="Agendamentos" count={isLoadingReminders ? undefined : reminders.length}>
-              {isLoadingReminders ? (
-                <div className="space-y-2">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="rounded-lg border p-3 flex items-center justify-between gap-3">
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-40" />
-                        <Skeleton className="h-3 w-28" />
-                      </div>
-                      <Skeleton className="h-5 w-16 rounded-full" />
-                    </div>
-                  ))}
-                </div>
-              ) : reminders.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-3">Nenhum agendamento</p>
-              ) : (
-                <div className="space-y-2">
-                  {reminders.map((r) => (
-                    <div key={r.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{r.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(r.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                        </p>
-                        {r.description && <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>}
-                      </div>
-                      <Badge variant={r.completed ? "secondary" : "outline"} className="text-xs shrink-0">
-                        {r.completed ? "Concluído" : "Pendente"}
+                      <Badge variant="outline" className={`text-xs shrink-0 ${mp.is_active ? "bg-green-500/10 text-green-600 border-green-500/30" : "bg-red-500/10 text-red-600 border-red-500/30"}`}>
+                        {mp.is_active ? "Ativo" : "Inativo"}
                       </Badge>
                     </div>
                   ))}
-                </div>
+                </>
               )}
-            </CollapsibleSection>
-          </div>
+            </TabsContent>
 
-          {/* Histórico de Conversas */}
-          <div className="pt-3">
-            <CollapsibleSection icon={MessageSquare} title="Histórico de Conversas" count={isLoadingMsgCounts ? undefined : instances.filter(i => (conversationMsgCounts[i.conversation_id] ?? 0) > 0).length} defaultOpen>
+            {/* ─── TAB: Conversas ─── */}
+            <TabsContent value="history" className="px-5 py-4 space-y-2 mt-0">
               {isLoadingMsgCounts ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="rounded-lg border p-3 flex items-center gap-3">
-                      <Skeleton className="h-4 w-4 rounded shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <Skeleton className="h-4 w-36" />
-                        <Skeleton className="h-3 w-48" />
-                      </div>
-                      <Skeleton className="h-4 w-4 shrink-0" />
-                    </div>
-                  ))}
+                <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
+              ) : activeInstances.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <MessageSquare className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+                  <p className="text-xs text-muted-foreground">Nenhuma conversa encontrada</p>
                 </div>
-              ) : (() => {
-                const activeInstances = instances.filter((inst) => (conversationMsgCounts[inst.conversation_id] ?? 0) > 0);
-                if (activeInstances.length === 0) return <p className="text-xs text-muted-foreground text-center py-3">Nenhuma conversa encontrada</p>;
-                return (
-                  <div className="space-y-2">
-                    {activeInstances.map((inst) => {
-                      const isSelected = selectedConversationId === inst.conversation_id;
-                      const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
-                      return (
-                        <div key={inst.conversation_id}>
-                          <button
-                            className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${
-                              isSelected ? "border-primary bg-primary/5" : ""
-                            }`}
-                            onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
-                          >
-                            <div className="flex items-center gap-3">
-                              <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {msgCount} mensagen{msgCount !== 1 ? "s" : ""}
-                                  {inst.last_message_at && ` · Última: ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
-                                </p>
-                              </div>
-                              {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                            </div>
-                          </button>
-                          {isSelected && (
-                            <div className="mt-2">
-                              <InstanceMessageHistory conversationId={inst.conversation_id} />
-                            </div>
-                          )}
+              ) : (
+                activeInstances.map((inst) => {
+                  const isSelected = selectedConversationId === inst.conversation_id;
+                  const msgCount = conversationMsgCounts[inst.conversation_id] ?? 0;
+                  return (
+                    <div key={inst.conversation_id} className="space-y-2">
+                      <button
+                        className={`w-full rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/50 ${isSelected ? "border-primary bg-primary/5" : ""}`}
+                        onClick={() => setSelectedConversationId(isSelected ? null : inst.conversation_id)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{inst.instance_name || "Sem instância"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {msgCount} msg{msgCount !== 1 ? "s" : ""}
+                              {inst.last_message_at && ` · ${format(new Date(inst.last_message_at), "dd/MM HH:mm")}`}
+                            </p>
+                          </div>
+                          {isSelected ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </CollapsibleSection>
-          </div>
+                      </button>
+                      {isSelected && <InstanceMessageHistory conversationId={inst.conversation_id} />}
+                    </div>
+                  );
+                })
+              )}
+            </TabsContent>
 
-          <div className="h-6" />
-        </div>
+            {/* ─── TAB: Agendamentos ─── */}
+            <TabsContent value="reminders" className="px-5 py-4 space-y-2 mt-0">
+              {isLoadingReminders ? (
+                <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
+              ) : reminders.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+                  <p className="text-xs text-muted-foreground">Nenhum agendamento</p>
+                </div>
+              ) : (
+                reminders.map((r) => (
+                  <div key={r.id} className="rounded-lg border bg-card p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{r.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(r.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                      </p>
+                      {r.description && <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>}
+                    </div>
+                    <Badge variant={r.completed ? "secondary" : "outline"} className="text-xs shrink-0">
+                      {r.completed ? "Concluído" : "Pendente"}
+                    </Badge>
+                  </div>
+                ))
+              )}
+            </TabsContent>
+          </div>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
