@@ -16,7 +16,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Puzzle, Brain, Code, Mail } from "lucide-react";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Puzzle, Brain, Code, Mail, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AISection } from "@/components/settings/AISection";
 import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
