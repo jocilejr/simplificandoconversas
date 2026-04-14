@@ -120,7 +120,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
           </DialogHeader>
 
           <div className="w-full min-w-0">
-            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedId(null); }}>
+            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedId(null); setWeekdayFilter(null); }}>
               <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
                 {SCHEDULE_TABS.map(t => {
                   const count = messages.filter((m: any) => m.schedule_type === t.value).length;
