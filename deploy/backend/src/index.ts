@@ -24,12 +24,13 @@ import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily } from "./routes/followup-daily";
-import groupsApiRouter, { calculateNextRunAt } from "./routes/groups-api";
+import groupsApiRouter from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
 import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 import mediaManagerRouter from "./routes/media-manager";
+import { groupScheduler } from "./lib/group-scheduler";
 
 const app = express();
 app.use(cors());
@@ -192,120 +193,12 @@ cron.schedule("0 3 * * *", async () => {
   }
 });
 
-// ─── Group Scheduler Cron (1/min): enqueue scheduled messages ───
-cron.schedule("* * * * *", async () => {
+// ─── Group Scheduler: Safety sweep every 5 minutes (catches orphaned timers) ───
+cron.schedule("*/5 * * * *", async () => {
   try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const sb = createClient(
-      process.env.SUPABASE_URL || "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-    );
-
-    const now = new Date().toISOString();
-    const windowStart = new Date(Date.now() - 60 * 1000).toISOString();
-    const { data: dueMessages, error } = await sb
-      .from("group_scheduled_messages")
-      .select("*")
-      .eq("is_active", true)
-      .lte("next_run_at", now)
-      .gte("next_run_at", windowStart)
-      .order("next_run_at", { ascending: true })
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("[cron] group-scheduler query error:", error.message);
-      return;
-    }
-    if (!dueMessages || dueMessages.length === 0) return;
-
-    console.log(`[cron] 📅 Group scheduler: ${dueMessages.length} message(s) due`);
-
-    for (const msg of dueMessages) {
-      // Fetch campaign
-      const { data: campaign, error: campErr } = await sb
-        .from("group_campaigns")
-        .select("workspace_id, user_id, instance_name, group_jids, is_active")
-        .eq("id", msg.campaign_id)
-        .single();
-
-      if (campErr || !campaign || !campaign.is_active) {
-        await sb.from("group_scheduled_messages")
-          .update({ is_active: false, next_run_at: null })
-          .eq("id", msg.id);
-        if (campErr) console.error(`[cron] group-scheduler campaign fetch error for ${msg.id}:`, campErr.message);
-        else console.log(`[cron] 🧹 Deactivated orphaned msg ${msg.id} (campaign inactive/missing)`);
-        continue;
-      }
-
-      const batch = `auto-${Date.now()}-${msg.id.slice(0, 8)}`;
-      const queueItems: any[] = [];
-
-      for (const jid of (campaign.group_jids || [])) {
-        // Dedup: skip if already queued in the last 5 minutes
-        const { count: existing } = await sb
-          .from("group_message_queue")
-          .select("id", { count: "exact", head: true })
-          .eq("scheduled_message_id", msg.id)
-          .eq("group_jid", jid)
-          .in("status", ["pending", "processing", "sent"])
-          .gte("created_at", new Date(Date.now() - 5 * 60000).toISOString());
-
-        if ((existing || 0) > 0) {
-          console.log(`[cron] ⏭ Dedup: msg ${msg.id} → ${jid} already queued`);
-          continue;
-        }
-
-        const { data: sg } = await sb
-          .from("group_selected")
-          .select("group_name")
-          .eq("workspace_id", campaign.workspace_id)
-          .eq("group_jid", jid)
-          .maybeSingle();
-
-        queueItems.push({
-          workspace_id: campaign.workspace_id,
-          user_id: campaign.user_id,
-          campaign_id: msg.campaign_id,
-          scheduled_message_id: msg.id,
-          group_jid: jid,
-          group_name: sg?.group_name || "",
-          instance_name: campaign.instance_name,
-          message_type: msg.message_type,
-          content: msg.content,
-          status: "pending",
-          execution_batch: batch,
-        });
-      }
-
-      if (queueItems.length > 0) {
-        const { error: insertErr } = await sb.from("group_message_queue").insert(queueItems);
-        if (insertErr) {
-          console.error("[cron] group-scheduler insert error:", insertErr.message);
-          continue;
-        }
-        console.log(`[cron] ✅ Enqueued ${queueItems.length} items for msg ${msg.id} (batch: ${batch})`);
-      }
-
-      // Update last_run_at and compute next_run_at
-      const updateData: any = { last_run_at: now };
-
-      if (msg.schedule_type === "once") {
-        updateData.is_active = false;
-        updateData.next_run_at = null;
-      } else {
-        const nextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
-        if (nextRun) {
-          updateData.next_run_at = nextRun;
-        } else {
-          updateData.is_active = false;
-          updateData.next_run_at = null;
-        }
-      }
-
-      await sb.from("group_scheduled_messages").update(updateData).eq("id", msg.id);
-    }
+    await groupScheduler.safetySweep();
   } catch (err: any) {
-    console.error("[cron] group-scheduler error:", err.message);
+    console.error("[cron] group-scheduler safety sweep error:", err.message);
   }
 });
 
@@ -378,41 +271,11 @@ const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, async () => {
   console.log(`Backend running on port ${PORT}`);
 
-  // ─── Self-heal: fix active messages with NULL next_run_at on startup ───
+  // ─── Initialize in-memory group scheduler (replaces old cron + self-heal) ───
   try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const sb = createClient(
-      process.env.SUPABASE_URL || "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-    );
-
-    const { data: broken } = await sb
-      .from("group_scheduled_messages")
-      .select("id, schedule_type, content")
-      .eq("is_active", true)
-      .is("next_run_at", null);
-
-    if (broken && broken.length > 0) {
-      console.log(`[self-heal] 🔧 Found ${broken.length} active messages with NULL next_run_at`);
-
-      for (const msg of broken) {
-        if (msg.schedule_type === "once") {
-          // Once messages with NULL next_run_at should be deactivated
-          await sb.from("group_scheduled_messages").update({ is_active: false }).eq("id", msg.id);
-          console.log(`[self-heal] ⏹ Deactivated once msg ${msg.id} (expired)`);
-          continue;
-        }
-
-        const nextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
-        if (nextRun) {
-          await sb.from("group_scheduled_messages").update({ next_run_at: nextRun }).eq("id", msg.id);
-          console.log(`[self-heal] ✅ Fixed msg ${msg.id}: next_run=${nextRun}`);
-        } else {
-          console.warn(`[self-heal] ⚠️ Could not compute next_run for msg ${msg.id} (type=${msg.schedule_type})`);
-        }
-      }
-    }
+    await groupScheduler.loadAll();
+    console.log(`[scheduler] 🚀 Scheduler initialized with ${groupScheduler.activeCount} active timer(s)`);
   } catch (err: any) {
-    console.error("[self-heal] Error:", err.message);
+    console.error("[scheduler] Initialization error:", err.message);
   }
 });

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { groupScheduler } from "../lib/group-scheduler";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -721,6 +722,8 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
       .single();
     if (error) throw error;
     console.log(`[groups-api] Created message ${data.id}: type=${st}, next_run=${nextRunAt}`);
+    // Register with in-memory scheduler
+    groupScheduler.scheduleMessage({ id: data.id, schedule_type: st, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: true });
     res.json(data);
   } catch (err: any) {
     console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
@@ -764,13 +767,9 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
       .select()
       .single();
     if (error) throw error;
+    // Update in-memory scheduler
+    groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: data.is_active });
     res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.delete("/campaigns/:id/messages/:msgId", async (req: Request, res: Response) => {
   try {
     const sb = getServiceClient();
     const { error } = await sb
@@ -779,6 +778,8 @@ router.delete("/campaigns/:id/messages/:msgId", async (req: Request, res: Respon
       .eq("id", req.params.msgId)
       .eq("campaign_id", req.params.id);
     if (error) throw error;
+    // Remove from in-memory scheduler
+    groupScheduler.cancelMessage(req.params.msgId);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -810,6 +811,12 @@ router.patch("/campaigns/:id/messages/:msgId/toggle", async (req: Request, res: 
       .select()
       .single();
     if (error) throw error;
+    // Update in-memory scheduler
+    if (newActive) {
+      groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: true });
+    } else {
+      groupScheduler.cancelMessage(req.params.msgId);
+    }
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
