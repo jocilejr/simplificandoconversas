@@ -334,7 +334,14 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       const domain = domainRaw;
       const finalLink = `${domain.replace(/\/$/, "")}/${phoneForUrl}`;
       const deliveryMsg = (settings as any)?.delivery_message;
-      const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
+      let finalMessage: string;
+      if (deliveryMsg && deliveryMsg.includes("{link}")) {
+        finalMessage = deliveryMsg.replace(/\{link\}/g, finalLink);
+      } else if (deliveryMsg) {
+        finalMessage = `${deliveryMsg}\n\n${finalLink}`;
+      } else {
+        finalMessage = finalLink;
+      }
       setLink(finalLink);
       setMessage(finalMessage);
 
