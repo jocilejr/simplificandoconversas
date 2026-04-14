@@ -290,8 +290,19 @@ cron.schedule("* * * * *", async () => {
       }
 
       // Update last_run_at and compute next_run_at
-      const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, msg.cron_expression, msg.interval_minutes);
+      // If cron_expression is missing, rebuild from content before computing
+      let cronExpr = msg.cron_expression;
+      if (!cronExpr && msg.schedule_type !== "once" && msg.schedule_type !== "interval") {
+        cronExpr = buildCronFromContent(msg.schedule_type, msg.content);
+        if (cronExpr) {
+          console.log(`[cron] 🔧 Rebuilt cron for msg ${msg.id}: ${cronExpr}`);
+        }
+      }
+      const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, cronExpr, msg.interval_minutes, msg.content);
       const updateData: any = { last_run_at: now };
+      if (cronExpr && !msg.cron_expression) {
+        updateData.cron_expression = cronExpr; // persist rebuilt cron
+      }
       if (nextRun) {
         updateData.next_run_at = nextRun;
       } else {
