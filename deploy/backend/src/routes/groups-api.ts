@@ -778,6 +778,8 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
       .eq("id", req.params.msgId)
       .eq("campaign_id", req.params.id);
     if (error) throw error;
+    // Remove from in-memory scheduler
+    groupScheduler.cancelMessage(req.params.msgId);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -809,6 +811,12 @@ router.patch("/campaigns/:id/messages/:msgId/toggle", async (req: Request, res: 
       .select()
       .single();
     if (error) throw error;
+    // Update in-memory scheduler
+    if (newActive) {
+      groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: true });
+    } else {
+      groupScheduler.cancelMessage(req.params.msgId);
+    }
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
