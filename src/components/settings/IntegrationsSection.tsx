@@ -395,6 +395,25 @@ export function IntegrationsSection() {
             </Card>
           );
         })}
+
+
+        {/* Special platform cards (OpenAI, Email, API) */}
+        {SPECIAL_PLATFORMS.map((sp) => (
+          <Card
+            key={sp.id}
+            className="hover:border-primary/30 cursor-pointer transition-colors"
+            onClick={() => setSpecialPanel(sp.id)}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="shrink-0">{PlatformIcons[sp.platform] || <span className="text-2xl">⚙️</span>}</div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium">{sp.name}</span>
+                <p className="text-xs text-muted-foreground truncate">{sp.description}</p>
+              </div>
+              <Settings2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Meta Ads — multi-account */}
