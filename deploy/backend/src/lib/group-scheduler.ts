@@ -196,7 +196,7 @@ export class GroupSchedulerManager {
     // Re-check message is still active
     const { data: msg, error: msgErr } = await sb
       .from("group_scheduled_messages")
-      .select("is_active, schedule_type, content, campaign_id")
+      .select("is_active, schedule_type, content, campaign_id, message_type")
       .eq("id", msgId)
       .single();
 
