@@ -204,7 +204,7 @@ cron.schedule("* * * * *", async () => {
     const now = new Date().toISOString();
     const { data: dueMessages, error } = await sb
       .from("group_scheduled_messages")
-      .select("*, group_campaigns!inner(workspace_id, user_id, instance_name, group_jids, is_active)")
+      .select("*")
       .eq("is_active", true)
       .lte("next_run_at", now);
 
