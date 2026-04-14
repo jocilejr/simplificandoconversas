@@ -220,10 +220,12 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                                         ))}
                                       </div>
                                     )}
-                                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                      <Clock className="h-2.5 w-2.5" />
-                                      {getTimeLabel(msg)}
-                                    </span>
+                                    {getTimeLabel(msg) && (
+                                      <Badge className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20 shrink-0 gap-1">
+                                        <Clock className="h-2.5 w-2.5" />
+                                        {getTimeLabel(msg)}
+                                      </Badge>
+                                    )}
                                   </div>
                                   <p className="text-xs text-muted-foreground truncate mt-0.5">{getPreview(msg).slice(0, 80)}</p>
                                 </div>
