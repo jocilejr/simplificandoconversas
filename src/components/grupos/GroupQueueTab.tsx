@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   XCircle, Clock, Loader2, CheckCircle2, AlertCircle,
   Settings2, Save, Inbox, MessageSquare, Image, FileText,
-  Music, Video, Ban,
+  Music, Video, Ban, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,13 @@ import { Progress } from "@/components/ui/progress";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useGroupQueue, useSpamConfig } from "@/hooks/useGroupQueue";
 import { format } from "date-fns";
 
