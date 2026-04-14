@@ -540,7 +540,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
                         onClick={() => {
                           if (isAlreadyCounted) {
                             processDelivery("pix", tx.id, true);
-                          } else if (!isLinked) {
+                          } else if (!isLinked || isLinkedToCurrentLead) {
                             processDelivery("pix", tx.id, false);
                           }
                         }}
