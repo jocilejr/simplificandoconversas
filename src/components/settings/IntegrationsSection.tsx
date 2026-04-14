@@ -154,15 +154,13 @@ const INTEGRATIONS: Integration[] = [
     available: false,
     fields: [],
   },
-  {
-    id: "openai",
-    name: "OpenAI",
-    description: "Inteligência artificial",
-    platform: "openai",
-    icon: "",
-    available: false,
-    fields: [],
-  },
+];
+
+// Special module platforms (open full-screen panels)
+const SPECIAL_PLATFORMS = [
+  { id: "openai", name: "OpenAI", description: "Inteligência artificial para respostas automáticas", platform: "openai" },
+  { id: "email_module", name: "E-mail", description: "SMTP, webhooks e chave de API", platform: "email" },
+  { id: "api_module", name: "API", description: "Chave de API e documentação de endpoints", platform: "custom_api" },
 ];
 
 export function IntegrationsSection() {
