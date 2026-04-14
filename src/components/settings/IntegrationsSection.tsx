@@ -16,7 +16,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Puzzle, Brain, Code, Mail } from "lucide-react";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Puzzle, Brain, Code, Mail, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AISection } from "@/components/settings/AISection";
 import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
@@ -122,18 +123,7 @@ const INTEGRATIONS: Integration[] = [
     available: false,
     fields: [],
   },
-  {
-    id: "meta_ads",
-    name: "Meta Ads",
-    description: "Gastos com anúncios Meta/Facebook para deduções no relatório",
-    platform: "meta_ads",
-    icon: "",
-    available: true,
-    fields: [
-      { key: "access_token", label: "Access Token (longa duração)", placeholder: "EAAxxxxxxx...", type: "password" },
-      { key: "ad_account_id", label: "ID da Conta de Anúncios", placeholder: "act_123456789" },
-    ],
-  },
+  // Meta Ads removed from here — handled as multi-account below
   {
     id: "pagbank",
     name: "PagBank",
@@ -176,9 +166,29 @@ export function IntegrationsSection() {
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
 
+  // Meta Ads multi-account state
+  type MetaAccount = { id: string; label: string; access_token: string; ad_account_id: string; enabled: boolean };
+  const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([]);
+  const [metaDialog, setMetaDialog] = useState(false);
+  const [editingMeta, setEditingMeta] = useState<MetaAccount | null>(null);
+  const [metaForm, setMetaForm] = useState({ label: "", access_token: "", ad_account_id: "" });
+  const [metaShowToken, setMetaShowToken] = useState(false);
+  const [metaSaving, setMetaSaving] = useState(false);
+
+  const loadMetaAccounts = async () => {
+    if (!workspaceId) return;
+    const { data } = await supabase
+      .from("meta_ad_accounts")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at");
+    setMetaAccounts((data as MetaAccount[]) || []);
+  };
+
   useEffect(() => {
     if (!user || !workspaceId) return;
     loadConnections();
+    loadMetaAccounts();
     supabase.from("workspaces").select("app_public_url, api_public_url").eq("id", workspaceId).single().then(({ data }) => {
       if (data?.api_public_url) setWorkspaceUrl(data.api_public_url);
       else if (data?.app_public_url) setWorkspaceUrl(data.app_public_url.replace("://app.", "://api."));
@@ -249,6 +259,53 @@ export function IntegrationsSection() {
     setSaving(false);
   };
 
+  const openMetaAdd = () => {
+    setEditingMeta(null);
+    setMetaForm({ label: "", access_token: "", ad_account_id: "" });
+    setMetaShowToken(false);
+    setMetaDialog(true);
+  };
+
+  const openMetaEdit = (acc: MetaAccount) => {
+    setEditingMeta(acc);
+    setMetaForm({ label: acc.label, access_token: acc.access_token, ad_account_id: acc.ad_account_id });
+    setMetaShowToken(false);
+    setMetaDialog(true);
+  };
+
+  const handleMetaSave = async () => {
+    if (!user || !workspaceId) return;
+    setMetaSaving(true);
+    const payload = { ...metaForm, workspace_id: workspaceId, enabled: true };
+
+    let error;
+    if (editingMeta) {
+      ({ error } = await supabase.from("meta_ad_accounts").update({ ...metaForm, updated_at: new Date().toISOString() }).eq("id", editingMeta.id));
+    } else {
+      ({ error } = await supabase.from("meta_ad_accounts").insert(payload as any));
+    }
+
+    if (error) {
+      toast({ title: "Erro ao salvar conta", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: editingMeta ? "Conta atualizada" : "Conta adicionada" });
+      await loadMetaAccounts();
+      setMetaDialog(false);
+    }
+    setMetaSaving(false);
+  };
+
+  const handleMetaToggle = async (acc: MetaAccount) => {
+    await supabase.from("meta_ad_accounts").update({ enabled: !acc.enabled, updated_at: new Date().toISOString() }).eq("id", acc.id);
+    await loadMetaAccounts();
+  };
+
+  const handleMetaDelete = async (id: string) => {
+    await supabase.from("meta_ad_accounts").delete().eq("id", id);
+    toast({ title: "Conta removida" });
+    await loadMetaAccounts();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-40">
@@ -314,6 +371,113 @@ export function IntegrationsSection() {
           );
         })}
       </div>
+
+      {/* Meta Ads — multi-account */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {PlatformIcons["meta_ads"]}
+            <div>
+              <h3 className="text-sm font-medium">Meta Ads</h3>
+              <p className="text-xs text-muted-foreground">Gastos com anúncios Meta/Facebook para deduções no relatório</p>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={openMetaAdd}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar Conta
+          </Button>
+        </div>
+
+        {metaAccounts.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">Nenhuma conta Meta Ads conectada</p>
+        )}
+
+        <div className="space-y-2">
+          {metaAccounts.map((acc) => (
+            <Card key={acc.id}>
+              <CardContent className="p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{acc.label}</span>
+                    <Badge variant="outline" className="text-[10px] h-5 font-mono">{acc.ad_account_id}</Badge>
+                    {acc.enabled ? (
+                      <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-primary/10 text-primary border-primary/20">
+                        <Check className="h-3 w-3" /> Ativa
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] h-5">Inativa</Badge>
+                    )}
+                  </div>
+                </div>
+                <Switch checked={acc.enabled} onCheckedChange={() => handleMetaToggle(acc)} />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openMetaEdit(acc)}>
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleMetaDelete(acc.id)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Meta Ads dialog */}
+      <Dialog open={metaDialog} onOpenChange={setMetaDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {PlatformIcons["meta_ads"]}
+              {editingMeta ? "Editar Conta" : "Adicionar Conta Meta Ads"}
+            </DialogTitle>
+            <DialogDescription>Configure os dados da conta de anúncios</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Nome da conta</label>
+              <Input
+                placeholder="Ex: Conta Principal, Cliente X..."
+                value={metaForm.label}
+                onChange={(e) => setMetaForm((v) => ({ ...v, label: e.target.value }))}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Access Token (longa duração)</label>
+              <div className="relative">
+                <Input
+                  type={metaShowToken ? "text" : "password"}
+                  placeholder="EAAxxxxxxx..."
+                  value={metaForm.access_token}
+                  onChange={(e) => setMetaForm((v) => ({ ...v, access_token: e.target.value }))}
+                  className="text-xs pr-9"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setMetaShowToken((v) => !v)}
+                >
+                  {metaShowToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">ID da Conta de Anúncios</label>
+              <Input
+                placeholder="act_123456789"
+                value={metaForm.ad_account_id}
+                onChange={(e) => setMetaForm((v) => ({ ...v, ad_account_id: e.target.value }))}
+                className="text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" className="text-xs" onClick={handleMetaSave} disabled={metaSaving || !metaForm.access_token || !metaForm.ad_account_id}>
+              {metaSaving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+              {editingMeta ? "Atualizar" : "Adicionar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!configDialog} onOpenChange={(open) => !open && setConfigDialog(null)}>
         <DialogContent className="sm:max-w-md">
