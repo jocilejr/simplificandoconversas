@@ -240,11 +240,9 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
         description: paymentForm.description || "Pagamento manual",
         customer_name: lead.contact_name || null,
         customer_phone: phone,
-        normalized_phone: phone.replace(/\D/g, ""),
         customer_email: lead.customer_email || null,
         customer_document: lead.customer_document || null,
         source: "manual",
-        webhook_source: "manual",
         paid_at: paymentForm.status === "aprovado" ? new Date().toISOString() : null,
       } as any);
       if (error) throw error;
