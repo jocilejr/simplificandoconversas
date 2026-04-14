@@ -981,8 +981,9 @@ router.post("/webhook/events", async (req: Request, res: Response) => {
 
     if (event === "bounce" || event === "complaint") {
       if (email && uid) {
+        const wsId = await resolveWorkspaceId(uid);
         await supabase.from("email_suppressions").upsert(
-          { user_id: uid, email: email.toLowerCase(), reason: event },
+          { user_id: uid, workspace_id: wsId, email: email.toLowerCase(), reason: event },
           { onConflict: "user_id,email" }
         );
       }
