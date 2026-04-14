@@ -99,6 +99,44 @@ function parseCronTime(cronExpression: string): { min: number; hour: number; par
   return { min: +parts[0], hour: +parts[1], parts };
 }
 
+/* ─── helper: reconstruir cron_expression a partir do content ─── */
+export function buildCronFromContent(scheduleType: string, content: any): string | null {
+  if (!content) return null;
+  const timeStr = content.time || content.runTime;
+  if (!timeStr) return null;
+  const [hh, mm] = timeStr.split(":");
+  if (hh === undefined || mm === undefined) return null;
+
+  switch (scheduleType) {
+    case "daily":
+      return `${mm} ${hh} * * *`;
+    case "weekly": {
+      const weekdays = content.weekdays || content.weekDays;
+      if (Array.isArray(weekdays) && weekdays.length > 0) {
+        return `${mm} ${hh} * * ${weekdays.join(",")}`;
+      }
+      return `${mm} ${hh} * * *`;
+    }
+    case "monthly": {
+      const monthDay = content.monthDay || content.customDays || "1";
+      return `${mm} ${hh} ${monthDay} * *`;
+    }
+    case "custom": {
+      const customDays = content.customDays || content.monthDay;
+      if (customDays) {
+        return `${mm} ${hh} ${customDays} * *`;
+      }
+      const wd = content.weekdays || content.weekDays;
+      if (Array.isArray(wd) && wd.length > 0) {
+        return `${mm} ${hh} * * ${wd.join(",")}`;
+      }
+      return `${mm} ${hh} * * *`;
+    }
+    default:
+      return null;
+  }
+}
+
 /* ─── helper: calcular next_run_at ─── */
 function computeNextRunAt(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
   const now = new Date();
@@ -173,14 +211,50 @@ function computeNextRunAt(scheduleType: string, scheduledAt: string | null, cron
       if (!intervalMinutes || intervalMinutes <= 0) return null;
       return new Date(now.getTime() + intervalMinutes * 60000).toISOString();
     }
+    case "custom": {
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        // custom with day-of-week
+        if (cron.parts[4] !== "*") {
+          const daysOfWeek = cron.parts[4].split(",").map(Number);
+          for (let i = 0; i < 8; i++) {
+            const candidate = new Date(now);
+            candidate.setDate(candidate.getDate() + i);
+            candidate.setHours(cron.hour, cron.min, 0, 0);
+            if (daysOfWeek.includes(candidate.getDay()) && candidate > now) {
+              return candidate.toISOString();
+            }
+          }
+        }
+        // custom with day-of-month
+        if (cron.parts[2] !== "*") {
+          const dayOfMonth = +cron.parts[2];
+          const next = new Date(now.getFullYear(), now.getMonth(), dayOfMonth, cron.hour, cron.min, 0, 0);
+          if (next <= now) next.setMonth(next.getMonth() + 1);
+          return next.toISOString();
+        }
+        // fallback daily
+        const next = new Date(now);
+        next.setHours(cron.hour, cron.min, 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
+        return next.toISOString();
+      }
+      return scheduledAt || null;
+    }
     default:
       return scheduledAt || null;
   }
 }
 
 /* ─── helper: calcular PRÓXIMO next_run_at após execução ─── */
-export function computeNextRunAfterExecution(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
+export function computeNextRunAfterExecution(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null, content?: any): string | null {
   const now = new Date();
+
+  // If cronExpression is missing, try to rebuild from content
+  let cron = cronExpression;
+  if (!cron && content) {
+    cron = buildCronFromContent(scheduleType, content);
+  }
 
   switch (scheduleType) {
     case "once":
@@ -193,10 +267,10 @@ export function computeNextRunAfterExecution(scheduleType: string, scheduledAt: 
         next.setDate(next.getDate() + 1);
         return next.toISOString();
       }
-      const cron = parseCronTime(cronExpression || "");
-      if (cron) {
+      const parsed = parseCronTime(cron || "");
+      if (parsed) {
         const next = new Date(now);
-        next.setHours(cron.hour, cron.min, 0, 0);
+        next.setHours(parsed.hour, parsed.min, 0, 0);
         next.setDate(next.getDate() + 1);
         return next.toISOString();
       }
@@ -210,13 +284,13 @@ export function computeNextRunAfterExecution(scheduleType: string, scheduledAt: 
         next.setDate(next.getDate() + 7);
         return next.toISOString();
       }
-      const cron = parseCronTime(cronExpression || "");
-      if (cron) {
-        const daysOfWeek = cron.parts[4] === "*" ? [0,1,2,3,4,5,6] : cron.parts[4].split(",").map(Number);
+      const parsed = parseCronTime(cron || "");
+      if (parsed) {
+        const daysOfWeek = parsed.parts[4] === "*" ? [0,1,2,3,4,5,6] : parsed.parts[4].split(",").map(Number);
         for (let i = 1; i <= 8; i++) {
           const candidate = new Date(now);
           candidate.setDate(candidate.getDate() + i);
-          candidate.setHours(cron.hour, cron.min, 0, 0);
+          candidate.setHours(parsed.hour, parsed.min, 0, 0);
           if (daysOfWeek.includes(candidate.getDay())) {
             return candidate.toISOString();
           }
@@ -230,10 +304,36 @@ export function computeNextRunAfterExecution(scheduleType: string, scheduledAt: 
         const next = new Date(now.getFullYear(), now.getMonth() + 1, ref.getDate(), ref.getHours(), ref.getMinutes(), 0, 0);
         return next.toISOString();
       }
-      const cron = parseCronTime(cronExpression || "");
-      if (cron) {
-        const dayOfMonth = cron.parts[2] === "*" ? now.getDate() : +cron.parts[2];
-        const next = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth, cron.hour, cron.min, 0, 0);
+      const parsed = parseCronTime(cron || "");
+      if (parsed) {
+        const dayOfMonth = parsed.parts[2] === "*" ? now.getDate() : +parsed.parts[2];
+        const next = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth, parsed.hour, parsed.min, 0, 0);
+        return next.toISOString();
+      }
+      return null;
+    }
+    case "custom": {
+      const parsed = parseCronTime(cron || "");
+      if (parsed) {
+        if (parsed.parts[4] !== "*") {
+          const daysOfWeek = parsed.parts[4].split(",").map(Number);
+          for (let i = 1; i <= 8; i++) {
+            const candidate = new Date(now);
+            candidate.setDate(candidate.getDate() + i);
+            candidate.setHours(parsed.hour, parsed.min, 0, 0);
+            if (daysOfWeek.includes(candidate.getDay())) {
+              return candidate.toISOString();
+            }
+          }
+        }
+        if (parsed.parts[2] !== "*") {
+          const dayOfMonth = +parsed.parts[2];
+          const next = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth, parsed.hour, parsed.min, 0, 0);
+          return next.toISOString();
+        }
+        const next = new Date(now);
+        next.setHours(parsed.hour, parsed.min, 0, 0);
+        next.setDate(next.getDate() + 1);
         return next.toISOString();
       }
       return null;
@@ -632,7 +732,14 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
     const { workspaceId, userId, messageType, content, scheduleType, scheduledAt, cronExpression, intervalMinutes } = req.body;
     if (!workspaceId || !userId) return res.status(400).json({ error: "Missing fields" });
 
-    const nextRunAt = computeNextRunAt(scheduleType || "once", scheduledAt || null, cronExpression || null, intervalMinutes || null);
+    // Always ensure cron_expression is set for recurring types
+    let finalCron = cronExpression || null;
+    const st = scheduleType || "once";
+    if (!finalCron && st !== "once" && st !== "interval") {
+      finalCron = buildCronFromContent(st, content);
+    }
+
+    const nextRunAt = computeNextRunAt(st, scheduledAt || null, finalCron, intervalMinutes || null);
 
     const sb = getServiceClient();
     const { data, error } = await sb
@@ -643,9 +750,9 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
         user_id: userId,
         message_type: messageType || "text",
         content: content || {},
-        schedule_type: scheduleType || "once",
+        schedule_type: st,
         scheduled_at: scheduledAt || null,
-        cron_expression: cronExpression || null,
+        cron_expression: finalCron,
         interval_minutes: intervalMinutes || null,
         is_active: true,
         next_run_at: nextRunAt,
@@ -653,6 +760,7 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
       .select()
       .single();
     if (error) throw error;
+    console.log(`[groups-api] Created message ${data.id}: type=${st}, cron=${finalCron}, next_run=${nextRunAt}`);
     res.json(data);
   } catch (err: any) {
     console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
@@ -671,20 +779,26 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
     if (cronExpression !== undefined) update.cron_expression = cronExpression;
     if (intervalMinutes !== undefined) update.interval_minutes = intervalMinutes;
 
-    // Recalculate next_run_at if schedule changed
-    if (scheduleType !== undefined || scheduledAt !== undefined || intervalMinutes !== undefined) {
-      // Need to get current values to merge
+    // Recalculate next_run_at if ANY schedule-related field changed
+    if (scheduleType !== undefined || scheduledAt !== undefined || intervalMinutes !== undefined || cronExpression !== undefined || content !== undefined) {
       const sb2 = getServiceClient();
       const { data: current } = await sb2
         .from("group_scheduled_messages")
-        .select("schedule_type, scheduled_at, cron_expression, interval_minutes")
+        .select("schedule_type, scheduled_at, cron_expression, interval_minutes, content")
         .eq("id", req.params.msgId)
         .single();
 
       const finalScheduleType = scheduleType ?? current?.schedule_type ?? "once";
       const finalScheduledAt = scheduledAt ?? current?.scheduled_at ?? null;
-      const finalCron = cronExpression ?? current?.cron_expression ?? null;
+      let finalCron = cronExpression ?? current?.cron_expression ?? null;
       const finalInterval = intervalMinutes ?? current?.interval_minutes ?? null;
+      const finalContent = content ?? current?.content ?? {};
+
+      // Rebuild cron from content if missing for recurring types
+      if (!finalCron && finalScheduleType !== "once" && finalScheduleType !== "interval") {
+        finalCron = buildCronFromContent(finalScheduleType, finalContent);
+        if (finalCron) update.cron_expression = finalCron;
+      }
 
       update.next_run_at = computeNextRunAt(finalScheduleType, finalScheduledAt, finalCron, finalInterval);
     }
