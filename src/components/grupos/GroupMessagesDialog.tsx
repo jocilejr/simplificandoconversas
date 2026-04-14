@@ -102,6 +102,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
           {SCHEDULE_TABS.map(tab => (
             <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4">
+              {(() => { const tabMessages = messages.filter((m: any) => m.schedule_type === tab.value); return (<>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">{tab.desc}</p>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setEditMsg(null); setShowForm(true); }}>
