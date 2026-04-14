@@ -231,29 +231,29 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions, dateStart, dateEnd]);
 
-  // Mark transactions as seen when tab is active (calls backend for ALL unseen in category)
+  // Mark transactions as seen when tab is active
   const prevTab = useRef<TabKey | null>(null);
-  const initialDone = useRef(false);
 
-  const markTabAsSeen = useCallback((tab: TabKey) => {
-    if (hasUnseen(tab)) {
-      markTabSeen(tab);
-    }
-  }, [hasUnseen, markTabSeen]);
-
-  // On tab change
+  // On tab change — always mark
   useEffect(() => {
     if (prevTab.current === activeTab) return;
     prevTab.current = activeTab;
-    markTabAsSeen(activeTab);
-  }, [activeTab, markTabAsSeen]);
+    markTabSeen(activeTab);
+  }, [activeTab, markTabSeen]);
 
-  // On initial data load
+  // On initial load — mark once
   useEffect(() => {
-    if (isLoading || initialDone.current) return;
-    initialDone.current = true;
-    markTabAsSeen(activeTab);
-  }, [isLoading, activeTab, markTabAsSeen]);
+    if (isLoading) return;
+    markTabSeen(activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  // Auto-mark while viewing: if new unseen arrive while user is on tab, mark after 2s
+  useEffect(() => {
+    if (!hasUnseen(activeTab)) return;
+    const timer = setTimeout(() => markTabSeen(activeTab), 2000);
+    return () => clearTimeout(timer);
+  }, [hasUnseen, activeTab, markTabSeen]);
 
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
@@ -422,19 +422,19 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
           <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" onClick={() => markTabAsSeen("aprovados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="aprovados" onClick={() => markTabSeen("aprovados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Aprovados ({tabTransactions.aprovados.length})
               {hasUnseen("aprovados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" onClick={() => markTabAsSeen("boletos-gerados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="boletos-gerados" onClick={() => markTabSeen("boletos-gerados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Boletos ({tabTransactions["boletos-gerados"].length})
               {hasUnseen("boletos-gerados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" onClick={() => markTabAsSeen("pix-cartao-pendentes")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="pix-cartao-pendentes" onClick={() => markTabSeen("pix-cartao-pendentes")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
               {hasUnseen("pix-cartao-pendentes") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="rejeitados" onClick={() => markTabAsSeen("rejeitados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="rejeitados" onClick={() => markTabSeen("rejeitados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Rejeitados ({tabTransactions.rejeitados.length})
               {hasUnseen("rejeitados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
