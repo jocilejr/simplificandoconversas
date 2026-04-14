@@ -1181,7 +1181,7 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         // Update email_sends
         if (sendLog) {
           await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-          await logEvent(sendLog.id, item.user_id, "sent");
+          await logEvent(sendLog.id, item.user_id, "sent", undefined, itemWorkspaceId);
         }
 
         // Update campaign counters
