@@ -214,7 +214,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                                     )}
                                     {tab.value === "weekly" && (msg.content?.weekDays || msg.content?.weekdays) && (
                                       <div className="flex gap-0.5">
-                                        {msg.content.weekdays.map((d: number) => (
+                                        {(msg.content?.weekDays || msg.content?.weekdays || []).map((d: number) => (
                                           <span key={d} className="text-[9px] bg-primary/10 text-primary rounded px-1 py-0.5 font-medium">
                                             {WEEKDAY_LABELS[d]}
                                           </span>
