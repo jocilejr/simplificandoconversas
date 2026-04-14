@@ -1,56 +1,89 @@
 
 
-## Fix: Título "(2) Nova transação!" persistente após visualização
+## Fix: Scheduler de Grupos — `next_run_at` sempre NULL
 
-### Problema identificado
-Há uma **race condition** no fluxo de marcação de transações como vistas:
+### Causa raiz confirmada
 
-1. `markTabAsSeen()` verifica `hasUnseen(tab)` antes de chamar a API. Mas `hasUnseen` depende dos `counts` do query `useUnseenTransactions`, que pode não ter retornado ainda quando o `useEffect` de "initial load" dispara.
-2. O `useEffect` de "initial load" usa `initialDone.current = true` — então mesmo que os counts cheguem depois, ele nunca re-executa.
-3. Quando o usuário já está na aba e novas transações chegam (via polling), elas **não são marcadas como vistas** — o código só marca no switch de aba ou no load inicial.
+Todos os 10 registros ativos têm `next_run_at` e `scheduled_at` **vazios (NULL)**. O scheduler faz `.lte("next_run_at", now)` — como é NULL, nunca retorna nada.
+
+O problema está no fluxo de criação:
+
+1. Para tipos `weekly`, `daily`, `monthly` e `custom`, o frontend envia `scheduledAt: null` (só preenche `cronExpression`)
+2. O backend chama `computeNextRunAt("weekly", null, ...)` que retorna `null` porque a primeira coisa que faz é `if (!scheduledAt) return null`
+3. Resultado: `next_run_at` é gravado como NULL no banco
 
 ### Solução
 
-**Arquivo:** `src/components/transactions/TransactionsTable.tsx`
+**Arquivo 1: `deploy/backend/src/routes/groups-api.ts`** — Refatorar `computeNextRunAt` para usar `cronExpression` quando `scheduledAt` é null:
 
-1. **Remover a guarda `hasUnseen`** do `markTabAsSeen` — chamar `markTabSeen` sempre que o usuário visualiza uma aba. O backend já faz no-op se não houver registros para atualizar.
+- Para `daily`: parsear o cron `{min} {hora} * * *` e calcular o próximo horário hoje/amanhã
+- Para `weekly`: parsear o cron `{min} {hora} * * {dias}` e calcular o próximo dia da semana
+- Para `monthly`: parsear o cron `{min} {hora} {dia} * *` e calcular o próximo dia do mês
+- Para `custom`: mesmo tratamento do monthly
 
-2. **Adicionar auto-mark contínuo** — se o usuário está com a aba aberta e novas transações chegam (counts > 0), marcar automaticamente após um breve delay (2s), pois o usuário já está visualizando.
+Mesma lógica para `computeNextRunAfterExecution`.
 
-3. **Remover `initialDone` ref** — não é mais necessário com a lógica simplificada.
+**Arquivo 2: `deploy/backend/src/index.ts`** — Adicionar log de erro explícito no catch do scheduler (linha ~260) para que erros não sejam silenciosos.
 
-**Arquivo:** `src/hooks/useUnseenTransactions.ts`
+### Correção dos dados existentes (VPS)
 
-4. Sem alterações — a lógica do hook está correta.
+Após o deploy, executar na VPS para popular `next_run_at` dos registros existentes:
 
-### Mudanças detalhadas
-
-```typescript
-// TransactionsTable.tsx — substituir bloco de marcação (linhas ~235-256)
-
-// On tab change — always mark
-useEffect(() => {
-  if (prevTab.current === activeTab) return;
-  prevTab.current = activeTab;
-  markTabSeen(activeTab);
-}, [activeTab, markTabSeen]);
-
-// On initial load — mark once
-useEffect(() => {
-  if (isLoading) return;
-  markTabSeen(activeTab);
-}, [isLoading]); // intentionally sparse deps
-
-// Auto-mark while viewing: if new unseen arrive while user is on tab, mark after 2s
-useEffect(() => {
-  if (!hasUnseen(activeTab)) return;
-  const timer = setTimeout(() => markTabSeen(activeTab), 2000);
-  return () => clearTimeout(timer);
-}, [hasUnseen, activeTab, markTabSeen]);
+```bash
+docker compose exec postgres psql -U postgres -d postgres -c "
+UPDATE group_scheduled_messages 
+SET next_run_at = NOW() + INTERVAL '1 minute'
+WHERE is_active = true AND next_run_at IS NULL;
+"
 ```
 
+Isso força o scheduler a processar todos na próxima execução do cron e recalcular `next_run_at` corretamente após a execução.
+
+### Detalhes técnicos da refatoração
+
+```typescript
+// computeNextRunAt — daily com cron fallback
+case "daily": {
+  if (scheduledAt) {
+    // lógica existente
+  } else if (cronExpression) {
+    // Parsear "MM HH * * *"
+    const [min, hour] = cronExpression.split(" ");
+    const next = new Date(now);
+    next.setHours(+hour, +min, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next.toISOString();
+  }
+  return null;
+}
+
+// computeNextRunAt — weekly com cron fallback  
+case "weekly": {
+  if (scheduledAt) {
+    // lógica existente
+  } else if (cronExpression) {
+    // Parsear "MM HH * * 1,2,3,4,5"
+    const parts = cronExpression.split(" ");
+    const [min, hour] = [+parts[0], +parts[1]];
+    const days = parts[4].split(",").map(Number);
+    // Encontrar próximo dia válido
+    for (let i = 0; i < 8; i++) {
+      const candidate = new Date(now);
+      candidate.setDate(candidate.getDate() + i);
+      candidate.setHours(hour, min, 0, 0);
+      if (days.includes(candidate.getDay()) && candidate > now) {
+        return candidate.toISOString();
+      }
+    }
+  }
+  return null;
+}
+```
+
+Mesma abordagem para `monthly`, `custom` e para `computeNextRunAfterExecution`.
+
 ### Resultado esperado
-- Ao abrir a página de transações, as transações da aba ativa são marcadas como vistas imediatamente
-- Se novas transações chegam enquanto o usuário está na página, são marcadas como vistas em 2s
-- O título "(N) Nova transação!" limpa automaticamente
+- Mensagens agendadas terão `next_run_at` calculado corretamente
+- O cron de 1 minuto vai encontrar mensagens e enfileirar na `group_message_queue`
+- Após execução, `next_run_at` é recalculado para a próxima ocorrência
 
