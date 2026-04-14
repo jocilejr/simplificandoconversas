@@ -265,7 +265,7 @@ export class GroupSchedulerManager {
         group_jid: jid,
         group_name: sg?.group_name || "",
         instance_name: campaign.instance_name,
-        message_type: msg.content?.text !== undefined ? "text" : "text", // preserve original type
+        message_type: msg.message_type || "text",
         content: msg.content,
         status: "pending",
         execution_batch: batch,
