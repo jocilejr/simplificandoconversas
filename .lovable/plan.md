@@ -1,50 +1,43 @@
 
 
-## Problema
+## Redesign do Dialog de Programação (Grupos)
 
-O `DialogContent` usa `display: grid` (classe base) com `w-full`, mas o conteúdo filho (Tabs, TabsList, cards) não está contido pela largura do grid. O `overflow-x-hidden` no DialogContent não resolve porque os filhos do grid podem expandir o container antes do overflow ser aplicado.
+Baseado no repositório de referência `jocilejr/whats-grupos`, vou redesenhar completamente o `GroupMessagesDialog` e o `GroupScheduledMessageForm` para seguir o padrão do projeto de referência.
 
-Na screenshot: só "Único" e "Diário" aparecem, as outras 3 abas saem da tela. Os textos dos cards também vazam.
+### Problemas atuais
+1. O formulário de edição abre **inline no final da lista** — deveria abrir como **popup (Dialog separado)**
+2. Preview da mensagem é uma linha truncada de 80 chars — deveria ser **card expansível** com conteúdo completo
+3. Layout CSS continua quebrando com muitos itens
 
-## Correção: `src/components/grupos/GroupMessagesDialog.tsx`
+### Mudanças planejadas
 
-Envolver todo o conteúdo do Tabs em um container com largura forçada e overflow controlado:
+#### 1. `GroupMessagesDialog.tsx` — Redesign completo
+- Cada card de mensagem agora é **expansível** (clique para expandir/recolher)
+- Card colapsado mostra: badge de horário, ícone do tipo, preview do texto, pills dos dias da semana (se weekly), switch ativo/inativo
+- Card expandido mostra **duas sub-abas**: "Conteúdo" (texto completo, mídia, flags) e "Programação" (detalhes do agendamento)
+- Botões de ação (editar, excluir, enviar agora) aparecem na barra inferior do card expandido
+- Botão "Editar" abre o formulário como **Dialog separado** (popup centralizado na tela)
+- Filtro de dia da semana na aba "Semanal" (botões Dom-Sáb para filtrar mensagens)
 
-1. **DialogContent**: trocar `overflow-x-hidden` por uma abordagem mais agressiva — adicionar `w-full` explícito (já tem via base) e garantir que os filhos não expandam o grid.
+#### 2. `GroupScheduledMessageForm.tsx` — Converter para Dialog
+- Envolver todo o formulário em um `<Dialog>` próprio com `open`/`onOpenChange`
+- Manter o layout grid atual (form + WhatsApp preview) dentro do DialogContent
+- Props mudam: recebe `open`, `onOpenChange` em vez de `onCancel`
 
-2. **Envolver o `<Tabs>` inteiro** em um `<div className="w-full min-w-0 overflow-hidden">` — isso cria um boundary real de largura que o grid do Dialog respeita.
+#### 3. Interface do `GroupMessagesDialog`
+- Remover `showForm` e `editMsg` do estado local do dialog principal
+- Adicionar `formOpen`, `editingMsg`, `formScheduleType` como estado
+- Adicionar `weekdayFilter` para a aba semanal
+- O `handleEdit` seta `editingMsg` e abre o form dialog
+- O `handleAdd` limpa `editingMsg` e abre o form dialog
 
-3. **TabsList**: adicionar `overflow-hidden` para que o grid de 5 colunas não expanda.
+### Arquivos alterados
+- `src/components/grupos/GroupMessagesDialog.tsx` — redesign completo dos cards
+- `src/components/grupos/GroupScheduledMessageForm.tsx` — envolver em Dialog
 
-4. **TabsContent**: adicionar `w-full min-w-0 overflow-hidden` para conter os cards.
-
-5. **Cada card de mensagem**: já tem `w-full min-w-0 overflow-hidden` — está correto, mas o container pai precisa do boundary.
-
-### Código resultante (trecho chave):
-
-```tsx
-<DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
-  <DialogHeader>...</DialogHeader>
-
-  <div className="w-full min-w-0 overflow-hidden">
-    <Tabs value={activeTab} onValueChange={...}>
-      <TabsList className="w-full grid grid-cols-5 gap-0 overflow-hidden">
-        ...
-      </TabsList>
-
-      {SCHEDULE_TABS.map(tab => {
-        ...
-        return (
-          <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4 w-full min-w-0 overflow-hidden">
-            ...
-          </TabsContent>
-        );
-      })}
-    </Tabs>
-  </div>
-</DialogContent>
-```
-
-### Arquivo alterado
-- `src/components/grupos/GroupMessagesDialog.tsx`
+### Resultado esperado
+- Cards expansíveis com conteúdo completo visível
+- Formulário de edição/criação abre como popup na tela
+- Filtro por dia da semana na aba Semanal
+- Layout contido e responsivo, sem overflow
 
