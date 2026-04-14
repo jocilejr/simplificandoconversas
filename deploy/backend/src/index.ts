@@ -231,7 +231,12 @@ cron.schedule("* * * * *", async () => {
         .single();
 
       if (campErr || !campaign || !campaign.is_active) {
+        // Deactivate orphaned message to prevent infinite loop
+        await sb.from("group_scheduled_messages")
+          .update({ is_active: false, next_run_at: null })
+          .eq("id", msg.id);
         if (campErr) console.error(`[cron] group-scheduler campaign fetch error for ${msg.id}:`, campErr.message);
+        else console.log(`[cron] 🧹 Deactivated orphaned msg ${msg.id} (campaign inactive/missing)`);
         continue;
       }
 
