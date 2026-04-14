@@ -231,29 +231,29 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions, dateStart, dateEnd]);
 
-  // Mark transactions as seen when tab is active (calls backend for ALL unseen in category)
+  // Mark transactions as seen when tab is active
   const prevTab = useRef<TabKey | null>(null);
-  const initialDone = useRef(false);
 
-  const markTabAsSeen = useCallback((tab: TabKey) => {
-    if (hasUnseen(tab)) {
-      markTabSeen(tab);
-    }
-  }, [hasUnseen, markTabSeen]);
-
-  // On tab change
+  // On tab change — always mark
   useEffect(() => {
     if (prevTab.current === activeTab) return;
     prevTab.current = activeTab;
-    markTabAsSeen(activeTab);
-  }, [activeTab, markTabAsSeen]);
+    markTabSeen(activeTab);
+  }, [activeTab, markTabSeen]);
 
-  // On initial data load
+  // On initial load — mark once
   useEffect(() => {
-    if (isLoading || initialDone.current) return;
-    initialDone.current = true;
-    markTabAsSeen(activeTab);
-  }, [isLoading, activeTab, markTabAsSeen]);
+    if (isLoading) return;
+    markTabSeen(activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  // Auto-mark while viewing: if new unseen arrive while user is on tab, mark after 2s
+  useEffect(() => {
+    if (!hasUnseen(activeTab)) return;
+    const timer = setTimeout(() => markTabSeen(activeTab), 2000);
+    return () => clearTimeout(timer);
+  }, [hasUnseen, activeTab, markTabSeen]);
 
   const tabStats = useMemo(() => {
     const current = tabTransactions[activeTab] || [];
