@@ -1,35 +1,33 @@
 
 
-## Correções: Filtro de dia da semana + Exibição de horário/dia
+## Fix: Campo de horário e dias da semana não reconhecidos
 
-### Problema 1 — Falta o filtro por dia da semana na aba "Semanal"
-O repo de referência tem uma barra de filtro com botões "Todos | Dom | Seg | Ter | Qua | Qui | Sex | Sáb" que aparece apenas na aba Semanal. Clicar em um dia filtra as mensagens que rodam naquele dia. Isso não existe no código atual.
+### Causa raiz
+O backup original usa **camelCase** nos campos JSON:
+- `runTime` (não `time`)
+- `weekDays` (não `weekdays`)
+- `monthDay` está correto
 
-### Problema 2 — Horário e dias não aparecem corretamente nos cards
-O `getTimeLabel` para mensagens semanais retorna `msg.content?.time` mas não exibe de forma proeminente. No repo de referência, o horário aparece como um badge destacado antes do ícone de tipo, e os dias da semana aparecem como pills compactas.
+O código atual lê `msg.content?.time` e `msg.content?.weekdays` — que não existem no JSON.
+
+### Solução
+Não é necessário reimportar. Basta corrigir as referências no código para aceitar ambos os formatos (camelCase do backup e lowercase que o formulário pode usar).
 
 ### Alterações em `src/components/grupos/GroupMessagesDialog.tsx`
 
-1. **Adicionar estado `weekdayFilter`**: `useState<number | null>(null)` — resetar ao trocar de aba.
+1. **`getTimeLabel`**: Trocar `msg.content?.time` por `msg.content?.runTime || msg.content?.time`
+2. **`getScheduleDetail`**: Mesma correção em todas as referências a `time` e `weekdays`
+3. **Filtro semanal**: Trocar `msg.content?.weekdays` por `msg.content?.weekDays || msg.content?.weekdays` em todos os lugares (filtro e pills)
+4. **Pills de dias**: Mesma correção na renderização dos badges de dias
 
-2. **Renderizar barra de filtro na aba "weekly"**: Entre o subheader (descrição + botão Adicionar) e a lista de mensagens, adicionar uma row de botões:
-   - Botão "Todos" (ativo quando `weekdayFilter === null`)
-   - 7 botões Dom-Sáb (ativo quando `weekdayFilter === d.value`)
-   - Estilo: `px-2.5 py-1 rounded-md text-[11px] font-medium border`, com `border-primary bg-primary/10 text-primary` quando ativo
-
-3. **Filtrar mensagens por dia**: Na aba weekly, depois de filtrar por `schedule_type`, aplicar filtro adicional:
-   ```typescript
-   let displayMessages = tabMessages;
-   if (tab.value === "weekly" && weekdayFilter != null) {
-     displayMessages = tabMessages.filter((m: any) => 
-       (m.content?.weekdays || []).includes(weekdayFilter)
-     );
-   }
-   ```
-
-4. **Melhorar exibição do horário no card**: Trocar o span de horário por um badge mais proeminente, similar ao repo de referência — badge com fundo `bg-primary/10` e texto `text-primary` mostrando o horário.
-
-5. **Resetar filtro ao trocar aba**: No `onValueChange` do Tabs, adicionar `setWeekdayFilter(null)`.
+Locais exatos a alterar (6 ocorrências):
+- Linha 71: `msg.content?.time` → `msg.content?.runTime || msg.content?.time`
+- Linha 76: idem
+- Linha 78: `msg.content?.weekdays` → `msg.content?.weekDays || msg.content?.weekdays`
+- Linha 79: `msg.content?.time` → idem
+- Linha 81-82: idem para `time`
+- Linha 143: filtro weekday → mesma correção
+- Linha 214-216: pills weekday → mesma correção
 
 ### Arquivo alterado
 - `src/components/grupos/GroupMessagesDialog.tsx`
