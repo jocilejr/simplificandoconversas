@@ -49,11 +49,12 @@ export default function GroupQueueTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard title="Pendentes" value={String(stats.pending)} icon={Clock} iconColor="text-yellow-500" />
         <StatCard title="Processando" value={String(stats.processing)} icon={Loader2} iconColor="text-blue-500" />
         <StatCard title="Enviadas" value={String(stats.sent)} icon={CheckCircle2} iconColor="text-primary" />
         <StatCard title="Falhas" value={String(stats.failed)} icon={AlertCircle} iconColor="text-red-500" />
+        <StatCard title="Canceladas" value={String(stats.cancelled)} icon={XCircle} iconColor="text-muted-foreground" />
       </div>
 
       <Card className="border-border/50">

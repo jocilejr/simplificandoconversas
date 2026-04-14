@@ -42,6 +42,7 @@ export function useGroupQueue() {
     processing: queueItems.filter((i: any) => i.status === "processing").length,
     sent: queueItems.filter((i: any) => i.status === "sent").length,
     failed: queueItems.filter((i: any) => i.status === "failed").length,
+    cancelled: queueItems.filter((i: any) => i.status === "cancelled").length,
   };
 
   return { queueItems, isLoading, cancelBatch, stats };

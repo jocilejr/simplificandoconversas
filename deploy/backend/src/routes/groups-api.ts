@@ -739,6 +739,25 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     const windowStart = new Date(Date.now() - perMinutes * 60000).toISOString();
 
     for (const item of pending) {
+      // ─── Deduplication: skip if already sent for this scheduled_message + group ───
+      if (item.scheduled_message_id) {
+        const { count: alreadySent } = await sb
+          .from("group_message_queue")
+          .select("id", { count: "exact", head: true })
+          .eq("scheduled_message_id", item.scheduled_message_id)
+          .eq("group_jid", item.group_jid)
+          .eq("status", "sent")
+          .neq("id", item.id);
+
+        if ((alreadySent || 0) > 0) {
+          await sb.from("group_message_queue")
+            .update({ status: "cancelled", error_message: "Dedup: já enviada", completed_at: new Date().toISOString() })
+            .eq("id", item.id);
+          skipped++;
+          continue;
+        }
+      }
+
       // Rate limit check: count recent sends to this group
       const { count } = await sb
         .from("group_message_queue")
@@ -759,12 +778,13 @@ router.post("/queue/process", async (req: Request, res: Response) => {
       try {
         const encoded = encodeURIComponent(item.instance_name);
         const content = item.content as any;
+        const mentionsEveryOne = content.mentionsEveryOne || content.mentionAll || false;
 
         if (item.message_type === "text") {
           const r = await fetch(`${baseUrl}/message/sendText/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: item.group_jid, text: content.text || "" }),
+            body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
           });
           if (!r.ok) throw new Error(await r.text());
         } else {
@@ -777,6 +797,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
               media: content.mediaUrl || "",
               caption: content.caption || "",
               fileName: content.fileName || "",
+              mentionsEveryOne,
             }),
           });
           if (!r.ok) throw new Error(await r.text());
