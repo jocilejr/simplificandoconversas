@@ -1,50 +1,39 @@
 
 
-# Migrar tema para azul (whats-grupos) + Redesign da Fila
+# Fix: Mensagem de entrega não substitui {link} no DeliveryFlowDialog
 
-## 1. Trocar paleta de cores — `src/index.css`
+## Problema
 
-Substituir todas as variáveis CSS verdes (`142 70% 45%`) pelo azul do whats-grupos (`210 75% 52%`):
+Na linha 337 de `DeliveryFlowDialog.tsx`:
 
-| Variável | Atual (verde) | Novo (azul) |
-|---|---|---|
-| `--primary` | `142 70% 45%` | `210 75% 52%` |
-| `--accent` | `142 70% 45%` | `215 20% 18%` |
-| `--accent-foreground` | `0 0% 100%` | `210 75% 65%` |
-| `--ring` | `142 70% 45%` | `210 75% 52%` |
-| `--sidebar-primary` | `142 70% 45%` | `210 75% 52%` |
-| `--sidebar-ring` | `142 70% 45%` | `210 75% 52%` |
-| `--background` | `225 35% 5%` | `215 28% 7%` |
-| `--card` | `225 30% 8%` | `215 25% 10%` |
-| `--popover` | `225 30% 10%` | `215 25% 12%` |
-| `--secondary` | `225 25% 12%` | `215 20% 18%` |
-| `--muted` | `225 25% 12%` | `215 20% 15%` |
-| `--muted-foreground` | `215 15% 50%` | `215 15% 55%` |
-| `--border` | `225 20% 14%` | `215 20% 18%` |
-| `--input` | `225 20% 14%` | `215 20% 20%` |
-| `--sidebar-background` | `225 40% 4%` | `215 30% 6%` |
-| `--sidebar-accent` | `225 25% 10%` | `215 20% 12%` |
-| `--sidebar-border` | `225 20% 8%` | `215 20% 12%` |
-| `--info` | `210 100% 52%` | `210 75% 52%` |
+```typescript
+const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
+```
 
-Manter `--success: 142 60% 45%` (verde para indicadores de sucesso — semanticamente correto).
+Isso **sempre** concatena o link no final, ignorando a variável `{link}` configurada na mensagem. Se a mensagem contém `{link}`, o resultado fica com o link duplicado ou posicionado errado.
 
-## 2. Redesign da Fila — `src/components/grupos/GroupQueueTab.tsx`
+O `LinkGenerator.tsx` já implementa a lógica correta (3 caminhos).
 
-**Mover Anti-Spam para popup de configuração:**
-- Remover o card Anti-Spam visível na tela
-- Adicionar um botão de engrenagem (`Settings2`) no topo da fila que abre um `Dialog` com as configurações de Anti-Spam
-- O Dialog conterá os 3 campos (max mensagens, janela de tempo, delay) + botão salvar
+## Correção
 
-**Redesign visual da fila:**
-- Stat cards no topo com visual mais limpo
-- Lista de itens da fila com layout profissional: avatar/ícone do tipo de mensagem, informações hierárquicas, badges de status com cores mais sofisticadas, timestamps alinhados
-- Barra de progresso sutil para itens "processing"
-- Empty state com ilustração/ícone centralizado
-- Header da fila com título + botão engrenagem + contagem
+**Arquivo**: `src/components/entrega/DeliveryFlowDialog.tsx` — linha 337
 
-## 3. Arquivos alterados
+Substituir:
+```typescript
+const finalMessage = deliveryMsg ? `${deliveryMsg}\n\n${finalLink}` : finalLink;
+```
 
-- `src/index.css` — paleta de cores
-- `src/components/grupos/GroupQueueTab.tsx` — redesign completo
+Por:
+```typescript
+let finalMessage: string;
+if (deliveryMsg && deliveryMsg.includes("{link}")) {
+  finalMessage = deliveryMsg.replace(/\{link\}/g, finalLink);
+} else if (deliveryMsg) {
+  finalMessage = `${deliveryMsg}\n\n${finalLink}`;
+} else {
+  finalMessage = finalLink;
+}
+```
+
+Apenas 1 arquivo, 1 linha expandida para 7.
 
