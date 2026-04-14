@@ -118,7 +118,8 @@ function SpamConfigDialog() {
 }
 
 export default function GroupQueueTab() {
-  const { queueItems, isLoading, cancelBatch, stats } = useGroupQueue();
+  const { queueItems, isLoading, cancelBatch, clearQueue, stats } = useGroupQueue();
+  const [clearFilter, setClearFilter] = useState<"sent_failed" | "all" | null>(null);
 
   const batches = [...new Set(
     queueItems
@@ -127,6 +128,7 @@ export default function GroupQueueTab() {
   )];
 
   const total = queueItems.length;
+  const hasClearable = stats.sent + stats.failed + stats.cancelled > 0;
 
   return (
     <div className="space-y-4">
@@ -153,9 +155,57 @@ export default function GroupQueueTab() {
               <Ban className="h-3 w-3" /> Cancelar batch
             </Button>
           ))}
+
+          {hasClearable && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 border-border/50 text-xs">
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Limpar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setClearFilter("sent_failed")} className="text-xs gap-2">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                  Limpar enviados e falhos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setClearFilter("all")} className="text-xs gap-2 text-destructive focus:text-destructive">
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Limpar tudo (enviados, falhos, cancelados)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           <SpamConfigDialog />
         </div>
       </div>
+
+      {/* Clear confirmation dialog */}
+      <AlertDialog open={!!clearFilter} onOpenChange={(open) => !open && setClearFilter(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm">Confirmar limpeza</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs">
+              {clearFilter === "all"
+                ? "Isso removerá todos os itens enviados, com falha e cancelados da fila. Itens pendentes e em processamento serão mantidos."
+                : "Isso removerá todos os itens enviados e com falha da fila."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (clearFilter) clearQueue.mutate(clearFilter);
+                setClearFilter(null);
+              }}
+            >
+              Limpar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
