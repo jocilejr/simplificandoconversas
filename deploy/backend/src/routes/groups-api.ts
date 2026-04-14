@@ -1737,6 +1737,132 @@ router.post("/import-remap-media", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── Scheduler Debug Endpoint ─── */
+router.get("/scheduler-debug", async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.query.workspaceId as string;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+    const now = new Date();
+
+    // BRT = UTC-3
+    const brtOffset = -3 * 60 * 60 * 1000;
+    const nowBrt = new Date(now.getTime() + brtOffset);
+    const todayStartBrt = new Date(nowBrt);
+    todayStartBrt.setUTCHours(0, 0, 0, 0);
+    const todayEndBrt = new Date(nowBrt);
+    todayEndBrt.setUTCHours(23, 59, 59, 999);
+
+    // Convert BRT boundaries back to UTC for query
+    const todayStartUtc = new Date(todayStartBrt.getTime() - brtOffset).toISOString();
+    const todayEndUtc = new Date(todayEndBrt.getTime() - brtOffset).toISOString();
+
+    // Fetch all active scheduled messages for today (by next_run_at or last_run_at)
+    const { data: messages, error: msgErr } = await sb
+      .from("group_scheduled_messages")
+      .select("id, schedule_type, message_type, content, is_active, next_run_at, last_run_at, campaign_id")
+      .eq("is_active", true)
+      .order("next_run_at", { ascending: true });
+
+    if (msgErr) return res.status(500).json({ error: msgErr.message });
+
+    // Filter messages relevant to today (next_run_at today OR last_run_at today)
+    const todayMessages = (messages || []).filter((m: any) => {
+      const nextRun = m.next_run_at ? new Date(m.next_run_at) : null;
+      const lastRun = m.last_run_at ? new Date(m.last_run_at) : null;
+      const nextRunToday = nextRun && nextRun >= new Date(todayStartUtc) && nextRun <= new Date(todayEndUtc);
+      const lastRunToday = lastRun && lastRun >= new Date(todayStartUtc) && lastRun <= new Date(todayEndUtc);
+      return nextRunToday || lastRunToday;
+    });
+
+    // Get campaign names
+    const campaignIds = [...new Set(todayMessages.map((m: any) => m.campaign_id))];
+    const campaignMap: Record<string, string> = {};
+    if (campaignIds.length > 0) {
+      const { data: campaigns } = await sb
+        .from("group_campaigns")
+        .select("id, name, workspace_id")
+        .in("id", campaignIds)
+        .eq("workspace_id", workspaceId);
+      for (const c of campaigns || []) {
+        campaignMap[c.id] = c.name;
+      }
+    }
+
+    // Get queue items for today
+    const msgIds = todayMessages.map((m: any) => m.id);
+    let queueMap: Record<string, any[]> = {};
+    if (msgIds.length > 0) {
+      const { data: queueItems } = await sb
+        .from("group_message_queue")
+        .select("scheduled_message_id, group_jid, group_name, status, created_at, started_at, completed_at, error_message")
+        .in("scheduled_message_id", msgIds)
+        .gte("created_at", todayStartUtc)
+        .order("created_at", { ascending: true });
+
+      for (const qi of queueItems || []) {
+        if (!queueMap[qi.scheduled_message_id]) queueMap[qi.scheduled_message_id] = [];
+        queueMap[qi.scheduled_message_id].push(qi);
+      }
+    }
+
+    // Build response
+    const result = todayMessages.map((m: any) => {
+      const hasTimer = groupScheduler.hasTimer(m.id);
+      const nextRun = m.next_run_at ? new Date(m.next_run_at) : null;
+      const queueItems = queueMap[m.id] || [];
+
+      // Detect missed: next_run_at in the past, active, no queue items for this run
+      const isPast = nextRun && nextRun < now;
+      const hasRecentQueue = queueItems.length > 0;
+      const missed = !!(isPast && m.is_active && !hasRecentQueue && !hasTimer);
+
+      // Content preview
+      let contentPreview = "";
+      try {
+        const c = typeof m.content === "string" ? JSON.parse(m.content) : m.content;
+        contentPreview = c.text || c.caption || c.fileName || c.audioUrl?.slice(-30) || JSON.stringify(c).slice(0, 80);
+      } catch { contentPreview = "—"; }
+
+      return {
+        id: m.id,
+        schedule_type: m.schedule_type,
+        message_type: m.message_type || "text",
+        is_active: m.is_active,
+        next_run_at: m.next_run_at,
+        last_run_at: m.last_run_at,
+        has_timer: hasTimer,
+        missed,
+        campaign_name: campaignMap[m.campaign_id] || "Campanha desconhecida",
+        content_preview: contentPreview,
+        queue_items: queueItems.map((qi: any) => ({
+          group_jid: qi.group_jid,
+          group_name: qi.group_name,
+          status: qi.status,
+          created_at: qi.created_at,
+          started_at: qi.started_at,
+          completed_at: qi.completed_at,
+          error_message: qi.error_message,
+        })),
+      };
+    });
+
+    const serverTimeUtc = now.toISOString();
+    const serverTimeBrt = new Date(now.getTime() + brtOffset).toISOString().replace("T", " ").slice(0, 19);
+
+    res.json({
+      timers_active: groupScheduler.activeCount,
+      server_time_utc: serverTimeUtc,
+      server_time_brt: serverTimeBrt,
+      messages: result,
+    });
+  } catch (err: any) {
+    console.error("[scheduler-debug] error:", err?.message);
+    res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { getEvolutionConfig };
 

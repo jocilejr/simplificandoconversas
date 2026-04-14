@@ -7,6 +7,7 @@ import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents } from "@/hooks/useGroupEvents";
 import { format } from "date-fns";
+import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
 const actionConfig: Record<string, { icon: typeof UserPlus; color: string; label: string }> = {
   add: { icon: UserPlus, color: "text-green-500 bg-green-500/10", label: "entrou em" },
@@ -32,6 +33,8 @@ export default function GroupDashboardTab() {
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
       </div>
+
+      <SchedulerDebugPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="border-border/50">
