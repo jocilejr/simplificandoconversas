@@ -176,6 +176,9 @@ export function IntegrationsSection() {
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
 
+  // Special panel state (openai, email, api)
+  const [specialPanel, setSpecialPanel] = useState<string | null>(null);
+
   // Meta Ads multi-account state
   type MetaAccount = { id: string; label: string; access_token: string; ad_account_id: string; enabled: boolean };
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([]);
