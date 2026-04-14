@@ -372,7 +372,113 @@ export function IntegrationsSection() {
         })}
       </div>
 
-      <Dialog open={!!configDialog} onOpenChange={(open) => !open && setConfigDialog(null)}>
+      {/* Meta Ads — multi-account */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {PlatformIcons["meta_ads"]}
+            <div>
+              <h3 className="text-sm font-medium">Meta Ads</h3>
+              <p className="text-xs text-muted-foreground">Gastos com anúncios Meta/Facebook para deduções no relatório</p>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={openMetaAdd}>
+            <Plus className="h-3.5 w-3.5" /> Adicionar Conta
+          </Button>
+        </div>
+
+        {metaAccounts.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">Nenhuma conta Meta Ads conectada</p>
+        )}
+
+        <div className="space-y-2">
+          {metaAccounts.map((acc) => (
+            <Card key={acc.id}>
+              <CardContent className="p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{acc.label}</span>
+                    <Badge variant="outline" className="text-[10px] h-5 font-mono">{acc.ad_account_id}</Badge>
+                    {acc.enabled ? (
+                      <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-primary/10 text-primary border-primary/20">
+                        <Check className="h-3 w-3" /> Ativa
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] h-5">Inativa</Badge>
+                    )}
+                  </div>
+                </div>
+                <Switch checked={acc.enabled} onCheckedChange={() => handleMetaToggle(acc)} />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openMetaEdit(acc)}>
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleMetaDelete(acc.id)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Meta Ads dialog */}
+      <Dialog open={metaDialog} onOpenChange={setMetaDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {PlatformIcons["meta_ads"]}
+              {editingMeta ? "Editar Conta" : "Adicionar Conta Meta Ads"}
+            </DialogTitle>
+            <DialogDescription>Configure os dados da conta de anúncios</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Nome da conta</label>
+              <Input
+                placeholder="Ex: Conta Principal, Cliente X..."
+                value={metaForm.label}
+                onChange={(e) => setMetaForm((v) => ({ ...v, label: e.target.value }))}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Access Token (longa duração)</label>
+              <div className="relative">
+                <Input
+                  type={metaShowToken ? "text" : "password"}
+                  placeholder="EAAxxxxxxx..."
+                  value={metaForm.access_token}
+                  onChange={(e) => setMetaForm((v) => ({ ...v, access_token: e.target.value }))}
+                  className="text-xs pr-9"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setMetaShowToken((v) => !v)}
+                >
+                  {metaShowToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">ID da Conta de Anúncios</label>
+              <Input
+                placeholder="act_123456789"
+                value={metaForm.ad_account_id}
+                onChange={(e) => setMetaForm((v) => ({ ...v, ad_account_id: e.target.value }))}
+                className="text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" className="text-xs" onClick={handleMetaSave} disabled={metaSaving || !metaForm.access_token || !metaForm.ad_account_id}>
+              {metaSaving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+              {editingMeta ? "Atualizar" : "Adicionar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
