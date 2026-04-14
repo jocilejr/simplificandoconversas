@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Puzzle, Brain, Code, Mail, Trash2 } from "lucide-react";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Trash2, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { AISection } from "@/components/settings/AISection";
@@ -54,6 +54,18 @@ const PlatformIcons: Record<string, React.ReactNode> = {
   ),
   openai: (
     <svg viewBox="0 0 24 24" className="h-7 w-7" fill="#412991"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>
+  ),
+  email: (
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2"/>
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+    </svg>
+  ),
+  custom_api: (
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m8 18 2-2h2l1.36-1.36a6.5 6.5 0 1 0-3.997-3.992L2 18v4h4l2-2"/>
+      <circle cx="17" cy="7" r="1"/>
+    </svg>
   ),
 };
 
@@ -142,15 +154,13 @@ const INTEGRATIONS: Integration[] = [
     available: false,
     fields: [],
   },
-  {
-    id: "openai",
-    name: "OpenAI",
-    description: "Inteligência artificial",
-    platform: "openai",
-    icon: "",
-    available: false,
-    fields: [],
-  },
+];
+
+// Special module platforms (open full-screen panels)
+const SPECIAL_PLATFORMS = [
+  { id: "openai", name: "OpenAI", description: "Inteligência artificial para respostas automáticas", platform: "openai" },
+  { id: "email_module", name: "E-mail", description: "SMTP, webhooks e chave de API", platform: "email" },
+  { id: "api_module", name: "API", description: "Chave de API e documentação de endpoints", platform: "custom_api" },
 ];
 
 export function IntegrationsSection() {
@@ -165,6 +175,9 @@ export function IntegrationsSection() {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
+
+  // Special panel state (openai, email, api)
+  const [specialPanel, setSpecialPanel] = useState<string | null>(null);
 
   // Meta Ads multi-account state
   type MetaAccount = { id: string; label: string; access_token: string; ad_account_id: string; enabled: boolean };
@@ -314,23 +327,35 @@ export function IntegrationsSection() {
     );
   }
 
+  // If a special panel is open, show it with a back button
+  if (specialPanel) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSpecialPanel(null)}>
+            <X className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-2">
+            {PlatformIcons[specialPanel === "openai" ? "openai" : specialPanel === "email_module" ? "email" : "custom_api"]}
+            <h2 className="text-lg font-semibold">
+              {SPECIAL_PLATFORMS.find((s) => s.id === specialPanel)?.name}
+            </h2>
+          </div>
+        </div>
+        {specialPanel === "openai" && <AISection />}
+        {specialPanel === "email_module" && <EmailSettingsSection />}
+        {specialPanel === "api_module" && <IntegrationApiSection />}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Integrações</h2>
-        <p className="text-xs text-muted-foreground">Conecte serviços externos e configure módulos da plataforma</p>
-      </div>
-
-      <Tabs defaultValue="platforms" className="w-full">
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="platforms" className="gap-1.5 text-xs"><Puzzle className="h-3.5 w-3.5" />Plataformas</TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1.5 text-xs"><Brain className="h-3.5 w-3.5" />IA</TabsTrigger>
-          <TabsTrigger value="api" className="gap-1.5 text-xs"><Code className="h-3.5 w-3.5" />API</TabsTrigger>
-          <TabsTrigger value="email" className="gap-1.5 text-xs"><Mail className="h-3.5 w-3.5" />E-mail</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="platforms" className="mt-4 space-y-4">
-        <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Integrações</h2>
+          <p className="text-xs text-muted-foreground">Conecte serviços externos e configure módulos da plataforma</p>
+        </div>
         <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => {}}>
           <Plus className="h-3.5 w-3.5" />
           Nova Integração
@@ -370,6 +395,25 @@ export function IntegrationsSection() {
             </Card>
           );
         })}
+
+
+        {/* Special platform cards (OpenAI, Email, API) */}
+        {SPECIAL_PLATFORMS.map((sp) => (
+          <Card
+            key={sp.id}
+            className="hover:border-primary/30 cursor-pointer transition-colors"
+            onClick={() => setSpecialPanel(sp.id)}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="shrink-0">{PlatformIcons[sp.platform] || <span className="text-2xl">⚙️</span>}</div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium">{sp.name}</span>
+                <p className="text-xs text-muted-foreground truncate">{sp.description}</p>
+              </div>
+              <Settings2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Meta Ads — multi-account */}
@@ -755,20 +799,6 @@ export function IntegrationsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        </TabsContent>
-
-        <TabsContent value="ai" className="mt-4">
-          <AISection />
-        </TabsContent>
-
-        <TabsContent value="api" className="mt-4">
-          <IntegrationApiSection />
-        </TabsContent>
-
-        <TabsContent value="email" className="mt-4">
-          <EmailSettingsSection />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
