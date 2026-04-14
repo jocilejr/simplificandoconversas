@@ -19,7 +19,7 @@ export function FinancialReport() {
 
   const { data: allTransactions = [] } = useTransactions();
   const { settings: feeSettings } = useFinancialSettings();
-  const { data: metaAdSpend } = useMetaAdSpend(dateFilter.startDate, dateFilter.endDate);
+  const { data: metaAdSpend, isSyncing: isMetaSyncing } = useMetaAdSpend(dateFilter.startDate, dateFilter.endDate);
   const metaTotal = metaAdSpend?.totalSpend ?? 0;
 
   const formatCurrency = (value: number) => {
