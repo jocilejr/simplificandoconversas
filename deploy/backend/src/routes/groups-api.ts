@@ -926,13 +926,15 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     for (const item of pending) {
       // ─── Deduplication: skip if already sent for this scheduled_message + group ───
       if (item.scheduled_message_id) {
+        const dedupWindow = new Date(Date.now() - 5 * 60000).toISOString();
         const { count: alreadySent } = await sb
           .from("group_message_queue")
           .select("id", { count: "exact", head: true })
           .eq("scheduled_message_id", item.scheduled_message_id)
           .eq("group_jid", item.group_jid)
           .eq("status", "sent")
-          .neq("id", item.id);
+          .neq("id", item.id)
+          .gte("created_at", dedupWindow);
 
         if ((alreadySent || 0) > 0) {
           await sb.from("group_message_queue")
