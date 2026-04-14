@@ -2793,6 +2793,41 @@ export type Database = {
           },
         ]
       }
+      meta_ad_spend: {
+        Row: {
+          campaign_name: string | null
+          created_at: string | null
+          date: string
+          id: string
+          spend: number
+          workspace_id: string
+        }
+        Insert: {
+          campaign_name?: string | null
+          created_at?: string | null
+          date: string
+          id?: string
+          spend?: number
+          workspace_id: string
+        }
+        Update: {
+          campaign_name?: string | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          spend?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ad_spend_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_pixels: {
         Row: {
           access_token: string
