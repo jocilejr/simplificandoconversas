@@ -18,6 +18,36 @@ import {
 import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+const PlatformIcons: Record<string, React.ReactNode> = {
+  mercadopago: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><circle cx="24" cy="24" r="24" fill="#009ee3"/><path d="M34.3 19.5c-.6-2.7-3-4.5-6.3-4.5-2.1 0-4 .9-5 2.4-1-1.5-2.9-2.4-5-2.4-3.3 0-5.7 1.8-6.3 4.5-.8 3.6 1.2 8.1 5.7 12.3 1.4 1.3 3.4 2.7 5.6 2.7s4.2-1.4 5.6-2.7c4.5-4.2 6.5-8.7 5.7-12.3z" fill="#fff"/></svg>
+  ),
+  openpix: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><circle cx="24" cy="24" r="24" fill="#03d69d"/><path d="M14 24l6-6 4 4 6-6 4 4-10 10-4-4z" fill="#fff"/><circle cx="34" cy="16" r="3" fill="#fff"/></svg>
+  ),
+  yampi: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#7c3aed"/><path d="M14 18l5 12h2l3-7 3 7h2l5-12h-3l-3.5 8.5L24 19l-3.5 8.5L17 18z" fill="#fff"/></svg>
+  ),
+  manual_payment: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#6b7280"/><path d="M15 20h18v2H15zM15 26h18v2H15zM24 14v20" stroke="#fff" strokeWidth="2" fill="none"/><circle cx="24" cy="14" r="2" fill="#fff"/><circle cx="24" cy="34" r="2" fill="#fff"/></svg>
+  ),
+  stripe: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#635bff"/><path d="M22.2 19.8c0-1 .8-1.4 2.1-1.4 1.9 0 4.3.6 6.2 1.6V14.5c-2.1-.8-4.1-1.2-6.2-1.2-5.1 0-8.4 2.6-8.4 7 0 6.8 9.4 5.7 9.4 8.7 0 1.2-1 1.6-2.4 1.6-2.1 0-4.7-.8-6.8-2v5.6c2.3 1 4.6 1.4 6.8 1.4 5.2 0 8.7-2.6 8.7-7 0-7.3-9.4-6-9.4-8.8z" fill="#fff"/></svg>
+  ),
+  meta_ads: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#1877f2"/><path d="M35 24c0-6.1-4.9-11-11-11s-11 4.9-11 11c0 5.5 4 10 9.2 10.9v-7.7h-2.8V24h2.8v-2.4c0-2.7 1.6-4.2 4.1-4.2 1.2 0 2.4.2 2.4.2v2.7h-1.4c-1.3 0-1.8.8-1.8 1.7V24h3l-.5 3.2h-2.5v7.7C31 34 35 29.5 35 24z" fill="#fff"/></svg>
+  ),
+  pagbank: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#00a94f"/><path d="M14 20h6v8h-6zM22 16h4v16h-4zM28 22h6v6h-6z" fill="#fff"/></svg>
+  ),
+  asaas: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#0066ff"/><path d="M16 30l4-12h3l4 8 4-8h3l4 12h-3l-2.8-8.5L29 30h-2l-4.2-8.5L20 30z" fill="#fff"/></svg>
+  ),
+  openai: (
+    <svg viewBox="0 0 48 48" className="h-7 w-7"><rect width="48" height="48" rx="12" fill="#0a0a0a"/><path d="M33.6 21.4c.5-1.5.3-3.2-.6-4.5-1.4-2-3.9-2.9-6.3-2.3-.9-1.1-2.2-1.8-3.7-1.8-2.4 0-4.5 1.6-5.1 3.9-1.6.3-2.9 1.3-3.5 2.8-.9 2.2-.1 4.7 1.8 6.1-.5 1.5-.3 3.2.6 4.5 1.4 2 3.9 2.9 6.3 2.3.9 1.1 2.2 1.8 3.7 1.8 2.4 0 4.5-1.6 5.1-3.9 1.6-.3 2.9-1.3 3.5-2.8.9-2.2.1-4.7-1.8-6.1zM24 30.5c-3.6 0-6.5-2.9-6.5-6.5s2.9-6.5 6.5-6.5 6.5 2.9 6.5 6.5-2.9 6.5-6.5 6.5z" fill="#fff"/></svg>
+  ),
+};
+
 interface Integration {
   id: string;
   name: string;
@@ -35,7 +65,7 @@ const INTEGRATIONS: Integration[] = [
     name: "Mercado Pago",
     description: "Gerar boletos e cobranças PIX",
     platform: "mercadopago",
-    icon: "💳",
+    icon: "",
     available: true,
     fields: [
       { key: "access_token", label: "Access Token", placeholder: "APP_USR-...", type: "password" },
@@ -48,10 +78,10 @@ const INTEGRATIONS: Integration[] = [
     name: "Woovi / OpenPix",
     description: "Cobranças PIX com QR Code",
     platform: "openpix",
-    icon: "🟢",
+    icon: "",
     available: true,
     fields: [
-      { key: "app_id", label: "App ID", placeholder: "Q2xpZW50ZV9JZC...", type: "password" },
+      { key: "app_id", label: "App ID", placeholder: "Q2xpZW50ZV9JZi...", type: "password" },
     ],
     webhookPath: "/functions/v1/payment-openpix/webhook",
   },
@@ -60,7 +90,7 @@ const INTEGRATIONS: Integration[] = [
     name: "Yampi",
     description: "Pagamentos e carrinho abandonado via n8n",
     platform: "yampi",
-    icon: "🛒",
+    icon: "",
     available: true,
     fields: [],
     webhookPath: "/functions/v1/yampi-webhook",
@@ -70,7 +100,7 @@ const INTEGRATIONS: Integration[] = [
     name: "Webhook PIX/Cartão",
     description: "Receba pagamentos via webhook genérico (sem autenticação)",
     platform: "manual_payment",
-    icon: "🔗",
+    icon: "",
     available: true,
     fields: [],
     webhookPath: "/functions/v1/manual-payment/webhook",
@@ -80,7 +110,7 @@ const INTEGRATIONS: Integration[] = [
     name: "Stripe",
     description: "Pagamentos internacionais",
     platform: "stripe",
-    icon: "💰",
+    icon: "",
     available: false,
     fields: [],
   },
@@ -89,7 +119,7 @@ const INTEGRATIONS: Integration[] = [
     name: "Meta Ads",
     description: "Gastos com anúncios Meta/Facebook para deduções no relatório",
     platform: "meta_ads",
-    icon: "📊",
+    icon: "",
     available: true,
     fields: [
       { key: "access_token", label: "Access Token (longa duração)", placeholder: "EAAxxxxxxx...", type: "password" },
@@ -101,7 +131,7 @@ const INTEGRATIONS: Integration[] = [
     name: "PagBank",
     description: "Boletos e PIX",
     platform: "pagbank",
-    icon: "🏦",
+    icon: "",
     available: false,
     fields: [],
   },
@@ -110,7 +140,7 @@ const INTEGRATIONS: Integration[] = [
     name: "Asaas",
     description: "Cobranças recorrentes",
     platform: "asaas",
-    icon: "🔄",
+    icon: "",
     available: false,
     fields: [],
   },
@@ -119,7 +149,7 @@ const INTEGRATIONS: Integration[] = [
     name: "OpenAI",
     description: "Inteligência artificial",
     platform: "openai",
-    icon: "🤖",
+    icon: "",
     available: false,
     fields: [],
   },
@@ -243,7 +273,7 @@ export function IntegrationsSection() {
               onClick={() => integration.available && openConfig(integration)}
             >
               <CardContent className="p-4 flex items-center gap-3">
-                <span className="text-2xl">{integration.icon}</span>
+                <div className="shrink-0">{PlatformIcons[integration.platform] || <span className="text-2xl">⚙️</span>}</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{integration.name}</span>
@@ -271,7 +301,7 @@ export function IntegrationsSection() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="text-xl">{configDialog?.icon}</span>
+              <div className="shrink-0">{PlatformIcons[configDialog?.platform ?? ""] || <span className="text-xl">⚙️</span>}</div>
               {configDialog?.name}
             </DialogTitle>
             <DialogDescription>{configDialog?.description}</DialogDescription>
