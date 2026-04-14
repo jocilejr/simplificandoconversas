@@ -269,6 +269,9 @@ router.post("/send", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Campos obrigatórios: to, subject, html, userId" });
     }
 
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
+
     if (await isSuppressed(userId, to)) {
       return res.status(400).json({ error: "E-mail suprimido (bounce/unsubscribe)" });
     }
@@ -280,6 +283,7 @@ router.post("/send", async (req: Request, res: Response) => {
       .from("email_sends")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         template_id: templateId || null,
         recipient_email: to,
         recipient_name: recipientName || null,
@@ -290,7 +294,7 @@ router.post("/send", async (req: Request, res: Response) => {
 
     const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
     let finalHtml = sendLog ? injectTrackingPixel(html, sendLog.id, appUrl) : html;
-    if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
+    if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl, workspaceId);
 
     try {
       await transporter.sendMail({
