@@ -259,6 +259,53 @@ export function IntegrationsSection() {
     setSaving(false);
   };
 
+  const openMetaAdd = () => {
+    setEditingMeta(null);
+    setMetaForm({ label: "", access_token: "", ad_account_id: "" });
+    setMetaShowToken(false);
+    setMetaDialog(true);
+  };
+
+  const openMetaEdit = (acc: MetaAccount) => {
+    setEditingMeta(acc);
+    setMetaForm({ label: acc.label, access_token: acc.access_token, ad_account_id: acc.ad_account_id });
+    setMetaShowToken(false);
+    setMetaDialog(true);
+  };
+
+  const handleMetaSave = async () => {
+    if (!user || !workspaceId) return;
+    setMetaSaving(true);
+    const payload = { ...metaForm, workspace_id: workspaceId, enabled: true };
+
+    let error;
+    if (editingMeta) {
+      ({ error } = await supabase.from("meta_ad_accounts").update({ ...metaForm, updated_at: new Date().toISOString() }).eq("id", editingMeta.id));
+    } else {
+      ({ error } = await supabase.from("meta_ad_accounts").insert(payload as any));
+    }
+
+    if (error) {
+      toast({ title: "Erro ao salvar conta", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: editingMeta ? "Conta atualizada" : "Conta adicionada" });
+      await loadMetaAccounts();
+      setMetaDialog(false);
+    }
+    setMetaSaving(false);
+  };
+
+  const handleMetaToggle = async (acc: MetaAccount) => {
+    await supabase.from("meta_ad_accounts").update({ enabled: !acc.enabled, updated_at: new Date().toISOString() }).eq("id", acc.id);
+    await loadMetaAccounts();
+  };
+
+  const handleMetaDelete = async (id: string) => {
+    await supabase.from("meta_ad_accounts").delete().eq("id", id);
+    toast({ title: "Conta removida" });
+    await loadMetaAccounts();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-40">
