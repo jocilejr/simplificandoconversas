@@ -1,31 +1,32 @@
 
 
-## Diagnóstico
+# Correção: Edição de mensagens agendadas não carrega dados salvos
 
-O número `55999229423` tem **DDD 55** (região do RS) + `999229423`. O sistema confunde o DDD "55" com o código do país "55" e não adiciona o prefixo internacional, resultando em 11 dígitos. A validação exige mínimo 12 dígitos → falha.
+## Problema identificado
+
+Quando você clica em "Editar" numa mensagem agendada, o formulário não restaura corretamente todos os valores salvos. Isso acontece por dois motivos:
+
+1. **Conflito de chaves JSON**: Mensagens importadas usam `weekDays` (camelCase) e `runTime`, mas o formulário de edição só verifica `weekdays` (lowercase) na linha 121. Se a chave não bate, cai no fallback que mantém o padrão `[1,2,3,4,5]`.
+
+2. **`scheduleType` vem da aba ativa, não da mensagem**: O formulário recebe `scheduleType={activeTab}` em vez de usar o `schedule_type` real da mensagem sendo editada. Se por algum motivo não bater, o formulário exibe campos de agendamento errados.
 
 ## Correção
 
-A regra correta: **todo número de 10-11 dígitos é local brasileiro** (DDD + assinante) e SEMPRE precisa do prefixo "55". Não importa se começa com "55" — nesse comprimento é impossível já ter código de país.
+### Arquivo: `src/components/grupos/GroupScheduledMessageForm.tsx`
 
-### Arquivos a alterar
+- **Linha 121**: Verificar tanto `weekdays` quanto `weekDays` (camelCase)
+  ```
+  setWeekdays(editData.content.weekdays || editData.content.weekDays)
+  ```
 
-**1. `deploy/backend/src/lib/normalize-phone.ts`** (backend — o que causou a falha)
-- Remover a condição `!phone.startsWith("55")`
-- Números de 10-11 dígitos sempre recebem prefixo "55"
+### Arquivo: `src/components/grupos/GroupMessagesDialog.tsx`
 
-**2. `src/lib/normalizePhone.ts`** (frontend — mesmo bug)
-- Mesma correção: remover `!phone.startsWith("55")`
+- **Linha 347**: Passar o `schedule_type` real da mensagem quando estiver editando, em vez de `activeTab`
+  ```
+  scheduleType={editingMsg?.schedule_type || activeTab}
+  ```
 
-**3. `src/lib/phoneNormalization.ts`** — já está correto em `normalizePhoneForMatching`, mas a função `generatePhoneVariations` tem lógica que assume `startsWith('55')` = código de país quando o número tem 12+ dígitos, o que está OK pois nesse ponto já teria 12-13 dígitos (já com país).
+## Resultado esperado
 
-### Resultado esperado
-
-- Input: `55999229423` (11 dígitos, DDD 55)
-- Antes: `55999229423` (11 dígitos → rejeitado)
-- Depois: `5555999229423` (13 dígitos → enviado com sucesso)
-
-### Após o deploy
-
-Será necessário reprocessar as transações pendentes desse número na VPS para que a recuperação seja enviada.
+Ao clicar em "Editar", o formulário carregará exatamente o horário, dias da semana, tipo de frequência e todas as opções que foram salvas originalmente na mensagem.
 
