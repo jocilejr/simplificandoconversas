@@ -91,6 +91,14 @@ async function resolveOwnerJid(baseUrl: string, apiKey: string, instanceName: st
   return "";
 }
 
+/* ─── helper: parsear cron para hora/minuto ─── */
+function parseCronTime(cronExpression: string): { min: number; hour: number; parts: string[] } | null {
+  if (!cronExpression) return null;
+  const parts = cronExpression.split(" ");
+  if (parts.length < 5) return null;
+  return { min: +parts[0], hour: +parts[1], parts };
+}
+
 /* ─── helper: calcular next_run_at ─── */
 function computeNextRunAt(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
   const now = new Date();
@@ -102,32 +110,64 @@ function computeNextRunAt(scheduleType: string, scheduledAt: string | null, cron
       return dt > now ? dt.toISOString() : null;
     }
     case "daily": {
-      if (!scheduledAt) return null;
-      const ref = new Date(scheduledAt);
-      const next = new Date(now);
-      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
-      if (next <= now) next.setDate(next.getDate() + 1);
-      return next.toISOString();
+      if (scheduledAt) {
+        const ref = new Date(scheduledAt);
+        const next = new Date(now);
+        next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
+        return next.toISOString();
+      }
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        const next = new Date(now);
+        next.setHours(cron.hour, cron.min, 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
+        return next.toISOString();
+      }
+      return null;
     }
     case "weekly": {
-      if (!scheduledAt) return null;
-      const ref = new Date(scheduledAt);
-      const targetDay = ref.getDay();
-      const next = new Date(now);
-      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
-      let daysAhead = targetDay - now.getDay();
-      if (daysAhead < 0) daysAhead += 7;
-      if (daysAhead === 0 && next <= now) daysAhead = 7;
-      next.setDate(next.getDate() + daysAhead);
-      return next.toISOString();
+      if (scheduledAt) {
+        const ref = new Date(scheduledAt);
+        const targetDay = ref.getDay();
+        const next = new Date(now);
+        next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+        let daysAhead = targetDay - now.getDay();
+        if (daysAhead < 0) daysAhead += 7;
+        if (daysAhead === 0 && next <= now) daysAhead = 7;
+        next.setDate(next.getDate() + daysAhead);
+        return next.toISOString();
+      }
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        const daysOfWeek = cron.parts[4] === "*" ? [0,1,2,3,4,5,6] : cron.parts[4].split(",").map(Number);
+        for (let i = 0; i < 8; i++) {
+          const candidate = new Date(now);
+          candidate.setDate(candidate.getDate() + i);
+          candidate.setHours(cron.hour, cron.min, 0, 0);
+          if (daysOfWeek.includes(candidate.getDay()) && candidate > now) {
+            return candidate.toISOString();
+          }
+        }
+      }
+      return null;
     }
     case "monthly": {
-      if (!scheduledAt) return null;
-      const ref = new Date(scheduledAt);
-      const targetDate = ref.getDate();
-      const next = new Date(now.getFullYear(), now.getMonth(), targetDate, ref.getHours(), ref.getMinutes(), 0, 0);
-      if (next <= now) next.setMonth(next.getMonth() + 1);
-      return next.toISOString();
+      if (scheduledAt) {
+        const ref = new Date(scheduledAt);
+        const targetDate = ref.getDate();
+        const next = new Date(now.getFullYear(), now.getMonth(), targetDate, ref.getHours(), ref.getMinutes(), 0, 0);
+        if (next <= now) next.setMonth(next.getMonth() + 1);
+        return next.toISOString();
+      }
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        const dayOfMonth = cron.parts[2] === "*" ? now.getDate() : +cron.parts[2];
+        const next = new Date(now.getFullYear(), now.getMonth(), dayOfMonth, cron.hour, cron.min, 0, 0);
+        if (next <= now) next.setMonth(next.getMonth() + 1);
+        return next.toISOString();
+      }
+      return null;
     }
     case "interval": {
       if (!intervalMinutes || intervalMinutes <= 0) return null;
@@ -139,33 +179,64 @@ function computeNextRunAt(scheduleType: string, scheduledAt: string | null, cron
 }
 
 /* ─── helper: calcular PRÓXIMO next_run_at após execução ─── */
-function computeNextRunAfterExecution(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
+export function computeNextRunAfterExecution(scheduleType: string, scheduledAt: string | null, cronExpression: string | null, intervalMinutes: number | null): string | null {
   const now = new Date();
 
   switch (scheduleType) {
     case "once":
       return null; // desativa
     case "daily": {
-      if (!scheduledAt) return null;
-      const ref = new Date(scheduledAt);
-      const next = new Date(now);
-      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
-      next.setDate(next.getDate() + 1);
-      return next.toISOString();
+      if (scheduledAt) {
+        const ref = new Date(scheduledAt);
+        const next = new Date(now);
+        next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+        next.setDate(next.getDate() + 1);
+        return next.toISOString();
+      }
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        const next = new Date(now);
+        next.setHours(cron.hour, cron.min, 0, 0);
+        next.setDate(next.getDate() + 1);
+        return next.toISOString();
+      }
+      return null;
     }
     case "weekly": {
-      if (!scheduledAt) return null;
-      const ref = new Date(scheduledAt);
-      const next = new Date(now);
-      next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
-      next.setDate(next.getDate() + 7);
-      return next.toISOString();
+      if (scheduledAt) {
+        const ref = new Date(scheduledAt);
+        const next = new Date(now);
+        next.setHours(ref.getHours(), ref.getMinutes(), 0, 0);
+        next.setDate(next.getDate() + 7);
+        return next.toISOString();
+      }
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        const daysOfWeek = cron.parts[4] === "*" ? [0,1,2,3,4,5,6] : cron.parts[4].split(",").map(Number);
+        for (let i = 1; i <= 8; i++) {
+          const candidate = new Date(now);
+          candidate.setDate(candidate.getDate() + i);
+          candidate.setHours(cron.hour, cron.min, 0, 0);
+          if (daysOfWeek.includes(candidate.getDay())) {
+            return candidate.toISOString();
+          }
+        }
+      }
+      return null;
     }
     case "monthly": {
-      if (!scheduledAt) return null;
-      const ref = new Date(scheduledAt);
-      const next = new Date(now.getFullYear(), now.getMonth() + 1, ref.getDate(), ref.getHours(), ref.getMinutes(), 0, 0);
-      return next.toISOString();
+      if (scheduledAt) {
+        const ref = new Date(scheduledAt);
+        const next = new Date(now.getFullYear(), now.getMonth() + 1, ref.getDate(), ref.getHours(), ref.getMinutes(), 0, 0);
+        return next.toISOString();
+      }
+      const cron = parseCronTime(cronExpression || "");
+      if (cron) {
+        const dayOfMonth = cron.parts[2] === "*" ? now.getDate() : +cron.parts[2];
+        const next = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth, cron.hour, cron.min, 0, 0);
+        return next.toISOString();
+      }
+      return null;
     }
     case "interval": {
       if (!intervalMinutes || intervalMinutes <= 0) return null;
