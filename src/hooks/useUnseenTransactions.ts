@@ -43,28 +43,8 @@ export function useUnseenTransactions() {
       };
     },
     enabled: !!user && !!workspaceId,
-    refetchInterval: 30000,
+    refetchInterval: 15_000,
   });
-
-  // Realtime subscription
-  useEffect(() => {
-    if (!user || !workspaceId) return;
-
-    const channel = supabase
-      .channel("unseen-tx-realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "transactions" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, workspaceId, queryClient]);
 
   const counts = query.data || { aprovados: 0, "boletos-gerados": 0, "pix-cartao-pendentes": 0, rejeitados: 0 };
   const originalTitle = useRef(document.title);
