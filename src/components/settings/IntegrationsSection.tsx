@@ -273,7 +273,7 @@ export function IntegrationsSection() {
               onClick={() => integration.available && openConfig(integration)}
             >
               <CardContent className="p-4 flex items-center gap-3">
-                <span className="text-2xl">{integration.icon}</span>
+                <div className="shrink-0">{PlatformIcons[integration.platform] || <span className="text-2xl">⚙️</span>}</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{integration.name}</span>
@@ -301,7 +301,7 @@ export function IntegrationsSection() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="text-xl">{configDialog?.icon}</span>
+              <div className="shrink-0">{PlatformIcons[configDialog?.platform ?? ""] || <span className="text-xl">⚙️</span>}</div>
               {configDialog?.name}
             </DialogTitle>
             <DialogDescription>{configDialog?.description}</DialogDescription>
