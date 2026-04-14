@@ -189,7 +189,6 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
                     {displayMessages.map((msg: any) => {
                       const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
-                      const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
                       const hasMention = msg.content?.mentionAll;
                       const isExpanded = expandedId === msg.id;
 
