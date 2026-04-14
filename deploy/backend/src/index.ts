@@ -217,8 +217,17 @@ cron.schedule("* * * * *", async () => {
     console.log(`[cron] 📅 Group scheduler: ${dueMessages.length} message(s) due`);
 
     for (const msg of dueMessages) {
-      const campaign = (msg as any).group_campaigns;
-      if (!campaign || !campaign.is_active) continue;
+      // Fetch campaign separately (avoids PostgREST !inner join issues)
+      const { data: campaign, error: campErr } = await sb
+        .from("group_campaigns")
+        .select("workspace_id, user_id, instance_name, group_jids, is_active")
+        .eq("id", msg.campaign_id)
+        .single();
+
+      if (campErr || !campaign || !campaign.is_active) {
+        if (campErr) console.error(`[cron] group-scheduler campaign fetch error for ${msg.id}:`, campErr.message);
+        continue;
+      }
 
       const batch = `auto-${Date.now()}-${msg.id.slice(0, 8)}`;
       const queueItems: any[] = [];
