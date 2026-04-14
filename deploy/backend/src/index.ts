@@ -388,7 +388,7 @@ app.listen(PORT, async () => {
 
     const { data: broken } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, scheduled_at, cron_expression, interval_minutes, content")
+      .select("id, schedule_type, content")
       .eq("is_active", true)
       .is("next_run_at", null);
 
@@ -396,25 +396,19 @@ app.listen(PORT, async () => {
       console.log(`[self-heal] 🔧 Found ${broken.length} active messages with NULL next_run_at`);
 
       for (const msg of broken) {
-        // Use buildCronFromContent which handles both time/runTime and weekdays/weekDays
-        let cronExpr = msg.cron_expression;
-        if (!cronExpr) {
-          cronExpr = buildCronFromContent(msg.schedule_type, msg.content);
+        if (msg.schedule_type === "once") {
+          // Once messages with NULL next_run_at should be deactivated
+          await sb.from("group_scheduled_messages").update({ is_active: false }).eq("id", msg.id);
+          console.log(`[self-heal] ⏹ Deactivated once msg ${msg.id} (expired)`);
+          continue;
         }
 
-        if (cronExpr) {
-          const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, cronExpr, msg.interval_minutes, msg.content as any);
-          if (nextRun) {
-            await sb.from("group_scheduled_messages").update({
-              cron_expression: cronExpr,
-              next_run_at: nextRun,
-            }).eq("id", msg.id);
-            console.log(`[self-heal] ✅ Fixed msg ${msg.id}: cron=${cronExpr}, next_run=${nextRun}`);
-          } else {
-            console.warn(`[self-heal] ⚠️ Could not compute next_run for msg ${msg.id} (type=${msg.schedule_type})`);
-          }
+        const nextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
+        if (nextRun) {
+          await sb.from("group_scheduled_messages").update({ next_run_at: nextRun }).eq("id", msg.id);
+          console.log(`[self-heal] ✅ Fixed msg ${msg.id}: next_run=${nextRun}`);
         } else {
-          console.warn(`[self-heal] ⚠️ Cannot reconstruct cron for msg ${msg.id} — no time in content`);
+          console.warn(`[self-heal] ⚠️ Could not compute next_run for msg ${msg.id} (type=${msg.schedule_type})`);
         }
       }
     }
