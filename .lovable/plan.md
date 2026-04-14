@@ -1,67 +1,70 @@
 
 
-# Correção: Mensagens agendadas desativadas permanentemente
+# Correção: Simplificar scheduler para lógica "agora ou nunca"
 
-## Problema raiz
+## Problema
 
-Todas as mensagens de campanhas ativas estão com `is_active = false`. A cadeia de falhas:
+Dois bugs críticos:
 
-1. Mensagens foram salvas sem `cron_expression` (campo NULL) — o frontend/API não está salvando essa informação corretamente
-2. O self-heal tentou reconstruir, mas falhou porque o horário está em `content->>'runTime'` (camelCase) em vez de `content->>'time'`
-3. Quando o scheduler as executou, `computeNextRunAfterExecution` recebeu `cron_expression = NULL` e `scheduledAt = NULL` → retornou `null` → mensagem desativada permanentemente
+1. **Dedup no processador da fila (groups-api.ts linha 928-943)**: Verifica se já existe QUALQUER registro `sent` com o mesmo `scheduled_message_id` + `group_jid` — sem janela de tempo. Ou seja, depois que uma mensagem recorrente é enviada uma vez, todas as próximas execuções são canceladas como "Dedup: já enviada".
 
-## Correções necessárias
+2. **Scheduler busca backlog**: A query `lte("next_run_at", now)` pega TODAS as mensagens atrasadas. Se alguma coisa ficou com `next_run_at` no passado, ela volta toda vez.
 
-### 1. `deploy/backend/src/routes/groups-api.ts` — `computeNextRunAfterExecution`
+## Correções
 
-Quando `cronExpression` é NULL mas a mensagem tem `content` com informações de horário/dias, o sistema precisa reconstruir o cron antes de desistir. Adicionar um parâmetro opcional `content` à função para extrair horário e dias quando o cron está ausente.
+### 1. `deploy/backend/src/routes/groups-api.ts` — Dedup no processador
 
-Alternativa mais simples: garantir que o `cron_expression` SEMPRE seja salvo na criação/edição da mensagem (corrigir o fluxo de criação).
+Linha 928-943: A dedup precisa ter uma **janela de tempo curta** (5 minutos) para só evitar duplicatas do mesmo ciclo, não bloquear execuções futuras.
 
-### 2. `deploy/backend/src/routes/groups-api.ts` — Rota de criação de mensagens
+```typescript
+// ANTES (quebrado):
+.eq("status", "sent")
+.neq("id", item.id);
 
-Verificar a rota `POST /campaigns/:id/messages` para garantir que `cron_expression` é calculado e salvo a partir dos dados do formulário (`time`, `weekdays`, `monthDay`, etc.) em **todos** os `schedule_type` (daily, weekly, monthly, custom).
-
-### 3. `deploy/backend/src/index.ts` — Self-heal melhorado
-
-O self-heal na inicialização precisa verificar tanto `content->>'time'` quanto `content->>'runTime'` para reconstruir o cron. Atualmente só verifica `time`.
-
-### 4. `deploy/backend/src/index.ts` — Scheduler resiliente
-
-No loop do scheduler (linha 293), antes de chamar `computeNextRunAfterExecution`, se `cron_expression` for NULL, tentar reconstruir a partir de `msg.content` (que já está no select). Isso evita desativar mensagens recorrentes por falta de cron.
-
-### 5. Limpeza imediata na VPS
-
-Após o deploy, reativar e reconstruir as mensagens das campanhas ativas:
-
-```bash
-docker compose exec postgres psql -U postgres -d postgres --pset=pager=off -c "
-UPDATE group_scheduled_messages
-SET is_active = true,
-    next_run_at = NOW() + interval '1 minute'
-WHERE campaign_id IN (SELECT id FROM group_campaigns WHERE is_active = true)
-  AND schedule_type != 'once'
-  AND is_active = false;"
+// DEPOIS (correto):
+.eq("status", "sent")
+.neq("id", item.id)
+.gte("created_at", new Date(Date.now() - 5 * 60000).toISOString());
 ```
 
-Depois, reiniciar o backend para que o self-heal reconstrua os crons:
+### 2. `deploy/backend/src/index.ts` — Scheduler simples
+
+Substituir a query do scheduler para buscar apenas mensagens com `next_run_at` dentro do minuto atual (janela de 90 segundos para cobrir delay), em vez de pegar todo o backlog:
+
+```typescript
+// ANTES:
+.lte("next_run_at", now)
+
+// DEPOIS — janela de 90 segundos:
+const windowStart = new Date(Date.now() - 90 * 1000).toISOString();
+const now = new Date().toISOString();
+// Buscar mensagens com next_run_at entre agora-90s e agora
+.lte("next_run_at", now)
+.gte("next_run_at", windowStart)
+```
+
+Isso garante que mensagens com `next_run_at` muito no passado (backlog) são ignoradas. Apenas as que caem na janela do minuto atual são processadas.
+
+### 3. `deploy/backend/src/index.ts` — Remover flood protection
+
+O limite de 5 mensagens por ciclo não faz mais sentido com a janela de tempo. Remover o `splice(5)` — se 30 mensagens estão programadas para 11:30, todas devem ir para a fila.
+
+### 4. Limpeza na VPS após deploy
+
 ```bash
+# Limpar fila pendente acumulada
+docker compose exec postgres psql -U postgres -d postgres -c "
+UPDATE group_message_queue SET status = 'cancelled', error_message = 'Cleanup: reset'
+WHERE status = 'pending';"
+
+# Recalcular next_run_at para todas as mensagens ativas
 docker compose restart backend
 ```
 
-## Resumo das mudanças em código
+## Resultado
 
-| Arquivo | Mudança |
-|---------|---------|
-| `groups-api.ts` — rota POST messages | Sempre calcular e salvar `cron_expression` |
-| `groups-api.ts` — rota PUT messages | Recalcular `cron_expression` ao editar horário/dias |
-| `groups-api.ts` — `computeNextRunAfterExecution` | Aceitar `content` como fallback quando cron é NULL |
-| `index.ts` — self-heal | Verificar `runTime` além de `time` |
-| `index.ts` — scheduler loop | Reconstruir cron inline antes de desativar |
-
-## Resultado esperado
-
-- Mensagens recorrentes nunca serão desativadas por falta de cron
-- Toda mensagem criada/editada terá `cron_expression` preenchido
-- Self-heal funciona com ambos os formatos de conteúdo (`time`/`runTime`)
+- Scheduler busca apenas mensagens do minuto atual
+- Dedup não bloqueia mensagens recorrentes
+- Sem acúmulo de backlog
+- A fila processa normalmente
 
