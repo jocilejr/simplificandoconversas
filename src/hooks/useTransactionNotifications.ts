@@ -67,6 +67,7 @@ export function useTransactionNotifications() {
     },
     enabled: !!user && !!workspaceId,
     refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
   });
 
   // Detect new transactions and create notifications
