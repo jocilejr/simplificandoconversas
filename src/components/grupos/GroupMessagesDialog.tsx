@@ -86,106 +86,108 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setShowForm(false); setEditMsg(null); }}>
-          <TabsList className="w-full grid grid-cols-5 gap-0">
-            {SCHEDULE_TABS.map(t => (
-              <TabsTrigger key={t.value} value={t.value} className="text-xs min-w-0 truncate">
-                {t.label}
-                {messages.filter((m: any) => m.schedule_type === t.value).length > 0 && (
-                  <Badge variant="secondary" className="ml-1.5 h-4 text-[9px] px-1">
-                    {messages.filter((m: any) => m.schedule_type === t.value).length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <div className="w-full min-w-0 overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setShowForm(false); setEditMsg(null); }}>
+            <TabsList className="w-full grid grid-cols-5 gap-0 overflow-hidden">
+              {SCHEDULE_TABS.map(t => (
+                <TabsTrigger key={t.value} value={t.value} className="text-xs min-w-0 truncate">
+                  {t.label}
+                  {messages.filter((m: any) => m.schedule_type === t.value).length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 h-4 text-[9px] px-1">
+                      {messages.filter((m: any) => m.schedule_type === t.value).length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-          {SCHEDULE_TABS.map(tab => {
-            const tabMessages = messages.filter((m: any) => m.schedule_type === tab.value);
-            return (
-            <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">{tab.desc}</p>
-                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setEditMsg(null); setShowForm(true); }}>
-                  <Plus className="h-3 w-3 mr-1" /> Adicionar
-                </Button>
-              </div>
-
-              {tabMessages.length === 0 && !showForm && (
-                <div className="border border-dashed border-border rounded-xl p-10 text-center">
-                  <CalendarClock className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground/60">Nenhuma mensagem {tab.label.toLowerCase()} configurada.</p>
+            {SCHEDULE_TABS.map(tab => {
+              const tabMessages = messages.filter((m: any) => m.schedule_type === tab.value);
+              return (
+              <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4 w-full min-w-0 overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">{tab.desc}</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setEditMsg(null); setShowForm(true); }}>
+                    <Plus className="h-3 w-3 mr-1" /> Adicionar
+                  </Button>
                 </div>
-              )}
 
-              {tabMessages.map((msg: any) => {
-                const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
-                const hasMention = msg.content?.mentionAll;
-                return (
-                  <div key={msg.id} className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card hover:bg-secondary/40 transition-colors group w-full min-w-0 overflow-hidden">
-                    <div className="h-9 w-9 rounded-lg bg-secondary flex items-center justify-center shrink-0 border border-border">
-                      <Icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0 overflow-hidden">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px] h-5 shrink-0">
-                          {TYPE_LABELS[msg.message_type] || msg.message_type}
-                        </Badge>
-                        {hasMention && (
-                          <Badge variant="outline" className="text-[10px] h-5 border-primary/30 text-primary gap-0.5 shrink-0">
-                            <AtSign className="h-2.5 w-2.5" /> todos
-                          </Badge>
-                        )}
-                        <span className="text-[10px] text-muted-foreground truncate">{getTimeLabel(msg)}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{getPreview(msg)}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Switch
-                        checked={msg.is_active}
-                        onCheckedChange={() => toggleMessage.mutate(msg.id)}
-                        className="scale-75"
-                      />
-                      <Button size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setEditMsg(msg); setShowForm(true); }}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir mensagem?</AlertDialogTitle>
-                            <AlertDialogDescription>Esta mensagem agendada será removida permanentemente.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteMessage.mutate(msg.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Excluir
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                {tabMessages.length === 0 && !showForm && (
+                  <div className="border border-dashed border-border rounded-xl p-10 text-center">
+                    <CalendarClock className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground/60">Nenhuma mensagem {tab.label.toLowerCase()} configurada.</p>
                   </div>
-                );
-              })}
+                )}
 
-              {showForm && (
-                <GroupScheduledMessageForm
-                  scheduleType={tab.value}
-                  editData={editMsg}
-                  onSave={handleSave}
-                  onCancel={() => { setShowForm(false); setEditMsg(null); }}
-                  isPending={createMessage.isPending || updateMessage.isPending}
-                />
-              )}
-            </TabsContent>
-            );
-          })}
-        </Tabs>
+                {tabMessages.map((msg: any) => {
+                  const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
+                  const hasMention = msg.content?.mentionAll;
+                  return (
+                    <div key={msg.id} className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card hover:bg-secondary/40 transition-colors group w-full min-w-0 overflow-hidden">
+                      <div className="h-9 w-9 rounded-lg bg-secondary flex items-center justify-center shrink-0 border border-border">
+                        <Icon className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px] h-5 shrink-0">
+                            {TYPE_LABELS[msg.message_type] || msg.message_type}
+                          </Badge>
+                          {hasMention && (
+                            <Badge variant="outline" className="text-[10px] h-5 border-primary/30 text-primary gap-0.5 shrink-0">
+                              <AtSign className="h-2.5 w-2.5" /> todos
+                            </Badge>
+                          )}
+                          <span className="text-[10px] text-muted-foreground truncate">{getTimeLabel(msg)}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{getPreview(msg)}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Switch
+                          checked={msg.is_active}
+                          onCheckedChange={() => toggleMessage.mutate(msg.id)}
+                          className="scale-75"
+                        />
+                        <Button size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setEditMsg(msg); setShowForm(true); }}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir mensagem?</AlertDialogTitle>
+                              <AlertDialogDescription>Esta mensagem agendada será removida permanentemente.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteMessage.mutate(msg.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {showForm && (
+                  <GroupScheduledMessageForm
+                    scheduleType={tab.value}
+                    editData={editMsg}
+                    onSave={handleSave}
+                    onCancel={() => { setShowForm(false); setEditMsg(null); }}
+                    isPending={createMessage.isPending || updateMessage.isPending}
+                  />
+                )}
+              </TabsContent>
+              );
+            })}
+          </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   );
