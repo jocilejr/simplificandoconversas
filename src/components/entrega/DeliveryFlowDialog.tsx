@@ -311,6 +311,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       }
 
       if (!(settings as any)?.custom_domain) {
+        setStep("payment");
         toast.error("Configure o domínio da Área de Membros nas configurações");
         return;
       }
