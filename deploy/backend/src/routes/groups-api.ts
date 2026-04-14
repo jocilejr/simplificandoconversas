@@ -732,7 +732,14 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
     const { workspaceId, userId, messageType, content, scheduleType, scheduledAt, cronExpression, intervalMinutes } = req.body;
     if (!workspaceId || !userId) return res.status(400).json({ error: "Missing fields" });
 
-    const nextRunAt = computeNextRunAt(scheduleType || "once", scheduledAt || null, cronExpression || null, intervalMinutes || null);
+    // Always ensure cron_expression is set for recurring types
+    let finalCron = cronExpression || null;
+    const st = scheduleType || "once";
+    if (!finalCron && st !== "once" && st !== "interval") {
+      finalCron = buildCronFromContent(st, content);
+    }
+
+    const nextRunAt = computeNextRunAt(st, scheduledAt || null, finalCron, intervalMinutes || null);
 
     const sb = getServiceClient();
     const { data, error } = await sb
@@ -743,9 +750,9 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
         user_id: userId,
         message_type: messageType || "text",
         content: content || {},
-        schedule_type: scheduleType || "once",
+        schedule_type: st,
         scheduled_at: scheduledAt || null,
-        cron_expression: cronExpression || null,
+        cron_expression: finalCron,
         interval_minutes: intervalMinutes || null,
         is_active: true,
         next_run_at: nextRunAt,
@@ -753,6 +760,7 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
       .select()
       .single();
     if (error) throw error;
+    console.log(`[groups-api] Created message ${data.id}: type=${st}, cron=${finalCron}, next_run=${nextRunAt}`);
     res.json(data);
   } catch (err: any) {
     console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
@@ -771,20 +779,26 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
     if (cronExpression !== undefined) update.cron_expression = cronExpression;
     if (intervalMinutes !== undefined) update.interval_minutes = intervalMinutes;
 
-    // Recalculate next_run_at if schedule changed
-    if (scheduleType !== undefined || scheduledAt !== undefined || intervalMinutes !== undefined) {
-      // Need to get current values to merge
+    // Recalculate next_run_at if ANY schedule-related field changed
+    if (scheduleType !== undefined || scheduledAt !== undefined || intervalMinutes !== undefined || cronExpression !== undefined || content !== undefined) {
       const sb2 = getServiceClient();
       const { data: current } = await sb2
         .from("group_scheduled_messages")
-        .select("schedule_type, scheduled_at, cron_expression, interval_minutes")
+        .select("schedule_type, scheduled_at, cron_expression, interval_minutes, content")
         .eq("id", req.params.msgId)
         .single();
 
       const finalScheduleType = scheduleType ?? current?.schedule_type ?? "once";
       const finalScheduledAt = scheduledAt ?? current?.scheduled_at ?? null;
-      const finalCron = cronExpression ?? current?.cron_expression ?? null;
+      let finalCron = cronExpression ?? current?.cron_expression ?? null;
       const finalInterval = intervalMinutes ?? current?.interval_minutes ?? null;
+      const finalContent = content ?? current?.content ?? {};
+
+      // Rebuild cron from content if missing for recurring types
+      if (!finalCron && finalScheduleType !== "once" && finalScheduleType !== "interval") {
+        finalCron = buildCronFromContent(finalScheduleType, finalContent);
+        if (finalCron) update.cron_expression = finalCron;
+      }
 
       update.next_run_at = computeNextRunAt(finalScheduleType, finalScheduledAt, finalCron, finalInterval);
     }
