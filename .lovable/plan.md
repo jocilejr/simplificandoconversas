@@ -2,60 +2,34 @@
 
 ## Problema
 
-O sistema atual de notificações (`useTransactionNotifications`) depende do **Supabase Realtime** (canais WebSocket) que **não existe na VPS**. Por isso, nenhuma notificação é disparada. Além disso, só usa a API nativa `Notification` do navegador — sem popup visual na interface.
+Existem **dois sistemas concorrentes** controlando o `document.title`:
+
+1. **`useUnseenTransactions`** (linha 73-83) — conta transações com `viewed_at IS NULL` e define o título como `(N) Nova transação! | Simplificando`. Este nunca limpa porque `viewed_at` só é atualizado via API do backend (`platform/mark-seen`/`platform/mark-tab-seen`), que depende de clicar nas abas da tabela de transações.
+
+2. **`useTransactionNotifications`** (linha 118-141) — controla título com base nas notificações in-memory, que só limpam com `dismissAll`.
+
+Ambos fazem `setInterval` de 1s sobrescrevendo `document.title`, criando conflito. Mesmo que você limpe um, o outro mantém o título alterado.
 
 ## Solução
 
-Reescrever o sistema de notificações baseando-se no Finance Hub, usando **polling** (que já funciona na VPS) em vez de Realtime, com:
+Unificar a lógica de título no `useUnseenTransactions` (que é o sistema correto baseado em `viewed_at`) e **remover** a lógica de título do `useTransactionNotifications`.
 
-1. **Popup visual in-app** (NotificationPopup) no header
-2. **Tab title piscando** quando há transações novas em background
-3. **Notificação do navegador** como complemento (não dependência principal)
+### 1. `src/hooks/useTransactionNotifications.ts`
+- **Remover** todo o bloco de tab title flashing (linhas 118-141)
+- O hook continua gerenciando apenas as notificações in-app (popup) e browser notifications
 
-## Arquivos a criar/alterar
+### 2. `src/hooks/useUnseenTransactions.ts`  
+- **Remover** a assinatura Realtime (linhas 49-67) que não funciona na VPS
+- Adicionar `refetchInterval: 15_000` na query para polling
+- Manter a lógica de `document.title` que já existe (linhas 73-83) — esta é a correta pois se baseia no `viewed_at` do banco
 
-### 1. Criar `src/components/layout/NotificationPopup.tsx`
-- Componente Popover no header mostrando lista de notificações recentes
-- Ícones por tipo (boleto/pix/cartão) e cores por status
-- Botão "Ver todas" navegando para `/transacoes`
-- Botão dismiss para limpar
+### 3. `src/components/transactions/TransactionsTable.tsx`
+- Verificar se `markTabSeen` está sendo chamado ao entrar na página de transações (não só ao trocar de aba)
+- Adicionar chamada automática de `markTabSeen` para a aba ativa quando a página `/transacoes` é montada
 
-### 2. Reescrever `src/hooks/useTransactionNotifications.ts`
-- Trocar canal Realtime por **polling** (comparação de IDs a cada 15s)
-- Manter um `Set<string>` de IDs já vistos (inicializado com transações atuais)
-- Quando detectar IDs novos: criar notificação in-app + browser notification (se permitida)
-- Expor `notifications[]`, `dismissAllNotifications()` para o popup
-- Incluir lógica de tab title piscando (como `useTabNotification` do Finance Hub)
-
-### 3. Alterar `src/components/AppLayout.tsx`
-- Importar `NotificationPopup`
-- Renderizar o popup no header ao lado do `SidebarTrigger`
-- Passar `notifications` e `onDismiss` do hook reescrito
-
-### Detalhes técnicos
-
-**Polling em vez de Realtime:**
-```
-- A cada 15s, buscar transações recentes (últimas 24h) com viewed_at IS NULL
-- Comparar com Set de IDs já conhecidos
-- Novos IDs → gerar notificação
-- Usar refetchInterval do React Query que já está em uso no projeto
-```
-
-**Estrutura da notificação:**
-```typescript
-interface TransactionNotification {
-  id: string;
-  type: string;      // boleto, pix, cartao, card, yampi_cart
-  status: string;    // pendente, aprovado, rejeitado, abandonado
-  customerName: string;
-  amount: number;
-  timestamp: Date;
-}
-```
-
-**Tab title piscando:**
-- Quando tab está em background e há notificações pendentes
-- Alterna entre `🔔 (N) Nova Venda!` e título original a cada 1s
-- Reseta ao voltar para a tab
+### Resultado
+- Quando o usuário abre `/transacoes`, o backend marca as transações como vistas (`viewed_at = now()`)
+- O polling detecta que não há mais transações sem `viewed_at`
+- O título volta ao normal automaticamente
+- Sem conflito entre dois sistemas
 
