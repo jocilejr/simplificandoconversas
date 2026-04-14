@@ -1,76 +1,27 @@
 
 
-# Reorganizar Sidebar + Relatório como aba inicial + Integração Meta Ads
+# Auto-sync Meta Ads ao abrir o Relatório
 
-## 1. Reorganizar Sidebar — `src/components/AppSidebar.tsx`
+## Problema
+Os dados de gastos Meta Ads só aparecem se o usuário sincronizar manualmente. O relatório já busca da tabela `meta_ad_spend`, mas ela fica vazia sem chamar a edge function `sync-meta-ads`.
 
-**Financeiro primeiro (topo), Operacional embaixo:**
+## Solução
+Adicionar um `useEffect` no `useMetaAdSpend` (ou no `FinancialReport`) que automaticamente chama a edge function `sync-meta-ads` quando o relatório é aberto, populando a tabela antes da query principal retornar os dados.
 
-| Seção | Itens (ordem) |
-|---|---|
-| **Financeiro** | Relatório, Leads, Transações, Gerar Boleto, Área de Membros, Entrega Digital, Follow Up |
-| **Operacional** | Dashboard, Fluxos, E-mail, Lembretes, Grupos, Links Úteis |
-| **Sistema** | Disparar Fluxo, Configurações |
+## Alterações
 
-Trocar a ordem dos arrays `mainItems` → `operationalItems` (fica embaixo) e `financeItems` (fica em cima, com Relatório em primeiro).
+### 1. `src/hooks/useMetaAdSpend.ts`
+- Adicionar uma mutation `syncMetaAds` que chama a edge function via fetch para o backend da VPS (`/functions/v1/sync-meta-ads`)
+- Adicionar um `useEffect` que dispara o sync automaticamente quando `workspaceId` e as datas estiverem disponíveis
+- Após o sync completar, invalidar a query `meta-ad-spend` para recarregar os dados frescos
+- Adicionar controle para não sincronizar repetidamente (debounce com ref ou `staleTime`)
 
-## 2. Rota inicial → Relatório — `src/App.tsx`
+### 2. `src/components/transactions/FinancialReport.tsx`
+- Exibir um indicador sutil (ex: texto "Sincronizando gastos Meta..." ou spinner pequeno) enquanto o sync está rodando
+- Nenhuma mudança na lógica de cálculo — já está correto subtraindo `metaTotal` do líquido
 
-Alterar a rota `/` de `Navigate to="/dashboard"` para `Navigate to="/relatorio"`.
-
-## 3. Integração Meta Ads — Novo sistema
-
-### 3a. Tabela `meta_ad_spend` (migração)
-
-```sql
-CREATE TABLE public.meta_ad_spend (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
-  date DATE NOT NULL,
-  spend NUMERIC(12,2) NOT NULL DEFAULT 0,
-  campaign_name TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(workspace_id, date, campaign_name)
-);
-ALTER TABLE public.meta_ad_spend ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can manage own workspace ad spend"
-  ON public.meta_ad_spend FOR ALL TO authenticated
-  USING (workspace_id IN (SELECT id FROM workspaces WHERE user_id = auth.uid())
-    OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()));
-```
-
-### 3b. Integração Meta nas Configurações — `src/components/settings/IntegrationsSection.tsx`
-
-Adicionar nova integração `meta_ads` no array `INTEGRATIONS`:
-- Campos: `access_token` (token de longa duração) e `ad_account_id` (ID da conta de anúncios)
-- Ícone: 📊
-- Descrição: "Gastos com anúncios Meta/Facebook"
-
-### 3c. Hook `useMetaAdSpend` — Novo arquivo
-
-- Busca gastos do período na tabela `meta_ad_spend`
-- Função de sincronização manual via edge function
-
-### 3d. Edge Function `sync-meta-ads` — Nova
-
-- Recebe `workspace_id`, `start_date`, `end_date`
-- Busca credenciais Meta do workspace em `platform_connections`
-- Chama a API do Meta: `GET /{ad_account_id}/insights?time_range=...&fields=spend,campaign_name&level=campaign`
-- Upsert dos dados na tabela `meta_ad_spend`
-
-### 3e. Relatório Financeiro — `src/components/transactions/FinancialReport.tsx`
-
-- Importar `useMetaAdSpend` 
-- Somar gastos Meta no card de "Deduções" como linha "Meta Ads"
-- Subtrair do valor líquido
-
-## Arquivos alterados/criados
-
-- `src/components/AppSidebar.tsx` — reordenar seções
-- `src/App.tsx` — rota inicial
-- `src/components/settings/IntegrationsSection.tsx` — adicionar Meta Ads
-- `src/hooks/useMetaAdSpend.ts` — novo hook
-- `supabase/functions/sync-meta-ads/index.ts` — nova edge function
-- `src/components/transactions/FinancialReport.tsx` — incluir gastos Meta nas deduções
-- Migração SQL — tabela `meta_ad_spend`
+## Detalhes técnicos
+- O sync chamará `POST /functions/v1/sync-meta-ads` com `{ workspace_id, start_date, end_date }` formatados como `YYYY-MM-DD`
+- Usará `useRef` para evitar chamadas duplicadas no mesmo ciclo de renderização
+- O `refetchInterval` ou `staleTime` da query principal garantirá que os dados apareçam logo após o sync
 
