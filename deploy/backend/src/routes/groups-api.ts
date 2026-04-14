@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import { groupScheduler } from "../lib/group-scheduler";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
