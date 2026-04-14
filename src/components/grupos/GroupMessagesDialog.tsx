@@ -68,18 +68,19 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
       const d = new Date(msg.scheduled_at);
       return `${d.toLocaleDateString("pt-BR")} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
     }
-    return msg.content?.time || "";
+    return msg.content?.runTime || msg.content?.time || "";
   };
 
   const getScheduleDetail = (msg: any) => {
     if (msg.schedule_type === "once") return `Data: ${getTimeLabel(msg)}`;
-    if (msg.schedule_type === "daily") return `Diário às ${msg.content?.time || "—"}`;
+    const t = msg.content?.runTime || msg.content?.time || "—";
+    if (msg.schedule_type === "daily") return `Diário às ${t}`;
     if (msg.schedule_type === "weekly") {
-      const days = (msg.content?.weekdays || []).map((d: number) => WEEKDAY_LABELS[d]).join(", ");
-      return `${days} às ${msg.content?.time || "—"}`;
+      const days = (msg.content?.weekDays || msg.content?.weekdays || []).map((d: number) => WEEKDAY_LABELS[d]).join(", ");
+      return `${days} às ${t}`;
     }
-    if (msg.schedule_type === "monthly") return `Dia ${msg.content?.monthDay || "—"} às ${msg.content?.time || "—"}`;
-    if (msg.schedule_type === "custom") return `Dias ${msg.content?.customDays || "—"} às ${msg.content?.time || "—"}`;
+    if (msg.schedule_type === "monthly") return `Dia ${msg.content?.monthDay || "—"} às ${t}`;
+    if (msg.schedule_type === "custom") return `Dias ${msg.content?.customDays || "—"} às ${t}`;
     return msg.cron_expression || "";
   };
 
@@ -140,7 +141,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                 let displayMessages = tabMessages;
                 if (tab.value === "weekly" && weekdayFilter !== null) {
                   displayMessages = tabMessages.filter((m: any) =>
-                    (m.content?.weekdays || []).includes(weekdayFilter)
+                    (m.content?.weekDays || m.content?.weekdays || []).includes(weekdayFilter)
                   );
                 }
                 return (
@@ -189,7 +190,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
                     {displayMessages.map((msg: any) => {
                       const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
-                      const hasMention = msg.content?.mentionAll;
+                      const hasMention = msg.content?.mentionsEveryOne || msg.content?.mentionAll;
                       const isExpanded = expandedId === msg.id;
 
                       return (
@@ -211,9 +212,9 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                                         <AtSign className="h-2.5 w-2.5" /> todos
                                       </Badge>
                                     )}
-                                    {tab.value === "weekly" && msg.content?.weekdays && (
+                                    {tab.value === "weekly" && (msg.content?.weekDays || msg.content?.weekdays) && (
                                       <div className="flex gap-0.5">
-                                        {msg.content.weekdays.map((d: number) => (
+                                        {(msg.content?.weekDays || msg.content?.weekdays || []).map((d: number) => (
                                           <span key={d} className="text-[9px] bg-primary/10 text-primary rounded px-1 py-0.5 font-medium">
                                             {WEEKDAY_LABELS[d]}
                                           </span>
