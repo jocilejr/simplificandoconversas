@@ -368,6 +368,66 @@ cron.schedule("*/15 * * * *", async () => {
 });
 
 const PORT = parseInt(process.env.PORT || "3001");
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Backend running on port ${PORT}`);
+
+  // ─── Self-heal: fix active messages with NULL next_run_at on startup ───
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    );
+
+    const { data: broken } = await sb
+      .from("group_scheduled_messages")
+      .select("id, schedule_type, scheduled_at, cron_expression, interval_minutes, content")
+      .eq("is_active", true)
+      .is("next_run_at", null);
+
+    if (broken && broken.length > 0) {
+      console.log(`[self-heal] 🔧 Found ${broken.length} active messages with NULL next_run_at`);
+
+      for (const msg of broken) {
+        // Try to reconstruct cron_expression from content if missing
+        let cronExpr = msg.cron_expression;
+        const content = msg.content as any;
+        const timeVal = content?.time as string | undefined;
+
+        if (!cronExpr && timeVal) {
+          const [hh, mm] = timeVal.split(":");
+          if (msg.schedule_type === "weekly") {
+            const weekdays = content?.weekdays;
+            if (Array.isArray(weekdays) && weekdays.length > 0) {
+              cronExpr = `${mm} ${hh} * * ${weekdays.join(",")}`;
+            }
+          } else if (msg.schedule_type === "daily") {
+            cronExpr = `${mm} ${hh} * * *`;
+          } else if (msg.schedule_type === "monthly" || msg.schedule_type === "custom") {
+            const monthDay = content?.monthDay || content?.customDays;
+            if (monthDay) {
+              cronExpr = `${mm} ${hh} ${monthDay} * *`;
+            }
+          }
+        }
+
+        if (cronExpr) {
+          const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, cronExpr, msg.interval_minutes);
+          if (nextRun) {
+            await sb.from("group_scheduled_messages").update({
+              cron_expression: cronExpr,
+              next_run_at: nextRun,
+            }).eq("id", msg.id);
+            console.log(`[self-heal] ✅ Fixed msg ${msg.id}: cron=${cronExpr}, next_run=${nextRun}`);
+          } else {
+            console.warn(`[self-heal] ⚠️ Could not compute next_run for msg ${msg.id} (type=${msg.schedule_type})`);
+          }
+        } else {
+          console.warn(`[self-heal] ⚠️ Cannot reconstruct cron for msg ${msg.id} — no time in content`);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[self-heal] Error:", err.message);
+  }
 });
