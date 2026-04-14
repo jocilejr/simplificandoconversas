@@ -137,6 +137,12 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
               {SCHEDULE_TABS.map(tab => {
                 const tabMessages = messages.filter((m: any) => m.schedule_type === tab.value);
+                let displayMessages = tabMessages;
+                if (tab.value === "weekly" && weekdayFilter !== null) {
+                  displayMessages = tabMessages.filter((m: any) =>
+                    (m.content?.weekdays || []).includes(weekdayFilter)
+                  );
+                }
                 return (
                   <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4">
                     <div className="flex items-center justify-between">
@@ -146,14 +152,43 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                       </Button>
                     </div>
 
-                    {tabMessages.length === 0 && (
+                    {tab.value === "weekly" && (
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          onClick={() => setWeekdayFilter(null)}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+                            weekdayFilter === null
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                          }`}
+                        >
+                          Todos
+                        </button>
+                        {WEEKDAY_LABELS.map((label, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setWeekdayFilter(weekdayFilter === idx ? null : idx)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+                              weekdayFilter === idx
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {displayMessages.length === 0 && (
                       <div className="border border-dashed border-border rounded-xl p-10 text-center">
                         <CalendarClock className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
                         <p className="text-xs text-muted-foreground/60">Nenhuma mensagem {tab.label.toLowerCase()} configurada.</p>
                       </div>
                     )}
 
-                    {tabMessages.map((msg: any) => {
+                    {displayMessages.map((msg: any) => {
+                      const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
                       const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
                       const hasMention = msg.content?.mentionAll;
                       const isExpanded = expandedId === msg.id;
