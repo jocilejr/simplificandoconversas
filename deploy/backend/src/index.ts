@@ -206,7 +206,9 @@ cron.schedule("* * * * *", async () => {
       .from("group_scheduled_messages")
       .select("*")
       .eq("is_active", true)
-      .lte("next_run_at", now);
+      .lte("next_run_at", now)
+      .order("next_run_at", { ascending: true })
+      .order("created_at", { ascending: true });
 
     if (error) {
       console.error("[cron] group-scheduler query error:", error.message);
