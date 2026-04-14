@@ -335,6 +335,9 @@ router.post("/campaign", async (req: Request, res: Response) => {
     if (!campaignId || !userId)
       return res.status(400).json({ error: "Campos obrigatórios: campaignId, userId" });
 
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
+
     const { data: campaign, error: campErr } = await supabase
       .from("email_campaigns")
       .select("*, email_templates(*)")
@@ -450,6 +453,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .from("email_sends")
         .insert({
           user_id: userId,
+          workspace_id: workspaceId,
           campaign_id: campaignId,
           template_id: template.id,
           recipient_email: recipient.email,
@@ -462,14 +466,14 @@ router.post("/campaign", async (req: Request, res: Response) => {
       let finalHtml = sendLog
         ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
         : personalizedHtml;
-      if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
+      if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl, workspaceId);
 
       try {
         await transporter.sendMail({ from: fromAddress, to: recipient.email, subject: personalizedSubject, html: finalHtml });
         sentCount++;
         if (sendLog) {
           await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-          await logEvent(sendLog.id, userId, "sent");
+          await logEvent(sendLog.id, userId, "sent", undefined, workspaceId);
         }
       } catch (sendErr: any) {
         failedCount++;
@@ -478,7 +482,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
             .from("email_sends")
             .update({ status: "failed", error_message: sendErr.message })
             .eq("id", sendLog.id);
-          await logEvent(sendLog.id, userId, "failed", { error: sendErr.message });
+          await logEvent(sendLog.id, userId, "failed", { error: sendErr.message }, workspaceId);
         }
         console.error(`[email/campaign] Falha para ${recipient.email}:`, sendErr.message);
       }
@@ -506,6 +510,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
         const inserts = validRecipients.map((r) => ({
           follow_up_id: fu.id,
           user_id: userId,
+          workspace_id: workspaceId,
           recipient_email: r.email,
           status: "pending",
           scheduled_at: scheduledAt.toISOString(),
