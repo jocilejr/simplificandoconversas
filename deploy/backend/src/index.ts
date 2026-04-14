@@ -24,7 +24,7 @@ import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily } from "./routes/followup-daily";
-import groupsApiRouter, { computeNextRunAfterExecution, buildCronFromContent } from "./routes/groups-api";
+import groupsApiRouter, { calculateNextRunAt } from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
 import memberPurchaseRouter from "./routes/member-purchase";
@@ -202,7 +202,7 @@ cron.schedule("* * * * *", async () => {
     );
 
     const now = new Date().toISOString();
-    const windowStart = new Date(Date.now() - 90 * 1000).toISOString();
+    const windowStart = new Date(Date.now() - 60 * 1000).toISOString();
     const { data: dueMessages, error } = await sb
       .from("group_scheduled_messages")
       .select("*")
@@ -221,7 +221,7 @@ cron.schedule("* * * * *", async () => {
     console.log(`[cron] 📅 Group scheduler: ${dueMessages.length} message(s) due`);
 
     for (const msg of dueMessages) {
-      // Fetch campaign separately (avoids PostgREST !inner join issues)
+      // Fetch campaign
       const { data: campaign, error: campErr } = await sb
         .from("group_campaigns")
         .select("workspace_id, user_id, instance_name, group_jids, is_active")
@@ -229,7 +229,6 @@ cron.schedule("* * * * *", async () => {
         .single();
 
       if (campErr || !campaign || !campaign.is_active) {
-        // Deactivate orphaned message to prevent infinite loop
         await sb.from("group_scheduled_messages")
           .update({ is_active: false, next_run_at: null })
           .eq("id", msg.id);
@@ -242,7 +241,7 @@ cron.schedule("* * * * *", async () => {
       const queueItems: any[] = [];
 
       for (const jid of (campaign.group_jids || [])) {
-        // ─── Deduplication: skip if already queued recently ───
+        // Dedup: skip if already queued in the last 5 minutes
         const { count: existing } = await sb
           .from("group_message_queue")
           .select("id", { count: "exact", head: true })
@@ -288,25 +287,19 @@ cron.schedule("* * * * *", async () => {
       }
 
       // Update last_run_at and compute next_run_at
-      // If cron_expression is missing, rebuild from content before computing
-      let cronExpr = msg.cron_expression;
-      if (!cronExpr && msg.schedule_type !== "once" && msg.schedule_type !== "interval") {
-        cronExpr = buildCronFromContent(msg.schedule_type, msg.content);
-        if (cronExpr) {
-          console.log(`[cron] 🔧 Rebuilt cron for msg ${msg.id}: ${cronExpr}`);
-        }
-      }
-      const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, cronExpr, msg.interval_minutes, msg.content);
       const updateData: any = { last_run_at: now };
-      if (cronExpr && !msg.cron_expression) {
-        updateData.cron_expression = cronExpr; // persist rebuilt cron
-      }
-      if (nextRun) {
-        updateData.next_run_at = nextRun;
-      } else {
-        // For 'once' or expired: deactivate
+
+      if (msg.schedule_type === "once") {
         updateData.is_active = false;
         updateData.next_run_at = null;
+      } else {
+        const nextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
+        if (nextRun) {
+          updateData.next_run_at = nextRun;
+        } else {
+          updateData.is_active = false;
+          updateData.next_run_at = null;
+        }
       }
 
       await sb.from("group_scheduled_messages").update(updateData).eq("id", msg.id);
