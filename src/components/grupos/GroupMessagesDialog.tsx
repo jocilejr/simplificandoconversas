@@ -68,7 +68,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
       const d = new Date(msg.scheduled_at);
       return `${d.toLocaleDateString("pt-BR")} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
     }
-    return msg.content?.time || "";
+    return msg.content?.runTime || msg.content?.time || "";
   };
 
   const getScheduleDetail = (msg: any) => {
