@@ -2793,8 +2793,50 @@ export type Database = {
           },
         ]
       }
+      meta_ad_accounts: {
+        Row: {
+          access_token: string
+          ad_account_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          label: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          access_token: string
+          ad_account_id: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          access_token?: string
+          ad_account_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ad_accounts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_ad_spend: {
         Row: {
+          account_id: string | null
           campaign_name: string | null
           created_at: string | null
           date: string
@@ -2803,6 +2845,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          account_id?: string | null
           campaign_name?: string | null
           created_at?: string | null
           date: string
@@ -2811,6 +2854,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          account_id?: string | null
           campaign_name?: string | null
           created_at?: string | null
           date?: string
@@ -2819,6 +2863,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "meta_ad_spend_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "meta_ad_spend_workspace_id_fkey"
             columns: ["workspace_id"]
