@@ -113,6 +113,13 @@ export function useTransactionNotifications() {
     if (newNotifications.length > 0) {
       setNotifications((prev) => [...newNotifications, ...prev].slice(0, 50));
     }
+
+    // Sync: remove in-memory notifications that are no longer unseen in DB
+    const unseenIds = new Set(recentTx.map((tx) => tx.id));
+    setNotifications((prev) => {
+      const filtered = prev.filter((n) => unseenIds.has(n.id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
   }, [recentTx]);
 
   // Tab title flashing removed — managed by useUnseenTransactions
