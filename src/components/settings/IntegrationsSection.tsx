@@ -166,9 +166,29 @@ export function IntegrationsSection() {
   const [saving, setSaving] = useState(false);
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
 
+  // Meta Ads multi-account state
+  type MetaAccount = { id: string; label: string; access_token: string; ad_account_id: string; enabled: boolean };
+  const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([]);
+  const [metaDialog, setMetaDialog] = useState(false);
+  const [editingMeta, setEditingMeta] = useState<MetaAccount | null>(null);
+  const [metaForm, setMetaForm] = useState({ label: "", access_token: "", ad_account_id: "" });
+  const [metaShowToken, setMetaShowToken] = useState(false);
+  const [metaSaving, setMetaSaving] = useState(false);
+
+  const loadMetaAccounts = async () => {
+    if (!workspaceId) return;
+    const { data } = await supabase
+      .from("meta_ad_accounts")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at");
+    setMetaAccounts((data as MetaAccount[]) || []);
+  };
+
   useEffect(() => {
     if (!user || !workspaceId) return;
     loadConnections();
+    loadMetaAccounts();
     supabase.from("workspaces").select("app_public_url, api_public_url").eq("id", workspaceId).single().then(({ data }) => {
       if (data?.api_public_url) setWorkspaceUrl(data.api_public_url);
       else if (data?.app_public_url) setWorkspaceUrl(data.app_public_url.replace("://app.", "://api."));
