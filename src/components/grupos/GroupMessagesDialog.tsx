@@ -41,7 +41,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
   const [showForm, setShowForm] = useState(false);
   const [editMsg, setEditMsg] = useState<any>(null);
 
-  const filteredMessages = messages.filter((m: any) => m.schedule_type === activeTab);
+  
 
   const getPreview = (msg: any) => {
     const c = msg.content || {};
