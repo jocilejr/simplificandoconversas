@@ -1468,9 +1468,8 @@ router.post("/import-backup", async (req: Request, res: Response) => {
       const content = msg.content || {};
       const scheduleType = msg.schedule_type || "once";
       const scheduledAt = msg.scheduled_at || null;
-      const cronExpression = msg.cron_expression || null;
       const intervalMinutes = msg.interval_minutes || null;
-      const nextRunAt = computeNextRunAt(scheduleType, scheduledAt, cronExpression, intervalMinutes);
+      const nextRunAt = calculateFirstRunAt({ schedule_type: scheduleType, scheduled_at: scheduledAt, content });
 
       const { data: newMsg, error: mErr } = await sb
         .from("group_scheduled_messages")
@@ -1482,7 +1481,7 @@ router.post("/import-backup", async (req: Request, res: Response) => {
           content,
           schedule_type: scheduleType,
           scheduled_at: scheduledAt,
-          cron_expression: cronExpression,
+          cron_expression: null,
           interval_minutes: intervalMinutes,
           is_active: msg.is_active ?? true,
           next_run_at: nextRunAt,
