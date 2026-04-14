@@ -1140,10 +1140,12 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         const personalizedSubject = replaceVariables(template.subject, vars);
 
         // Create email_sends record
+        const itemWorkspaceId = item.workspace_id || (await resolveWorkspaceId(item.user_id));
         const { data: sendLog } = await supabase
           .from("email_sends")
           .insert({
             user_id: item.user_id,
+            workspace_id: itemWorkspaceId,
             campaign_id: item.campaign_id,
             template_id: item.template_id,
             recipient_email: item.recipient_email,
@@ -1157,7 +1159,7 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         let finalHtml = sendLog
           ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
           : personalizedHtml;
-        if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, item.user_id, appUrl);
+        if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, item.user_id, appUrl, itemWorkspaceId);
 
         const fromAddress = smtpConfig.from_name
           ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
