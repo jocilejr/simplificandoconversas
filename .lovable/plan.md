@@ -1,81 +1,92 @@
 
 
-# Scheduler Real-Time com Timers In-Memory
+# Dashboard de Debug Completo do Scheduler
 
-## Resumo da abordagem
+## Resumo
 
-Substituir o cron de polling (query no banco a cada minuto) por **timers in-memory** (`setTimeout`) que disparam no momento exato. Mensagens no passado são **ignoradas** (não entram na fila), apenas recalcula-se o próximo horário.
+Criar um painel de debug detalhado que mostra o estado completo de cada mensagem agendada: futuras com timer ativo/ausente, passadas com status de envio por grupo, horarios de entrada na fila e envio, falhas, e detecção de "timer passou mas não enviou".
 
-## Impacto na VPS: Cron vs Timers
+## Backend — Novo endpoint
 
-```text
-                        CRON ATUAL                    TIMERS IN-MEMORY
-─────────────────────────────────────────────────────────────────────────
-Queries ao banco        1 query/minuto (sempre)       0 queries em idle
-                        + N queries por msg due       queries só quando dispara
-CPU em idle             Constante (polling)           Zero (setTimeout dorme)
-RAM extra               Nenhuma                       ~1KB por timer (Map entry)
-                                                      ~90 msgs = ~90KB (nada)
-Precisão                ±60 segundos                  ±1 segundo
-Risco de bulk fire      ALTO (janela pega tudo)       ZERO (1 timer = 1 msg)
-Risco de duplicação     Possível (race condition)     Impossível (timer único)
-Queries no startup      Nenhuma                       1 query (carrega tudo)
-─────────────────────────────────────────────────────────────────────────
+**Arquivo:** `deploy/backend/src/routes/groups-api.ts`
+
+Novo `GET /groups/scheduler-debug?workspaceId=...` que retorna:
+
+1. **Todas as mensagens agendadas** (ativas e inativas do dia) com join em `group_campaigns` para nome
+2. **Status do timer in-memory** via `groupScheduler.hasTimer(msgId)` e `groupScheduler.activeCount`
+3. **Itens da fila associados** — para cada `scheduled_message_id`, busca em `group_message_queue` os registros das ultimas 24h com: `status`, `group_jid`, `group_name`, `created_at` (entrada na fila), `started_at`, `completed_at`, `error_message`
+4. **Detecção de anomalia**: se `next_run_at` está no passado, `is_active = true`, e não há item na fila recente → flag `missed: true`
+
+Resposta:
+```json
+{
+  "timers_active": 42,
+  "server_time_utc": "...",
+  "server_time_brt": "...",
+  "messages": [{
+    "id": "...",
+    "schedule_type": "weekly",
+    "message_type": "text",
+    "is_active": true,
+    "next_run_at": "...",
+    "last_run_at": "...",
+    "has_timer": true,
+    "missed": false,
+    "campaign_name": "Campanha X",
+    "content_preview": "Texto da mensagem...",
+    "queue_items": [{
+      "group_jid": "...",
+      "group_name": "Grupo Y",
+      "status": "sent",
+      "created_at": "...",
+      "started_at": "...",
+      "completed_at": "...",
+      "error_message": null
+    }]
+  }]
+}
 ```
 
-**Conclusão: os timers são MAIS LEVES que o cron atual.** O cron faz 1 query por minuto (1.440/dia) mesmo quando não tem nada para enviar. Os timers fazem 0 queries em idle e só acessam o banco quando realmente precisam disparar.
+## Frontend — 3 novos arquivos + 1 modificado
 
-## Regra de ouro: mensagens passadas = ignorar
+### `src/hooks/useSchedulerDebug.ts`
+- useQuery com polling de 30s
+- Busca `GET /groups/scheduler-debug?workspaceId=...`
 
-- No startup, se `next_run_at` já passou: **não envia**. Calcula o próximo `next_run_at` e agenda o timer.
-- Em caso de crash/restart: mesmo comportamento. Pula o que perdeu e agenda o próximo.
-- Nunca haverá bulk fire.
+### `src/components/grupos/SchedulerDebugPanel.tsx`
+Card completo com:
+- **Header**: Timers ativos, horario do servidor (BRT), botao de refresh
+- **Filtros**: Todas / Futuras / Passadas / Com problemas
+- **Lista cronologica** de cada mensagem agendada mostrando:
+  - Horario BRT (destaque visual: passada=esmaecida, proxima=highlight, futura=normal)
+  - Badge tipo (text/image/audio/file)
+  - Nome da campanha
+  - Indicador timer: verde (ativo) / vermelho (ausente) / amarelo (missed — timer passou sem enviar)
+  - `last_run_at` formatado
+- **Expansivel por mensagem**: ao clicar, mostra tabela detalhada dos `queue_items`:
+  - Grupo (nome + JID curto)
+  - Status com cor (sent=verde, failed=vermelho, pending=amarelo, cancelled=cinza, processing=azul)
+  - Horario entrada na fila (`created_at`)
+  - Horario inicio processamento (`started_at`)
+  - Horario conclusao (`completed_at`)
+  - Tempo total (completed - created)
+  - Mensagem de erro (se houver)
+- **Contadores por mensagem**: X enviadas, Y falhas, Z canceladas
 
-## Alterações
+### `src/components/grupos/GroupDashboardTab.tsx`
+- Importar e adicionar `SchedulerDebugPanel` como card full-width abaixo dos cards existentes
 
-### 1. `deploy/backend/src/index.ts`
+## Detecção de problemas (visual)
 
-**Remover:** O cron `"* * * * *"` do group scheduler (linhas 195-309).
+- **Timer ausente**: mensagem ativa com `next_run_at` futuro mas `has_timer = false` → badge vermelho "Sem Timer"
+- **Missed**: `next_run_at` no passado, `is_active = true`, sem queue items recentes → badge amarelo "Perdida"
+- **Falha total**: todos queue_items com status `failed` → badge vermelho "Falhou"
+- **OK**: timer ativo ou já executou com sucesso → badge verde
 
-**Adicionar:** Classe `GroupSchedulerManager` com:
-- `Map<string, NodeJS.Timeout>` — um timer por `message_id`
-- `loadAll()` — no startup, carrega mensagens ativas, para cada uma:
-  - Se `next_run_at` no passado: recalcula próximo e salva no banco (sem enfileirar)
-  - Se `next_run_at` no futuro: cria `setTimeout` com o delay correto
-- `scheduleMessage(msg)` — cria/recria timer para uma mensagem
-- `cancelMessage(msgId)` — cancela timer (quando user deleta/desativa)
-- `fireMessage(msg)` — mesma lógica atual de enfileiramento, com as correções:
-  - Só avança `next_run_at` se `queueItems.length > 0`
-  - Não desativa msg se campanha está inativa (apenas pula)
-  - Logs detalhados quando nada é enfileirado
-
-**Manter:** Um cron de segurança leve a cada 5 minutos que verifica se há mensagens ativas sem timer (edge case de crash durante processamento). Este cron **não enfileira** — apenas recria timers faltantes.
-
-### 2. `deploy/backend/src/routes/groups-api.ts`
-
-- Nas rotas de CRUD de mensagens agendadas (criar/editar/deletar/toggle): chamar `scheduler.scheduleMessage()` ou `scheduler.cancelMessage()` para que o timer seja criado/cancelado imediatamente quando o usuário interage pela UI.
-- Exportar a instância do scheduler para uso no index.
-
-### 3. Correções incluídas
-
-- **Não avançar schedule se 0 itens enfileirados** — protege contra consumo vazio
-- **Não desativar msg quando campanha inativa** — apenas pula
-- **Logs para cada caso** — "campanha inativa", "sem grupos", "tudo dedup"
-- **BRT/UTC** — já está no código fonte, o rebuild ativa
-
-## Pós-deploy na VPS
+## Pós-deploy
 
 ```bash
 cd ~/simplificandoconversas && git pull origin main
 cd deploy && docker compose up -d --build backend
-
-# Resetar next_run_at para recálculo limpo
-docker compose exec -T postgres psql -U postgres -d postgres -c "
-UPDATE group_scheduled_messages SET next_run_at = NULL WHERE is_active = true;
-"
-docker compose restart backend
-
-# Verificar timers carregados
-docker compose logs -f backend 2>&1 | grep -i "scheduler"
 ```
 
