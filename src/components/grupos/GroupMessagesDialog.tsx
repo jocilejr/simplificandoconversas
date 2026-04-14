@@ -41,7 +41,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
   const [showForm, setShowForm] = useState(false);
   const [editMsg, setEditMsg] = useState<any>(null);
 
-  const filteredMessages = messages.filter((m: any) => m.schedule_type === activeTab);
+  
 
   const getPreview = (msg: any) => {
     const c = msg.content || {};
@@ -100,7 +100,9 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
             ))}
           </TabsList>
 
-          {SCHEDULE_TABS.map(tab => (
+          {SCHEDULE_TABS.map(tab => {
+            const tabMessages = messages.filter((m: any) => m.schedule_type === tab.value);
+            return (
             <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">{tab.desc}</p>
@@ -109,14 +111,14 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                 </Button>
               </div>
 
-              {filteredMessages.length === 0 && !showForm && (
+              {tabMessages.length === 0 && !showForm && (
                 <div className="border border-dashed border-border rounded-xl p-10 text-center">
                   <CalendarClock className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
                   <p className="text-xs text-muted-foreground/60">Nenhuma mensagem {tab.label.toLowerCase()} configurada.</p>
                 </div>
               )}
 
-              {filteredMessages.map((msg: any) => {
+              {tabMessages.map((msg: any) => {
                 const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
                 const hasMention = msg.content?.mentionAll;
                 return (
@@ -173,7 +175,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
               {showForm && (
                 <GroupScheduledMessageForm
-                  scheduleType={activeTab}
+                  scheduleType={tab.value}
                   editData={editMsg}
                   onSave={handleSave}
                   onCancel={() => { setShowForm(false); setEditMsg(null); }}
@@ -181,7 +183,8 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                 />
               )}
             </TabsContent>
-          ))}
+            );
+          })}
         </Tabs>
       </DialogContent>
     </Dialog>
