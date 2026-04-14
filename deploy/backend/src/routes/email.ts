@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const router = Router();
 
@@ -199,11 +200,14 @@ async function logEvent(
   sendId: string,
   userId: string,
   eventType: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
+  workspaceId?: string | null
 ) {
+  const wsId = workspaceId || (await resolveWorkspaceId(userId));
   await supabase.from("email_events").insert({
     send_id: sendId,
     user_id: userId,
+    workspace_id: wsId,
     event_type: eventType,
     metadata: metadata || {},
   });
@@ -219,7 +223,7 @@ function injectTrackingPixel(html: string, sendId: string, baseUrl: string): str
 }
 
 /** Rewrite all <a href="..."> links in HTML to tracking URLs, creating email_link_clicks records */
-async function rewriteLinks(html: string, sendId: string, userId: string, baseUrl: string): Promise<string> {
+async function rewriteLinks(html: string, sendId: string, userId: string, baseUrl: string, workspaceId?: string | null): Promise<string> {
   const linkRegex = /<a\s([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>/gi;
   const matches: { full: string; pre: string; url: string; post: string }[] = [];
   let m: RegExpExecArray | null;
@@ -235,9 +239,10 @@ async function rewriteLinks(html: string, sendId: string, userId: string, baseUr
   const urlToId = new Map<string, string>();
   for (const match of matches) {
     if (urlToId.has(match.url)) continue;
+    const wsId = workspaceId || (await resolveWorkspaceId(userId));
     const { data } = await supabase
       .from("email_link_clicks")
-      .insert({ send_id: sendId, user_id: userId, original_url: match.url })
+      .insert({ send_id: sendId, user_id: userId, workspace_id: wsId, original_url: match.url })
       .select("id")
       .single();
     if (data) urlToId.set(match.url, data.id);
@@ -264,6 +269,9 @@ router.post("/send", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Campos obrigatórios: to, subject, html, userId" });
     }
 
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
+
     if (await isSuppressed(userId, to)) {
       return res.status(400).json({ error: "E-mail suprimido (bounce/unsubscribe)" });
     }
@@ -275,6 +283,7 @@ router.post("/send", async (req: Request, res: Response) => {
       .from("email_sends")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         template_id: templateId || null,
         recipient_email: to,
         recipient_name: recipientName || null,
@@ -285,7 +294,7 @@ router.post("/send", async (req: Request, res: Response) => {
 
     const appUrl = process.env.APP_PUBLIC_URL || supabaseUrl;
     let finalHtml = sendLog ? injectTrackingPixel(html, sendLog.id, appUrl) : html;
-    if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
+    if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl, workspaceId);
 
     try {
       await transporter.sendMail({
@@ -299,7 +308,7 @@ router.post("/send", async (req: Request, res: Response) => {
 
       if (sendLog) {
         await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-        await logEvent(sendLog.id, userId, "sent");
+        await logEvent(sendLog.id, userId, "sent", undefined, workspaceId);
       }
       res.json({ ok: true, sendId: sendLog?.id });
     } catch (sendErr: any) {
@@ -308,7 +317,7 @@ router.post("/send", async (req: Request, res: Response) => {
           .from("email_sends")
           .update({ status: "failed", error_message: sendErr.message })
           .eq("id", sendLog.id);
-        await logEvent(sendLog.id, userId, "failed", { error: sendErr.message });
+        await logEvent(sendLog.id, userId, "failed", { error: sendErr.message }, workspaceId);
       }
       throw sendErr;
     }
@@ -325,6 +334,9 @@ router.post("/campaign", async (req: Request, res: Response) => {
     const { campaignId, userId } = req.body;
     if (!campaignId || !userId)
       return res.status(400).json({ error: "Campos obrigatórios: campaignId, userId" });
+
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
 
     const { data: campaign, error: campErr } = await supabase
       .from("email_campaigns")
@@ -441,6 +453,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
         .from("email_sends")
         .insert({
           user_id: userId,
+          workspace_id: workspaceId,
           campaign_id: campaignId,
           template_id: template.id,
           recipient_email: recipient.email,
@@ -453,14 +466,14 @@ router.post("/campaign", async (req: Request, res: Response) => {
       let finalHtml = sendLog
         ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
         : personalizedHtml;
-      if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl);
+      if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, userId, appUrl, workspaceId);
 
       try {
         await transporter.sendMail({ from: fromAddress, to: recipient.email, subject: personalizedSubject, html: finalHtml });
         sentCount++;
         if (sendLog) {
           await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-          await logEvent(sendLog.id, userId, "sent");
+          await logEvent(sendLog.id, userId, "sent", undefined, workspaceId);
         }
       } catch (sendErr: any) {
         failedCount++;
@@ -469,7 +482,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
             .from("email_sends")
             .update({ status: "failed", error_message: sendErr.message })
             .eq("id", sendLog.id);
-          await logEvent(sendLog.id, userId, "failed", { error: sendErr.message });
+          await logEvent(sendLog.id, userId, "failed", { error: sendErr.message }, workspaceId);
         }
         console.error(`[email/campaign] Falha para ${recipient.email}:`, sendErr.message);
       }
@@ -497,6 +510,7 @@ router.post("/campaign", async (req: Request, res: Response) => {
         const inserts = validRecipients.map((r) => ({
           follow_up_id: fu.id,
           user_id: userId,
+          workspace_id: workspaceId,
           recipient_email: r.email,
           status: "pending",
           scheduled_at: scheduledAt.toISOString(),
@@ -765,11 +779,15 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
 
     if (!userId) return res.status(401).json({ error: "API Key inválida" });
 
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado para este usuário" });
+
     const { event, data } = req.body;
 
     // Log the request
     await supabase.from("api_request_logs").insert({
       user_id: userId,
+      workspace_id: workspaceId,
       method: "POST",
       path: "/api/email/webhook/inbound",
       status_code: 200,
@@ -791,6 +809,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .from("email_sends")
           .insert({
             user_id: userId,
+            workspace_id: workspaceId,
             template_id: templateId || null,
             recipient_email: to,
             recipient_name: recipientName || null,
@@ -810,7 +829,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
 
         if (sendLog) {
           await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-          await logEvent(sendLog.id, userId, "sent");
+          await logEvent(sendLog.id, userId, "sent", undefined, workspaceId);
         }
         return res.json({ ok: true, sendId: sendLog?.id });
       }
@@ -843,6 +862,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
             await supabase.from("email_follow_up_sends").insert({
               follow_up_id: fu.id,
               user_id: userId,
+              workspace_id: workspaceId,
               recipient_email: email,
               status: "pending",
               scheduled_at: scheduledAt.toISOString(),
@@ -874,6 +894,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           .upsert(
             {
               user_id: userId,
+              workspace_id: workspaceId,
               email: normalized.email,
               name: regName || null,
               tags: regTags || [],
@@ -915,6 +936,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
                 try {
                   await supabase.from("email_queue").insert({
                     user_id: userId,
+                    workspace_id: workspaceId,
                     campaign_id: camp.id,
                     template_id: template.id,
                     smtp_config_id: camp.smtp_config_id || null,
@@ -959,8 +981,9 @@ router.post("/webhook/events", async (req: Request, res: Response) => {
 
     if (event === "bounce" || event === "complaint") {
       if (email && uid) {
+        const wsId = await resolveWorkspaceId(uid);
         await supabase.from("email_suppressions").upsert(
-          { user_id: uid, email: email.toLowerCase(), reason: event },
+          { user_id: uid, workspace_id: wsId, email: email.toLowerCase(), reason: event },
           { onConflict: "user_id,email" }
         );
       }
@@ -1118,10 +1141,12 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         const personalizedSubject = replaceVariables(template.subject, vars);
 
         // Create email_sends record
+        const itemWorkspaceId = item.workspace_id || (await resolveWorkspaceId(item.user_id));
         const { data: sendLog } = await supabase
           .from("email_sends")
           .insert({
             user_id: item.user_id,
+            workspace_id: itemWorkspaceId,
             campaign_id: item.campaign_id,
             template_id: item.template_id,
             recipient_email: item.recipient_email,
@@ -1135,7 +1160,7 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         let finalHtml = sendLog
           ? injectTrackingPixel(personalizedHtml, sendLog.id, appUrl)
           : personalizedHtml;
-        if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, item.user_id, appUrl);
+        if (sendLog) finalHtml = await rewriteLinks(finalHtml, sendLog.id, item.user_id, appUrl, itemWorkspaceId);
 
         const fromAddress = smtpConfig.from_name
           ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>`
@@ -1157,7 +1182,7 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         // Update email_sends
         if (sendLog) {
           await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-          await logEvent(sendLog.id, item.user_id, "sent");
+          await logEvent(sendLog.id, item.user_id, "sent", undefined, itemWorkspaceId);
         }
 
         // Update campaign counters
