@@ -37,6 +37,24 @@ export function useGroupQueue() {
     },
   });
 
+  const clearQueue = useMutation({
+    mutationFn: async (filter: "sent" | "failed" | "sent_failed" | "all") => {
+      const resp = await fetch(apiUrl("groups/queue/clear"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, filter }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["group-queue"] });
+      toast({ title: "Fila limpa com sucesso!" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao limpar", description: err.message, variant: "destructive" });
+    },
+  });
+
   const stats = {
     pending: queueItems.filter((i: any) => i.status === "pending").length,
     processing: queueItems.filter((i: any) => i.status === "processing").length,
@@ -45,7 +63,7 @@ export function useGroupQueue() {
     cancelled: queueItems.filter((i: any) => i.status === "cancelled").length,
   };
 
-  return { queueItems, isLoading, cancelBatch, stats };
+  return { queueItems, isLoading, cancelBatch, clearQueue, stats };
 }
 
 export function useSpamConfig() {
