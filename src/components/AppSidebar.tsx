@@ -62,7 +62,6 @@ const financeItems: MenuItem[] = [
 ];
 
 const operationalItems: MenuItem[] = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, permKey: "dashboard" },
   { title: "Fluxos", url: "/chatbot", icon: Workflow, permKey: "chatbot" },
   { title: "E-mail", url: "/email", icon: Mail, permKey: "email" },
   { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
