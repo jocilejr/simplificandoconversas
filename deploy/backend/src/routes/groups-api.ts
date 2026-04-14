@@ -1630,6 +1630,6 @@ router.post("/import-remap-media", async (req: Request, res: Response) => {
 });
 
 /* ─── Exportar helpers para uso no cron ─── */
-export { computeNextRunAfterExecution, getEvolutionConfig };
+export { getEvolutionConfig };
 
 export default router;
