@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -15,8 +16,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy } from "lucide-react";
+import { Plus, Check, Settings2, Loader2, Eye, EyeOff, Copy, Puzzle, Brain, Code, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AISection } from "@/components/settings/AISection";
+import { IntegrationApiSection } from "@/components/settings/IntegrationApiSection";
+import { EmailSettingsSection } from "@/components/settings/EmailSettingsSection";
 
 const PlatformIcons: Record<string, React.ReactNode> = {
   mercadopago: (
