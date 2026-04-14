@@ -1,37 +1,50 @@
 
-Problema que vou atacar agora:
-- A duplicação lógica da aba semanal já foi corrigida, então o bug restante parece ser de layout/overflow.
-- O modal de programação está limitando bem a altura, mas não está contendo corretamente a largura. Quando a aba “Semanal” renderiza tabs + cards com textos/URLs maiores, alguns elementos forçam overflow horizontal e a área inteira fica “desalinhada”, dando a sensação de CSS quebrado e impedindo cliques corretos.
 
-Arquivos a revisar/ajustar:
-1. `src/components/grupos/GroupMessagesDialog.tsx`
-2. `src/components/ui/tabs.tsx`
-3. `src/components/grupos/GroupScheduledMessageForm.tsx`
+## Problema
 
-Plano de implementação:
-1. Fortalecer a contenção do modal em `GroupMessagesDialog.tsx`
-- Adicionar contenção horizontal no `DialogContent` (`overflow-x-hidden`).
-- Garantir que `Tabs`, `TabsContent` e a lista de cards usem `w-full`, `min-w-0` e `overflow-hidden` onde necessário.
-- Ajustar cada card de mensagem para nunca empurrar a largura do modal: `w-full`, `min-w-0`, `overflow-hidden`.
-- No bloco de texto do card, usar truncamento mais seguro para textos longos/URLs (`overflow-hidden`, `truncate`/`line-clamp-1`, `break-all` só se necessário).
+O `DialogContent` usa `display: grid` (classe base) com `w-full`, mas o conteúdo filho (Tabs, TabsList, cards) não está contido pela largura do grid. O `overflow-x-hidden` no DialogContent não resolve porque os filhos do grid podem expandir o container antes do overflow ser aplicado.
 
-2. Corrigir o comportamento visual das abas
-- Em `tabs.tsx`, adicionar `min-w-0` no `TabsTrigger` para que tabs dentro de grids/flex não estourem largura.
-- Em `GroupMessagesDialog.tsx`, deixar cada trigger ocupar corretamente sua coluna (`w-full`) e reduzir o risco de badges/labels empurrarem o layout.
+Na screenshot: só "Único" e "Diário" aparecem, as outras 3 abas saem da tela. Os textos dos cards também vazam.
 
-3. Ajustar a linha superior de cada card
-- Permitir quebra/controlar melhor o header do card (`Badge` + horário + indicador “todos”) com `flex-wrap` ou `min-w-0`.
-- Evitar que qualquer texto pequeno nessa faixa superior empurre a largura total do card.
+## Correção: `src/components/grupos/GroupMessagesDialog.tsx`
 
-4. Ajustar o formulário da aba semanal
-- Em `GroupScheduledMessageForm.tsx`, fazer a linha dos dias da semana aceitar wrap se faltar espaço, para o editor semanal também não quebrar o modal ao abrir edição.
+Envolver todo o conteúdo do Tabs em um container com largura forçada e overflow controlado:
 
-Validação que vou considerar obrigatória depois da implementação:
-- Abrir `Grupos > Campanhas > Programação > Semanal`.
-- Confirmar que não existe mais scroll horizontal no modal.
-- Confirmar que os cards ficam contidos dentro da caixa.
-- Testar editar, excluir e ativar/desativar uma programação semanal.
-- Abrir o formulário semanal e verificar que os botões dos dias também ficam contidos.
+1. **DialogContent**: trocar `overflow-x-hidden` por uma abordagem mais agressiva — adicionar `w-full` explícito (já tem via base) e garantir que os filhos não expandam o grid.
 
-Abordagem de menor risco:
-- Vou priorizar ajustes locais nesse modal e no componente base de tabs, sem mexer na lógica de agendamento nem no backend.
+2. **Envolver o `<Tabs>` inteiro** em um `<div className="w-full min-w-0 overflow-hidden">` — isso cria um boundary real de largura que o grid do Dialog respeita.
+
+3. **TabsList**: adicionar `overflow-hidden` para que o grid de 5 colunas não expanda.
+
+4. **TabsContent**: adicionar `w-full min-w-0 overflow-hidden` para conter os cards.
+
+5. **Cada card de mensagem**: já tem `w-full min-w-0 overflow-hidden` — está correto, mas o container pai precisa do boundary.
+
+### Código resultante (trecho chave):
+
+```tsx
+<DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+  <DialogHeader>...</DialogHeader>
+
+  <div className="w-full min-w-0 overflow-hidden">
+    <Tabs value={activeTab} onValueChange={...}>
+      <TabsList className="w-full grid grid-cols-5 gap-0 overflow-hidden">
+        ...
+      </TabsList>
+
+      {SCHEDULE_TABS.map(tab => {
+        ...
+        return (
+          <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4 w-full min-w-0 overflow-hidden">
+            ...
+          </TabsContent>
+        );
+      })}
+    </Tabs>
+  </div>
+</DialogContent>
+```
+
+### Arquivo alterado
+- `src/components/grupos/GroupMessagesDialog.tsx`
+
