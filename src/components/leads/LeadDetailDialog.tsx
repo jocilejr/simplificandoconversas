@@ -318,18 +318,18 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setSelectedConversationId(null); cancelEditing(); setShowPaymentForm(false); } }}>
-      <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
+      <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col [&>button]:hidden">
 
         {/* ─── Header ─── */}
-        <div className="shrink-0 px-5 pt-5 pb-4 border-b bg-card">
+        <div className="shrink-0 px-6 pt-6 pb-5 bg-card">
           <DialogHeader className="space-y-0">
             <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <User className="h-5 w-5 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <DialogTitle className="text-base truncate">{lead.contact_name || "Lead sem nome"}</DialogTitle>
+                  <DialogTitle className="text-base font-semibold truncate">{lead.contact_name || "Lead sem nome"}</DialogTitle>
                   <DialogDescription className="flex items-center gap-1.5 mt-0.5">
                     <span className="font-mono text-xs">{lead.phone_number || formatPhone(lead.remote_jid)}</span>
                     <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
@@ -347,12 +347,15 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                 ) : (
                   <Badge variant="outline" className="text-muted-foreground">Sem pagamento</Badge>
                 )}
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onClose}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </DialogHeader>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-2 mt-4">
+          <div className="grid grid-cols-3 gap-2.5 mt-5">
             <StatCard label="Total Pago" value={formatCurrency(lead.totalPaid)} color="text-green-600" />
             <StatCard label="Pedidos" value={String(paidTxs.length)} />
             <StatCard label="Pendentes" value={String(unpaidTxs.length)} color="text-yellow-600" />
@@ -361,23 +364,23 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
 
         {/* ─── Tabbed Content ─── */}
         <Tabs defaultValue="info" className="flex-1 flex flex-col min-h-0">
-          <div className="shrink-0 border-b px-5">
-            <TabsList className="h-9 bg-transparent p-0 gap-0">
-              <TabsTrigger value="info" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
-                Dados
-              </TabsTrigger>
-              <TabsTrigger value="financial" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
-                Financeiro
-              </TabsTrigger>
-              <TabsTrigger value="products" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
-                Produtos
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
-                Conversas
-              </TabsTrigger>
-              <TabsTrigger value="reminders" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 text-xs">
-                Agendamentos
-              </TabsTrigger>
+          <div className="shrink-0 px-6">
+            <TabsList className="h-10 w-full bg-transparent p-0 gap-0 justify-start border-b rounded-none">
+              {[
+                { value: "info", label: "Dados" },
+                { value: "financial", label: "Financeiro" },
+                { value: "products", label: "Produtos" },
+                { value: "history", label: "Conversas" },
+                { value: "reminders", label: "Agendamentos" },
+              ].map((tab) => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 text-xs font-medium h-10 -mb-px"
+                >
+                  {tab.label}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
