@@ -1492,9 +1492,10 @@ function parseMultipart(body: Buffer, boundary: string): MultipartPart[] {
 /* ─── POST /import-remap-media ─── */
 router.post("/import-remap-media", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, messageIds, mediaUrlMap } = req.body;
-    if (!workspaceId || !messageIds || !mediaUrlMap) {
-      return res.status(400).json({ error: "Missing workspaceId, messageIds or mediaUrlMap" });
+    const { workspaceId, messageIds, mediaUrlMap, urlRemapMap } = req.body;
+    const remapEntries = mediaUrlMap || urlRemapMap;
+    if (!workspaceId || !messageIds || !remapEntries) {
+      return res.status(400).json({ error: "Missing workspaceId, messageIds or mediaUrlMap/urlRemapMap" });
     }
 
     const sb = getServiceClient();
@@ -1512,7 +1513,7 @@ router.post("/import-remap-media", async (req: Request, res: Response) => {
 
       let contentStr = JSON.stringify(msg.content || {});
       let changed = false;
-      for (const [oldPath, newUrl] of Object.entries(mediaUrlMap)) {
+      for (const [oldPath, newUrl] of Object.entries(remapEntries)) {
         if (contentStr.includes(oldPath)) {
           contentStr = contentStr.split(oldPath).join(newUrl as string);
           changed = true;
