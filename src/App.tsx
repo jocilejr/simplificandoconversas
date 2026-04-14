@@ -52,7 +52,7 @@ const App = () => (
              <Route path="/a/entrega/:phone" element={<MemberAccess />} />
              <Route path="/membros/:phone" element={<MemberAccess />} />
              <Route path="/:phone" element={<MemberAccess />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/relatorio" replace />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
                 <Route path="/dashboard" element={<PermissionGate permission="dashboard" redirect><Dashboard /></PermissionGate>} />

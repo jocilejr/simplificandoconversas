@@ -51,23 +51,23 @@ interface MenuItem {
   permKey: PermissionKey;
 }
 
-const mainItems: MenuItem[] = [
+const financeItems: MenuItem[] = [
+  { title: "Relatório", url: "/relatorio", icon: BarChart3, permKey: "relatorio" },
+  { title: "Leads", url: "/leads", icon: Users, permKey: "leads" },
+  { title: "Transações", url: "/transacoes", icon: Receipt, permKey: "transacoes" },
+  { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
+  { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
+  { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
+  { title: "Follow Up", url: "/follow-up", icon: PhoneForwarded, permKey: "recuperacao" },
+];
+
+const operationalItems: MenuItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, permKey: "dashboard" },
   { title: "Fluxos", url: "/chatbot", icon: Workflow, permKey: "chatbot" },
   { title: "E-mail", url: "/email", icon: Mail, permKey: "email" },
   { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
   { title: "Grupos", url: "/grupos", icon: UsersRound, permKey: "grupos" },
   { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon, permKey: "links_uteis" },
-];
-
-const financeItems: MenuItem[] = [
-  { title: "Leads", url: "/leads", icon: Users, permKey: "leads" },
-  { title: "Transações", url: "/transacoes", icon: Receipt, permKey: "transacoes" },
-  { title: "Relatório", url: "/relatorio", icon: BarChart3, permKey: "relatorio" },
-  { title: "Gerar Boleto", url: "/gerar-boleto", icon: FileText, permKey: "gerar_boleto" },
-  { title: "Área de Membros", url: "/area-membros", icon: Crown, permKey: "area_membros" },
-  { title: "Entrega Digital", url: "/entrega", icon: Package, permKey: "entrega" },
-  { title: "Follow Up", url: "/follow-up", icon: PhoneForwarded, permKey: "recuperacao" },
 ];
 
 function MenuGroup({ label, items, collapsed, isActive, dotUrls }: {
@@ -134,8 +134,8 @@ export function AppSidebar() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   // Filter menu items by permissions
-  const visibleMain = mainItems.filter((i) => hasPermission(i.permKey));
   const visibleFinance = financeItems.filter((i) => hasPermission(i.permKey));
+  const visibleOperational = operationalItems.filter((i) => hasPermission(i.permKey));
   const canTriggerFlow = hasPermission("disparar_fluxo");
   const canSettings = hasPermission("settings");
 
@@ -160,14 +160,14 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2">
-        {visibleMain.length > 0 && (
-          <MenuGroup label="Operacional" items={visibleMain} collapsed={collapsed} isActive={isActive} />
+        {visibleFinance.length > 0 && (
+          <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} dotUrls={financeDotUrls} />
         )}
 
-        {visibleFinance.length > 0 && (
+        {visibleOperational.length > 0 && (
           <>
             <Separator className="my-1 opacity-40" />
-            <MenuGroup label="Financeiro" items={visibleFinance} collapsed={collapsed} isActive={isActive} dotUrls={financeDotUrls} />
+            <MenuGroup label="Operacional" items={visibleOperational} collapsed={collapsed} isActive={isActive} />
           </>
         )}
 

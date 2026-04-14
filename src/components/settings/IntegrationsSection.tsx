@@ -85,6 +85,18 @@ const INTEGRATIONS: Integration[] = [
     fields: [],
   },
   {
+    id: "meta_ads",
+    name: "Meta Ads",
+    description: "Gastos com anúncios Meta/Facebook para deduções no relatório",
+    platform: "meta_ads",
+    icon: "📊",
+    available: true,
+    fields: [
+      { key: "access_token", label: "Access Token (longa duração)", placeholder: "EAAxxxxxxx...", type: "password" },
+      { key: "ad_account_id", label: "ID da Conta de Anúncios", placeholder: "act_123456789" },
+    ],
+  },
+  {
     id: "pagbank",
     name: "PagBank",
     description: "Boletos e PIX",
