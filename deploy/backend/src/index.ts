@@ -214,6 +214,12 @@ cron.schedule("* * * * *", async () => {
     }
     if (!dueMessages || dueMessages.length === 0) return;
 
+    // ─── Flood protection: max 5 messages per cycle ───
+    if (dueMessages.length > 5) {
+      console.warn(`[cron] ⚠️ Group scheduler: ${dueMessages.length} messages due — processing max 5 per cycle to prevent flood`);
+      dueMessages.splice(5);
+    }
+
     console.log(`[cron] 📅 Group scheduler: ${dueMessages.length} message(s) due`);
 
     for (const msg of dueMessages) {
