@@ -799,20 +799,6 @@ export function IntegrationsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        </TabsContent>
-
-        <TabsContent value="ai" className="mt-4">
-          <AISection />
-        </TabsContent>
-
-        <TabsContent value="api" className="mt-4">
-          <IntegrationApiSection />
-        </TabsContent>
-
-        <TabsContent value="email" className="mt-4">
-          <EmailSettingsSection />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
