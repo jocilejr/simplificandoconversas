@@ -979,6 +979,35 @@ router.post("/queue/cancel-batch", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── Queue Clear Endpoints ─── */
+router.post("/queue/clear", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, filter } = req.body;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+    let query = sb.from("group_message_queue").delete().eq("workspace_id", workspaceId);
+
+    if (filter === "sent") {
+      query = query.eq("status", "sent");
+    } else if (filter === "failed") {
+      query = query.eq("status", "failed");
+    } else if (filter === "sent_failed") {
+      query = query.in("status", ["sent", "failed"]);
+    } else if (filter === "all") {
+      query = query.in("status", ["sent", "failed", "cancelled"]);
+    } else {
+      return res.status(400).json({ error: "Invalid filter. Use: sent, failed, sent_failed, all" });
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Anti-Spam Config Endpoints ─── */
 router.get("/spam-config", async (req: Request, res: Response) => {
   try {
