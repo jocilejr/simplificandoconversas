@@ -37,7 +37,7 @@ export function useTransactionNotifications() {
   const knownIds = useRef<Set<string>>(new Set());
   const initialized = useRef(false);
   const permissionAsked = useRef(false);
-  const originalTitle = useRef(document.title);
+  
 
   // Request browser notification permission once
   useEffect(() => {
