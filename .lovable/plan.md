@@ -1,32 +1,52 @@
 
 
-# Correção: Edição de mensagens agendadas não carrega dados salvos
+# Correção: 185 mensagens agendadas órfãs travando o scheduler
 
 ## Problema identificado
 
-Quando você clica em "Editar" numa mensagem agendada, o formulário não restaura corretamente todos os valores salvos. Isso acontece por dois motivos:
+O scheduler encontra **185 mensagens ativas** a cada ciclo (1 min), mas todas pertencem a **campanhas inativas** (`224987bf`, `8e4cb1f1`, `dd464b66`). As únicas campanhas ativas são `b30936b9` e `b63ff159`.
 
-1. **Conflito de chaves JSON**: Mensagens importadas usam `weekDays` (camelCase) e `runTime`, mas o formulário de edição só verifica `weekdays` (lowercase) na linha 121. Se a chave não bate, cai no fallback que mantém o padrão `[1,2,3,4,5]`.
+No código (linha 233), quando a campanha é inativa, o scheduler faz `continue` — pula a mensagem sem desativá-la. Na próxima execução (1 min depois), as mesmas 185 mensagens são encontradas novamente, criando um loop infinito que:
 
-2. **`scheduleType` vem da aba ativa, não da mensagem**: O formulário recebe `scheduleType={activeTab}` em vez de usar o `schedule_type` real da mensagem sendo editada. Se por algum motivo não bater, o formulário exibe campos de agendamento errados.
+1. Consome recursos desnecessariamente a cada minuto
+2. Impede mensagens legítimas de serem processadas (o limite de 5/ciclo é consumido pelas órfãs)
+3. Gera spam no log
+
+Além disso, todas as 185 mensagens têm `cron_expression = NULL` e `last_run_at = NULL`, indicando que o self-heal na inicialização definiu `next_run_at` para o horário de boot sem conseguir reconstruir o cron.
 
 ## Correção
 
-### Arquivo: `src/components/grupos/GroupScheduledMessageForm.tsx`
+### 1. `deploy/backend/src/index.ts` — Desativar mensagens de campanhas inativas
 
-- **Linha 121**: Verificar tanto `weekdays` quanto `weekDays` (camelCase)
-  ```
-  setWeekdays(editData.content.weekdays || editData.content.weekDays)
-  ```
+Na linha 233-236, quando a campanha é inativa ou não existe, **desativar a mensagem agendada** em vez de apenas pular:
 
-### Arquivo: `src/components/grupos/GroupMessagesDialog.tsx`
+```typescript
+if (campErr || !campaign || !campaign.is_active) {
+  // Deactivate orphaned message
+  await sb.from("group_scheduled_messages")
+    .update({ is_active: false, next_run_at: null })
+    .eq("id", msg.id);
+  if (campErr) console.error(`[cron] group-scheduler campaign fetch error for ${msg.id}:`, campErr.message);
+  else console.log(`[cron] 🧹 Deactivated orphaned msg ${msg.id} (campaign inactive/missing)`);
+  continue;
+}
+```
 
-- **Linha 347**: Passar o `schedule_type` real da mensagem quando estiver editando, em vez de `activeTab`
-  ```
-  scheduleType={editingMsg?.schedule_type || activeTab}
-  ```
+### 2. Limpeza imediata na VPS (após deploy)
+
+Executar na VPS para limpar as 185 mensagens órfãs de uma vez:
+
+```bash
+docker compose exec postgres psql -U postgres -d postgres --pset=pager=off -c "
+UPDATE group_scheduled_messages SET is_active = false, next_run_at = NULL 
+WHERE is_active = true AND campaign_id NOT IN (
+  SELECT id FROM group_campaigns WHERE is_active = true
+);"
+```
 
 ## Resultado esperado
 
-Ao clicar em "Editar", o formulário carregará exatamente o horário, dias da semana, tipo de frequência e todas as opções que foram salvas originalmente na mensagem.
+- O scheduler para de processar mensagens órfãs
+- Mensagens de campanhas ativas serão processadas corretamente
+- Logs limpos, sem spam de "185 messages due"
 
