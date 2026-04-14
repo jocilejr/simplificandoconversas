@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { resolveWorkspaceId } from "../lib/workspace";
 
 const router = Router();
 
