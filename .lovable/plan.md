@@ -2,34 +2,43 @@
 
 ## Problema
 
-Existem **dois sistemas concorrentes** controlando o `document.title`:
+O badge de notificação (sininho 🔔) e o título da aba só limpam quando o usuário clica no popup de notificações e faz "dismiss". Quando o usuário acessa a aba de transações correspondente (ex: "Aprovados"), deveria limpar automaticamente — mas os dois sistemas são independentes e não se comunicam.
 
-1. **`useUnseenTransactions`** (linha 73-83) — conta transações com `viewed_at IS NULL` e define o título como `(N) Nova transação! | Simplificando`. Este nunca limpa porque `viewed_at` só é atualizado via API do backend (`platform/mark-seen`/`platform/mark-tab-seen`), que depende de clicar nas abas da tabela de transações.
-
-2. **`useTransactionNotifications`** (linha 118-141) — controla título com base nas notificações in-memory, que só limpam com `dismissAll`.
-
-Ambos fazem `setInterval` de 1s sobrescrevendo `document.title`, criando conflito. Mesmo que você limpe um, o outro mantém o título alterado.
+- `useUnseenTransactions` → controla `document.title` via `viewed_at` no banco (depende do backend VPS responder ao `markTabSeen`)
+- `useTransactionNotifications` → controla o badge do sininho via estado in-memory (nunca se conecta ao `markTabSeen`)
 
 ## Solução
 
-Unificar a lógica de título no `useUnseenTransactions` (que é o sistema correto baseado em `viewed_at`) e **remover** a lógica de título do `useTransactionNotifications`.
+Conectar os dois sistemas: quando o usuário acessa uma aba de transações, limpar automaticamente as notificações in-memory correspondentes àquela aba.
 
 ### 1. `src/hooks/useTransactionNotifications.ts`
-- **Remover** todo o bloco de tab title flashing (linhas 118-141)
-- O hook continua gerenciando apenas as notificações in-app (popup) e browser notifications
+- Adicionar função `dismissByTab(tab: TabKey)` que remove do array in-memory todas as notificações que correspondem ao tipo/status daquela aba
+- Mapear tabs para filtros: `aprovados` → status=aprovado, `boletos-gerados` → type=boleto+status=pendente, etc.
+- Exportar essa função no retorno do hook
 
-### 2. `src/hooks/useUnseenTransactions.ts`  
-- **Remover** a assinatura Realtime (linhas 49-67) que não funciona na VPS
-- Adicionar `refetchInterval: 15_000` na query para polling
-- Manter a lógica de `document.title` que já existe (linhas 73-83) — esta é a correta pois se baseia no `viewed_at` do banco
+### 2. `src/components/AppLayout.tsx`
+- Expor `dismissByTab` do hook para os filhos via contexto ou passando direto
 
 ### 3. `src/components/transactions/TransactionsTable.tsx`
-- Verificar se `markTabSeen` está sendo chamado ao entrar na página de transações (não só ao trocar de aba)
-- Adicionar chamada automática de `markTabSeen` para a aba ativa quando a página `/transacoes` é montada
+- Importar `useTransactionNotifications` (ou receber `dismissByTab` como prop/contexto)
+- No `useEffect` que chama `markTabAsSeen`, também chamar `dismissByTab(tab)` para limpar as notificações in-memory correspondentes
 
-### Resultado
-- Quando o usuário abre `/transacoes`, o backend marca as transações como vistas (`viewed_at = now()`)
-- O polling detecta que não há mais transações sem `viewed_at`
-- O título volta ao normal automaticamente
-- Sem conflito entre dois sistemas
+### Alternativa mais simples (preferida)
+Em vez de criar contexto, colocar a lógica de limpeza diretamente no `useTransactionNotifications`:
+- O hook já faz polling das transações com `viewed_at IS NULL`
+- Quando o polling retorna, **remover** do array in-memory qualquer notificação cujo `id` não esteja mais na lista de unseen (ou seja, já foi marcado como visto pelo backend)
+- Isso garante sincronização automática: quando `markTabSeen` atualiza o banco, o próximo polling limpa as notificações in-memory
+
+### Detalhes técnicos
+
+```typescript
+// useTransactionNotifications.ts — sincronizar in-memory com banco
+useEffect(() => {
+  if (!recentTx) return;
+  const unseenIds = new Set(recentTx.map(tx => tx.id));
+  setNotifications(prev => prev.filter(n => unseenIds.has(n.id)));
+}, [recentTx]);
+```
+
+Isso resolve o problema sem criar acoplamento entre componentes — o polling já traz as transações unseen, e qualquer uma que foi marcada como vista (por `markTabSeen`) automaticamente sai da lista in-memory no próximo ciclo de 15s.
 
