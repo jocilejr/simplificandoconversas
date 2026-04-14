@@ -202,11 +202,13 @@ cron.schedule("* * * * *", async () => {
     );
 
     const now = new Date().toISOString();
+    const windowStart = new Date(Date.now() - 90 * 1000).toISOString();
     const { data: dueMessages, error } = await sb
       .from("group_scheduled_messages")
       .select("*")
       .eq("is_active", true)
       .lte("next_run_at", now)
+      .gte("next_run_at", windowStart)
       .order("next_run_at", { ascending: true })
       .order("created_at", { ascending: true });
 
@@ -215,12 +217,6 @@ cron.schedule("* * * * *", async () => {
       return;
     }
     if (!dueMessages || dueMessages.length === 0) return;
-
-    // ─── Flood protection: max 5 messages per cycle ───
-    if (dueMessages.length > 5) {
-      console.warn(`[cron] ⚠️ Group scheduler: ${dueMessages.length} messages due — processing max 5 per cycle to prevent flood`);
-      dueMessages.splice(5);
-    }
 
     console.log(`[cron] 📅 Group scheduler: ${dueMessages.length} message(s) due`);
 
