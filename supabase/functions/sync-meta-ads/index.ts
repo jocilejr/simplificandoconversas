@@ -18,54 +18,65 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing params" }), { status: 400, headers: corsHeaders });
     }
 
-    // Get Meta credentials
-    const { data: conn } = await supabase
-      .from("platform_connections")
-      .select("credentials")
+    // Get all enabled Meta Ads accounts for this workspace
+    const { data: accounts } = await supabase
+      .from("meta_ad_accounts")
+      .select("*")
       .eq("workspace_id", workspace_id)
-      .eq("platform", "meta_ads")
-      .eq("enabled", true)
-      .single();
+      .eq("enabled", true);
 
-    if (!conn?.credentials) {
-      return new Response(JSON.stringify({ error: "Meta Ads not connected" }), { status: 400, headers: corsHeaders });
+    if (!accounts || accounts.length === 0) {
+      return new Response(JSON.stringify({ error: "No Meta Ads accounts connected" }), { status: 400, headers: corsHeaders });
     }
 
-    const { access_token, ad_account_id } = conn.credentials as { access_token: string; ad_account_id: string };
-    if (!access_token || !ad_account_id) {
-      return new Response(JSON.stringify({ error: "Missing credentials" }), { status: 400, headers: corsHeaders });
-    }
+    let totalSynced = 0;
+    const errors: string[] = [];
 
-    // Fetch from Meta API
-    const url = `https://graph.facebook.com/v21.0/${ad_account_id}/insights?` +
-      `time_range={"since":"${start_date}","until":"${end_date}"}&` +
-      `fields=spend,campaign_name,date_start&level=campaign&time_increment=1&limit=500&` +
-      `access_token=${access_token}`;
+    for (const account of accounts) {
+      const { access_token, ad_account_id, id: account_id } = account;
+      if (!access_token || !ad_account_id) continue;
 
-    const metaRes = await fetch(url);
-    const metaData = await metaRes.json();
+      try {
+        const url = `https://graph.facebook.com/v21.0/${ad_account_id}/insights?` +
+          `time_range={"since":"${start_date}","until":"${end_date}"}&` +
+          `fields=spend,campaign_name,date_start&level=campaign&time_increment=1&limit=500&` +
+          `access_token=${access_token}`;
 
-    if (metaData.error) {
-      return new Response(JSON.stringify({ error: metaData.error.message }), { status: 400, headers: corsHeaders });
-    }
+        const metaRes = await fetch(url);
+        const metaData = await metaRes.json();
 
-    const rows = (metaData.data || []).map((row: any) => ({
-      workspace_id,
-      date: row.date_start,
-      spend: parseFloat(row.spend || "0"),
-      campaign_name: row.campaign_name || "Sem nome",
-    }));
+        if (metaData.error) {
+          errors.push(`${account.label}: ${metaData.error.message}`);
+          continue;
+        }
 
-    if (rows.length > 0) {
-      const { error } = await supabase.from("meta_ad_spend").upsert(rows, {
-        onConflict: "workspace_id,date,campaign_name",
-      });
-      if (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+        const rows = (metaData.data || []).map((row: any) => ({
+          workspace_id,
+          date: row.date_start,
+          spend: parseFloat(row.spend || "0"),
+          campaign_name: row.campaign_name || "Sem nome",
+          account_id,
+        }));
+
+        if (rows.length > 0) {
+          const { error } = await supabase.from("meta_ad_spend").upsert(rows, {
+            onConflict: "workspace_id,date,campaign_name",
+          });
+          if (error) {
+            errors.push(`${account.label}: ${error.message}`);
+          } else {
+            totalSynced += rows.length;
+          }
+        }
+      } catch (e: any) {
+        errors.push(`${account.label}: ${e.message}`);
       }
     }
 
-    return new Response(JSON.stringify({ synced: rows.length }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ synced: totalSynced, accounts: accounts.length, errors }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
   }
