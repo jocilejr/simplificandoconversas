@@ -141,7 +141,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                 let displayMessages = tabMessages;
                 if (tab.value === "weekly" && weekdayFilter !== null) {
                   displayMessages = tabMessages.filter((m: any) =>
-                    (m.content?.weekdays || []).includes(weekdayFilter)
+                    (m.content?.weekDays || m.content?.weekdays || []).includes(weekdayFilter)
                   );
                 }
                 return (
