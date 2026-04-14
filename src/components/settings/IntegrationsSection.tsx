@@ -327,23 +327,35 @@ export function IntegrationsSection() {
     );
   }
 
+  // If a special panel is open, show it with a back button
+  if (specialPanel) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSpecialPanel(null)}>
+            <X className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-2">
+            {PlatformIcons[specialPanel === "openai" ? "openai" : specialPanel === "email_module" ? "email" : "custom_api"]}
+            <h2 className="text-lg font-semibold">
+              {SPECIAL_PLATFORMS.find((s) => s.id === specialPanel)?.name}
+            </h2>
+          </div>
+        </div>
+        {specialPanel === "openai" && <AISection />}
+        {specialPanel === "email_module" && <EmailSettingsSection />}
+        {specialPanel === "api_module" && <IntegrationApiSection />}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Integrações</h2>
-        <p className="text-xs text-muted-foreground">Conecte serviços externos e configure módulos da plataforma</p>
-      </div>
-
-      <Tabs defaultValue="platforms" className="w-full">
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="platforms" className="gap-1.5 text-xs"><Puzzle className="h-3.5 w-3.5" />Plataformas</TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1.5 text-xs"><Brain className="h-3.5 w-3.5" />IA</TabsTrigger>
-          <TabsTrigger value="api" className="gap-1.5 text-xs"><Code className="h-3.5 w-3.5" />API</TabsTrigger>
-          <TabsTrigger value="email" className="gap-1.5 text-xs"><Mail className="h-3.5 w-3.5" />E-mail</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="platforms" className="mt-4 space-y-4">
-        <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Integrações</h2>
+          <p className="text-xs text-muted-foreground">Conecte serviços externos e configure módulos da plataforma</p>
+        </div>
         <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => {}}>
           <Plus className="h-3.5 w-3.5" />
           Nova Integração
