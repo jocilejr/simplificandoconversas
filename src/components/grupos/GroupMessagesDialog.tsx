@@ -231,12 +231,6 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                                   <p className="text-xs text-muted-foreground truncate mt-0.5">{getPreview(msg).slice(0, 80)}</p>
                                 </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  <Switch
-                                    checked={msg.is_active}
-                                    onCheckedChange={(e) => { e; toggleMessage.mutate(msg.id); }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="scale-75"
-                                  />
                                   <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                                 </div>
                               </div>
