@@ -144,6 +144,14 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                     (m.content?.weekDays || m.content?.weekdays || []).includes(weekdayFilter)
                   );
                 }
+                displayMessages = [...displayMessages].sort((a, b) => {
+                  if (tab.value === "once") {
+                    return (a.scheduled_at || "").localeCompare(b.scheduled_at || "");
+                  }
+                  const timeA = a.content?.time || a.content?.runTime || "99:99";
+                  const timeB = b.content?.time || b.content?.runTime || "99:99";
+                  return timeA.localeCompare(timeB);
+                });
                 return (
                   <TabsContent key={tab.value} value={tab.value} className="space-y-3 mt-4">
                     <div className="flex items-center justify-between">
