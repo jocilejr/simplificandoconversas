@@ -287,23 +287,32 @@ export function IntegrationsSection() {
   };
 
   const handleMetaSave = async () => {
-    if (!user || !workspaceId) return;
-    setMetaSaving(true);
-    const payload = { ...metaForm, workspace_id: workspaceId, enabled: true };
-
-    let error;
-    if (editingMeta) {
-      ({ error } = await supabase.from("meta_ad_accounts").update({ ...metaForm, updated_at: new Date().toISOString() }).eq("id", editingMeta.id));
-    } else {
-      ({ error } = await supabase.from("meta_ad_accounts").insert(payload as any));
+    if (!user || !workspaceId) {
+      toast({ title: "Erro ao salvar conta", description: "Usuário ou workspace não encontrado", variant: "destructive" });
+      return;
     }
+    setMetaSaving(true);
+    try {
+      const payload = { ...metaForm, workspace_id: workspaceId, enabled: true };
 
-    if (error) {
-      toast({ title: "Erro ao salvar conta", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: editingMeta ? "Conta atualizada" : "Conta adicionada" });
-      await loadMetaAccounts();
-      setMetaDialog(false);
+      let error;
+      if (editingMeta) {
+        ({ error } = await supabase.from("meta_ad_accounts").update({ ...metaForm, updated_at: new Date().toISOString() }).eq("id", editingMeta.id));
+      } else {
+        ({ error } = await supabase.from("meta_ad_accounts").insert(payload as any));
+      }
+
+      if (error) {
+        console.error("Meta Ads save error:", error);
+        toast({ title: "Erro ao salvar conta", description: error.message || error.details || JSON.stringify(error), variant: "destructive" });
+      } else {
+        toast({ title: editingMeta ? "Conta atualizada" : "Conta adicionada" });
+        await loadMetaAccounts();
+        setMetaDialog(false);
+      }
+    } catch (err: any) {
+      console.error("Meta Ads exception:", err);
+      toast({ title: "Erro ao salvar conta", description: err.message, variant: "destructive" });
     }
     setMetaSaving(false);
   };
