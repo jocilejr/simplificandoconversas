@@ -207,9 +207,23 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       const variations = generatePhoneVariations(phone);
       const last8 = normalized.slice(-8);
 
+      // Build a LIKE pattern for last-8-digit matching
+      const likeLast8 = `%${last8}`;
+
       const [convosRes, txRes, memberRes, allProductsRes] = await Promise.all([
-        supabase.from("conversations").select("id, phone_number, contact_name, email").eq("workspace_id", workspaceId),
-        supabase.from("transactions").select("customer_document, customer_name, customer_email, customer_phone").eq("workspace_id", workspaceId).not("customer_phone", "is", null),
+        // Search conversations by phone variations OR last 8 digits
+        supabase.from("conversations")
+          .select("id, phone_number, contact_name, email")
+          .eq("workspace_id", workspaceId)
+          .or(variations.map(v => `phone_number.eq.${v}`).concat([`phone_number.like.${likeLast8}`]).join(","))
+          .limit(10),
+        // Search transactions by phone variations OR last 8 digits
+        supabase.from("transactions")
+          .select("customer_document, customer_name, customer_email, customer_phone")
+          .eq("workspace_id", workspaceId)
+          .not("customer_phone", "is", null)
+          .or(variations.map(v => `customer_phone.eq.${v}`).concat([`customer_phone.like.${likeLast8}`]).join(","))
+          .limit(5),
         supabase.from("member_products" as any).select("product_id, is_active, phone").eq("workspace_id", workspaceId).in("phone", variations),
         supabase.from("delivery_products").select("id, name").eq("workspace_id", workspaceId),
       ]);
