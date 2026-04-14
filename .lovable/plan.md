@@ -1,106 +1,64 @@
 
 
-## Atualização Completa: Fila de Mensagens com Deduplicação
+## Fix: `workspace_id` ausente em todo o módulo de e-mail
 
-### Problema atual
-O cron scheduler (a cada 1 min) enfileira mensagens na `group_message_queue` quando `next_run_at` chega, mas **não verifica se aquela mensagem já foi enfileirada para aquele horário**. Se o cron rodar 2x antes do `next_run_at` ser atualizado, duplica os envios. Além disso, o campo `mentionsEveryOne` do conteúdo não é processado no envio.
+### Problema
+O arquivo `deploy/backend/src/routes/email.ts` não inclui `workspace_id` em **nenhum** insert. Todas as tabelas de e-mail (`email_sends`, `email_contacts`, `email_events`, `email_link_clicks`, `email_queue`, `email_follow_up_sends`, `api_request_logs`) exigem `workspace_id` NOT NULL. Isso causa erro 500 em qualquer operação de e-mail via API/n8n.
+
+### Causa raiz
+O módulo foi escrito antes da migração multi-tenant. O `workspace_id` nunca foi adicionado.
 
 ### Solução
 
-#### 1. Deduplicação no Scheduler (index.ts, cron grupo scheduler ~L196-273)
+**Arquivo:** `deploy/backend/src/routes/email.ts`
 
-Antes de inserir itens na fila, verificar se já existe um registro na `group_message_queue` para aquele `scheduled_message_id` + `group_jid` com `execution_batch` recente (últimos 2 minutos) ou com status `pending`/`processing`/`sent`. Se existir, pular.
+1. **Importar** `resolveWorkspaceId` de `../lib/workspace`
 
+2. **Endpoint `/send` (L260)**: Após obter `userId`, resolver `workspaceId = await resolveWorkspaceId(userId)`. Adicionar `workspace_id: workspaceId` no insert de `email_sends` (L276), e passar para `logEvent` e `rewriteLinks`.
+
+3. **Endpoint `/campaign` (L323)**: Resolver `workspaceId` após validar `userId`. Adicionar `workspace_id: workspaceId` nos inserts de:
+   - `email_sends` (L442)
+   - `email_follow_up_sends` (L497-505)
+
+4. **Endpoint `/webhook/inbound` (L741)**: Após resolver `userId` (L754-766), resolver `workspaceId`. Adicionar `workspace_id: workspaceId` em:
+   - `api_request_logs` (L771)
+   - `email_sends` (L792)
+   - `email_follow_up_sends` (L843)
+   - `email_contacts` upsert (L874) — **este é o erro reportado**
+   - `email_queue` (L916)
+
+5. **Função `logEvent` (L200)**: Adicionar parâmetro `workspaceId` e incluir `workspace_id` no insert de `email_events`.
+
+6. **Função `rewriteLinks` (L220)**: Adicionar parâmetro `workspaceId` e incluir `workspace_id` no insert de `email_link_clicks`.
+
+7. **Endpoint de processamento de fila (queue/process ~L1080)**: Resolver `workspaceId` a partir de cada `item.user_id` (ou usar o workspace_id do próprio item da fila, se disponível). Adicionar em `email_sends` (L1123).
+
+### Locais de insert afetados (total: ~10)
+| Tabela | Linha aprox. | Endpoint |
+|--------|------|----------|
+| `email_sends` | 276 | `/send` |
+| `email_events` | 204 | `logEvent()` |
+| `email_link_clicks` | 240 | `rewriteLinks()` |
+| `email_sends` | 442 | `/campaign` |
+| `email_follow_up_sends` | 505 | `/campaign` |
+| `api_request_logs` | 771 | `/webhook/inbound` |
+| `email_sends` | 792 | `/webhook/inbound` |
+| `email_follow_up_sends` | 843 | `/webhook/inbound` |
+| `email_contacts` | 874 | `/webhook/inbound` |
+| `email_queue` | 916 | `/webhook/inbound` |
+| `email_sends` | 1123 | queue processor |
+
+### Padrão de resolução
 ```typescript
-// Para cada jid, antes de adicionar ao queueItems:
-const { count: existing } = await sb
-  .from("group_message_queue")
-  .select("id", { count: "exact", head: true })
-  .eq("scheduled_message_id", msg.id)
-  .eq("group_jid", jid)
-  .in("status", ["pending", "processing", "sent"])
-  .gte("created_at", new Date(Date.now() - 5 * 60000).toISOString());
+import { resolveWorkspaceId } from "../lib/workspace";
 
-if ((existing || 0) > 0) {
-  console.log(`[cron] ⏭ Dedup: msg ${msg.id} → ${jid} already queued`);
-  continue;
-}
+// No início de cada handler:
+const workspaceId = await resolveWorkspaceId(userId);
+if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
 ```
 
-#### 2. Deduplicação no Processador (groups-api.ts, queue/process ~L702-800)
+### Arquivo alterado
+- `deploy/backend/src/routes/email.ts`
 
-Antes de enviar cada item, verificar se outro item com mesmo `scheduled_message_id` + `group_jid` já foi enviado com sucesso recentemente:
-
-```typescript
-// Antes de processar cada item:
-if (item.scheduled_message_id) {
-  const { count: alreadySent } = await sb
-    .from("group_message_queue")
-    .select("id", { count: "exact", head: true })
-    .eq("scheduled_message_id", item.scheduled_message_id)
-    .eq("group_jid", item.group_jid)
-    .eq("status", "sent")
-    .neq("id", item.id);
-
-  if ((alreadySent || 0) > 0) {
-    await sb.from("group_message_queue")
-      .update({ status: "cancelled", error_message: "Dedup: já enviada", completed_at: new Date().toISOString() })
-      .eq("id", item.id);
-    skipped++;
-    continue;
-  }
-}
-```
-
-#### 3. Suporte a `mentionsEveryOne` no processador
-
-O JSON do conteúdo inclui `mentionsEveryOne: true` mas o processador não envia essa flag para a Evolution API. Corrigir adicionando `mentionsEveryOne` no payload de envio:
-
-```typescript
-// No envio de texto:
-body: JSON.stringify({
-  number: item.group_jid,
-  text: content.text || content.caption || "",
-  mentionsEveryOne: content.mentionsEveryOne || content.mentionAll || false,
-})
-
-// No envio de mídia:
-body: JSON.stringify({
-  number: item.group_jid,
-  mediatype: item.message_type,
-  media: content.mediaUrl || "",
-  caption: content.caption || "",
-  fileName: content.fileName || "",
-  mentionsEveryOne: content.mentionsEveryOne || content.mentionAll || false,
-})
-```
-
-#### 4. Frontend — Status "cancelled" na fila (GroupQueueTab.tsx)
-
-Adicionar o status `cancelled` ao `statusConfig` (já existe parcialmente em `GroupMessagesDialog`). Atualizar o `stats` no hook `useGroupQueue` para contar cancelados.
-
-### Arquivos alterados
-- `deploy/backend/src/index.ts` — deduplicação no cron scheduler
-- `deploy/backend/src/routes/groups-api.ts` — deduplicação no processador + mentionsEveryOne
-- `src/components/grupos/GroupQueueTab.tsx` — exibir status "cancelled"
-- `src/hooks/useGroupQueue.ts` — contar cancelled nos stats
-
-### Fluxo final
-```text
-Horário programado
-  → Cron (1min) verifica next_run_at
-  → Checa dedup: msg+grupo já na fila?
-    → SIM: pula
-    → NÃO: insere na fila (status: pending)
-  → Atualiza next_run_at
-
-Cron processador (30s)
-  → Pega pending items
-  → Para cada item:
-    → Checa dedup: mesmo scheduled_msg+grupo já enviado?
-      → SIM: marca cancelled
-      → NÃO: envia via Evolution API
-    → Respeita rate limit e delay
-    → Marca sent/failed
-```
+Após o deploy, rebuild com: `cd ~/simplificandoconversas/deploy && docker compose up -d --build backend`
 
