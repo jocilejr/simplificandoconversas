@@ -200,11 +200,14 @@ async function logEvent(
   sendId: string,
   userId: string,
   eventType: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
+  workspaceId?: string | null
 ) {
+  const wsId = workspaceId || (await resolveWorkspaceId(userId));
   await supabase.from("email_events").insert({
     send_id: sendId,
     user_id: userId,
+    workspace_id: wsId,
     event_type: eventType,
     metadata: metadata || {},
   });
@@ -220,7 +223,7 @@ function injectTrackingPixel(html: string, sendId: string, baseUrl: string): str
 }
 
 /** Rewrite all <a href="..."> links in HTML to tracking URLs, creating email_link_clicks records */
-async function rewriteLinks(html: string, sendId: string, userId: string, baseUrl: string): Promise<string> {
+async function rewriteLinks(html: string, sendId: string, userId: string, baseUrl: string, workspaceId?: string | null): Promise<string> {
   const linkRegex = /<a\s([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>/gi;
   const matches: { full: string; pre: string; url: string; post: string }[] = [];
   let m: RegExpExecArray | null;
@@ -236,9 +239,10 @@ async function rewriteLinks(html: string, sendId: string, userId: string, baseUr
   const urlToId = new Map<string, string>();
   for (const match of matches) {
     if (urlToId.has(match.url)) continue;
+    const wsId = workspaceId || (await resolveWorkspaceId(userId));
     const { data } = await supabase
       .from("email_link_clicks")
-      .insert({ send_id: sendId, user_id: userId, original_url: match.url })
+      .insert({ send_id: sendId, user_id: userId, workspace_id: wsId, original_url: match.url })
       .select("id")
       .single();
     if (data) urlToId.set(match.url, data.id);
