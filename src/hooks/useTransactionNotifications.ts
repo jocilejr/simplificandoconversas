@@ -115,30 +115,7 @@ export function useTransactionNotifications() {
     }
   }, [recentTx]);
 
-  // Tab title flashing
-  useEffect(() => {
-    if (notifications.length === 0) {
-      document.title = originalTitle.current;
-      return;
-    }
-
-    let visible = true;
-    const interval = setInterval(() => {
-      if (document.hidden) {
-        visible = !visible;
-        document.title = visible
-          ? `🔔 (${notifications.length}) Nova Venda!`
-          : originalTitle.current;
-      } else {
-        document.title = `(${notifications.length}) Nova transação! | Simplificando`;
-      }
-    }, 1000);
-
-    return () => {
-      clearInterval(interval);
-      document.title = originalTitle.current;
-    };
-  }, [notifications.length]);
+  // Tab title flashing removed — managed by useUnseenTransactions
 
   const dismissAll = useCallback(() => {
     setNotifications([]);
