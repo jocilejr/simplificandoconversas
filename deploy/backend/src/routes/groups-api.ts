@@ -1,5 +1,8 @@
 import { Router, Request, Response } from "express";
 import { getServiceClient } from "../lib/supabase";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 
 const router = Router();
 
@@ -1406,22 +1409,17 @@ router.post("/import-media", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Missing workspaceId, userId, path or file" });
     }
 
-    const ext = fileMimeType.split("/")[1]?.split("+")[0] || "bin";
-    const storagePath = `${userId}/import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const ext = mediaPath.split('.').pop() || fileMimeType.split("/")[1]?.split("+")[0] || "bin";
+    const uniqueName = `${crypto.randomUUID()}.${ext}`;
+    const userDir = path.join("/media-files", userId);
+    fs.mkdirSync(userDir, { recursive: true });
+    const filePath = path.join(userDir, uniqueName);
+    fs.writeFileSync(filePath, fileBuffer);
 
-    const sb = getServiceClient();
-    const { error: uploadErr } = await sb.storage
-      .from("chatbot-media")
-      .upload(storagePath, fileBuffer, { contentType: fileMimeType, upsert: true });
-
-    if (uploadErr) {
-      console.error(`[import-media] Upload error for ${mediaPath}:`, uploadErr.message);
-      return res.status(500).json({ error: uploadErr.message });
-    }
-
-    const { data: urlData } = sb.storage.from("chatbot-media").getPublicUrl(storagePath);
-    console.log(`[import-media] Uploaded ${mediaPath} → ${urlData.publicUrl}`);
-    res.json({ oldPath: mediaPath, newUrl: urlData.publicUrl });
+    const apiUrl = process.env.API_URL || "";
+    const publicUrl = `${apiUrl}/media/${userId}/${uniqueName}`;
+    console.log(`[import-media] Saved ${mediaPath} → ${publicUrl}`);
+    res.json({ oldPath: mediaPath, newUrl: publicUrl });
   } catch (err: any) {
     console.error("[import-media] error:", err?.message || JSON.stringify(err));
     res.status(500).json({ error: err?.message || "Unknown error" });
