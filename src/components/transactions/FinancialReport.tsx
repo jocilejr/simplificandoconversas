@@ -7,7 +7,7 @@ import { useTransactions } from "@/hooks/useTransactions";
 import { useFinancialSettings } from "@/hooks/useFinancialSettings";
 import { useMetaAdSpend } from "@/hooks/useMetaAdSpend";
 import { Skeleton } from "@/components/ui/skeleton";
-import { QrCode, FileText, CreditCard, DollarSign, Wallet, Receipt } from "lucide-react";
+import { QrCode, FileText, CreditCard, DollarSign, Wallet, Receipt, Loader2 } from "lucide-react";
 
 export function FinancialReport() {
   const [dateFilter, setDateFilter] = useState<DateFilterValue>(getDefaultDateFilter);
@@ -85,7 +85,15 @@ export function FinancialReport() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Relatório Financeiro</h2>
-          <p className="text-xs text-muted-foreground">Visão geral das suas transações</p>
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            Visão geral das suas transações
+            {isMetaSyncing && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-primary">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Sincronizando Meta Ads...
+              </span>
+            )}
+          </p>
         </div>
         <DateFilter value={dateFilter} onChange={setDateFilter} />
       </div>
