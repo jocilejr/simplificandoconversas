@@ -162,7 +162,7 @@ async function computeSourceMap(workspaceId: string, files: ScannedFile[]): Prom
   }
 
   // 3. Check group_scheduled_messages → "group"
-  const { data: gsm } = await sb.from("group_scheduled_messages").select("content").eq("is_active", true);
+  const { data: gsm } = await sb.from("group_scheduled_messages").select("content").eq("workspace_id", workspaceId).eq("is_active", true);
   const groupJson = JSON.stringify(gsm || []);
   for (const f of files) {
     if (!sourceMap.has(fileKey(f)) && groupJson.includes(f.name)) {
