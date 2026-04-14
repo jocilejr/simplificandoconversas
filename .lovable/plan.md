@@ -1,70 +1,73 @@
+# Reescrever o Scheduler seguindo o modelo do whats-grupos
 
+## Análise do projeto de referência
 
-# Correção: Simplificar scheduler para lógica "agora ou nunca"
+O projeto `whats-grupos` usa uma abordagem muito mais simples:
 
-## Problema
+1. **Sem cron_expression** — calcula `next_run_at` diretamente a partir de `content.runTime`, `content.weekDays`, `content.monthDay`, `content.customDays`
+2. **Função `claim_due_messages**` (RPC no Postgres) — faz SELECT + UPDATE atômico para "travar" mensagens vencidas e evitar race conditions
+3. `**calculateNextRunAt**` — função pura que recebe a mensagem e calcula o próximo horário usando conversão BRT→UTC simples
+4. **Dedup por janela de 2 horas** — verifica se o `group_id` + `scheduled_message_id` já tem item `pending/sending/sent` criado nas últimas 2 horas
+5. **Sem flood protection** — processa todas as mensagens vencidas de uma vez
 
-Dois bugs críticos:
+## O que vamos mudar
 
-1. **Dedup no processador da fila (groups-api.ts linha 928-943)**: Verifica se já existe QUALQUER registro `sent` com o mesmo `scheduled_message_id` + `group_jid` — sem janela de tempo. Ou seja, depois que uma mensagem recorrente é enviada uma vez, todas as próximas execuções são canceladas como "Dedup: já enviada".
+### 1. `deploy/backend/src/routes/groups-api.ts`
 
-2. **Scheduler busca backlog**: A query `lte("next_run_at", now)` pega TODAS as mensagens atrasadas. Se alguma coisa ficou com `next_run_at` no passado, ela volta toda vez.
+**Substituir** `computeNextRunAt`, `computeNextRunAfterExecution`, `buildCronFromContent` e `parseCronTime` por uma **única função** `calculateNextRunAt(msg, now)` seguindo o modelo do whats-grupos:
 
-## Correções
-
-### 1. `deploy/backend/src/routes/groups-api.ts` — Dedup no processador
-
-Linha 928-943: A dedup precisa ter uma **janela de tempo curta** (5 minutos) para só evitar duplicatas do mesmo ciclo, não bloquear execuções futuras.
-
-```typescript
-// ANTES (quebrado):
-.eq("status", "sent")
-.neq("id", item.id);
-
-// DEPOIS (correto):
-.eq("status", "sent")
-.neq("id", item.id)
-.gte("created_at", new Date(Date.now() - 5 * 60000).toISOString());
+```text
+function calculateNextRunAt(msg, now):
+  extrair runTime do content (content.runTime || content.time || "08:00")
+  converter para componentes BRT (now - 3h)
+  
+  daily  → próximo dia, mesmo horário BRT
+  weekly → próximo dia da semana em content.weekDays
+  monthly → próximo mês no content.monthDay  
+  custom → próximos content.customDays no mês atual/próximo
+  once   → null (desativar)
 ```
 
-### 2. `deploy/backend/src/index.ts` — Scheduler simples
+- Usar conversão BRT→UTC igual ao referência (`brtToUtc`)
+- Não depender de `cron_expression` nem de `scheduledAt` — tudo vem do `content`
 
-Substituir a query do scheduler para buscar apenas mensagens com `next_run_at` dentro do minuto atual (janela de 90 segundos para cobrir delay), em vez de pegar todo o backlog:
+**Remover** campos/lógica de `cron_expression` da criação e edição de mensagens (simplificar as rotas POST/PUT).
 
-```typescript
-// ANTES:
-.lte("next_run_at", now)
+### 2. `deploy/backend/src/index.ts` — Scheduler Cron
 
-// DEPOIS — janela de 90 segundos:
-const windowStart = new Date(Date.now() - 90 * 1000).toISOString();
-const now = new Date().toISOString();
-// Buscar mensagens com next_run_at entre agora-90s e agora
-.lte("next_run_at", now)
-.gte("next_run_at", windowStart)
-```
+**Simplificar** o cron do scheduler:
 
-Isso garante que mensagens com `next_run_at` muito no passado (backlog) são ignoradas. Apenas as que caem na janela do minuto atual são processadas.
+- Buscar mensagens com `is_active = true` e `next_run_at <= now` e `next_run_at >= now - 60s` (manter janela "now or never")
+- Para cada mensagem:
+  - Buscar campanha. Se inativa/inexistente → desativar mensagem
+  - Dedup: verificar na `group_message_queue` se já existe item `pending/processing/sent` para o mesmo `scheduled_message_id` + `group_jid` nos últimos 5 minutos
+  - Inserir itens na fila
+  - Se `schedule_type === "once"` → desativar
+  - Senão → calcular `next_run_at` com a nova `calculateNextRunAt(msg, now)` e salvar
 
-### 3. `deploy/backend/src/index.ts` — Remover flood protection
+**Remover**:
 
-O limite de 5 mensagens por ciclo não faz mais sentido com a janela de tempo. Remover o `splice(5)` — se 30 mensagens estão programadas para 11:30, todas devem ir para a fila.
+- Self-heal de cron_expression (não é mais necessário)
+- Referências a `buildCronFromContent` no scheduler
+- Flood protection (já removido)
 
-### 4. Limpeza na VPS após deploy
+### 3. Limpeza na VPS após deploy
 
 ```bash
-# Limpar fila pendente acumulada
+# Reativar mensagens recorrentes de campanhas ativas e forçar recálculo
 docker compose exec postgres psql -U postgres -d postgres -c "
-UPDATE group_message_queue SET status = 'cancelled', error_message = 'Cleanup: reset'
-WHERE status = 'pending';"
+UPDATE group_scheduled_messages 
+SET is_active = true, next_run_at = NOW() + interval '1 minute'
+WHERE campaign_id IN (SELECT id FROM group_campaigns WHERE is_active = true)
+  AND schedule_type != 'once'
+  AND is_active = false;"
 
-# Recalcular next_run_at para todas as mensagens ativas
 docker compose restart backend
 ```
 
-## Resultado
+## Resultado esperado
 
-- Scheduler busca apenas mensagens do minuto atual
-- Dedup não bloqueia mensagens recorrentes
-- Sem acúmulo de backlog
-- A fila processa normalmente
-
+- Lógica idêntica ao whats-grupos que já funciona em produção
+- Sem dependência de `cron_expression` — tudo calculado a partir do `content`
+- Conversão de timezone BRT correta
+- Scheduler simples e previsível
