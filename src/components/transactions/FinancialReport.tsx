@@ -5,6 +5,7 @@ import { RevenueChart } from "./RevenueChart";
 import { PaymentMethodsChart } from "./PaymentMethodsChart";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useFinancialSettings } from "@/hooks/useFinancialSettings";
+import { useMetaAdSpend } from "@/hooks/useMetaAdSpend";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QrCode, FileText, CreditCard, DollarSign, Wallet, Receipt } from "lucide-react";
 
@@ -18,6 +19,8 @@ export function FinancialReport() {
 
   const { data: allTransactions = [] } = useTransactions();
   const { settings: feeSettings } = useFinancialSettings();
+  const { data: metaAdSpend } = useMetaAdSpend(dateFilter.startDate, dateFilter.endDate);
+  const metaTotal = metaAdSpend?.totalSpend ?? 0;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -71,10 +74,10 @@ export function FinancialReport() {
     return {
       pixGerado, pixPago, boletosGerados, boletosPagos, boletosPendentesOuPagos,
       pedidosCartao, cartaoPago, totalRevenue,
-      netRevenue: totalRevenue - totalFees - totalTax,
+      netRevenue: totalRevenue - totalFees - totalTax - metaTotal,
       boletoFees, pixFees, cartaoFees, totalTax,
     };
-  }, [transactions, feeSettings]);
+  }, [transactions, feeSettings, metaTotal]);
 
   return (
     <div className="space-y-4">
@@ -120,6 +123,7 @@ export function FinancialReport() {
                 { label: "PIX", value: stats.pixFees },
                 { label: "Cartão", value: stats.cartaoFees },
                 { label: feeSettings.tax_name, value: stats.totalTax },
+                { label: "Meta Ads", value: metaTotal },
               ].filter(i => i.value > 0).map((item) => (
                 <div key={item.label} className="flex items-center justify-between">
                   <span className="text-[10px] lg:text-[11px] text-muted-foreground">{item.label}</span>
