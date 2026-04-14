@@ -308,7 +308,7 @@ router.post("/send", async (req: Request, res: Response) => {
 
       if (sendLog) {
         await supabase.from("email_sends").update({ status: "sent" }).eq("id", sendLog.id);
-        await logEvent(sendLog.id, userId, "sent");
+        await logEvent(sendLog.id, userId, "sent", undefined, workspaceId);
       }
       res.json({ ok: true, sendId: sendLog?.id });
     } catch (sendErr: any) {
@@ -317,7 +317,7 @@ router.post("/send", async (req: Request, res: Response) => {
           .from("email_sends")
           .update({ status: "failed", error_message: sendErr.message })
           .eq("id", sendLog.id);
-        await logEvent(sendLog.id, userId, "failed", { error: sendErr.message });
+        await logEvent(sendLog.id, userId, "failed", { error: sendErr.message }, workspaceId);
       }
       throw sendErr;
     }
