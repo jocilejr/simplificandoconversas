@@ -75,7 +75,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarClock className="h-4 w-4 text-primary" />
@@ -87,9 +87,9 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setShowForm(false); setEditMsg(null); }}>
-          <TabsList className="w-full grid grid-cols-5">
+          <TabsList className="w-full grid grid-cols-5 gap-0">
             {SCHEDULE_TABS.map(t => (
-              <TabsTrigger key={t.value} value={t.value} className="text-xs">
+              <TabsTrigger key={t.value} value={t.value} className="text-xs min-w-0 truncate">
                 {t.label}
                 {messages.filter((m: any) => m.schedule_type === t.value).length > 0 && (
                   <Badge variant="secondary" className="ml-1.5 h-4 text-[9px] px-1">
@@ -122,21 +122,21 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                 const Icon = TYPE_ICONS[msg.message_type] || MessageSquare;
                 const hasMention = msg.content?.mentionAll;
                 return (
-                  <div key={msg.id} className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card hover:bg-secondary/40 transition-colors group">
+                  <div key={msg.id} className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card hover:bg-secondary/40 transition-colors group w-full min-w-0 overflow-hidden">
                     <div className="h-9 w-9 rounded-lg bg-secondary flex items-center justify-center shrink-0 border border-border">
                       <Icon className="h-4 w-4 text-primary" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px] h-5">
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px] h-5 shrink-0">
                           {TYPE_LABELS[msg.message_type] || msg.message_type}
                         </Badge>
                         {hasMention && (
-                          <Badge variant="outline" className="text-[10px] h-5 border-primary/30 text-primary gap-0.5">
+                          <Badge variant="outline" className="text-[10px] h-5 border-primary/30 text-primary gap-0.5 shrink-0">
                             <AtSign className="h-2.5 w-2.5" /> todos
                           </Badge>
                         )}
-                        <span className="text-[10px] text-muted-foreground">{getTimeLabel(msg)}</span>
+                        <span className="text-[10px] text-muted-foreground truncate">{getTimeLabel(msg)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{getPreview(msg)}</p>
                     </div>

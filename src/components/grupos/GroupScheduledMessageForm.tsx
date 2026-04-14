@@ -289,7 +289,7 @@ export default function GroupScheduledMessageForm({ scheduleType, editData, onSa
 
           {scheduleType === "weekly" && (
             <div className="space-y-2">
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {WEEKDAYS.map(d => (
                   <button key={d.value} type="button" onClick={() => toggleWeekday(d.value)}
                     className={cn(
