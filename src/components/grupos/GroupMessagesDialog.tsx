@@ -212,7 +212,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
                                         <AtSign className="h-2.5 w-2.5" /> todos
                                       </Badge>
                                     )}
-                                    {tab.value === "weekly" && msg.content?.weekdays && (
+                                    {tab.value === "weekly" && (msg.content?.weekDays || msg.content?.weekdays) && (
                                       <div className="flex gap-0.5">
                                         {msg.content.weekdays.map((d: number) => (
                                           <span key={d} className="text-[9px] bg-primary/10 text-primary rounded px-1 py-0.5 font-medium">
