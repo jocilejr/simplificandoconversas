@@ -387,7 +387,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
           <div className="flex-1 overflow-y-auto min-h-0">
 
             {/* ─── TAB: Dados ─── */}
-            <TabsContent value="info" className="px-5 py-4 space-y-4 mt-0">
+            <TabsContent value="info" className="px-6 py-5 space-y-4 mt-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">Informações Pessoais</h3>
                 {!editing ? (
@@ -478,7 +478,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             </TabsContent>
 
             {/* ─── TAB: Financeiro ─── */}
-            <TabsContent value="financial" className="px-5 py-4 space-y-4 mt-0">
+            <TabsContent value="financial" className="px-6 py-5 space-y-4 mt-0">
               {/* Add payment button */}
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">Pagamentos</h3>
@@ -581,7 +581,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             </TabsContent>
 
             {/* ─── TAB: Produtos ─── */}
-            <TabsContent value="products" className="px-5 py-4 space-y-3 mt-0">
+            <TabsContent value="products" className="px-6 py-5 space-y-3 mt-0">
               {isLoadingProducts ? (
                 <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}</div>
               ) : memberProducts.length === 0 ? (
@@ -628,7 +628,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             </TabsContent>
 
             {/* ─── TAB: Conversas ─── */}
-            <TabsContent value="history" className="px-5 py-4 space-y-2 mt-0">
+            <TabsContent value="history" className="px-6 py-5 space-y-2 mt-0">
               {isLoadingMsgCounts ? (
                 <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
               ) : activeInstances.length === 0 ? (
@@ -666,7 +666,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
             </TabsContent>
 
             {/* ─── TAB: Agendamentos ─── */}
-            <TabsContent value="reminders" className="px-5 py-4 space-y-2 mt-0">
+            <TabsContent value="reminders" className="px-6 py-5 space-y-2 mt-0">
               {isLoadingReminders ? (
                 <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
               ) : reminders.length === 0 ? (
