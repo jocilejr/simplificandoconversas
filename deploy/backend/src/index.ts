@@ -24,12 +24,13 @@ import manualPaymentRouter from "./routes/manual-payment-webhook";
 import autoRecoveryRouter from "./routes/auto-recovery";
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily } from "./routes/followup-daily";
-import groupsApiRouter, { calculateNextRunAt } from "./routes/groups-api";
+import groupsApiRouter from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
 import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 import mediaManagerRouter from "./routes/media-manager";
+import { groupScheduler } from "./lib/group-scheduler";
 
 const app = express();
 app.use(cors());
