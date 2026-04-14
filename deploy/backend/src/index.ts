@@ -405,30 +405,14 @@ app.listen(PORT, async () => {
       console.log(`[self-heal] 🔧 Found ${broken.length} active messages with NULL next_run_at`);
 
       for (const msg of broken) {
-        // Try to reconstruct cron_expression from content if missing
+        // Use buildCronFromContent which handles both time/runTime and weekdays/weekDays
         let cronExpr = msg.cron_expression;
-        const content = msg.content as any;
-        const timeVal = content?.time as string | undefined;
-
-        if (!cronExpr && timeVal) {
-          const [hh, mm] = timeVal.split(":");
-          if (msg.schedule_type === "weekly") {
-            const weekdays = content?.weekdays;
-            if (Array.isArray(weekdays) && weekdays.length > 0) {
-              cronExpr = `${mm} ${hh} * * ${weekdays.join(",")}`;
-            }
-          } else if (msg.schedule_type === "daily") {
-            cronExpr = `${mm} ${hh} * * *`;
-          } else if (msg.schedule_type === "monthly" || msg.schedule_type === "custom") {
-            const monthDay = content?.monthDay || content?.customDays;
-            if (monthDay) {
-              cronExpr = `${mm} ${hh} ${monthDay} * *`;
-            }
-          }
+        if (!cronExpr) {
+          cronExpr = buildCronFromContent(msg.schedule_type, msg.content);
         }
 
         if (cronExpr) {
-          const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, cronExpr, msg.interval_minutes);
+          const nextRun = computeNextRunAfterExecution(msg.schedule_type, msg.scheduled_at, cronExpr, msg.interval_minutes, msg.content as any);
           if (nextRun) {
             await sb.from("group_scheduled_messages").update({
               cron_expression: cronExpr,
