@@ -126,13 +126,13 @@ export function FinancialReport() {
           </div>
           {feeSettings ? (
             <div className="space-y-1">
-              {[
-                { label: "Boleto", value: stats.boletoFees },
-                { label: "PIX", value: stats.pixFees },
-                { label: "Cartão", value: stats.cartaoFees },
-                { label: feeSettings.tax_name, value: stats.totalTax },
-                { label: "Meta Ads", value: metaTotal },
-              ].filter(i => i.value > 0).map((item) => (
+             {[
+                { label: "Boleto", value: stats.boletoFees, configured: feeSettings.boleto_fee_value > 0 },
+                { label: "PIX", value: stats.pixFees, configured: feeSettings.pix_fee_value > 0 },
+                { label: "Cartão", value: stats.cartaoFees, configured: feeSettings.cartao_fee_value > 0 },
+                { label: feeSettings.tax_name, value: stats.totalTax, configured: feeSettings.tax_value > 0 },
+                { label: "Meta Ads", value: metaTotal, configured: true },
+              ].filter(i => i.configured || i.value > 0).map((item) => (
                 <div key={item.label} className="flex items-center justify-between">
                   <span className="text-[10px] lg:text-[11px] text-muted-foreground">{item.label}</span>
                   <span className="text-[10px] lg:text-[11px] font-medium text-destructive">- {formatCurrency(item.value)}</span>
