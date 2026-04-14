@@ -271,8 +271,8 @@ export function IntegrationsSection() {
           <TabsTrigger value="email" className="gap-1.5 text-xs"><Mail className="h-3.5 w-3.5" />E-mail</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="platforms" className="mt-4">
-    <div className="space-y-4">
+        <TabsContent value="platforms" className="mt-4 space-y-4">
+        <div className="flex items-center justify-end">
         <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => {}}>
           <Plus className="h-3.5 w-3.5" />
           Nova Integração
