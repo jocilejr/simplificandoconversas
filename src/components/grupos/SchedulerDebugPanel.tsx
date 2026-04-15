@@ -10,12 +10,6 @@ import {
 import { useSchedulerDebug, type ScheduledMessageDebug } from "@/hooks/useSchedulerDebug";
 import WhatsAppPreview from "@/components/grupos/WhatsAppPreview";
 
-/* ─── helpers ─── */
-function toBrt(utcStr: string | null): Date | null {
-  if (!utcStr) return null;
-  return new Date(utcStr);
-}
-
 function formatTimeBrt(utcStr: string | null): string {
   if (!utcStr) return "—";
   return new Date(utcStr).toLocaleTimeString("pt-BR", {
@@ -93,7 +87,15 @@ function StatusBadge({ msg, isPast }: { msg: ScheduledMessageDebug; isPast: bool
 }
 
 /* ─── single card ─── */
-function ScheduleCard({ msg, isNext, currentTimeMs }: { msg: ScheduledMessageDebug; isNext: boolean; currentTimeMs: number }) {
+function ScheduleCard({
+  msg,
+  isActive,
+  currentTimeMs,
+}: {
+  msg: ScheduledMessageDebug;
+  isActive: boolean;
+  currentTimeMs: number;
+}) {
   const runAt = getMessageRunAt(msg);
   const nextRun = runAt ? new Date(runAt) : null;
   const isPast = nextRun ? nextRun.getTime() < currentTimeMs : true;
@@ -118,7 +120,7 @@ function ScheduleCard({ msg, isNext, currentTimeMs }: { msg: ScheduledMessageDeb
     previewProps.textContent = content.text || content.caption || msg.content_preview || "";
   }
 
-  const borderClass = isNext
+  const borderClass = isActive
     ? "ring-2 ring-primary/60 border-primary/40"
     : isPast
       ? sentCount > 0 && failedCount === 0
@@ -130,13 +132,14 @@ function ScheduleCard({ msg, isNext, currentTimeMs }: { msg: ScheduledMessageDeb
 
   return (
     <div
+      data-scheduler-card
       className={`flex-shrink-0 w-[310px] snap-center rounded-xl border bg-card overflow-hidden flex flex-col ${borderClass}`}
       style={{ scrollSnapAlign: "center" }}
     >
       {/* Card header */}
       <div className="px-3 py-2.5 border-b border-border/30 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`text-lg font-bold font-mono ${isPast ? "text-muted-foreground" : isNext ? "text-primary" : "text-foreground"}`}>
+          <span className={`text-lg font-bold font-mono ${isPast ? "text-muted-foreground" : isActive ? "text-primary" : "text-foreground"}`}>
             {formatTimeBrt(runAt)}
           </span>
           <Badge variant="outline" className="text-[10px] gap-1 border-border/50">
@@ -187,9 +190,11 @@ function ScheduleCard({ msg, isNext, currentTimeMs }: { msg: ScheduledMessageDeb
 export default function SchedulerDebugPanel() {
   const { data, isLoading, refresh } = useSchedulerDebug();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const autoCenteredIdxRef = useRef<number | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const messages = data?.messages || [];
 
@@ -219,23 +224,72 @@ export default function SchedulerDebugPanel() {
     return idx >= 0 ? idx : sorted.length - 1;
   }, [currentTimeMs, sorted]);
 
+  const scrollToCard = (index: number, behavior: ScrollBehavior = "smooth") => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const cards = Array.from(container.querySelectorAll<HTMLElement>("[data-scheduler-card]"));
+    const targetCard = cards[index];
+    if (!targetCard) return;
+
+    const targetLeft = targetCard.offsetLeft - (container.clientWidth - targetCard.clientWidth) / 2;
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    container.scrollTo({
+      left: Math.max(0, Math.min(targetLeft, maxScrollLeft)),
+      behavior,
+    });
+  };
+
+  const getClosestCardIndex = () => {
+    const container = scrollRef.current;
+    if (!container) return 0;
+
+    const cards = Array.from(container.querySelectorAll<HTMLElement>("[data-scheduler-card]"));
+    if (cards.length === 0) return 0;
+
+    const viewportCenter = container.scrollLeft + container.clientWidth / 2;
+
+    return cards.reduce((closestIdx, card, index) => {
+      const closestCard = cards[closestIdx];
+      const cardCenter = card.offsetLeft + card.clientWidth / 2;
+      const closestCenter = closestCard.offsetLeft + closestCard.clientWidth / 2;
+
+      return Math.abs(cardCenter - viewportCenter) < Math.abs(closestCenter - viewportCenter)
+        ? index
+        : closestIdx;
+    }, 0);
+  };
+
   // Update scroll indicators
   const updateScrollState = () => {
     const el = scrollRef.current;
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 10);
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 10);
+    setActiveIndex((prev) => {
+      const nextActiveIndex = getClosestCardIndex();
+      return prev === nextActiveIndex ? prev : nextActiveIndex;
+    });
   };
 
-  // Scroll to "next" card on load
+  // Auto-center only when the next scheduled card actually changes
   useEffect(() => {
-    if (!scrollRef.current || sorted.length === 0) return;
-    const cardWidth = 326; // 310 + gap
-    const containerWidth = scrollRef.current.clientWidth;
-    const targetScroll = Math.max(0, nextIdx * cardWidth - containerWidth / 2 + cardWidth / 2);
-    scrollRef.current.scrollTo({ left: targetScroll, behavior: "smooth" });
-    setTimeout(updateScrollState, 500);
-  }, [sorted.length, nextIdx]);
+    if (sorted.length === 0) {
+      autoCenteredIdxRef.current = null;
+      setActiveIndex(0);
+      return;
+    }
+
+    if (autoCenteredIdxRef.current === nextIdx) return;
+
+    autoCenteredIdxRef.current = nextIdx;
+    setActiveIndex(nextIdx);
+
+    window.requestAnimationFrame(() => {
+      scrollToCard(nextIdx, "smooth");
+      window.setTimeout(updateScrollState, 350);
+    });
+  }, [nextIdx, sorted.length]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -246,10 +300,14 @@ export default function SchedulerDebugPanel() {
   }, []);
 
   const scroll = (dir: "left" | "right") => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const amount = 340;
-    el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
+    if (sorted.length === 0) return;
+
+    const targetIndex = dir === "left"
+      ? Math.max(activeIndex - 1, 0)
+      : Math.min(activeIndex + 1, sorted.length - 1);
+
+    setActiveIndex(targetIndex);
+    scrollToCard(targetIndex, "smooth");
   };
 
   // Summary counters
@@ -331,7 +389,7 @@ export default function SchedulerDebugPanel() {
               }}
             >
               {sorted.map((msg, idx) => (
-                <ScheduleCard key={msg.id} msg={msg} isNext={idx === nextIdx} currentTimeMs={currentTimeMs} />
+                <ScheduleCard key={msg.id} msg={msg} isActive={idx === activeIndex} currentTimeMs={currentTimeMs} />
               ))}
             </div>
           </div>
