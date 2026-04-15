@@ -1051,6 +1051,7 @@ router.get("/status", async (req, res) => {
       failed: 0,
       skipped_phone_limit: 0,
       skipped_invalid_phone: 0,
+      skipped_duplicate: 0,
     };
 
     for (const job of jobs || []) {

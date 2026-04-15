@@ -8,7 +8,7 @@ export interface FollowUpDispatchJob {
   rule_id: string;
   customer_name: string | null;
   normalized_phone: string | null;
-  status: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone";
+  status: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate";
   last_error: string | null;
   attempts: number;
   created_at: string;
@@ -27,6 +27,7 @@ export interface FollowUpDispatchStatus {
     failed: number;
     skipped_phone_limit: number;
     skipped_invalid_phone: number;
+    skipped_duplicate: number;
   };
   jobs: FollowUpDispatchJob[];
 }
