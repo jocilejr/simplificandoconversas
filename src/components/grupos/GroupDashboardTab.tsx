@@ -6,6 +6,7 @@ import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents } from "@/hooks/useGroupEvents";
+import { useSchedulerDebug } from "@/hooks/useSchedulerDebug";
 import { format } from "date-fns";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
