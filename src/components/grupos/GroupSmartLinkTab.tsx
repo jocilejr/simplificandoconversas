@@ -481,3 +481,53 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
     </div>
   );
 }
+
+function formatTimeAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return "Nunca";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return `há ${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `há ${mins}min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `há ${hours}h`;
+  return `há ${Math.floor(hours / 24)}d`;
+}
+
+function SyncStatusBadge({ smartLink }: { smartLink: SmartLink }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  const lastSync = smartLink.last_successful_sync_at;
+  const lastError = smartLink.last_sync_error;
+
+  if (!lastSync && !lastError) {
+    return <Badge variant="secondary" className="text-xs gap-1"><Clock className="h-3 w-3" /> Nunca sincronizado</Badge>;
+  }
+
+  if (lastError) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="destructive" className="text-xs gap-1 cursor-help">
+              <XCircle className="h-3 w-3" /> Sync Falhou {lastSync && <span className="opacity-70">· {formatTimeAgo(lastSync)}</span>}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <p className="text-xs">{lastError}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <Badge className="text-xs gap-1 bg-green-500/10 text-green-600 border-green-500/20">
+      <CheckCircle2 className="h-3 w-3" /> Sync OK · {formatTimeAgo(lastSync)}
+    </Badge>
+  );
+}
