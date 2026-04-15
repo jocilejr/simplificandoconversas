@@ -89,8 +89,8 @@ export function FollowUpDashboard() {
     try {
       const result = await runFollowUpNow.mutateAsync();
       toast({
-        title: "Execução iniciada",
-        description: `Gerados ${result.generated}, reencolados ${result.requeued}, enviados ${result.sent}, falhas ${result.failed}.`,
+        title: "Follow Up executado",
+        description: `Gerados ${result.generated}, enfileirados ${result.sent}, reencolados ${result.requeued}.`,
       });
     } catch (err: any) {
       toast({

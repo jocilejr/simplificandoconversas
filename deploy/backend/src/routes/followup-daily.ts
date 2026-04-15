@@ -915,32 +915,21 @@ async function processWorkspace(
     return result;
   }
 
-  if (workspaceLocks.has(workspaceId)) {
-    result.locked = true;
+  const context = await loadWorkspaceContext(sb, workspaceId, setting.instance_name);
+  if (context.rules.length === 0 || context.boletos.length === 0) {
     return result;
   }
 
-  workspaceLocks.add(workspaceId);
+  console.log(`[followup-daily] Processing workspace ${workspaceId} for ${context.today} (includeFailed=${includeFailed})`);
 
-  try {
-    const context = await loadWorkspaceContext(sb, workspaceId, setting.instance_name);
-    if (context.rules.length === 0 || context.boletos.length === 0) {
-      return result;
-    }
+  await generateJobsForWorkspace(sb, setting, context, includeFailed, result);
+  await processQueueForWorkspace(sb, setting, context, includeFailed, result);
 
-    console.log(`[followup-daily] Processing workspace ${workspaceId} for ${context.today} (includeFailed=${includeFailed})`);
+  console.log(
+    `[followup-daily] Workspace ${workspaceId} summary: generated=${result.generated}, requeued=${result.requeued}, enqueued=${result.sent}, skipped=${result.skipped}, pending_after_run=${result.pendingAfterRun}`,
+  );
 
-    await generateJobsForWorkspace(sb, setting, context, includeFailed, result);
-    await processQueueForWorkspace(sb, setting, context, includeFailed, result);
-
-    console.log(
-      `[followup-daily] Workspace ${workspaceId} summary: generated=${result.generated}, requeued=${result.requeued}, sent=${result.sent}, failed=${result.failed}, skipped=${result.skipped}, pending_after_run=${result.pendingAfterRun}`,
-    );
-
-    return result;
-  } finally {
-    workspaceLocks.delete(workspaceId);
-  }
+  return result;
 }
 
 export async function processFollowUpDaily(options: ProcessOptions = {}) {
