@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { normalizePhone } from "../lib/normalize-phone";
 
 const router = Router();
 
@@ -71,7 +72,7 @@ router.post("/", async (req, res) => {
 
   const results: any = { event, actions: [] };
   const refId = reference_id || external_id;
-  const cleanedPhone = phone ? phone.replace(/\D/g, "") : null;
+  const cleanedPhone = normalizePhone(phone);
   const remoteJid = cleanedPhone ? `${cleanedPhone}@s.whatsapp.net` : null;
 
   try {
