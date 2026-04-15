@@ -412,14 +412,15 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
              <div className="overflow-hidden">
                <Table>
                  <TableHeader>
-                   <TableRow>
-                     <TableHead>Grupo</TableHead>
-                     <TableHead className="text-center w-24">Membros</TableHead>
-                     <TableHead className="text-center w-20">Cliques</TableHead>
-                     <TableHead className="w-[220px]">URL</TableHead>
-                     <TableHead className="text-center w-20">Status</TableHead>
-                   </TableRow>
-                 </TableHeader>
+                    <TableRow>
+                      <TableHead>Grupo</TableHead>
+                      <TableHead className="text-center w-24">Membros</TableHead>
+                      <TableHead className="text-center w-20">Cliques</TableHead>
+                      <TableHead className="w-[220px]">URL</TableHead>
+                      <TableHead className="text-center w-20">Status</TableHead>
+                      <TableHead className="text-center w-28">Último Sync</TableHead>
+                    </TableRow>
+                  </TableHeader>
                  <TableBody>
                     {groupLinks.map((gl, idx) => {
                       const isBanned = (gl as any).status === "banned";
