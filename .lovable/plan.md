@@ -1,42 +1,32 @@
 
 
-# Plano: Corrigir lógica da Fila de Follow Up
+# Plano: Excluir duplicados da contagem de limite/dia
 
-## Problema
-A fila (automática e manual) não respeita a regra de deduplicação por CPF no frontend, e o status de "duplicado" não é refletido corretamente na UI porque o backend não registra `skipped_duplicate` em `boleto_recovery_contacts`.
+## Problema raiz
+A função `countsAsSuccessfulContact` (linha 231) **não exclui** registros com `skipped_duplicate`. Quando o primeiro boleto de um CPF é processado e os demais são marcados como duplicados, esses registros duplicados contam como "envio bem-sucedido" no `phoneSendCount` (linha 600-608). Como boletos do mesmo CPF geralmente têm o mesmo telefone, a contagem infla e bloqueia o envio legítimo — o próprio primeiro boleto ou boletos de outros CPFs no mesmo telefone caem em `skipped_phone_limit`.
 
-## O que será feito
+## Correção — 1 linha
+**Arquivo:** `deploy/backend/src/routes/followup-daily.ts` (linha 232)
 
-### 1. Backend: Registrar duplicados em `boleto_recovery_contacts`
-**Arquivo:** `deploy/backend/src/routes/followup-daily.ts` (linhas 467-494)
+De:
+```typescript
+return !notes || (!notes.startsWith("failed_api") && !notes.startsWith("skipped_phone_limit") && !notes.startsWith("skipped_invalid_phone"));
+```
 
-Quando um boleto é marcado como `skipped_duplicate`, adicionar o registro em `boleto_recovery_contacts` com `notes: "skipped_duplicate"` — atualmente só insere na `followup_dispatch_queue` mas não registra o contato, fazendo o frontend não detectar.
+Para:
+```typescript
+return !notes || (!notes.startsWith("failed_api") && !notes.startsWith("skipped_phone_limit") && !notes.startsWith("skipped_invalid_phone") && !notes.startsWith("skipped_duplicate"));
+```
 
-### 2. Frontend: Detectar `skipped_duplicate` no `sendStatus`
-**Arquivo:** `src/hooks/useBoletoRecovery.ts` (linhas 192-198)
+## Por que isso resolve
+- `buildPhoneSendCount` usa `countsAsSuccessfulContact` para somar envios por telefone
+- Registros `skipped_duplicate` deixam de contar como envio
+- Boletos pendentes legítimos param de ser bloqueados pelo limite/dia
+- A lógica de `skipped_phone_limit` continua funcionando normalmente — não é tocada
 
-Adicionar condição para detectar `notes.startsWith("skipped_duplicate")` e mapear para `sendStatus = "skipped_duplicate"`. Atualmente só detecta `skipped_phone_limit`, `skipped_invalid_phone` e `failed`.
-
-### 3. Frontend: Filtrar duplicados da fila manual
-**Arquivo:** `src/components/followup/FollowUpDashboard.tsx` (linha 387)
-
-A `FollowUpQueue` recebe `pendingTodayBoletos`. Esse filtro (linha 211) já exclui `sent`, mas NÃO exclui `skipped_duplicate`. Com a correção do item 2, duplicados terão `sendStatus = "skipped_duplicate"` e serão automaticamente excluídos da lista de pendentes.
-
-### 4. Frontend: Mostrar "Duplicado" na coluna Envio
-**Arquivo:** `src/components/followup/FollowUpDashboard.tsx` (linhas 162-175)
-
-O badge `skipped_duplicate` já é renderizado na coluna Envio como "Duplicado" (linha 170, status `skipped_phone_limit` mostra "Duplicado"). Corrigir para que `skipped_duplicate` tenha seu próprio badge com label "Duplicado (CPF)" distinto do `skipped_phone_limit`.
-
-## Resumo do fluxo correto após correção
-
-1. Backend gera jobs → detecta CPF duplicado → marca `skipped_duplicate` na fila **E** registra em `boleto_recovery_contacts`
-2. Frontend lê `boleto_recovery_contacts` → detecta `skipped_duplicate` → marca `sendStatus = "skipped_duplicate"`
-3. `pendingTodayBoletos` filtra apenas `pending | processing | failed` → duplicados ficam fora da fila
-4. Coluna "Envio" mostra "Duplicado (CPF)" para esses boletos
-5. Boletos `sent` já saem da fila (já funciona)
-
-## Arquivos modificados
-- `deploy/backend/src/routes/followup-daily.ts` — registrar contato para duplicados
-- `src/hooks/useBoletoRecovery.ts` — detectar `skipped_duplicate` no sendStatus
-- `src/components/followup/FollowUpDashboard.tsx` — badge distinto para duplicado CPF
+## Após deploy
+```bash
+cd /root/deploy && docker compose up -d --build backend
+```
+Depois rodar o follow-up manualmente para confirmar que os pendentes entram na fila.
 
