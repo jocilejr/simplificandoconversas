@@ -333,7 +333,7 @@ async function loadWorkspaceContext(
       .in("id", contactTransactionIds);
 
     for (const transaction of contactTransactions || []) {
-      const phone = (transaction as any).customer_phone || "";
+      const phone = normalizePhoneDefensive((transaction as any).customer_phone);
       if (phone) {
         contactPhonesByTransactionId.set((transaction as any).id, phone);
       }
