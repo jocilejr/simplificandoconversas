@@ -37,6 +37,7 @@ interface BoletoRow {
   created_at: string;
   customer_name: string | null;
   customer_phone: string | null;
+  customer_document: string | null;
   amount: number;
   metadata: any;
   external_id: string | null;
@@ -104,6 +105,7 @@ interface WorkspaceRunResult {
   skippedInvalidPhone: number;
   skippedPhoneLimit: number;
   skippedNoBlocks: number;
+  skippedDuplicate: number;
   pendingAfterRun: number;
   locked?: boolean;
   instanceMissing?: boolean;
@@ -260,6 +262,7 @@ function makeEmptyWorkspaceResult(workspaceId: string): WorkspaceRunResult {
     skippedInvalidPhone: 0,
     skippedPhoneLimit: 0,
     skippedNoBlocks: 0,
+    skippedDuplicate: 0,
     pendingAfterRun: 0,
   };
 }
@@ -295,7 +298,7 @@ async function loadWorkspaceContext(
       .maybeSingle(),
     sb
       .from("transactions")
-      .select("id, created_at, customer_name, customer_phone, amount, metadata, external_id")
+      .select("id, created_at, customer_name, customer_phone, customer_document, amount, metadata, external_id")
       .eq("workspace_id", workspaceId)
       .eq("type", "boleto")
       .eq("status", "pendente"),
