@@ -1546,36 +1546,66 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     for (let i = 0; i < groupLinks.length; i++) {
       const gl = groupLinks[i];
 
-      // Delay entre chamadas para evitar rate-limit da Evolution API
-      if (i > 0) await new Promise(r => setTimeout(r, 500));
+      // Delay de 5s entre chamadas para evitar rate-limit da Evolution API
+      if (i > 0) await new Promise(r => setTimeout(r, 5000));
 
+      // Buscar member_count real via findGroupInfos
+      try {
+        const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+          headers: { apikey: apiKey },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (infoResp.ok) {
+          const info: any = await infoResp.json();
+          const participants = info?.participants || [];
+          if (Array.isArray(participants) && participants.length > 0) {
+            gl.member_count = participants.length;
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[smart-link] Failed to get info for ${gl.group_jid}:`, e.message);
+      }
+
+      // Buscar invite code + detecção de banimento
       try {
         const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
           headers: { apikey: apiKey },
+          signal: AbortSignal.timeout(5000),
         });
         if (r.ok) {
           const body: any = await r.json();
           const code = body?.inviteCode || body?.code || body?.invite || "";
           if (code) {
             gl.invite_url = `https://chat.whatsapp.com/${code}`;
+            gl.status = "active";
             synced++;
+          } else {
+            // Instância online mas sem código → grupo banido
+            gl.status = "banned";
+            gl.invite_url = "";
+            console.warn(`[smart-link] Group ${gl.group_jid} returned empty inviteCode — marked as banned`);
           }
+        } else {
+          // Instância online mas inviteCode falhou → grupo banido
+          gl.status = "banned";
+          gl.invite_url = "";
+          console.warn(`[smart-link] Group ${gl.group_jid} inviteCode failed (${r.status}) — marked as banned`);
         }
       } catch (e: any) {
-        console.warn(`[smart-link] Failed to get invite for ${gl.group_jid}:`, e.message);
+        gl.status = "banned";
+        gl.invite_url = "";
+        console.warn(`[smart-link] Group ${gl.group_jid} inviteCode error — marked as banned:`, e.message);
       }
-
-      // Also update member_count from group_selected
-      try {
-        const { data: gs } = await sb.from("group_selected").select("member_count")
-          .eq("workspace_id", workspaceId).eq("group_jid", gl.group_jid).maybeSingle();
-        if (gs) gl.member_count = gs.member_count;
-      } catch {}
 
       console.log(`[smart-link] synced ${synced}/${groupLinks.length} (${i + 1} processed)`);
     }
 
-    await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLinkId);
+    await sb.from("group_smart_links").update({
+      group_links: groupLinks,
+      last_successful_sync_at: new Date().toISOString(),
+      last_sync_error: null,
+      last_sync_error_at: null,
+    }).eq("id", smartLinkId);
     res.json({ synced, groupLinks });
   } catch (err: any) {
     console.error("[smart-link] sync-invite error:", err?.message);
@@ -1726,8 +1756,13 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
           continue;
         }
 
-        // ── Instance is ONLINE — process each group ──
-        for (const gl of groupLinks) {
+        // ── Instance is ONLINE — process each group (5s delay between each) ──
+        for (let gi = 0; gi < groupLinks.length; gi++) {
+          const gl = groupLinks[gi];
+
+          // Delay de 5s entre chamadas para evitar rate-limit
+          if (gi > 0) await new Promise(r => setTimeout(r, 5000));
+
           try {
             // Fetch real participant count
             const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
