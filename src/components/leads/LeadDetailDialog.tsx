@@ -596,7 +596,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                     <p className="text-xs font-semibold text-green-600">Aprovados ({paidTxs.length})</p>
                   </div>
                   <div className="space-y-1.5">
-                    {paidTxs.map((tx) => <TxCard key={tx.id} tx={tx} />)}
+                    {paidTxs.map((tx) => <TxCard key={tx.id} tx={tx} onPhoneUpdated={() => { queryClient.invalidateQueries({ queryKey: ["leads-transactions"] }); queryClient.invalidateQueries({ queryKey: ["leads-conversations"] }); }} />)}
                   </div>
                 </div>
               )}
@@ -609,7 +609,7 @@ export function LeadDetailDialog({ lead, open, onClose }: Props) {
                     <p className="text-xs font-semibold text-yellow-600">Pendentes / Rejeitados ({unpaidTxs.length})</p>
                   </div>
                   <div className="space-y-1.5">
-                    {unpaidTxs.map((tx) => <TxCard key={tx.id} tx={tx} />)}
+                    {unpaidTxs.map((tx) => <TxCard key={tx.id} tx={tx} onPhoneUpdated={() => { queryClient.invalidateQueries({ queryKey: ["leads-transactions"] }); queryClient.invalidateQueries({ queryKey: ["leads-conversations"] }); }} />)}
                   </div>
                 </div>
               )}

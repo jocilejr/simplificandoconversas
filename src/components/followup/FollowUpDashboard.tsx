@@ -243,10 +243,7 @@ export function FollowUpDashboard() {
             <Settings2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Régua</span>
           </Button>
-          <Button onClick={handleRunNow} size="sm" className="gap-2 h-8 text-xs" disabled={runFollowUpNow.isPending || !workspaceId}>
-            <Play className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{runFollowUpNow.isPending ? "Executando..." : "Executar agora"}</span>
-          </Button>
+          
           <Button onClick={() => setQueueOpen(true)} variant="outline" size="sm" className="gap-2 h-8 text-xs">
             <Timer className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Fila</span>
