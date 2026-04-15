@@ -418,6 +418,9 @@ async function generateJobsForWorkspace(
     }
   }
 
+  // CPF-based deduplication: only the first boleto per CPF gets processed
+  const processedCpfs = new Set<string>();
+
   for (const boleto of context.boletos) {
     const dueDate = new Date(
       new Date(boleto.created_at).getTime() + context.expirationDays * 24 * 60 * 60 * 1000,
@@ -430,6 +433,43 @@ async function generateJobsForWorkspace(
       result.skippedNoRule++;
       result.skipped++;
       continue;
+    }
+
+    // Deduplicate by CPF: if same CPF already has a job today, mark as duplicate
+    const cpf = boleto.customer_document?.replace(/\D/g, "") || null;
+    if (cpf && cpf.length >= 11) {
+      if (processedCpfs.has(cpf)) {
+        const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
+        const blocks = buildBlocks(matchingRule);
+        const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
+        const meta = (boleto.metadata as any) || {};
+        const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
+        await upsertDispatchJob(sb, {
+          workspace_id: setting.workspace_id,
+          user_id: setting.user_id,
+          transaction_id: boleto.id,
+          rule_id: matchingRule.id,
+          instance_name: setting.instance_name,
+          phone: boleto.customer_phone,
+          normalized_phone: normalized,
+          customer_name: boleto.customer_name,
+          amount: Number(boleto.amount) || 0,
+          barcode,
+          boleto_file: meta.boleto_file || null,
+          due_date: dueDate,
+          dispatch_date: context.today,
+          message_snapshot: matchingRule.message || null,
+          blocks_snapshot: blocks,
+          updated_at: new Date().toISOString(),
+          status: "skipped_duplicate",
+          last_error: `CPF duplicado: ${cpf}`,
+          completed_at: new Date().toISOString(),
+        });
+        result.skippedDuplicate++;
+        result.skipped++;
+        continue;
+      }
+      processedCpfs.add(cpf);
     }
 
     const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
