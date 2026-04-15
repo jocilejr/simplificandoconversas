@@ -245,7 +245,14 @@ export class GroupSchedulerManager {
 
   // ─── Private ───
 
-  private createTimer(msgId: string, scheduleType: string, content: any, campaignId: string, nextRun: Date): void {
+  private createTimer(
+    msgId: string,
+    scheduleType: string,
+    content: any,
+    campaignId: string,
+    nextRun: Date,
+    options?: { preserveDiagnostic?: boolean },
+  ): void {
     const delayMs = Math.max(nextRun.getTime() - Date.now(), 1000); // min 1s
     
     // Node.js setTimeout max is ~24.8 days (2^31 - 1 ms). For longer delays, chain.
@@ -255,9 +262,19 @@ export class GroupSchedulerManager {
       // Schedule a re-check in 24 hours
       const timer = setTimeout(() => {
         this.timers.delete(msgId);
-        this.createTimer(msgId, scheduleType, content, campaignId, nextRun);
+        this.createTimer(msgId, scheduleType, content, campaignId, nextRun, options);
       }, 24 * 60 * 60 * 1000);
       this.timers.set(msgId, timer);
+      if (!options?.preserveDiagnostic) {
+        this.setDiagnostic(msgId, {
+          status_code: "waiting",
+          status_label: "Aguardando",
+          reason_code: "timer_long_delay",
+          reason_label: "A publicação está aguardando uma janela futura",
+          reason_details: "O disparo está a mais de 24 dias de distância, então o scheduler fará rechecagens diárias até chegar a hora.",
+          diagnostics: { next_run_at: nextRun.toISOString(), schedule_type: scheduleType },
+        });
+      }
       console.log(`[scheduler] ⏳ Timer for msg ${msgId}: >24d away, will re-check in 24h`);
       return;
     }
@@ -270,6 +287,16 @@ export class GroupSchedulerManager {
     }, delayMs);
 
     this.timers.set(msgId, timer);
+    if (!options?.preserveDiagnostic) {
+      this.setDiagnostic(msgId, {
+        status_code: "waiting",
+        status_label: "Aguardando",
+        reason_code: "timer_active",
+        reason_label: "Timer ativo para a próxima execução",
+        reason_details: `A publicação está programada para ${nextRun.toISOString()}.`,
+        diagnostics: { next_run_at: nextRun.toISOString(), schedule_type: scheduleType, campaign_id: campaignId },
+      });
+    }
 
     const runTimeStr = nextRun.toISOString().replace("T", " ").slice(0, 19);
     const delayMin = Math.round(delayMs / 60000);
