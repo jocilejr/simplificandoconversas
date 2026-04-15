@@ -118,63 +118,63 @@ function ScheduleCard({
         </div>
 
         {/* MIDDLE — Info strip */}
-        <div className="px-4 py-3 space-y-2" style={{ background: 'hsl(var(--card))' }}>
+        <div className="px-4 py-3 space-y-1.5" style={{ background: 'hsl(var(--card))' }}>
           {/* Time + Status */}
           <div className="flex items-center justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <span className={`text-lg font-bold font-mono leading-none tracking-tight ${
+            <div className="flex items-baseline gap-2">
+              <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
                 isPast ? "text-muted-foreground" : "text-foreground"
               }`}>
                 {formatTimeBrt(runAt)}
               </span>
-              <span className="text-[10px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
+              <span className="text-xs text-muted-foreground/50">{formatDateBrt(runAt)}</span>
             </div>
-            <Badge variant="outline" className={`text-[9px] gap-0.5 px-1.5 py-0 h-[18px] border-border/30`}>
-              <StatusIcon className="h-3 w-3" />{msg.status_label}
+            <Badge variant="outline" className={`text-[10px] gap-0.5 px-2 py-0.5 border-border/30`}>
+              <StatusIcon className="h-3.5 w-3.5" />{msg.status_label}
             </Badge>
           </div>
 
           {/* Campaign + Type */}
-          <div className="flex items-center gap-1.5">
-            <Megaphone className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-            <p className="text-xs font-medium truncate flex-1">{msg.campaign_name}</p>
+          <div className="flex items-center gap-2">
+            <Megaphone className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+            <p className="text-sm font-medium truncate flex-1">{msg.campaign_name}</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 py-0 h-4">
-              <Icon className="h-2.5 w-2.5" />{typeLabels[msg.message_type] || msg.message_type}
+            <Badge variant="secondary" className="text-[10px] gap-0.5 px-2 py-0.5 h-5">
+              <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
             </Badge>
-            <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-border/20">
-              <CalendarClock className="h-2.5 w-2.5 mr-0.5" />
+            <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 border-border/20">
+              <CalendarClock className="h-3 w-3 mr-0.5" />
               {scheduleLabels[msg.schedule_type] || msg.schedule_type}
             </Badge>
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
-              <UsersRound className="h-3 w-3" />
+            <span className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+              <UsersRound className="h-3.5 w-3.5" />
               {msg.target_groups_count}
             </span>
           </div>
 
           {/* Error reason */}
           {reasonTitle && (
-            <p className="text-[9px] text-destructive/80 leading-tight line-clamp-1">{reasonTitle}</p>
+            <p className="text-[10px] text-destructive/80 leading-tight line-clamp-1">{reasonTitle}</p>
           )}
         </div>
 
         {/* BOTTOM — Stats bar with accent gradient */}
-        <div className={`flex items-center justify-around px-3 py-2 bg-gradient-to-r ${cfg.accent}`}>
+        <div className={`flex items-center justify-around px-3 py-2.5 bg-gradient-to-r ${cfg.accent} rounded-b-2xl`}>
           <div className="flex flex-col items-center">
-            <span className="text-sm font-bold text-white leading-none">{sentCount}</span>
-            <span className="text-[8px] text-white/70 uppercase tracking-wider mt-0.5">Enviadas</span>
+            <span className="text-base font-bold text-white leading-none">{sentCount}</span>
+            <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Enviadas</span>
           </div>
-          <div className="w-px h-5 bg-white/20" />
+          <div className="w-px h-6 bg-white/20" />
           <div className="flex flex-col items-center">
-            <span className="text-sm font-bold text-white leading-none">{msg.target_groups_count}</span>
-            <span className="text-[8px] text-white/70 uppercase tracking-wider mt-0.5">Grupos</span>
+            <span className="text-base font-bold text-white leading-none">{msg.target_groups_count}</span>
+            <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Grupos</span>
           </div>
-          <div className="w-px h-5 bg-white/20" />
+          <div className="w-px h-6 bg-white/20" />
           <div className="flex flex-col items-center">
-            <span className="text-sm font-bold text-white leading-none">{failedCount}</span>
-            <span className="text-[8px] text-white/70 uppercase tracking-wider mt-0.5">Falhas</span>
+            <span className="text-base font-bold text-white leading-none">{failedCount}</span>
+            <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Falhas</span>
           </div>
         </div>
       </div>
