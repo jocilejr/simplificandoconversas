@@ -1,32 +1,49 @@
 
 
-# Plano: Excluir duplicados da contagem de limite/dia
+# Plano: Só bloquear boletos enviados ou duplicados
 
-## Problema raiz
-A função `countsAsSuccessfulContact` (linha 231) **não exclui** registros com `skipped_duplicate`. Quando o primeiro boleto de um CPF é processado e os demais são marcados como duplicados, esses registros duplicados contam como "envio bem-sucedido" no `phoneSendCount` (linha 600-608). Como boletos do mesmo CPF geralmente têm o mesmo telefone, a contagem infla e bloqueia o envio legítimo — o próprio primeiro boleto ou boletos de outros CPFs no mesmo telefone caem em `skipped_phone_limit`.
+## Problema
+Existem **duas camadas** de bloqueio que impedem boletos pendentes de entrar na fila:
 
-## Correção — 1 linha
-**Arquivo:** `deploy/backend/src/routes/followup-daily.ts` (linha 232)
+1. **`isBlockingContact`** (linha 227): bloqueia tudo que não é `failed_api` — inclui `skipped_phone_limit`, `skipped_invalid_phone`
+2. **`FINAL_JOB_STATUSES`** (linha 10): marca `sent`, `skipped_phone_limit`, `skipped_invalid_phone`, `skipped_duplicate` como status final — boleto com qualquer um desses nunca é reprocessado
 
-De:
+## Regra correta (conforme solicitado)
+- **Bloqueia**: `sent` e `skipped_duplicate` → boleto já foi tratado
+- **NÃO bloqueia**: `skipped_phone_limit`, `skipped_invalid_phone`, `failed_api` → boleto deve poder ser reprocessado
+
+## Correções
+
+### 1. `FINAL_JOB_STATUSES` (linha 10-15)
+Remover `skipped_phone_limit` e `skipped_invalid_phone` — só `sent` e `skipped_duplicate` são finais:
 ```typescript
-return !notes || (!notes.startsWith("failed_api") && !notes.startsWith("skipped_phone_limit") && !notes.startsWith("skipped_invalid_phone"));
+const FINAL_JOB_STATUSES = new Set(["sent", "skipped_duplicate"]);
 ```
 
-Para:
+### 2. `isBlockingContact` (linha 227-228)
+Mudar para bloquear **apenas** `sent` e `skipped_duplicate`:
 ```typescript
-return !notes || (!notes.startsWith("failed_api") && !notes.startsWith("skipped_phone_limit") && !notes.startsWith("skipped_invalid_phone") && !notes.startsWith("skipped_duplicate"));
+function isBlockingContact(notes: string | null | undefined) {
+  if (!notes) return false;
+  return notes.startsWith("sent") || notes.startsWith("skipped_duplicate");
+}
 ```
 
-## Por que isso resolve
-- `buildPhoneSendCount` usa `countsAsSuccessfulContact` para somar envios por telefone
-- Registros `skipped_duplicate` deixam de contar como envio
-- Boletos pendentes legítimos param de ser bloqueados pelo limite/dia
-- A lógica de `skipped_phone_limit` continua funcionando normalmente — não é tocada
+### 3. `countsAsSuccessfulContact` (linha 231-232)
+Manter como está — já exclui todos os skips e falhas da contagem de limite/dia.
+
+## Resultado
+- Boleto `sent` → bloqueado (não reenvia)
+- Boleto `skipped_duplicate` → bloqueado (CPF já foi atendido)
+- Boleto `skipped_phone_limit` → **reprocessável** na próxima execução
+- Boleto `skipped_invalid_phone` → **reprocessável** (caso telefone seja corrigido)
+- Boleto `failed_api` → **reprocessável** (já funciona)
+
+## Arquivo modificado
+- `deploy/backend/src/routes/followup-daily.ts` — 3 alterações cirúrgicas
 
 ## Após deploy
 ```bash
 cd /root/deploy && docker compose up -d --build backend
 ```
-Depois rodar o follow-up manualmente para confirmar que os pendentes entram na fila.
 
