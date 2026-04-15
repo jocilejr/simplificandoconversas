@@ -1167,14 +1167,16 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           .gte("created_at", dedupWindow);
 
         if ((alreadySent || 0) > 0) {
-          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
-            status_code: "skipped",
-            status_label: "Ignorada",
-            reason_code: "dedup_recent_send",
-            reason_label: "Bloqueada por deduplicação de 5 minutos",
-            reason_details: "Já existia uma mensagem igual enviada recentemente para este grupo.",
-            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
-          });
+          if (item.scheduled_message_id) {
+            groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+              status_code: "skipped",
+              status_label: "Ignorada",
+              reason_code: "dedup_recent_send",
+              reason_label: "Bloqueada por deduplicação de 5 minutos",
+              reason_details: "Já existia uma mensagem igual enviada recentemente para este grupo.",
+              diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+            });
+          }
           await sb.from("group_message_queue")
             .update({
               status: "cancelled",

@@ -41,50 +41,30 @@ const typeLabels: Record<string, string> = {
   document: "Documento",
 };
 
-/* ─── status badge ─── */
-function StatusBadge({ msg, isPast }: { msg: ScheduledMessageDebug; isPast: boolean }) {
-  const anyFailed = msg.queue_items.some(qi => qi.status === "failed");
-  const anyQueued = msg.queue_items.some(qi => qi.status !== "cancelled");
-  const allSent = msg.queue_items.length > 0 && msg.queue_items.every(qi => qi.status === "sent");
-  const isActuallyMissed = msg.missed || (isPast && !allSent && !anyFailed && !anyQueued);
+const statusClasses: Record<ScheduledMessageDebug["status_code"], string> = {
+  waiting: "text-green-500 border-green-500/30 bg-green-500/10",
+  processing: "text-blue-500 border-blue-500/30 bg-blue-500/10",
+  sent: "text-green-500 border-green-500/30 bg-green-500/10",
+  failed: "text-red-500 border-red-500/30 bg-red-500/10",
+  missed: "text-yellow-500 border-yellow-500/30 bg-yellow-500/10",
+  skipped: "text-orange-500 border-orange-500/30 bg-orange-500/10",
+};
 
-  if (isActuallyMissed) {
-    return (
-      <Badge variant="outline" className="text-yellow-500 border-yellow-500/30 bg-yellow-500/10 text-[10px] gap-1">
-        <AlertTriangle className="h-3 w-3" />Perdida
-      </Badge>
-    );
-  }
-  if (isPast) {
-    if (anyFailed) return (
-      <Badge variant="outline" className="text-red-500 border-red-500/30 bg-red-500/10 text-[10px] gap-1">
-        <XCircle className="h-3 w-3" />Falhou
-      </Badge>
-    );
-    if (allSent) return (
-      <Badge variant="outline" className="text-green-500 border-green-500/30 bg-green-500/10 text-[10px] gap-1">
-        <CheckCircle2 className="h-3 w-3" />Enviada
-      </Badge>
-    );
-    if (msg.queue_items.length === 0) return (
-      <Badge variant="outline" className="text-yellow-500 border-yellow-500/30 bg-yellow-500/10 text-[10px] gap-1">
-        <AlertTriangle className="h-3 w-3" />Sem fila
-      </Badge>
-    );
-    return (
-      <Badge variant="outline" className="text-blue-500 border-blue-500/30 bg-blue-500/10 text-[10px] gap-1">
-        <Clock className="h-3 w-3" />Processando
-      </Badge>
-    );
-  }
-  if (msg.has_timer) return (
-    <Badge variant="outline" className="text-green-500 border-green-500/30 bg-green-500/10 text-[10px] gap-1">
-      <Timer className="h-3 w-3" />Timer ativo
-    </Badge>
-  );
+const statusIcons = {
+  waiting: Timer,
+  processing: Clock,
+  sent: CheckCircle2,
+  failed: XCircle,
+  missed: AlertTriangle,
+  skipped: AlertTriangle,
+} satisfies Record<ScheduledMessageDebug["status_code"], typeof Clock>;
+
+/* ─── status badge ─── */
+function StatusBadge({ msg }: { msg: ScheduledMessageDebug }) {
+  const Icon = statusIcons[msg.status_code] || Clock;
   return (
-    <Badge variant="outline" className="text-red-500 border-red-500/30 bg-red-500/10 text-[10px] gap-1">
-      <XCircle className="h-3 w-3" />Sem timer
+    <Badge variant="outline" className={`${statusClasses[msg.status_code]} text-[10px] gap-1`}>
+      <Icon className="h-3 w-3" />{msg.status_label}
     </Badge>
   );
 }
@@ -106,8 +86,9 @@ function ScheduleCard({
   const Icon = typeIcons[msg.message_type] || FileText;
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
   const failedCount = msg.queue_items.filter(qi => qi.status === "failed").length;
-  const activeQueueCount = msg.queue_items.filter(qi => qi.status !== "cancelled").length;
-  const isMissed = msg.missed || (isPast && sentCount === 0 && failedCount === 0 && activeQueueCount === 0);
+  const primaryQueueError = msg.queue_error_summary[0];
+  const reasonTitle = msg.failure_reason || primaryQueueError?.reason_label || "Sem diagnóstico";
+  const reasonDetails = msg.failure_details || primaryQueueError?.reason_details || "O backend ainda não informou detalhes adicionais para esta publicação.";
 
   // Map content to WhatsAppPreview props
   const content = msg.content || {};
@@ -127,8 +108,12 @@ function ScheduleCard({
 
   const borderClass = isActive
     ? "ring-2 ring-primary/60 border-primary/40"
-    : isMissed
+    : msg.status_code === "missed"
       ? "border-yellow-500/30 opacity-80"
+      : msg.status_code === "failed"
+        ? "border-red-500/30 opacity-70"
+      : msg.status_code === "sent"
+        ? "border-green-500/30 opacity-60"
       : isPast
       ? sentCount > 0 && failedCount === 0
         ? "border-green-500/30 opacity-60"
@@ -154,7 +139,7 @@ function ScheduleCard({
             <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
           </Badge>
         </div>
-        <StatusBadge msg={msg} isPast={isPast} />
+        <StatusBadge msg={msg} />
       </div>
 
       {/* Campaign name */}
@@ -163,8 +148,13 @@ function ScheduleCard({
       </div>
 
       {/* WhatsApp Preview */}
-      <div className="h-[320px] min-h-[320px] overflow-y-auto">
+      <div className="h-[236px] min-h-[236px] overflow-y-auto">
         <WhatsAppPreview {...previewProps} />
+      </div>
+
+      <div className="min-h-[72px] border-t border-border/20 px-3 py-2 overflow-y-auto">
+        <p className="text-[11px] font-medium leading-4">{reasonTitle}</p>
+        <p className="mt-1 text-[10px] leading-4 text-muted-foreground whitespace-pre-wrap">{reasonDetails}</p>
       </div>
 
       {/* Queue summary footer */}
@@ -182,13 +172,14 @@ function ScheduleCard({
           )}
           {sentCount === 0 && failedCount === 0 && (
             <span className="text-muted-foreground">
-              {isMissed ? "Perdida" : isPast ? "Sem envios" : "Aguardando"}
+              {msg.status_label}
             </span>
           )}
         </div>
-        <span className="text-muted-foreground font-mono text-[10px]">
-          {msg.schedule_type}
-        </span>
+        <div className="text-right">
+          <span className="block text-muted-foreground font-mono text-[10px]">{msg.schedule_type}</span>
+          <span className="block text-muted-foreground font-mono text-[10px]">{msg.target_groups_count} grupos</span>
+        </div>
       </div>
       </div>
     </div>
@@ -297,9 +288,9 @@ export default function SchedulerDebugPanel() {
   };
 
   // Summary counters
-  const totalSent = messages.reduce((sum, m) => sum + m.queue_items.filter(qi => qi.status === "sent").length, 0);
-  const totalFailed = messages.reduce((sum, m) => sum + m.queue_items.filter(qi => qi.status === "failed").length, 0);
-  const totalMissed = messages.filter(m => m.missed).length;
+  const totalSent = messages.filter((m) => m.status_code === "sent").length;
+  const totalFailed = messages.filter((m) => m.status_code === "failed").length;
+  const totalMissed = messages.filter((m) => m.status_code === "missed").length;
 
   return (
     <Card className="border-border/50 overflow-hidden isolate">

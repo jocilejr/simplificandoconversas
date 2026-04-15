@@ -12,6 +12,19 @@ export interface QueueItem {
   error_message: string | null;
 }
 
+export interface QueueErrorSummary {
+  reason_code: string | null;
+  reason_label: string;
+  reason_details: string | null;
+  count: number;
+  groups: string[];
+  statuses: string[];
+}
+
+export interface SchedulerDiagnostics {
+  [key: string]: any;
+}
+
 export interface ScheduledMessageDebug {
   id: string;
   schedule_type: string;
@@ -22,7 +35,14 @@ export interface ScheduledMessageDebug {
   effective_run_at: string | null;
   has_timer: boolean;
   missed: boolean;
+  status_code: "waiting" | "processing" | "sent" | "failed" | "missed" | "skipped";
+  status_label: string;
+  failure_reason: string | null;
+  failure_details: string | null;
+  diagnostics: SchedulerDiagnostics | null;
+  queue_error_summary: QueueErrorSummary[];
   campaign_name: string;
+  target_groups_count: number;
   content_preview: string;
   content: {
     text?: string;
