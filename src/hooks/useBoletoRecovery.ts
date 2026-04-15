@@ -186,8 +186,8 @@ export function useBoletoRecovery() {
       }
 
       const key = applicableRule ? `${boleto.id}:${applicableRule.id}` : null;
-      const contactedToday = key ? contactedKeys.has(key) : false;
       const notes = key ? contactNotesMap.get(key) || "" : "";
+      const contactedToday = key ? contactedKeys.has(key) && !notes.startsWith("failed") : false;
 
       let sendStatus: BoletoWithRecovery["sendStatus"] = "pending";
       if (contactedToday) {
@@ -208,8 +208,8 @@ export function useBoletoRecovery() {
 
   // Derived lists
   const todayBoletos = useMemo(() => processedBoletos.filter((b) => b.applicableRule !== null), [processedBoletos]);
-  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => !b.contactedToday), [todayBoletos]);
-  const sentTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.contactedToday), [todayBoletos]);
+  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "pending" || b.sendStatus === "failed"), [todayBoletos]);
+  const sentTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "sent"), [todayBoletos]);
   const pendingBoletos = useMemo(() => processedBoletos.filter((b) => !b.isOverdue), [processedBoletos]);
   const overdueBoletos = useMemo(() => processedBoletos.filter((b) => b.isOverdue), [processedBoletos]);
 
