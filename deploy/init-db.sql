@@ -198,25 +198,33 @@ BEGIN
   END;
 END $$;
 
-CREATE POLICY ws_select ON public.quick_replies
-  FOR SELECT TO authenticated
-  USING (public.is_workspace_member(auth.uid(), workspace_id));
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS ws_select ON public.quick_replies;
+  DROP POLICY IF EXISTS ws_insert ON public.quick_replies;
+  DROP POLICY IF EXISTS ws_update ON public.quick_replies;
+  DROP POLICY IF EXISTS ws_delete ON public.quick_replies;
 
-CREATE POLICY ws_insert ON public.quick_replies
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    auth.uid() = user_id
-    AND public.can_write_workspace(auth.uid(), workspace_id)
-  );
+  CREATE POLICY ws_select ON public.quick_replies
+    FOR SELECT TO authenticated
+    USING (public.is_workspace_member(auth.uid(), workspace_id));
 
-CREATE POLICY ws_update ON public.quick_replies
-  FOR UPDATE TO authenticated
-  USING (public.can_write_workspace(auth.uid(), workspace_id))
-  WITH CHECK (public.can_write_workspace(auth.uid(), workspace_id));
+  CREATE POLICY ws_insert ON public.quick_replies
+    FOR INSERT TO authenticated
+    WITH CHECK (
+      auth.uid() = user_id
+      AND public.can_write_workspace(auth.uid(), workspace_id)
+    );
 
-CREATE POLICY ws_delete ON public.quick_replies
-  FOR DELETE TO authenticated
-  USING (public.has_workspace_role(auth.uid(), workspace_id, 'admin'));
+  CREATE POLICY ws_update ON public.quick_replies
+    FOR UPDATE TO authenticated
+    USING (public.can_write_workspace(auth.uid(), workspace_id))
+    WITH CHECK (public.can_write_workspace(auth.uid(), workspace_id));
+
+  CREATE POLICY ws_delete ON public.quick_replies
+    FOR DELETE TO authenticated
+    USING (public.has_workspace_role(auth.uid(), workspace_id, 'admin'));
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.contact_photos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
