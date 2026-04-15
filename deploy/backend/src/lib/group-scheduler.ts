@@ -280,6 +280,20 @@ export class GroupSchedulerManager {
         // Still try to schedule next
       } else {
         console.log(`[scheduler] ✅ Enqueued ${queueItems.length} items for msg ${msgId.slice(0, 8)} (batch: ${batch})`);
+        try {
+          const port = process.env.PORT || "3001";
+          const processResp = await fetch(`http://localhost:${port}/api/groups/queue/process`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspaceId: campaign.workspace_id }),
+          });
+
+          if (!processResp.ok) {
+            console.error(`[scheduler] queue/process error for ws ${campaign.workspace_id}:`, await processResp.text());
+          }
+        } catch (processErr: any) {
+          console.error(`[scheduler] queue/process fetch error for ws ${campaign.workspace_id}:`, processErr.message);
+        }
       }
 
       // Update last_run_at

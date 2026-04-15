@@ -25,6 +25,10 @@ function formatTimeBrt(utcStr: string | null): string {
   });
 }
 
+function getMessageRunAt(msg: ScheduledMessageDebug): string | null {
+  return msg.effective_run_at || msg.next_run_at || msg.last_run_at;
+}
+
 const typeIcons: Record<string, typeof FileText> = {
   text: FileText,
   image: Image,
@@ -89,9 +93,10 @@ function StatusBadge({ msg, isPast }: { msg: ScheduledMessageDebug; isPast: bool
 }
 
 /* ─── single card ─── */
-function ScheduleCard({ msg, isNext }: { msg: ScheduledMessageDebug; isNext: boolean }) {
-  const nextRun = msg.next_run_at ? new Date(msg.next_run_at) : null;
-  const isPast = nextRun ? nextRun.getTime() < Date.now() : true;
+function ScheduleCard({ msg, isNext, currentTimeMs }: { msg: ScheduledMessageDebug; isNext: boolean; currentTimeMs: number }) {
+  const runAt = getMessageRunAt(msg);
+  const nextRun = runAt ? new Date(runAt) : null;
+  const isPast = nextRun ? nextRun.getTime() < currentTimeMs : true;
 
   const Icon = typeIcons[msg.message_type] || FileText;
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
@@ -132,7 +137,7 @@ function ScheduleCard({ msg, isNext }: { msg: ScheduledMessageDebug; isNext: boo
       <div className="px-3 py-2.5 border-b border-border/30 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className={`text-lg font-bold font-mono ${isPast ? "text-muted-foreground" : isNext ? "text-primary" : "text-foreground"}`}>
-            {formatTimeBrt(msg.next_run_at)}
+            {formatTimeBrt(runAt)}
           </span>
           <Badge variant="outline" className="text-[10px] gap-1 border-border/50">
             <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
@@ -184,25 +189,35 @@ export default function SchedulerDebugPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
 
   const messages = data?.messages || [];
 
-  // Sort by next_run_at ascending
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTimeMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Sort by effective run time for today, not by the next recurrence in the future
   const sorted = useMemo(
     () => [...messages].sort((a, b) => {
-      const aTime = a.next_run_at ? new Date(a.next_run_at).getTime() : 0;
-      const bTime = b.next_run_at ? new Date(b.next_run_at).getTime() : 0;
+      const aRunAt = getMessageRunAt(a);
+      const bRunAt = getMessageRunAt(b);
+      const aTime = aRunAt ? new Date(aRunAt).getTime() : 0;
+      const bTime = bRunAt ? new Date(bRunAt).getTime() : 0;
       return aTime - bTime;
     }),
     [messages],
   );
 
-  // Find next future message index (based on current UTC time which aligns with next_run_at stored in UTC)
+  // Find next future message index based on the current time for today's schedule
   const nextIdx = useMemo(() => {
-    const nowMs = Date.now();
-    const idx = sorted.findIndex(m => m.next_run_at && new Date(m.next_run_at).getTime() > nowMs);
+    const idx = sorted.findIndex((m) => {
+      const runAt = getMessageRunAt(m);
+      return runAt ? new Date(runAt).getTime() > currentTimeMs : false;
+    });
     return idx >= 0 ? idx : sorted.length - 1;
-  }, [sorted]);
+  }, [currentTimeMs, sorted]);
 
   // Update scroll indicators
   const updateScrollState = () => {
@@ -257,7 +272,7 @@ export default function SchedulerDebugPanel() {
                   <Timer className="h-3 w-3" />{data.timers_active} timers
                 </span>
                 <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />{data.server_time_brt} BRT
+                  <Clock className="h-3 w-3" />{new Date(currentTimeMs).toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" }).replace("T", " ")} BRT
                 </span>
                 <span className="flex items-center gap-1">
                   <UsersRound className="h-3 w-3" />{data.groups_count} grupos
@@ -316,7 +331,7 @@ export default function SchedulerDebugPanel() {
               }}
             >
               {sorted.map((msg, idx) => (
-                <ScheduleCard key={msg.id} msg={msg} isNext={idx === nextIdx} />
+                <ScheduleCard key={msg.id} msg={msg} isNext={idx === nextIdx} currentTimeMs={currentTimeMs} />
               ))}
             </div>
           </div>
