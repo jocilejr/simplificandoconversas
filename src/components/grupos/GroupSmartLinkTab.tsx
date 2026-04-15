@@ -398,9 +398,15 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                <div className="flex items-center gap-2 flex-1 min-w-0">
                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
                  <SyncStatusBadge smartLink={smartLink} />
+                 {smartLink.sync_progress && (
+                   <Badge variant="secondary" className="text-xs gap-1 animate-pulse">
+                     <RefreshCw className="h-3 w-3 animate-spin" />
+                     Sincronizando {smartLink.sync_progress.current}/{smartLink.sync_progress.total}...
+                   </Badge>
+                 )}
                </div>
-               <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending} className="text-xs border-border/50 h-7 shrink-0">
-                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncInviteLinks.isPending ? "animate-spin" : ""}`} /> Sincronizar
+               <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7 shrink-0">
+                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
                </Button>
              </div>
              <div className="overflow-hidden">
