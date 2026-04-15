@@ -444,11 +444,15 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
       {groupLinks.length > 0 && (
         <Card className="border-border/50">
           <CardContent className="p-0">
-             <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-2">
+                 <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button size="sm" variant="outline" onClick={() => { setAddingGroups(true); handleFetchGroupsForAdd(); }} disabled={addingGroups || fetchingGroups} className="text-xs border-border/50 h-7">
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7">
                   <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
                 </Button>
               </div>
