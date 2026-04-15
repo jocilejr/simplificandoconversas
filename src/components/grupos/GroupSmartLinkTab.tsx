@@ -412,14 +412,15 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
              <div className="overflow-hidden">
                <Table>
                  <TableHeader>
-                   <TableRow>
-                     <TableHead>Grupo</TableHead>
-                     <TableHead className="text-center w-24">Membros</TableHead>
-                     <TableHead className="text-center w-20">Cliques</TableHead>
-                     <TableHead className="w-[220px]">URL</TableHead>
-                     <TableHead className="text-center w-20">Status</TableHead>
-                   </TableRow>
-                 </TableHeader>
+                    <TableRow>
+                      <TableHead>Grupo</TableHead>
+                      <TableHead className="text-center w-24">Membros</TableHead>
+                      <TableHead className="text-center w-20">Cliques</TableHead>
+                      <TableHead className="w-[220px]">URL</TableHead>
+                      <TableHead className="text-center w-20">Status</TableHead>
+                      <TableHead className="text-center w-28">Último Sync</TableHead>
+                    </TableRow>
+                  </TableHeader>
                  <TableBody>
                     {groupLinks.map((gl, idx) => {
                       const isBanned = (gl as any).status === "banned";
@@ -458,6 +459,9 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                               : isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Ativo</Badge>
                               : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
                               : <span className="text-xs text-muted-foreground">Espera</span>}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <GroupSyncIndicator gl={gl} />
                           </TableCell>
                         </TableRow>
                       );
@@ -507,6 +511,53 @@ function formatTimeAgo(dateStr: string | null | undefined): string {
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `há ${hours}h`;
   return `há ${Math.floor(hours / 24)}d`;
+}
+
+function GroupSyncIndicator({ gl }: { gl: GroupLink }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  const syncStatus = gl.last_sync_status;
+  const syncAt = gl.last_synced_at;
+
+  if (!syncAt) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  const timeAgo = formatTimeAgo(syncAt);
+  const colorClass = syncStatus === "ok"
+    ? "text-green-600"
+    : syncStatus === "banned" || syncStatus === "error"
+      ? "text-destructive"
+      : "text-muted-foreground";
+
+  const icon = syncStatus === "ok"
+    ? <CheckCircle2 className="h-3 w-3" />
+    : syncStatus === "banned" || syncStatus === "error"
+      ? <XCircle className="h-3 w-3" />
+      : <Clock className="h-3 w-3" />;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1 text-xs ${colorClass} cursor-help`}>
+            {icon} {timeAgo}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">
+            {syncStatus === "ok" ? "Sincronizado com sucesso" : syncStatus === "banned" ? "Grupo banido/sem acesso" : "Falha na sincronização"}
+            <br />
+            <span className="text-muted-foreground">{new Date(syncAt).toLocaleString("pt-BR")}</span>
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function SyncStatusBadge({ smartLink }: { smartLink: SmartLink }) {
