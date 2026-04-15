@@ -27,13 +27,26 @@ export default function GroupDashboardTab() {
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
 
+  const addCount = events.filter((e: any) => e.action === "add").length;
+  const removeCount = events.filter((e: any) => e.action === "remove").length;
+
+  const eventsByGroup = events.reduce<Record<string, { add: number; remove: number }>>((acc, e: any) => {
+    const jid = e.group_jid;
+    if (!acc[jid]) acc[jid] = { add: 0, remove: 0 };
+    if (e.action === "add") acc[jid].add++;
+    if (e.action === "remove") acc[jid].remove++;
+    return acc;
+  }, {});
+
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
+        <StatCard title="Entraram" value={String(addCount)} icon={UserPlus} iconColor="text-green-500" />
+        <StatCard title="Saíram" value={String(removeCount)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
       {!hasSelectedGroups && (
