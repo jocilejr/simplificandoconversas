@@ -231,7 +231,8 @@ export default function SchedulerDebugPanel() {
     if (!targetCard) return;
 
     const cardCenter = targetCard.offsetLeft + targetCard.offsetWidth / 2;
-    const target = cardCenter - container.clientWidth / 2;
+    const maxScrollLeft = Math.max(container.scrollWidth - container.clientWidth, 0);
+    const target = Math.min(Math.max(cardCenter - container.clientWidth / 2, 0), maxScrollLeft);
 
     if (smooth) {
       container.scrollTo({ left: target, behavior: "smooth" });
@@ -338,43 +339,45 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="relative overflow-hidden max-w-full" style={{ contain: "layout paint", height: "488px" }}>
-            {/* Left arrow */}
-            <button
-              onClick={() => scroll("left")}
-              className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-all shadow-md ${activeIndex <= 0 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+          <div className="w-full min-w-0 overflow-hidden px-4 pb-4">
+            <div className="relative mx-auto h-[488px] w-full max-w-[980px] min-w-0 overflow-hidden" style={{ contain: "layout paint" }}>
+              <button
+                onClick={() => scroll("left")}
+                className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md transition-all hover:bg-muted/40 ${activeIndex <= 0 ? "pointer-events-none opacity-0" : "opacity-100"}`}
+                aria-label="Ver programação anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
 
-            {/* Right arrow */}
-            <button
-              onClick={() => scroll("right")}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-all shadow-md ${activeIndex >= sorted.length - 1 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+              <button
+                onClick={() => scroll("right")}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md transition-all hover:bg-muted/40 ${activeIndex >= sorted.length - 1 ? "pointer-events-none opacity-0" : "opacity-100"}`}
+                aria-label="Ver próxima programação"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
 
-            <div
-              ref={scrollRef}
-              onScroll={() => {
-                const idx = getClosestCardIndex();
-                if (idx !== activeIndex) setActiveIndex(idx);
-              }}
-              className="flex h-full items-start gap-4 px-4 py-4 scroll-smooth"
-              style={{
-                overflowX: "auto",
-                overflowY: "hidden",
-                scrollSnapType: "x mandatory",
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-                overscrollBehaviorX: "contain",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {sorted.map((msg, idx) => (
-                <ScheduleCard key={msg.id} msg={msg} isActive={idx === activeIndex} currentTimeMs={currentTimeMs} />
-              ))}
+              <div
+                ref={scrollRef}
+                onScroll={() => {
+                  const idx = getClosestCardIndex();
+                  if (idx !== activeIndex) setActiveIndex(idx);
+                }}
+                className="flex h-full min-w-0 items-start gap-4 overflow-x-auto overflow-y-hidden scroll-smooth"
+                style={{
+                  scrollSnapType: "x mandatory",
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  overscrollBehaviorX: "contain",
+                  WebkitOverflowScrolling: "touch",
+                  paddingInline: "max(1rem, calc(50% - 155px))",
+                  paddingBlock: "1rem",
+                }}
+              >
+                {sorted.map((msg, idx) => (
+                  <ScheduleCard key={msg.id} msg={msg} isActive={idx === activeIndex} currentTimeMs={currentTimeMs} />
+                ))}
+              </div>
             </div>
           </div>
         )}

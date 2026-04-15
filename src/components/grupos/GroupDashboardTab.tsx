@@ -29,7 +29,7 @@ export default function GroupDashboardTab() {
   const groupsMonitored = selectedGroups.length > 0 ? selectedGroups.length : (debugData?.groups_count || 0);
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 w-full space-y-4 overflow-hidden">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
@@ -37,10 +37,12 @@ export default function GroupDashboardTab() {
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
       </div>
 
-      <SchedulerDebugPanel />
+      <div className="min-w-0 w-full overflow-hidden">
+        <SchedulerDebugPanel />
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="border-border/50">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="border-border/50 min-w-0 overflow-hidden">
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b border-border/50">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos Monitorados</p>
@@ -63,7 +65,7 @@ export default function GroupDashboardTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/50">
+        <Card className="border-border/50 min-w-0 overflow-hidden">
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b border-border/50">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Eventos Recentes</p>
