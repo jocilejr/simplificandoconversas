@@ -380,7 +380,7 @@ export default function SchedulerDebugPanel() {
 
             <div
               ref={scrollRef}
-              className="flex gap-4 overflow-x-auto px-[calc(50%-155px)] py-4 scroll-smooth"
+              className="flex gap-4 overflow-x-auto py-4 px-4 scroll-smooth"
               style={{
                 scrollSnapType: "x mandatory",
                 scrollbarWidth: "none",
