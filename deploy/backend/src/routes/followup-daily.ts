@@ -301,7 +301,8 @@ async function loadWorkspaceContext(
       .select("id, created_at, customer_name, customer_phone, customer_document, amount, metadata, external_id")
       .eq("workspace_id", workspaceId)
       .eq("type", "boleto")
-      .eq("status", "pendente"),
+      .eq("status", "pendente")
+      .order("created_at", { ascending: true }),
     sb
       .from("boleto_recovery_contacts")
       .select("transaction_id, rule_id, notes")
