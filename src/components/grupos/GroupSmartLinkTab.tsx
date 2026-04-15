@@ -513,6 +513,53 @@ function formatTimeAgo(dateStr: string | null | undefined): string {
   return `há ${Math.floor(hours / 24)}d`;
 }
 
+function GroupSyncIndicator({ gl }: { gl: GroupLink }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  const syncStatus = gl.last_sync_status;
+  const syncAt = gl.last_synced_at;
+
+  if (!syncAt) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  const timeAgo = formatTimeAgo(syncAt);
+  const colorClass = syncStatus === "ok"
+    ? "text-green-600"
+    : syncStatus === "banned" || syncStatus === "error"
+      ? "text-destructive"
+      : "text-muted-foreground";
+
+  const icon = syncStatus === "ok"
+    ? <CheckCircle2 className="h-3 w-3" />
+    : syncStatus === "banned" || syncStatus === "error"
+      ? <XCircle className="h-3 w-3" />
+      : <Clock className="h-3 w-3" />;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1 text-xs ${colorClass} cursor-help`}>
+            {icon} {timeAgo}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">
+            {syncStatus === "ok" ? "Sincronizado com sucesso" : syncStatus === "banned" ? "Grupo banido/sem acesso" : "Falha na sincronização"}
+            <br />
+            <span className="text-muted-foreground">{new Date(syncAt).toLocaleString("pt-BR")}</span>
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function SyncStatusBadge({ smartLink }: { smartLink: SmartLink }) {
   const [, setTick] = useState(0);
   useEffect(() => {
