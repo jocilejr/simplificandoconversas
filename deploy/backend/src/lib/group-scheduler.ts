@@ -89,12 +89,42 @@ export class GroupSchedulerManager {
     // Cancel existing timer first
     this.cancelMessage(msg.id);
 
-    if (!msg.is_active || !msg.next_run_at) return;
+    if (!msg.is_active) {
+      this.setDiagnostic(msg.id, {
+        status_code: "skipped",
+        status_label: "Inativa",
+        reason_code: "message_inactive",
+        reason_label: "A publicação está desativada",
+        reason_details: "O timer foi removido porque a publicação foi marcada como inativa.",
+        diagnostics: { source: "scheduleMessage" },
+      });
+      return;
+    }
+
+    if (!msg.next_run_at) {
+      this.setDiagnostic(msg.id, {
+        status_code: "failed",
+        status_label: "Sem horário",
+        reason_code: "missing_next_run",
+        reason_label: "A publicação ficou sem próximo horário",
+        reason_details: "Não existe um próximo disparo definido para esta publicação.",
+        diagnostics: { source: "scheduleMessage" },
+      });
+      return;
+    }
 
     const nextRun = new Date(msg.next_run_at);
     if (nextRun <= new Date()) {
       // Already in the past — skip, don't enqueue
       console.log(`[scheduler] Skipping msg ${msg.id}: next_run already passed`);
+      this.setDiagnostic(msg.id, {
+        status_code: "missed",
+        status_label: "Perdida",
+        reason_code: "next_run_already_passed",
+        reason_label: "O horário da publicação já havia passado",
+        reason_details: "O timer não foi recriado porque o próximo horário já estava vencido no momento do agendamento.",
+        diagnostics: { source: "scheduleMessage", next_run_at: msg.next_run_at },
+      });
       return;
     }
 
