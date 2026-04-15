@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   RefreshCw, Clock, Timer, AlertTriangle, CheckCircle2, XCircle,
   ChevronLeft, ChevronRight, FileText, Image, Mic, File, Video,
-  Send, UsersRound, CalendarClock,
+  Send, UsersRound, CalendarClock, Megaphone,
 } from "lucide-react";
 import { useSchedulerDebug, type ScheduledMessageDebug } from "@/hooks/useSchedulerDebug";
 import WhatsAppPreview from "@/components/grupos/WhatsAppPreview";
@@ -53,7 +53,7 @@ const statusConfig: Record<string, { color: string; bg: string; border: string; 
   skipped: { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: AlertTriangle },
 };
 
-/* ─── Horizontal card ─── */
+/* ─── Card ─── */
 function ScheduleCard({
   msg, position, currentTimeMs,
 }: {
@@ -62,13 +62,7 @@ function ScheduleCard({
   currentTimeMs: number;
 }) {
   if (!msg) {
-    // Ghost placeholder for empty slot
-    return (
-      <div
-        className="flex-1 min-w-0 transition-all duration-500 ease-out"
-        style={{ opacity: 0 }}
-      />
-    );
+    return <div className="flex-1 min-w-0 transition-all duration-500 ease-out opacity-0" />;
   }
 
   const runAt = getMessageRunAt(msg);
@@ -103,87 +97,85 @@ function ScheduleCard({
       className={`flex-1 min-w-0 transition-all duration-500 ease-out ${
         isCurrent
           ? "scale-100 opacity-100 z-10"
-          : "scale-[0.92] opacity-40 z-0"
+          : "scale-[0.93] opacity-45 z-0"
       }`}
-      style={!isCurrent ? { filter: "blur(1px)" } : undefined}
+      style={!isCurrent ? { filter: "blur(1.5px)" } : undefined}
     >
-      <div className={`h-full rounded-xl border overflow-hidden transition-all duration-500 ${
+      <div className={`h-full rounded-2xl overflow-hidden transition-all duration-500 ${
         isCurrent
-          ? "border-primary/50 shadow-xl shadow-primary/5 bg-card"
-          : "border-border/20 bg-card/60"
+          ? "border border-primary/30 ring-1 ring-white/5 shadow-2xl shadow-black/20 bg-card"
+          : "border border-border/15 bg-card/50"
       }`}>
         <div className="flex h-full min-h-0">
-          {/* LEFT: Info — 40% */}
-          <div className="flex flex-col w-[40%] min-w-0 border-r border-border/15">
-            {/* Time header */}
-            <div className="px-3 py-2.5 border-b border-border/15">
-              <div className="flex items-center justify-between gap-1 mb-1.5">
-                <div className="flex items-baseline gap-1.5">
-                  <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
+          {/* LEFT — 45% */}
+          <div className="flex flex-col w-[45%] min-w-0">
+            {/* Time + Status header */}
+            <div className="px-2.5 py-2 border-b border-border/10">
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-lg font-bold font-mono leading-none tracking-tight ${
                     isPast ? "text-muted-foreground" : isCurrent ? "text-primary" : "text-foreground"
                   }`}>
                     {formatTimeBrt(runAt)}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/60">{formatDateBrt(runAt)}</span>
+                  <span className="text-[9px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
                 </div>
-                <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[9px] gap-0.5 shrink-0 px-1.5 py-0`}>
+                <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[8px] gap-0.5 shrink-0 px-1 py-0 h-4`}>
                   <StatusIcon className="h-2.5 w-2.5" />{msg.status_label}
                 </Badge>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 py-0 h-4">
-                  <Icon className="h-2.5 w-2.5" />{typeLabels[msg.message_type] || msg.message_type}
+              <div className="flex items-center gap-1">
+                <Badge variant="secondary" className="text-[8px] gap-0.5 px-1 py-0 h-3.5">
+                  <Icon className="h-2 w-2" />{typeLabels[msg.message_type] || msg.message_type}
                 </Badge>
-                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-border/30">
-                  <CalendarClock className="h-2.5 w-2.5 mr-0.5" />
+                <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-border/20">
+                  <CalendarClock className="h-2 w-2 mr-0.5" />
                   {scheduleLabels[msg.schedule_type] || msg.schedule_type}
                 </Badge>
               </div>
             </div>
 
             {/* Details */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2.5">
-              <div>
-                <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest font-medium mb-0.5">Campanha</p>
-                <p className="text-[11px] font-medium truncate">{msg.campaign_name}</p>
+            <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-1.5 space-y-1.5 scrollbar-none">
+              <div className="flex items-center gap-1.5">
+                <Megaphone className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                <p className="text-[10px] font-medium truncate leading-tight">{msg.campaign_name}</p>
               </div>
 
-              <div>
-                <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest font-medium mb-0.5">Grupos</p>
-                <p className="text-[11px] flex items-center gap-1">
-                  <UsersRound className="h-3 w-3 text-muted-foreground/60" />
+              <div className="flex items-center gap-1.5">
+                <UsersRound className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                <p className="text-[10px] text-muted-foreground leading-tight">
                   {msg.target_groups_count} grupo{msg.target_groups_count !== 1 ? "s" : ""}
                 </p>
               </div>
 
-              {/* Queue stats */}
               {(sentCount > 0 || failedCount > 0) && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pt-0.5">
                   {sentCount > 0 && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-emerald-400">
-                      <CheckCircle2 className="h-3 w-3" />{sentCount}
+                    <span className="flex items-center gap-0.5 text-[9px] text-emerald-400">
+                      <CheckCircle2 className="h-2.5 w-2.5" />{sentCount}
                     </span>
                   )}
                   {failedCount > 0 && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-                      <XCircle className="h-3 w-3" />{failedCount}
+                    <span className="flex items-center gap-0.5 text-[9px] text-red-400">
+                      <XCircle className="h-2.5 w-2.5" />{failedCount}
                     </span>
                   )}
                 </div>
               )}
-
-              {/* Diagnostic */}
-              {reasonTitle && (
-                <div className="rounded-md border border-border/15 bg-muted/20 px-2 py-1.5">
-                  <p className="text-[9px] font-medium leading-tight text-muted-foreground">{reasonTitle}</p>
-                </div>
-              )}
             </div>
+
+            {/* Diagnostic footer */}
+            {reasonTitle && (
+              <div className="px-2.5 py-1.5 border-t border-border/10 bg-destructive/5">
+                <p className="text-[8px] font-medium leading-tight text-destructive/80 line-clamp-2">{reasonTitle}</p>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT: Preview — 60% */}
-          <div className="w-[60%] min-w-0 overflow-hidden">
-            <div className="h-full overflow-y-auto">
+          {/* RIGHT — 55% preview */}
+          <div className="w-[55%] min-w-0 border-l border-border/10 overflow-hidden">
+            <div className="h-full">
               <WhatsAppPreview {...previewProps} />
             </div>
           </div>
@@ -193,7 +185,7 @@ function ScheduleCard({
   );
 }
 
-/* ─── main panel ─── */
+/* ─── Main panel ─── */
 export default function SchedulerDebugPanel() {
   const { data, isLoading, refresh } = useSchedulerDebug();
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
@@ -230,7 +222,7 @@ export default function SchedulerDebugPanel() {
 
   const navigate = useCallback((dir: "prev" | "next") => {
     if (isTransitioning) return;
-    const newIdx = dir === "prev" 
+    const newIdx = dir === "prev"
       ? Math.max(activeIndex - 1, 0)
       : Math.min(activeIndex + 1, sorted.length - 1);
     if (newIdx === activeIndex) return;
@@ -305,15 +297,15 @@ export default function SchedulerDebugPanel() {
               <button
                 onClick={() => navigate("prev")}
                 disabled={!canPrev}
-                className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
+                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
                 aria-label="Anterior"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-3.5 w-3.5" />
               </button>
 
               <div
                 className="flex flex-1 min-w-0 gap-2 items-stretch"
-                style={{ height: "320px" }}
+                style={{ height: "280px" }}
               >
                 <ScheduleCard key={prev?.id || "ghost-prev"} msg={prev} position="prev" currentTimeMs={currentTimeMs} />
                 <ScheduleCard key={current?.id || "ghost-current"} msg={current} position="current" currentTimeMs={currentTimeMs} />
@@ -323,10 +315,10 @@ export default function SchedulerDebugPanel() {
               <button
                 onClick={() => navigate("next")}
                 disabled={!canNext}
-                className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
+                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
                 aria-label="Próximo"
               >
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
