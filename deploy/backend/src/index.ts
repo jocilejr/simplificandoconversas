@@ -21,7 +21,7 @@ import paymentOpenpixRouter from "./routes/payment-openpix";
 import resolveUserRouter from "./routes/resolve-user";
 import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
-import autoRecoveryRouter from "./routes/auto-recovery";
+
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily } from "./routes/followup-daily";
 import groupsApiRouter from "./routes/groups-api";
@@ -51,7 +51,7 @@ app.use("/api/payment-openpix", paymentOpenpixRouter);
 app.use("/api/resolve-user-by-email", resolveUserRouter);
 app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
-app.use("/api/auto-recovery", autoRecoveryRouter);
+
 app.use("/api/followup-daily", followupDailyRouter);
 app.use("/api/groups", groupsApiRouter);
 app.use("/api/groups/webhook", groupsWebhookRouter);
@@ -85,8 +85,6 @@ cron.schedule("*/30 * * * * *", async () => {
 
 // Light sync disabled — use manual "Sincronizar" button per instance instead.
 
-// Auto-recovery cron DISABLED — system is event-driven.
-// Use POST /api/auto-recovery/process for manual retries.
 
 // Follow-up daily cron — checks every minute if it's time to send
 const followupTriggeredToday = new Set<string>();
