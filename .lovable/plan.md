@@ -1,74 +1,46 @@
 
-Objetivo
 
-- Fazer o Follow Up processar todos os pendentes do workspace atual sem parar no meio.
-- Manter a deduplicação existente por regra/telefone/dia.
-- Permitir reexecução segura dos que falharam.
+## Correção — normalizePhone duplicando o 55 para DDD 55
 
-Diagnóstico confirmado
+### Problema
+Um número como `5599887766` (10 dígitos, DDD 55) tem `length >= 10 && length <= 11`, então recebe `"55"` na frente → `555599887766` (errado).
 
-- Hoje o backend do Follow Up só enfileira em memória e retorna antes do envio terminar.
-- Se houver falha no meio ou reinício do backend, o restante pode ficar sem processamento.
-- `failed_api` entra no mesmo bloqueio de “já contactado hoje”, então uma nova execução no mesmo dia não recupera essas falhas.
-- No frontend não existe um disparo real de “executar agora”; o botão atual não força o backend a processar todos os pendentes.
+A regra correta:
+- **10-11 dígitos**: é número local (DDD + telefone). Adicionar `55` na frente. **MAS** se já começa com `55`, ele já pode ser um número com country code de 12-13 dígitos que perdeu um dígito — nesse caso a lógica atual está correta, pois 10-11 dígitos que começam com 55 são DDD 55 mesmo.
+- **12-13 dígitos**: já tem country code. Não mexer.
 
-O que vou implementar
+O problema real: o `"55"` do country code é adicionado cegamente. A correção é simples — verificar se o número já tem 12-13 dígitos (já normalizado) antes de tentar adicionar.
 
-1. Persistir a fila do Follow Up no banco da VPS
-- Criar uma tabela de jobs do Follow Up com status como `pending`, `processing`, `sent`, `failed`, `skipped_phone_limit`, `skipped_invalid_phone`.
-- Adicionar unicidade por `workspace + transaction + rule + data`, para continuar impedindo duplicados.
+Mas o cenário do usuário é: número chega como `5599887766` (DDD 55, 10 dígitos) → deve virar `555599887766` (country code 55 + DDD 55 + número). **Isso é o comportamento correto.** O bug real deve estar em outro lugar — talvez o número já chega com `55` de country code (12 dígitos) e a função trata como 12 dígitos sem adicionar nada, mas o `displayPhone` no useLeads faz `!phone.startsWith("55")` que impede a adição.
 
-2. Separar “gerar candidatos” de “enviar”
-- Refatorar `deploy/backend/src/routes/followup-daily.ts` para:
-  - primeiro gerar todos os jobs elegíveis do dia;
-  - depois consumir todos os `pending` do workspace;
-  - permitir retry dos `failed` sem reenviar os `sent`.
+Espera — relendo o pedido do usuário: "Se o numero tem 10/11 digitos e inicia com 55: adiciona outro 55." Isso confirma que DDD 55 com 10-11 dígitos deve ganhar o country code. O código atual já faz isso. O problema é quando o número **já tem 12-13 dígitos** e começa com 55 — aí não precisa adicionar nada. O código atual também já trata isso (só adiciona para 10-11).
 
-3. Forçar processamento completo dos pendentes
-- Adicionar modo manual no endpoint do backend para processar o workspace atual até zerar os jobs pendentes/falhos elegíveis.
-- Manter a fila anti-ban por instância, mas agora alimentada por jobs persistidos.
+Mas o `displayPhone` no `useLeads.ts` linha 42 tem `!phone.startsWith("55")` — isso **impede** a adição do 55 para DDDs que começam com 55! Isso está errado segundo a regra do usuário.
 
-4. Preservar as regras de duplicidade
-- `sent` continua bloqueando novo envio.
-- `skipped_phone_limit` e `skipped_invalid_phone` continuam respeitados.
-- `failed_api` deixa de bloquear definitivamente e passa a poder ser reprocessado.
-- O limite por telefone normalizado completo no dia continua ativo.
+Vou alinhar todas as funções com a regra explícita do usuário:
+- 10-11 dígitos → **sempre** adicionar 55 (mesmo se começa com 55, pois é DDD 55)
+- 12-13 dígitos → já está correto, não adicionar nada
 
-5. Ajustar o frontend do Follow Up
-- Adicionar botão real “Executar agora”.
-- Mostrar progresso real: pendentes, processando, enviados e falhas.
-- Ajustar a leitura da aba para não mascarar falhas como se fossem concluídas.
+### Arquivos a alterar
 
-Arquivos previstos
+**1. `src/lib/normalizePhone.ts`** — já está correto (adiciona 55 para 10-11 dígitos independente do prefixo). Sem mudança.
 
-- `deploy/backend/src/routes/followup-daily.ts`
-- `deploy/backend/src/index.ts`
-- `deploy/backend/src/lib/message-queue.ts`
-- `src/components/followup/FollowUpDashboard.tsx`
-- `src/hooks/useBoletoRecovery.ts`
-- `src/hooks/useFollowUpSettings.ts`
+**2. `deploy/backend/src/lib/normalize-phone.ts`** — já está correto. Sem mudança.
 
-Parte técnica
+**3. `src/lib/phoneNormalization.ts` → `normalizePhoneForMatching`** — já está correto. Sem mudança.
 
-```text
-Fluxo novo
-1) cron/manual cria jobs elegíveis no banco
-2) worker backend consome pending/failed do workspace
-3) sucesso => sent
-4) falha temporária => failed
-5) duplicado/regra válida => skipped_*
+**4. `src/hooks/useLeads.ts` → `displayPhone`** — **BUGADO**. Linha 42 tem `!phone.startsWith("55")` que impede a normalização para DDD 55. Remover essa condição para alinhar com as outras funções.
+
+```typescript
+// DE:
+if (phone.length >= 10 && phone.length <= 11 && !phone.startsWith("55"))
+  phone = "55" + phone;
+
+// PARA:
+if (phone.length >= 10 && phone.length <= 11)
+  phone = "55" + phone;
 ```
 
-Validação na VPS depois da implementação
+### Resumo
+Apenas 1 arquivo precisa de correção: `src/hooks/useLeads.ts` na função `displayPhone`. As demais funções de normalização já seguem a regra correta.
 
-```bash
-docker compose logs backend --tail=200 | grep followup-daily
-docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT status, count(*) FROM public.followup_dispatch_queue GROUP BY status ORDER BY status;"
-docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT transaction_id, rule_id, status, last_error FROM public.followup_dispatch_queue ORDER BY created_at DESC LIMIT 30;"
-```
-
-Resultado esperado
-
-- o Follow Up não vai mais travar no meio sem controle;
-- o botão manual vai forçar o envio de todos os pendentes do workspace atual;
-- as regras de duplicado continuarão existentes.
