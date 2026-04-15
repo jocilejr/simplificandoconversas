@@ -53,7 +53,7 @@ const statusConfig: Record<string, { accent: string; icon: typeof Clock }> = {
   skipped: { accent: "from-orange-500 to-orange-600", icon: AlertTriangle },
 };
 
-/* ─── Vertical Card ─── */
+/* ─── Horizontal Card ─── */
 function ScheduleCard({
   msg, position, currentTimeMs,
 }: {
@@ -77,8 +77,7 @@ function ScheduleCard({
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
   const failedCount = msg.queue_items.filter(qi => qi.status === "failed").length;
   const pendingCount = msg.queue_items.filter(qi => qi.status === "pending" || qi.status === "waiting").length;
-  const primaryQueueError = msg.queue_error_summary[0];
-  const reasonTitle = msg.failure_reason || primaryQueueError?.reason_label || null;
+  const reasonTitle = failedCount > 0 ? (msg.failure_reason || msg.queue_error_summary[0]?.reason_label || null) : null;
 
   const content = msg.content || {};
   const previewProps = {
@@ -100,102 +99,114 @@ function ScheduleCard({
           ? "scale-100 opacity-100 z-10"
           : "scale-[0.93] opacity-50 z-0"
       }`}
-      style={!isCurrent ? { filter: "blur(1.5px)" } : undefined}
+      style={!isCurrent ? { filter: "blur(2px)" } : undefined}
     >
       <div
-        className={`h-full rounded-2xl overflow-hidden flex flex-col transition-all duration-500 ${
-          isCurrent
-            ? "shadow-[0_12px_50px_-10px_rgba(0,0,0,0.6)]"
-            : "shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)]"
-        }`}
+        className={`h-full rounded-2xl overflow-hidden flex flex-row transition-all duration-500`}
         style={{
           background: 'hsl(var(--card))',
+          boxShadow: isCurrent
+            ? '0 20px 60px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)'
+            : '0 8px 30px -8px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04)',
         }}
       >
-        {/* TOP — Preview (fills ~55%) */}
-        <div className="flex-1 min-h-0 overflow-hidden relative">
-          <div className="absolute inset-0 overflow-hidden">
-            <WhatsAppPreview {...previewProps} />
-          </div>
-          {/* Fade overlay at bottom of preview */}
-          <div
-            className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
-            style={{
-              background: 'linear-gradient(to top, hsl(var(--card)), transparent)',
-            }}
-          />
-        </div>
-
-        {/* Separator */}
-        <div className="border-t border-border/10" />
-
-        {/* MIDDLE — Info strip */}
-        <div className="px-4 py-3 space-y-1.5" style={{
-          background: 'linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card) / 0.8))',
-        }}>
-          {/* Time + Status */}
-          <div className="flex items-center justify-between">
+        {/* LEFT — Info */}
+        <div className="flex flex-col justify-between flex-1 min-w-0 p-5">
+          {/* Top info */}
+          <div className="space-y-3">
+            {/* Time */}
             <div className="flex items-baseline gap-2">
-              <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
+              <span className={`text-3xl font-bold font-mono leading-none tracking-tight ${
                 isPast ? "text-muted-foreground" : "text-foreground"
               }`}>
                 {formatTimeBrt(runAt)}
               </span>
-              <span className="text-xs text-muted-foreground/50">{formatDateBrt(runAt)}</span>
+              <span className="text-sm text-muted-foreground/50">{formatDateBrt(runAt)}</span>
             </div>
-            <Badge variant="outline" className={`text-[10px] gap-0.5 px-2 py-0.5 border-border/30`}>
-              <StatusIcon className="h-3.5 w-3.5" />{msg.status_label}
-            </Badge>
+
+            {/* Campaign name */}
+            <div className="flex items-center gap-2.5">
+              <Megaphone className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+              <p className="text-base font-semibold truncate flex-1">{msg.campaign_name}</p>
+            </div>
+
+            {/* Status badge */}
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs gap-1 px-2.5 py-1 border-border/30 font-medium">
+                <StatusIcon className="h-3.5 w-3.5" />{msg.status_label}
+              </Badge>
+            </div>
+
+            {/* Type + Schedule */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="secondary" className="text-xs gap-1 px-2.5 py-1 h-6">
+                <Icon className="h-3.5 w-3.5" />{typeLabels[msg.message_type] || msg.message_type}
+              </Badge>
+              <Badge variant="outline" className="text-xs px-2.5 py-1 h-6 border-border/20">
+                <CalendarClock className="h-3.5 w-3.5 mr-1" />
+                {scheduleLabels[msg.schedule_type] || msg.schedule_type}
+              </Badge>
+              <span className="flex items-center gap-1.5 text-sm text-muted-foreground ml-auto">
+                <UsersRound className="h-4 w-4" />
+                {msg.target_groups_count}
+              </span>
+            </div>
+
+            {/* Error reason */}
+            {reasonTitle && (
+              <p className="text-xs text-destructive/80 leading-tight line-clamp-2">{reasonTitle}</p>
+            )}
           </div>
 
-          {/* Campaign + Type */}
-          <div className="flex items-center gap-2">
-            <Megaphone className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-            <p className="text-sm font-medium truncate flex-1">{msg.campaign_name}</p>
+          {/* Bottom stats */}
+          <div className={`flex items-center justify-around rounded-xl py-3 bg-gradient-to-r ${cfg.accent} mt-4`}>
+            <div className="flex flex-col items-center">
+              <span className="text-xl font-bold text-white leading-none">{sentCount}</span>
+              <span className="text-[10px] text-white/70 uppercase tracking-wider mt-1 font-medium">Enviadas</span>
+            </div>
+            <div className="w-px h-8 bg-white/20" />
+            <div className="flex flex-col items-center">
+              <span className="text-xl font-bold text-white leading-none">{msg.target_groups_count}</span>
+              <span className="text-[10px] text-white/70 uppercase tracking-wider mt-1 font-medium">Grupos</span>
+            </div>
+            <div className="w-px h-8 bg-white/20" />
+            <div className="flex flex-col items-center">
+              <span className="text-xl font-bold text-white leading-none">{failedCount}</span>
+              <span className="text-[10px] text-white/70 uppercase tracking-wider mt-1 font-medium">Falhas</span>
+            </div>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary" className="text-[10px] gap-0.5 px-2 py-0.5 h-5">
-              <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
-            </Badge>
-            <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 border-border/20">
-              <CalendarClock className="h-3 w-3 mr-0.5" />
-              {scheduleLabels[msg.schedule_type] || msg.schedule_type}
-            </Badge>
-            <span className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
-              <UsersRound className="h-3.5 w-3.5" />
-              {msg.target_groups_count}
-            </span>
-          </div>
-
-          {/* Error reason — only show when there are actual failures */}
-          {reasonTitle && failedCount > 0 && (
-            <p className="text-[10px] text-destructive/80 leading-tight line-clamp-1">{reasonTitle}</p>
-          )}
         </div>
 
-        {/* BOTTOM — Stats bar with accent gradient */}
-        <div className={`flex items-center justify-around px-3 py-3 bg-gradient-to-r ${cfg.accent} rounded-b-2xl`}>
-          <div className="flex flex-col items-center">
-            <span className="text-lg font-bold text-white leading-none">{sentCount}</span>
-            <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Enviadas</span>
+        {/* RIGHT — Preview */}
+        <div className="w-[45%] shrink-0 relative overflow-hidden" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+          {/* Scrollable preview with hidden scrollbar */}
+          <div
+            className="absolute inset-0 overflow-y-auto"
+            style={{
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+            }}
+          >
+            <style>{`.scheduler-preview-scroll::-webkit-scrollbar { display: none; }`}</style>
+            <div className="scheduler-preview-scroll h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+              <WhatsAppPreview {...previewProps} />
+            </div>
           </div>
-          <div className="w-px h-7 bg-white/20" />
-          <div className="flex flex-col items-center">
-            <span className="text-lg font-bold text-white leading-none">{msg.target_groups_count}</span>
-            <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Grupos</span>
-          </div>
-          <div className="w-px h-7 bg-white/20" />
-          <div className="flex flex-col items-center">
-            <span className="text-lg font-bold text-white leading-none">{failedCount}</span>
-            <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Falhas</span>
-          </div>
+          {/* Top fade */}
+          <div
+            className="absolute top-0 left-0 right-0 h-6 pointer-events-none z-10"
+            style={{ background: 'linear-gradient(to bottom, rgba(11,20,26,0.6), transparent)' }}
+          />
+          {/* Bottom fade */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none z-10"
+            style={{ background: 'linear-gradient(to top, hsl(var(--card)), transparent)' }}
+          />
         </div>
       </div>
     </div>
   );
 }
-
 /* ─── Main panel ─── */
 export default function SchedulerDebugPanel() {
   const { data, isLoading, refresh } = useSchedulerDebug();
@@ -312,7 +323,7 @@ export default function SchedulerDebugPanel() {
 
               <div
                 className="flex flex-1 min-w-0 gap-4 items-stretch"
-                style={{ height: "340px" }}
+                style={{ height: "280px" }}
               >
                 <ScheduleCard key={prev?.id || "ghost-prev"} msg={prev} position="prev" currentTimeMs={currentTimeMs} />
                 <ScheduleCard key={current?.id || "ghost-current"} msg={current} position="current" currentTimeMs={currentTimeMs} />
