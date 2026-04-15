@@ -4,7 +4,7 @@ import { getMessageQueue } from "../lib/message-queue";
 
 
 const router = Router();
-const workspaceLocks = new Set<string>();
+
 const FOLLOWUP_QUEUE_TABLE = "followup_dispatch_queue" as any;
 const FINAL_JOB_STATUSES = new Set([
   "sent",
