@@ -43,7 +43,12 @@ const typeLabels: Record<string, string> = {
 
 /* ─── status badge ─── */
 function StatusBadge({ msg, isPast }: { msg: ScheduledMessageDebug; isPast: boolean }) {
-  if (msg.missed) {
+  const anyFailed = msg.queue_items.some(qi => qi.status === "failed");
+  const anyQueued = msg.queue_items.some(qi => qi.status !== "cancelled");
+  const allSent = msg.queue_items.length > 0 && msg.queue_items.every(qi => qi.status === "sent");
+  const isActuallyMissed = msg.missed || (isPast && !allSent && !anyFailed && !anyQueued);
+
+  if (isActuallyMissed) {
     return (
       <Badge variant="outline" className="text-yellow-500 border-yellow-500/30 bg-yellow-500/10 text-[10px] gap-1">
         <AlertTriangle className="h-3 w-3" />Perdida
@@ -51,8 +56,6 @@ function StatusBadge({ msg, isPast }: { msg: ScheduledMessageDebug; isPast: bool
     );
   }
   if (isPast) {
-    const anyFailed = msg.queue_items.some(qi => qi.status === "failed");
-    const allSent = msg.queue_items.length > 0 && msg.queue_items.every(qi => qi.status === "sent");
     if (anyFailed) return (
       <Badge variant="outline" className="text-red-500 border-red-500/30 bg-red-500/10 text-[10px] gap-1">
         <XCircle className="h-3 w-3" />Falhou
@@ -103,6 +106,8 @@ function ScheduleCard({
   const Icon = typeIcons[msg.message_type] || FileText;
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
   const failedCount = msg.queue_items.filter(qi => qi.status === "failed").length;
+  const activeQueueCount = msg.queue_items.filter(qi => qi.status !== "cancelled").length;
+  const isMissed = msg.missed || (isPast && sentCount === 0 && failedCount === 0 && activeQueueCount === 0);
 
   // Map content to WhatsAppPreview props
   const content = msg.content || {};
@@ -122,7 +127,9 @@ function ScheduleCard({
 
   const borderClass = isActive
     ? "ring-2 ring-primary/60 border-primary/40"
-    : isPast
+    : isMissed
+      ? "border-yellow-500/30 opacity-80"
+      : isPast
       ? sentCount > 0 && failedCount === 0
         ? "border-green-500/30 opacity-60"
         : failedCount > 0
@@ -133,7 +140,7 @@ function ScheduleCard({
   return (
     <div
       data-scheduler-card
-      className={`flex-shrink-0 w-[310px] snap-center rounded-xl border bg-card overflow-hidden flex flex-col ${borderClass}`}
+      className={`flex-shrink-0 w-[310px] min-w-[310px] snap-center rounded-xl border bg-card overflow-hidden flex flex-col ${borderClass}`}
       style={{ scrollSnapAlign: "center" }}
     >
       {/* Card header */}
@@ -174,7 +181,7 @@ function ScheduleCard({
           )}
           {sentCount === 0 && failedCount === 0 && (
             <span className="text-muted-foreground">
-              {isPast ? "Sem envios" : "Aguardando"}
+              {isMissed ? "Perdida" : isPast ? "Sem envios" : "Aguardando"}
             </span>
           )}
         </div>
@@ -335,7 +342,7 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="relative">
+          <div className="relative overflow-hidden">
             {/* Left arrow */}
             {activeIndex > 0 && (
               <button
@@ -358,7 +365,7 @@ export default function SchedulerDebugPanel() {
 
             <div
               ref={scrollRef}
-              className="flex gap-4 overflow-x-auto py-4 px-4 scroll-smooth"
+              className="flex w-full max-w-full gap-4 overflow-x-auto py-4 px-4 scroll-smooth"
               style={{
                 scrollSnapType: "x mandatory",
                 scrollbarWidth: "none",
