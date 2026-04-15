@@ -198,12 +198,12 @@ export default function SchedulerDebugPanel() {
     [messages],
   );
 
-  // Find next future message index
-  const now = new Date();
+  // Find next future message index (based on current UTC time which aligns with next_run_at stored in UTC)
   const nextIdx = useMemo(() => {
-    const idx = sorted.findIndex(m => m.next_run_at && new Date(m.next_run_at) > now);
+    const nowMs = Date.now();
+    const idx = sorted.findIndex(m => m.next_run_at && new Date(m.next_run_at).getTime() > nowMs);
     return idx >= 0 ? idx : sorted.length - 1;
-  }, [sorted, now]);
+  }, [sorted]);
 
   // Update scroll indicators
   const updateScrollState = () => {
