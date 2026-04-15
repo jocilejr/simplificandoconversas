@@ -57,7 +57,7 @@ export interface BoletoWithRecovery extends Transaction {
   applicableRule: RecoveryRule | null;
   formattedMessage: string | null;
   contactedToday: boolean;
-  sendStatus: "pending" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone";
+  sendStatus: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate";
 }
 
 export function useBoletoRecovery() {
