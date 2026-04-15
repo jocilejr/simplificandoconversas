@@ -16,6 +16,7 @@ import {
   Package,
   LinkIcon,
   PhoneForwarded,
+  MessageSquareText,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -67,6 +68,7 @@ const operationalItems: MenuItem[] = [
   { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
   { title: "Grupos", url: "/grupos", icon: UsersRound, permKey: "grupos" },
   { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon, permKey: "links_uteis" },
+  { title: "Respostas Rápidas", url: "/respostas-rapidas", icon: MessageSquareText, permKey: "respostas_rapidas" },
 ];
 
 function MenuGroup({ label, items, collapsed, isActive, dotUrls }: {
