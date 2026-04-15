@@ -21,24 +21,35 @@ export default function RespostasRapidas() {
     return map;
   }, [data]);
 
+  const formatError = (err: unknown) => {
+    const e = err as any;
+    const parts: string[] = [];
+    if (e?.message) parts.push(e.message);
+    if (e?.details) parts.push(e.details);
+    if (e?.hint) parts.push(e.hint);
+    return parts.length > 0 ? parts.join(" — ") : "Erro desconhecido";
+  };
+
   const handleCreate = (d: { title: string; content: string; category: string }) => {
-    create.mutate(d, {
-      onSuccess: () => toast.success("Resposta criada!"),
-      onError: () => toast.error("Erro ao criar resposta"),
+    return new Promise<void>((resolve, reject) => {
+      create.mutate(d, {
+        onSuccess: () => { toast.success("Resposta criada!"); resolve(); },
+        onError: (err) => { toast.error(formatError(err)); reject(err); },
+      });
     });
   };
 
   const handleUpdate = (d: { id: string; title: string; content: string; category: string }) => {
     update.mutate(d, {
       onSuccess: () => toast.success("Resposta atualizada!"),
-      onError: () => toast.error("Erro ao atualizar"),
+      onError: (err) => toast.error(formatError(err)),
     });
   };
 
   const handleDelete = (id: string) => {
     remove.mutate(id, {
       onSuccess: () => toast.success("Resposta excluída!"),
-      onError: () => toast.error("Erro ao excluir"),
+      onError: (err) => toast.error(formatError(err)),
     });
   };
 
