@@ -241,10 +241,10 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     markTabSeen(activeTab);
   }, [activeTab, markTabSeen]);
 
-  // On initial load — mark once
+  // On initial load — mark ALL as seen (clears orphans that no tab covers)
   useEffect(() => {
     if (isLoading) return;
-    markTabSeen(activeTab);
+    markAllSeen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
