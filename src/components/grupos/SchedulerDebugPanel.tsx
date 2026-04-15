@@ -185,15 +185,9 @@ function ScheduleCard({
 
         {/* RIGHT — Preview */}
         <div className="w-[42%] shrink-0 relative" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
-          {/* Scrollable preview with hidden scrollbar */}
           <div
-            className="absolute inset-0 overflow-y-auto"
-            style={{
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
-            }}
+            className="absolute inset-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
-            <style dangerouslySetInnerHTML={{ __html: `.preview-scroll::-webkit-scrollbar { display: none; }` }} />
             <WhatsAppPreview {...previewProps} />
           </div>
           {/* Top fade */}
