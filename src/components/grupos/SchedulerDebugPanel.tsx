@@ -125,17 +125,17 @@ function ScheduleCard({
   return (
     <div
       data-scheduler-card
-      className={`flex h-[448px] flex-shrink-0 w-[310px] min-w-[310px] snap-center rounded-xl border bg-card overflow-hidden ${borderClass}`}
+      className={`flex h-[380px] flex-shrink-0 w-[260px] min-w-[260px] snap-center rounded-xl border bg-card overflow-hidden ${borderClass}`}
       style={{ scrollSnapAlign: "center" }}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Card header */}
-      <div className="px-3 py-2.5 border-b border-border/30 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`text-lg font-bold font-mono ${isPast ? "text-muted-foreground" : isActive ? "text-primary" : "text-foreground"}`}>
+      <div className="px-2.5 py-2 border-b border-border/30 flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-sm font-bold font-mono ${isPast ? "text-muted-foreground" : isActive ? "text-primary" : "text-foreground"}`}>
             {formatTimeBrt(runAt)}
           </span>
-          <Badge variant="outline" className="text-[10px] gap-1 border-border/50">
+          <Badge variant="outline" className="text-[9px] gap-0.5 border-border/50 px-1.5 py-0">
             <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
           </Badge>
         </div>
@@ -143,22 +143,22 @@ function ScheduleCard({
       </div>
 
       {/* Campaign name */}
-      <div className="px-3 py-1.5 border-b border-border/20">
+      <div className="px-2.5 py-1 border-b border-border/20">
         <p className="text-[11px] text-muted-foreground truncate">{msg.campaign_name}</p>
       </div>
 
       {/* WhatsApp Preview */}
-      <div className="h-[236px] min-h-[236px] overflow-y-auto">
+      <div className="h-[180px] min-h-[180px] overflow-y-auto">
         <WhatsAppPreview {...previewProps} />
       </div>
 
-      <div className="min-h-[72px] border-t border-border/20 px-3 py-2 overflow-y-auto">
-        <p className="text-[11px] font-medium leading-4">{reasonTitle}</p>
-        <p className="mt-1 text-[10px] leading-4 text-muted-foreground whitespace-pre-wrap">{reasonDetails}</p>
+      <div className="min-h-[56px] border-t border-border/20 px-2.5 py-1.5 overflow-y-auto">
+        <p className="text-[10px] font-medium leading-3.5">{reasonTitle}</p>
+        <p className="mt-0.5 text-[9px] leading-3.5 text-muted-foreground whitespace-pre-wrap line-clamp-3">{reasonDetails}</p>
       </div>
 
       {/* Queue summary footer */}
-      <div className="px-3 py-2 border-t border-border/30 flex items-center justify-between text-[11px]">
+      <div className="px-2.5 py-1.5 border-t border-border/30 flex items-center justify-between text-[10px]">
         <div className="flex items-center gap-2">
           {sentCount > 0 && (
             <span className="flex items-center gap-0.5 text-green-500">
@@ -339,11 +339,11 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="w-full min-w-0 overflow-hidden px-4 pb-4">
-            <div className="relative mx-auto h-[488px] w-full max-w-[980px] min-w-0 overflow-hidden" style={{ contain: "layout paint" }}>
+          <div className="w-full min-w-0 overflow-hidden">
+            <div className="relative mx-auto h-[420px] w-full min-w-0 overflow-hidden" style={{ contain: "layout paint" }}>
               <button
                 onClick={() => scroll("left")}
-                className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md transition-all hover:bg-muted/40 ${activeIndex <= 0 ? "pointer-events-none opacity-0" : "opacity-100"}`}
+                className={`absolute left-1 top-1/2 -translate-y-1/2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md transition-all hover:bg-muted/40 ${activeIndex <= 0 ? "pointer-events-none opacity-0" : "opacity-100"}`}
                 aria-label="Ver programação anterior"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -351,7 +351,7 @@ export default function SchedulerDebugPanel() {
 
               <button
                 onClick={() => scroll("right")}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md transition-all hover:bg-muted/40 ${activeIndex >= sorted.length - 1 ? "pointer-events-none opacity-0" : "opacity-100"}`}
+                className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md transition-all hover:bg-muted/40 ${activeIndex >= sorted.length - 1 ? "pointer-events-none opacity-0" : "opacity-100"}`}
                 aria-label="Ver próxima programação"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -363,15 +363,15 @@ export default function SchedulerDebugPanel() {
                   const idx = getClosestCardIndex();
                   if (idx !== activeIndex) setActiveIndex(idx);
                 }}
-                className="flex h-full min-w-0 items-start gap-4 overflow-x-auto overflow-y-hidden scroll-smooth"
+                className="flex h-full min-w-0 items-start gap-3 overflow-x-auto overflow-y-hidden scroll-smooth"
                 style={{
                   scrollSnapType: "x mandatory",
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",
                   overscrollBehaviorX: "contain",
                   WebkitOverflowScrolling: "touch",
-                  paddingInline: "max(1rem, calc(50% - 155px))",
-                  paddingBlock: "1rem",
+                  paddingInline: "2.5rem",
+                  paddingBlock: "1rem 0.75rem",
                 }}
               >
                 {sorted.map((msg, idx) => (
