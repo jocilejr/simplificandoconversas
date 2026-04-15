@@ -261,12 +261,62 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
   onDeleted: () => void;
 }) {
   const { toast } = useToast();
+  const { workspaceId } = useWorkspace();
   const [editing, setEditing] = useState(false);
   const [editSlug, setEditSlug] = useState("");
   const [editMaxMembers, setEditMaxMembers] = useState(200);
+  const [addingGroups, setAddingGroups] = useState(false);
+  const [fetchedGroups, setFetchedGroups] = useState<FetchedGroup[]>([]);
+  const [selectedNewJids, setSelectedNewJids] = useState<Set<string>>(new Set());
+  const [fetchingGroups, setFetchingGroups] = useState(false);
 
   const stats = useSmartLinkStats(smartLink.id);
   const groupLinks: GroupLink[] = smartLink.group_links || [];
+  const existingJids = new Set(groupLinks.map(g => g.group_jid));
+
+  const handleFetchGroupsForAdd = async () => {
+    if (!smartLink.instance_name || !workspaceId) return;
+    setFetchingGroups(true);
+    try {
+      const resp = await fetch(apiUrl("groups/fetch-groups"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instanceName: smartLink.instance_name, workspaceId }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const groups: FetchedGroup[] = await resp.json();
+      setFetchedGroups(groups.filter(g => !existingJids.has(g.jid)));
+      setSelectedNewJids(new Set());
+    } catch (err: any) {
+      toast({ title: "Erro ao buscar grupos", description: err.message, variant: "destructive" });
+    } finally {
+      setFetchingGroups(false);
+    }
+  };
+
+  const toggleNewGroup = (jid: string) => {
+    setSelectedNewJids(prev => {
+      const next = new Set(prev);
+      next.has(jid) ? next.delete(jid) : next.add(jid);
+      return next;
+    });
+  };
+
+  const handleAddGroups = () => {
+    if (selectedNewJids.size === 0) return;
+    const newGroupLinks: GroupLink[] = fetchedGroups
+      .filter(g => selectedNewJids.has(g.jid))
+      .map(g => ({ group_jid: g.jid, group_name: g.name, member_count: g.memberCount, invite_url: "" }));
+    const merged = [...groupLinks, ...newGroupLinks];
+    updateSmartLink.mutate({ id: smartLink.id, groupLinks: merged }, {
+      onSuccess: () => {
+        toast({ title: `${newGroupLinks.length} grupo(s) adicionado(s)!` });
+        setAddingGroups(false);
+        setFetchedGroups([]);
+        setSelectedNewJids(new Set());
+      },
+    });
+  };
   const maxMembersLimit = smartLink.max_members_per_group || 200;
 
   const activeGroupJid = useMemo(() => {
