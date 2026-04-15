@@ -660,64 +660,14 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
 
     console.log(`[groups-api] Total raw: ${list.length}, @g.us candidates: ${gusOnly.length}`);
 
-    const ownerJid = await resolveOwnerJid(baseUrl, apiKey, instanceName);
-    const ownerNorm = normalizeJid(ownerJid);
-    const hasOwner = !!ownerNorm;
-
-    console.log(`[groups-api] ownerJid resolved: "${ownerJid}", ownerNorm: "${ownerNorm}", hasOwner: ${hasOwner}`);
-
-    const groups: any[] = [];
-    const discarded: string[] = [];
-
-    for (const g of gusOnly) {
+    const groups = gusOnly.map((g: any) => {
       const jid = g.id || g.jid || g.groupJid || "";
+      const name = g.subject || g.name || "Sem nome";
+      const memberCount = g.size || g.participants?.length || 0;
+      return { jid, name, memberCount };
+    });
 
-      try {
-        const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(jid)}`, {
-          headers: { apikey: apiKey },
-        });
-
-        if (!infoResp.ok) {
-          discarded.push(`${jid} (findGroupInfos failed: ${infoResp.status})`);
-          continue;
-        }
-
-        const info: any = await infoResp.json();
-        const participants = info?.participants || [];
-        const subject = info?.subject || info?.name || g.subject || g.name || "";
-
-        if (!Array.isArray(participants) || participants.length === 0) {
-          discarded.push(`${jid} (no participants in real-time info)`);
-          continue;
-        }
-
-        if (hasOwner) {
-          const found = participants.some((p: any) => {
-            const pJid = typeof p === "string" ? p : (p.id || p.jid || "");
-            return normalizeJid(pJid) === ownerNorm;
-          });
-
-          if (!found) {
-            discarded.push(`${jid} (owner not in participants)`);
-            continue;
-          }
-        }
-
-        groups.push({
-          jid,
-          name: subject || "Sem nome",
-          memberCount: participants.length || info?.size || 0,
-        });
-      } catch (e: any) {
-        discarded.push(`${jid} (error: ${e?.message})`);
-      }
-    }
-
-    console.log(`[groups-api] Active groups: ${groups.length}, Discarded: ${discarded.length}, mode: ${hasOwner ? "owner-validated" : "fallback-metadata"}`);
-    if (discarded.length > 0) {
-      console.log(`[groups-api] Discarded (first 10):`, discarded.slice(0, 10));
-    }
-
+    console.log(`[groups-api] Total groups returned: ${groups.length} (from ${list.length} raw)`);
     res.json(groups);
   } catch (err: any) {
     console.error("[groups-api] fetch-groups error:", err?.message || err?.details || JSON.stringify(err));
