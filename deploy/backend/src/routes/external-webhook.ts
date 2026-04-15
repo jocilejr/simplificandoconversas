@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
+import { normalizePhone } from "../lib/normalize-phone";
 
 const router = Router();
 

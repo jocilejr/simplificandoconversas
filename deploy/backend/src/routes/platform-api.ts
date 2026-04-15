@@ -356,7 +356,7 @@ router.post("/transactions", async (req, res) => {
       description: description || null,
       customer_name: customer_name || null,
       customer_email: customer_email || null,
-      customer_phone: customer_phone ? customer_phone.replace(/\D/g, "") : null,
+      customer_phone: customer_phone ? (await import("../lib/normalize-phone")).normalizePhone(customer_phone) : null,
       customer_document: customer_document || null,
       external_id: external_id || null,
       source: source || "api",
