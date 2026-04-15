@@ -1543,7 +1543,12 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     const groupLinks = (sl.group_links as any[]) || [];
     let synced = 0;
 
-    for (const gl of groupLinks) {
+    for (let i = 0; i < groupLinks.length; i++) {
+      const gl = groupLinks[i];
+
+      // Delay entre chamadas para evitar rate-limit da Evolution API
+      if (i > 0) await new Promise(r => setTimeout(r, 500));
+
       try {
         const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
           headers: { apikey: apiKey },
@@ -1566,6 +1571,8 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
           .eq("workspace_id", workspaceId).eq("group_jid", gl.group_jid).maybeSingle();
         if (gs) gl.member_count = gs.member_count;
       } catch {}
+
+      console.log(`[smart-link] synced ${synced}/${groupLinks.length} (${i + 1} processed)`);
     }
 
     await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLinkId);
