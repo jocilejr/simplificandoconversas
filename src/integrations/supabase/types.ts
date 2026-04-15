@@ -3072,6 +3072,7 @@ export type Database = {
       }
       quick_replies: {
         Row: {
+          category: string
           content: string
           created_at: string
           id: string
@@ -3080,6 +3081,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          category?: string
           content: string
           created_at?: string
           id?: string
@@ -3088,6 +3090,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          category?: string
           content?: string
           created_at?: string
           id?: string
