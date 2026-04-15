@@ -313,6 +313,272 @@ function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?: string
   }
 }
 
+const DIAGNOSTIC_SEPARATOR = "||";
+
+function encodeDiagnosticMessage(code: string, label: string, details?: string | null): string {
+  return [code, label, details || ""]
+    .map((part) => String(part || "").replaceAll(DIAGNOSTIC_SEPARATOR, " "))
+    .join(DIAGNOSTIC_SEPARATOR);
+}
+
+function parseDiagnosticMessage(message: string | null | undefined) {
+  if (!message) {
+    return {
+      reason_code: null,
+      reason_label: null,
+      reason_details: null,
+      raw: null,
+    };
+  }
+
+  const parts = message.split(DIAGNOSTIC_SEPARATOR);
+  if (parts.length >= 2) {
+    const [reasonCode, reasonLabel, ...rest] = parts;
+    const reasonDetails = rest.join(DIAGNOSTIC_SEPARATOR).trim();
+    return {
+      reason_code: reasonCode || null,
+      reason_label: reasonLabel || null,
+      reason_details: reasonDetails || reasonLabel || null,
+      raw: message,
+    };
+  }
+
+  return {
+    reason_code: null,
+    reason_label: message,
+    reason_details: message,
+    raw: message,
+  };
+}
+
+function buildQueueErrorSummary(queueItems: any[]) {
+  const summary = new Map<string, {
+    reason_code: string | null;
+    reason_label: string;
+    reason_details: string | null;
+    count: number;
+    groups: Set<string>;
+    statuses: Set<string>;
+  }>();
+
+  for (const item of queueItems || []) {
+    if (!["failed", "cancelled"].includes(item.status) || !item.error_message) continue;
+
+    const parsed = parseDiagnosticMessage(item.error_message);
+    const key = `${parsed.reason_code || "generic"}:${parsed.reason_label || parsed.reason_details || item.status}`;
+    const existing = summary.get(key) || {
+      reason_code: parsed.reason_code,
+      reason_label: parsed.reason_label || "Falha sem detalhe",
+      reason_details: parsed.reason_details,
+      count: 0,
+      groups: new Set<string>(),
+      statuses: new Set<string>(),
+    };
+
+    existing.count += 1;
+    existing.statuses.add(item.status);
+    existing.groups.add(item.group_name || item.group_jid);
+    summary.set(key, existing);
+  }
+
+  return Array.from(summary.values())
+    .sort((a, b) => b.count - a.count)
+    .map((item) => ({
+      reason_code: item.reason_code,
+      reason_label: item.reason_label,
+      reason_details: item.reason_details,
+      count: item.count,
+      groups: Array.from(item.groups),
+      statuses: Array.from(item.statuses),
+    }));
+}
+
+function resolveSchedulerStatus(params: {
+  queueItems: any[];
+  runtimeDiagnostic: any;
+  campaign: any;
+  hasTimer: boolean;
+  isPast: boolean;
+  isActive: boolean;
+}) {
+  const { queueItems, runtimeDiagnostic, campaign, hasTimer, isPast, isActive } = params;
+
+  const sentItems = queueItems.filter((item) => item.status === "sent");
+  const failedItems = queueItems.filter((item) => item.status === "failed");
+  const cancelledItems = queueItems.filter((item) => item.status === "cancelled");
+  const processingItems = queueItems.filter((item) => item.status === "processing");
+  const pendingItems = queueItems.filter((item) => item.status === "pending");
+  const queueErrorSummary = buildQueueErrorSummary(queueItems);
+  const primaryQueueReason = queueErrorSummary[0] || null;
+
+  if (failedItems.length > 0) {
+    return {
+      status_code: "failed",
+      status_label: "Falhou",
+      failure_reason: primaryQueueReason?.reason_label || "Falha durante o envio",
+      failure_details: primaryQueueReason?.reason_details || parseDiagnosticMessage(failedItems[0]?.error_message).reason_details,
+      diagnostics: {
+        source: "queue",
+        failed_groups: failedItems.length,
+        sent_groups: sentItems.length,
+        queue_error_summary: queueErrorSummary,
+      },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (sentItems.length > 0 && processingItems.length === 0 && pendingItems.length === 0) {
+    return {
+      status_code: "sent",
+      status_label: "Enviada",
+      failure_reason: cancelledItems.length > 0 ? "Alguns grupos foram bloqueados nesta execução" : null,
+      failure_details: cancelledItems.length > 0
+        ? `${sentItems.length} grupo(s) receberam a mensagem e ${cancelledItems.length} foram bloqueados ou ignorados.`
+        : null,
+      diagnostics: {
+        source: "queue",
+        sent_groups: sentItems.length,
+        cancelled_groups: cancelledItems.length,
+        queue_error_summary: queueErrorSummary,
+      },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (processingItems.length > 0 || pendingItems.length > 0) {
+    return {
+      status_code: "processing",
+      status_label: "Processando",
+      failure_reason: pendingItems.length > 0 ? "A publicação está aguardando envio na fila" : "A publicação está em processamento",
+      failure_details: pendingItems.length > 0
+        ? `${pendingItems.length} grupo(s) ainda estão pendentes na fila.`
+        : `${processingItems.length} grupo(s) estão sendo processados agora.`,
+      diagnostics: {
+        source: "queue",
+        processing_groups: processingItems.length,
+        pending_groups: pendingItems.length,
+      },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (cancelledItems.length > 0 && sentItems.length === 0) {
+    return {
+      status_code: "skipped",
+      status_label: "Ignorada",
+      failure_reason: primaryQueueReason?.reason_label || "A publicação foi bloqueada antes do envio",
+      failure_details: primaryQueueReason?.reason_details || `${cancelledItems.length} grupo(s) foram cancelados antes do envio.`,
+      diagnostics: {
+        source: "queue",
+        cancelled_groups: cancelledItems.length,
+        queue_error_summary: queueErrorSummary,
+      },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (runtimeDiagnostic && ["failed", "missed", "skipped", "processing"].includes(runtimeDiagnostic.status_code)) {
+    return {
+      status_code: runtimeDiagnostic.status_code,
+      status_label: runtimeDiagnostic.status_label,
+      failure_reason: runtimeDiagnostic.reason_label,
+      failure_details: runtimeDiagnostic.reason_details,
+      diagnostics: {
+        source: "scheduler",
+        runtime_diagnostic_updated_at: runtimeDiagnostic.updated_at,
+        ...(runtimeDiagnostic.diagnostics || {}),
+      },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (isPast) {
+    if (!isActive) {
+      return {
+        status_code: "skipped",
+        status_label: "Ignorada",
+        failure_reason: "A publicação estava desativada",
+        failure_details: "Ela passou do horário, mas estava marcada como inativa quando o painel avaliou a execução.",
+        diagnostics: { source: "derived" },
+        queue_error_summary: queueErrorSummary,
+      };
+    }
+
+    if (!campaign) {
+      return {
+        status_code: "missed",
+        status_label: "Perdida",
+        failure_reason: "A campanha não foi encontrada",
+        failure_details: "A publicação perdeu o horário porque a campanha vinculada não pôde ser carregada.",
+        diagnostics: { source: "derived" },
+        queue_error_summary: queueErrorSummary,
+      };
+    }
+
+    if (!campaign.is_active) {
+      return {
+        status_code: "missed",
+        status_label: "Perdida",
+        failure_reason: "A campanha estava inativa no momento da execução",
+        failure_details: "A publicação passou pelo horário, mas não entrou na fila porque a campanha estava pausada.",
+        diagnostics: { source: "derived", campaign_id: campaign.id },
+        queue_error_summary: queueErrorSummary,
+      };
+    }
+
+    if (!Array.isArray(campaign.group_jids) || campaign.group_jids.length === 0) {
+      return {
+        status_code: "missed",
+        status_label: "Perdida",
+        failure_reason: "A campanha estava sem grupos vinculados",
+        failure_details: "A publicação perdeu o horário porque a campanha não tinha grupos-alvo configurados.",
+        diagnostics: { source: "derived", campaign_id: campaign.id },
+        queue_error_summary: queueErrorSummary,
+      };
+    }
+
+    if (!hasTimer) {
+      return {
+        status_code: "missed",
+        status_label: "Perdida",
+        failure_reason: "O timer da publicação não estava ativo",
+        failure_details: "O horário passou sem timer ativo e sem itens na fila, indicando que o disparo não foi executado.",
+        diagnostics: { source: "derived", campaign_id: campaign.id },
+        queue_error_summary: queueErrorSummary,
+      };
+    }
+
+    return {
+      status_code: "missed",
+      status_label: "Perdida",
+      failure_reason: "A publicação passou pelo horário sem gerar envio",
+      failure_details: "O horário já passou, mas não há registros suficientes de fila para concluir outra causa automática.",
+      diagnostics: { source: "derived", campaign_id: campaign.id },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (hasTimer) {
+    return {
+      status_code: "waiting",
+      status_label: "Timer ativo",
+      failure_reason: "Aguardando o próximo horário programado",
+      failure_details: "A publicação ainda não chegou no momento de disparo.",
+      diagnostics: { source: "timer" },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  return {
+    status_code: "failed",
+    status_label: "Sem timer",
+    failure_reason: "A publicação está sem timer ativo",
+    failure_details: "Ela ainda não passou do horário, mas o painel não encontrou um timer ativo para essa execução.",
+    diagnostics: { source: "derived" },
+    queue_error_summary: queueErrorSummary,
+  };
+}
+
 /* ─── POST /debug-groups (temporário) ─── */
 router.post("/debug-groups", async (req: Request, res: Response) => {
   try {
@@ -901,8 +1167,26 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           .gte("created_at", dedupWindow);
 
         if ((alreadySent || 0) > 0) {
+          if (item.scheduled_message_id) {
+            groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+              status_code: "skipped",
+              status_label: "Ignorada",
+              reason_code: "dedup_recent_send",
+              reason_label: "Bloqueada por deduplicação de 5 minutos",
+              reason_details: "Já existia uma mensagem igual enviada recentemente para este grupo.",
+              diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+            });
+          }
           await sb.from("group_message_queue")
-            .update({ status: "cancelled", error_message: "Dedup: já enviada", completed_at: new Date().toISOString() })
+            .update({
+              status: "cancelled",
+              error_message: encodeDiagnosticMessage(
+                "dedup_recent_send",
+                "Bloqueada por deduplicação de 5 minutos",
+                "Já existia uma mensagem igual enviada recentemente para este grupo.",
+              ),
+              completed_at: new Date().toISOString(),
+            })
             .eq("id", item.id);
           skipped++;
           continue;
@@ -920,6 +1204,27 @@ router.post("/queue/process", async (req: Request, res: Response) => {
 
       if ((count || 0) >= maxPerGroup) {
         console.log(`[groups-queue] ⏸ Rate limit: ${item.group_jid} has ${count}/${maxPerGroup} sends in ${perMinutes}min window`);
+        if (item.scheduled_message_id) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "failed",
+            status_label: "Falhou",
+            reason_code: "rate_limit_per_group",
+            reason_label: "Limite de envios por grupo atingido",
+            reason_details: `O grupo já recebeu ${count} envio(s) na janela de ${perMinutes} minuto(s), acima do limite ${maxPerGroup}.`,
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
+        }
+        await sb.from("group_message_queue")
+          .update({
+            status: "cancelled",
+            error_message: encodeDiagnosticMessage(
+              "rate_limit_per_group",
+              "Limite de envios por grupo atingido",
+              `O grupo já recebeu ${count} envio(s) na janela de ${perMinutes} minuto(s), acima do limite ${maxPerGroup}.`,
+            ),
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", item.id);
         skipped++;
         continue;
       }
@@ -955,9 +1260,37 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         }
 
         await sb.from("group_message_queue").update({ status: "sent", completed_at: new Date().toISOString() }).eq("id", item.id);
+        if (item.scheduled_message_id) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "sent",
+            status_label: "Enviada",
+            reason_code: "sent_successfully",
+            reason_label: "Mensagem enviada com sucesso",
+            reason_details: `A mensagem foi enviada com sucesso para o grupo ${item.group_name || item.group_jid}.`,
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
+        }
         sent++;
       } catch (sendErr: any) {
-        await sb.from("group_message_queue").update({ status: "failed", error_message: sendErr.message, completed_at: new Date().toISOString() }).eq("id", item.id);
+        if (item.scheduled_message_id) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "failed",
+            status_label: "Falhou",
+            reason_code: "send_api_error",
+            reason_label: "Falha ao enviar pela API do WhatsApp",
+            reason_details: sendErr.message,
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
+        }
+        await sb.from("group_message_queue").update({
+          status: "failed",
+          error_message: encodeDiagnosticMessage(
+            "send_api_error",
+            "Falha ao enviar pela API do WhatsApp",
+            sendErr.message,
+          ),
+          completed_at: new Date().toISOString(),
+        }).eq("id", item.id);
         failed++;
       }
 
@@ -1815,17 +2148,17 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       return isWithinToday(m.next_run_at) || isWithinToday(m.last_run_at) || isWithinToday(m.scheduled_at);
     });
 
-    // Get campaign names
+    // Get campaign data
     const campaignIds = [...new Set(todayMessages.map((m: any) => m.campaign_id))];
-    const campaignMap: Record<string, string> = {};
+    const campaignMap: Record<string, any> = {};
     if (campaignIds.length > 0) {
       const { data: campaigns } = await sb
         .from("group_campaigns")
-        .select("id, name, workspace_id")
+        .select("id, name, workspace_id, is_active, group_jids")
         .in("id", campaignIds)
         .eq("workspace_id", workspaceId);
       for (const c of campaigns || []) {
-        campaignMap[c.id] = c.name;
+        campaignMap[c.id] = c;
       }
     }
 
@@ -1861,14 +2194,22 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     // Build response
     const result = todayMessages.map((m: any) => {
       const hasTimer = groupScheduler.hasTimer(m.id);
+      const runtimeDiagnostic = groupScheduler.getDiagnostic(m.id);
       const effectiveRunAt = resolveTodayRunAt(m);
       const nextRun = effectiveRunAt ? new Date(effectiveRunAt) : null;
       const queueItems = queueMap[m.id] || [];
+      const campaign = campaignMap[m.campaign_id] || null;
 
-      // Detect missed: next_run_at in the past, active, no queue items for this run
       const isPast = nextRun && nextRun < now;
-      const hasRecentQueue = queueItems.length > 0;
-      const missed = !!(isPast && m.is_active && !hasRecentQueue && !hasTimer);
+      const resolvedStatus = resolveSchedulerStatus({
+        queueItems,
+        runtimeDiagnostic,
+        campaign,
+        hasTimer,
+        isPast: !!isPast,
+        isActive: m.is_active,
+      });
+      const missed = resolvedStatus.status_code === "missed";
 
       // Content preview
       let contentPreview = "";
@@ -1878,9 +2219,6 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         contentData = c || {};
         contentPreview = c.text || c.caption || c.fileName || c.audioUrl?.slice(-30) || JSON.stringify(c).slice(0, 80);
       } catch { contentPreview = "—"; }
-
-      // Count target groups for this message's campaign
-      const campaignGroups = todayMessages.filter((tm: any) => tm.campaign_id === m.campaign_id);
 
       return {
         id: m.id,
@@ -1892,7 +2230,14 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         effective_run_at: effectiveRunAt,
         has_timer: hasTimer,
         missed,
-        campaign_name: campaignMap[m.campaign_id] || "Campanha desconhecida",
+        status_code: resolvedStatus.status_code,
+        status_label: resolvedStatus.status_label,
+        failure_reason: resolvedStatus.failure_reason,
+        failure_details: resolvedStatus.failure_details,
+        diagnostics: resolvedStatus.diagnostics,
+        queue_error_summary: resolvedStatus.queue_error_summary,
+        campaign_name: campaign?.name || "Campanha desconhecida",
+        target_groups_count: Array.isArray(campaign?.group_jids) ? campaign.group_jids.length : 0,
         content_preview: contentPreview,
         content: contentData,
         queue_items: queueItems.map((qi: any) => ({
