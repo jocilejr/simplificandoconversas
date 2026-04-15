@@ -1,52 +1,46 @@
 
 
-## Plano — Follow Up usar telefone normalizado direto da transação
+## Plano — Deduplicação por CPF no Follow Up
 
-### Diagnóstico
-A tabela `transactions` já armazena o telefone normalizado via `normalizePhone()` no momento da inserção (linhas 266, 328 de `payment.ts`). O Follow Up não precisa aplicar normalização própria — basta usar `customer_phone` diretamente.
+### Problema
+A deduplicação atual usa `phoneSendCount` (por telefone) e `max_messages_per_phone_per_day`. Se o mesmo cliente (mesmo CPF) tem 3 boletos pendentes com telefones ligeiramente diferentes, todos passam. Com CPF, a dedup é precisa: 1 cliente = 1 mensagem.
 
-Atualmente há **3 pontos** onde o Follow Up aplica normalização desnecessária:
+### Mudanças em `deploy/backend/src/routes/followup-daily.ts`
 
-1. **Linha 470** — `generateJobsForWorkspace`: `normalizePhone(boleto.customer_phone)` + cross-reference com conversations
-2. **Linha 763** — `processQueueForWorkspace`: `normalizePhone(job.phone || job.normalized_phone)` — re-normaliza antes do envio
-
-### Correção em `deploy/backend/src/routes/followup-daily.ts`
-
-**Ponto 1 (linha 469-477)** — Substituir toda a lógica de normalização + cross-reference por uso direto:
+**1. Incluir `customer_document` na query de boletos (linha 297)**
 ```typescript
-// DE:
-let normalized = normalizePhone(boleto.customer_phone);
-if (normalized && normalized.length >= 8) {
-  const last8 = normalized.slice(-8);
-  const convPhone = context.convPhoneByLast8.get(last8);
-  if (convPhone) normalized = convPhone;
-}
-
-// PARA:
-const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
-```
-Apenas strip de caracteres não-numéricos, sem adicionar prefixos. O valor já vem normalizado do banco.
-
-**Ponto 2 (linha 763)** — Remover re-normalização no processamento:
-```typescript
-// DE:
-const normalizedPhone = normalizePhone(job.phone || job.normalized_phone);
-
-// PARA:
-const normalizedPhone = (job.normalized_phone || job.phone || "").replace(/\D/g, "") || null;
+.select("id, created_at, customer_name, customer_phone, customer_document, amount, metadata, external_id")
 ```
 
-**Ponto 3** — Remover o `import { normalizePhone }` e a construção do `convPhoneByLast8` no contexto (já que não será mais usado para cross-reference).
+**2. Adicionar `customer_document` ao tipo `BoletoRow`**
 
-Também limpar o `convPhoneByLast8` do `WorkspaceContext` e a query de conversations que alimentava esse mapa.
+**3. Deduplicação por CPF em `generateJobsForWorkspace` (após linha 416)**
+Antes do loop de boletos, construir um Set de CPFs já processados:
+```typescript
+const processedCpfs = new Set<string>();
+```
+
+Dentro do loop, após encontrar a `matchingRule` e antes de gerar o job:
+- Extrair CPF: `const cpf = boleto.customer_document?.replace(/\D/g, "") || null;`
+- Se `cpf` existe e `cpf.length >= 11`:
+  - Se `processedCpfs.has(cpf)` → marcar como `skipped_duplicate` e `continue`
+  - Senão → `processedCpfs.add(cpf)`
+- Se não tem CPF → segue o fluxo normal (não bloqueia por falta de CPF)
+
+**4. Adicionar status `skipped_duplicate` ao `FINAL_JOB_STATUSES`**
+
+**5. Adicionar contador `skippedDuplicate` ao `WorkspaceRunResult` e ao response**
+
+**6. Dedup por CPF também no `buildPhoneSendCount` → `buildCpfSendCount`**
+Trocar a limitação diária de phone-based para CPF-based:
+- Se o boleto tem CPF, contar por CPF
+- Fallback para phone se não tem CPF
+
+**7. Frontend — `useFollowUpDispatch.ts` e `FollowUpDashboard.tsx`**
+Adicionar `skipped_duplicate` ao tipo de status e exibir no dashboard.
 
 ### Resumo
-- 1 arquivo: `deploy/backend/src/routes/followup-daily.ts`
-- Remoção de `normalizePhone` e `convPhoneByLast8`
-- Uso direto do `customer_phone` da transação (já normalizado na inserção)
-
-### Validação VPS
-```bash
-docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT customer_phone, length(customer_phone) FROM transactions WHERE type='boleto' AND status='pendente' LIMIT 20;"
-```
+- 1 arquivo backend: `deploy/backend/src/routes/followup-daily.ts`
+- 2 arquivos frontend: `useFollowUpDispatch.ts`, `FollowUpDashboard.tsx`
+- Dedup primária por CPF, fallback por telefone quando CPF ausente
 
