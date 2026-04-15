@@ -1612,7 +1612,12 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
       if (!inviteFetched) {
         gl.status = "banned";
         gl.invite_url = "";
+        gl.last_synced_at = new Date().toISOString();
+        gl.last_sync_status = "error";
         console.warn(`[smart-link] Group ${gl.group_jid} inviteCode failed after 4 attempts — marked as banned`);
+      } else {
+        gl.last_synced_at = new Date().toISOString();
+        gl.last_sync_status = gl.status === "banned" ? "banned" : "ok";
       }
 
       // Save incrementally after each group
@@ -1851,7 +1856,12 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
           if (!inviteFetched) {
             gl.status = "banned";
             gl.invite_url = "";
+            gl.last_synced_at = new Date().toISOString();
+            gl.last_sync_status = "error";
             console.warn(`[sync-all] Group ${gl.group_jid} inviteCode failed after 4 attempts — marked as banned`);
+          } else {
+            gl.last_synced_at = new Date().toISOString();
+            gl.last_sync_status = gl.status === "banned" ? "banned" : "ok";
           }
 
           // Save incrementally after each group

@@ -28,6 +28,9 @@ export interface GroupLink {
   group_name: string;
   member_count: number;
   invite_url: string;
+  status?: string;
+  last_synced_at?: string;
+  last_sync_status?: "ok" | "banned" | "error";
 }
 
 export function useGroupSmartLinks() {
