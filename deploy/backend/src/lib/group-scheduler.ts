@@ -166,6 +166,11 @@ export class GroupSchedulerManager {
     return this.diagnostics.get(msgId) || null;
   }
 
+  /** Record diagnostic updates from queue processing or routes. */
+  recordDiagnostic(msgId: string, diagnostic: Omit<SchedulerDiagnostic, "updated_at">): void {
+    this.setDiagnostic(msgId, diagnostic);
+  }
+
   /** Get count of active timers (for diagnostics). */
   get activeCount(): number {
     return this.timers.size;
