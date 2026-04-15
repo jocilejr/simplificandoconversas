@@ -397,38 +397,42 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
   };
 
   return (
-    <div className="flex flex-col w-full h-full rounded-xl overflow-hidden shadow-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', minHeight: '300px' }}>
+    <div className="flex flex-col w-full h-full rounded-xl overflow-hidden shadow-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', minHeight: compact ? undefined : '300px' }}>
       {/* Header */}
-      <div style={{ background: '#202c33', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#374045', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <User style={{ width: '18px', height: '18px', color: '#8696a0' }} />
+      {!compact && (
+        <div style={{ background: '#202c33', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#374045', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <User style={{ width: '18px', height: '18px', color: '#8696a0' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: '14px', color: '#e9edef', fontWeight: 500 }}>Preview do Grupo</p>
+            <p style={{ fontSize: '12px', color: '#8696a0' }}>membros do grupo</p>
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: '14px', color: '#e9edef', fontWeight: 500 }}>Preview do Grupo</p>
-          <p style={{ fontSize: '12px', color: '#8696a0' }}>membros do grupo</p>
-        </div>
-      </div>
+      )}
 
       {/* Chat area */}
-      <div className="flex-1 overflow-y-auto" style={{ ...wallpaperStyle, padding: '12px 0' }}>
+      <div className="flex-1 overflow-y-auto" style={{ ...wallpaperStyle, padding: compact ? '6px 0' : '12px 0' }}>
         {!hasContent() ? (
           <EmptyState />
         ) : (
-          <div className="py-2">
+          <div className={compact ? "py-1" : "py-2"}>
             {renderContent()}
           </div>
         )}
       </div>
 
       {/* Bottom bar */}
-      <div style={{ background: '#202c33', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ flex: 1, height: '36px', borderRadius: '18px', background: '#2a3942', display: 'flex', alignItems: 'center', paddingLeft: '14px' }}>
-          <span style={{ fontSize: '13px', color: '#8696a0' }}>Digite uma mensagem</span>
+      {!compact && (
+        <div style={{ background: '#202c33', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ flex: 1, height: '36px', borderRadius: '18px', background: '#2a3942', display: 'flex', alignItems: 'center', paddingLeft: '14px' }}>
+            <span style={{ fontSize: '13px', color: '#8696a0' }}>Digite uma mensagem</span>
+          </div>
+          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Mic style={{ width: '18px', height: '18px', color: '#0b141a' }} />
+          </div>
         </div>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Mic style={{ width: '18px', height: '18px', color: '#0b141a' }} />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
