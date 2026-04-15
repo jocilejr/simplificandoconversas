@@ -140,9 +140,10 @@ function ScheduleCard({
   return (
     <div
       data-scheduler-card
-      className={`flex-shrink-0 w-[310px] min-w-[310px] snap-center rounded-xl border bg-card overflow-hidden flex flex-col ${borderClass}`}
+      className={`flex h-[448px] flex-shrink-0 w-[310px] min-w-[310px] snap-center rounded-xl border bg-card overflow-hidden ${borderClass}`}
       style={{ scrollSnapAlign: "center" }}
     >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Card header */}
       <div className="px-3 py-2.5 border-b border-border/30 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -162,7 +163,7 @@ function ScheduleCard({
       </div>
 
       {/* WhatsApp Preview */}
-      <div className="flex-1 min-h-0 max-h-[320px] overflow-y-auto">
+      <div className="h-[320px] min-h-[320px] overflow-y-auto">
         <WhatsAppPreview {...previewProps} />
       </div>
 
@@ -188,6 +189,7 @@ function ScheduleCard({
         <span className="text-muted-foreground font-mono text-[10px]">
           {msg.schedule_type}
         </span>
+      </div>
       </div>
     </div>
   );
@@ -300,8 +302,8 @@ export default function SchedulerDebugPanel() {
   const totalMissed = messages.filter(m => m.missed).length;
 
   return (
-    <Card className="border-border/50">
-      <CardContent className="p-0">
+    <Card className="border-border/50 overflow-hidden isolate">
+      <CardContent className="p-0 overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-4">
@@ -342,7 +344,7 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="relative overflow-hidden">
+          <div className="relative h-[488px] overflow-hidden" style={{ contain: "layout paint" }}>
             {/* Left arrow */}
             {activeIndex > 0 && (
               <button
@@ -365,11 +367,12 @@ export default function SchedulerDebugPanel() {
 
             <div
               ref={scrollRef}
-              className="flex w-full max-w-full gap-4 overflow-x-auto py-4 px-4 scroll-smooth"
+              className="flex h-full w-full max-w-full items-start gap-4 overflow-x-auto overflow-y-hidden px-4 py-4 scroll-smooth"
               style={{
                 scrollSnapType: "x mandatory",
                 scrollbarWidth: "none",
                 msOverflowStyle: "none",
+                overscrollBehaviorX: "contain",
               }}
             >
               {sorted.map((msg, idx) => (
