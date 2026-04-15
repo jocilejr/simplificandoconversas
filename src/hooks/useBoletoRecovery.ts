@@ -191,7 +191,8 @@ export function useBoletoRecovery() {
 
       let sendStatus: BoletoWithRecovery["sendStatus"] = "pending";
       if (contactedToday) {
-        if (notes.startsWith("skipped_phone_limit")) sendStatus = "skipped_phone_limit";
+        if (notes.startsWith("skipped_duplicate")) sendStatus = "skipped_duplicate";
+        else if (notes.startsWith("skipped_phone_limit")) sendStatus = "skipped_phone_limit";
         else if (notes.startsWith("skipped_invalid_phone")) sendStatus = "skipped_invalid_phone";
         else if (notes.startsWith("failed")) sendStatus = "failed";
         else sendStatus = "sent";

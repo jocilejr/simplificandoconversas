@@ -166,8 +166,10 @@ export function FollowUpDashboard() {
                       <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25 text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3 animate-spin" />Na fila</Badge>
                     ) : boleto.sendStatus === "failed" ? (
                       <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><AlertTriangle className="h-3 w-3" />Falha API</Badge>
+                    ) : boleto.sendStatus === "skipped_duplicate" ? (
+                      <Badge variant="outline" className="bg-orange-500/15 text-orange-500 border-orange-500/25 text-[10px] gap-1 font-medium"><Copy className="h-3 w-3" />Duplicado (CPF)</Badge>
                     ) : boleto.sendStatus === "skipped_phone_limit" ? (
-                      <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3" />Duplicado</Badge>
+                      <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3" />Limite/dia</Badge>
                     ) : boleto.sendStatus === "skipped_invalid_phone" ? (
                       <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><Phone className="h-3 w-3" />Tel. inválido</Badge>
                     ) : (
