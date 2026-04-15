@@ -415,21 +415,16 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                     </TableRow>
                   </TableHeader>
                  <TableBody>
-                    {groupLinks.map((gl, idx) => {
+                    {groupLinks.map((gl) => {
                       const isBanned = (gl as any).status === "banned";
                       const isFull = !isBanned && (gl.member_count || 0) >= maxMembersLimit;
                       const isActive = gl.group_jid === activeGroupJid;
                       const sp = smartLink.sync_progress;
-                      const isSyncingThis = sp && sp.currentJid === gl.group_jid && !sp.done;
-                      const isSyncDone = sp && sp.done && sp.current > idx;
+                      const isSyncingThis = !!sp && sp.currentJid === gl.group_jid && !sp.done;
                       return (
                         <TableRow key={gl.group_jid} className={isSyncingThis ? "bg-primary/5" : isBanned ? "opacity-60" : isActive ? "bg-primary/5" : ""}>
                           <TableCell className="text-sm truncate max-w-[200px]">
-                            <div className="flex items-center gap-1.5">
-                              {isSyncingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />}
-                              {isSyncDone && !isSyncingThis && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
-                              <span className="truncate">{gl.group_name || gl.group_jid}</span>
-                            </div>
+                            <span className="truncate">{gl.group_name || gl.group_jid}</span>
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
@@ -454,7 +449,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                               : <span className="text-xs text-muted-foreground">Espera</span>}
                           </TableCell>
                           <TableCell className="text-center">
-                            <GroupSyncIndicator gl={gl} />
+                            <GroupSyncIndicator gl={gl} isSyncing={isSyncingThis} />
                           </TableCell>
                         </TableRow>
                       );
