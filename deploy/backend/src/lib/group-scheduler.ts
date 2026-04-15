@@ -202,11 +202,29 @@ export class GroupSchedulerManager {
           await sb.from("group_scheduled_messages")
             .update({ is_active: false, next_run_at: null })
             .eq("id", msg.id);
+          this.setDiagnostic(msg.id, {
+            status_code: "missed",
+            status_label: "Perdida",
+            reason_code: "once_expired_during_safety_sweep",
+            reason_label: "A publicação única expirou sem processamento",
+            reason_details: "A mensagem foi encontrada atrasada durante a verificação de segurança e não entrou na fila.",
+            diagnostics: { source: "safetySweep", previous_next_run_at: msg.next_run_at },
+          });
           continue;
         }
 
         const newNextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
-        if (!newNextRun) continue;
+        if (!newNextRun) {
+          this.setDiagnostic(msg.id, {
+            status_code: "failed",
+            status_label: "Falhou",
+            reason_code: "next_run_unavailable",
+            reason_label: "Não foi possível calcular o próximo disparo",
+            reason_details: "A verificação de segurança encontrou a mensagem atrasada, mas o próximo horário não pôde ser calculado.",
+            diagnostics: { source: "safetySweep" },
+          });
+          continue;
+        }
 
         await sb.from("group_scheduled_messages")
           .update({ next_run_at: newNextRun })
