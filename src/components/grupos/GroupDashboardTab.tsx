@@ -79,13 +79,19 @@ export default function GroupDashboardTab() {
               </div>
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
-                {selectedGroups.map((g) => (
+                {selectedGroups.map((g) => {
+                  const ge = eventsByGroup[g.group_jid] || { add: 0, remove: 0 };
+                  return (
                   <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{g.group_name}</p>
                       <p className="text-xs text-muted-foreground">{g.instance_name}</p>
                     </div>
-                    <Badge variant="outline" className="shrink-0 text-xs border-border/50">{g.member_count}</Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {ge.add > 0 && <span className="text-xs font-medium text-green-500">+{ge.add}</span>}
+                      {ge.remove > 0 && <span className="text-xs font-medium text-red-500">-{ge.remove}</span>}
+                      <Badge variant="outline" className="text-xs border-border/50">{g.member_count}</Badge>
+                    </div>
                   </div>
                 ))}
               </div>
