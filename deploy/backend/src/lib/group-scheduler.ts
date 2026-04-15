@@ -548,7 +548,16 @@ export class GroupSchedulerManager {
       await sb.from("group_scheduled_messages")
         .update({ next_run_at: nextRun })
         .eq("id", msgId);
-      this.createTimer(msgId, scheduleType, content, campaignId, new Date(nextRun));
+      this.createTimer(msgId, scheduleType, content, campaignId, new Date(nextRun), { preserveDiagnostic: true });
+    } else {
+      this.setDiagnostic(msgId, {
+        status_code: "failed",
+        status_label: "Falhou",
+        reason_code: "next_run_unavailable",
+        reason_label: "Não foi possível calcular o próximo disparo",
+        reason_details: "O scheduler tentou reagendar a publicação, mas não encontrou um próximo horário válido.",
+        diagnostics: { campaign_id: campaignId, schedule_type: scheduleType },
+      });
     }
   }
 }
