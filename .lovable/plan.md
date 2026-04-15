@@ -1,41 +1,24 @@
 
 
-## Plano: Corrigir layout do painel e melhorar diagnóstico de mensagens perdidas
+## Problema
 
-### Problema 1 — Layout quebrando boxes vizinhos
+O container do carrossel tem `height: 488px` fixo, mas o `overflow-hidden` no wrapper `relative` não está impedindo o conteúdo de expandir o `Card` pai horizontalmente. Os cards com `flex-shrink-0 w-[310px] min-w-[310px]` expandem o flex container, e o `Card` pai cresce junto.
 
-**Causa raiz**: `scrollIntoView()` na linha 233 move o scroll da página inteira, não só do container do carrossel. Isso empurra os boxes de cima e de baixo.
-
-**Correção**: Trocar `scrollIntoView` por manipulação direta de `scrollLeft` no container `scrollRef`, calculando o offset do card alvo. Isso garante que só o scroll horizontal interno do carrossel muda, sem afetar nada fora dele.
-
-```text
-Antes:  targetCard.scrollIntoView({ inline: "center" })  ← move a página
-Depois: container.scrollLeft = targetCard.offsetLeft - (container.clientWidth - cardWidth) / 2
-```
+## Correção
 
 **Arquivo**: `src/components/grupos/SchedulerDebugPanel.tsx`
 
----
+1. Adicionar `overflow-hidden` no `Card` raiz (linha 298) para conter o conteúdo horizontalmente
+2. Adicionar `overflow-hidden` no `CardContent` 
+3. Garantir que o div do carrossel (linha 341) tenha `max-width: 100%` ou `width: 100%` explícito para não ultrapassar o container pai
 
-### Problema 2 — Mensagens ignoradas por falta de timer
+Mudança concreta:
 
-**Causa raiz**: Quando o scheduler não dispara (timer perdido, restart do backend, etc.), não há itens na fila nem diagnóstico runtime. O `resolveSchedulerStatus` já tem o caso `isPast && !hasTimer` → "O timer da publicação não estava ativo", que é correto.
+| Linha | Antes | Depois |
+|-------|-------|--------|
+| 298 | `<Card className="border-border/50">` | `<Card className="border-border/50 overflow-hidden isolate">` |
+| 341 | `<div className="relative overflow-hidden" style={{ contain: "layout paint", height: "488px" }}>` | Sem mudança (já correto) |
+| 364 | `className="flex h-full items-start gap-4 px-4 py-4 scroll-smooth"` | Sem mudança |
 
-Porém, a mensagem pode estar chegando como "Ignorada" em vez de "Perdida" se existirem itens cancelled na fila de uma execução anterior. A prioridade precisa ser ajustada:
-
-**Correção no `resolveSchedulerStatus`**:
-- **Antes** de checar cancelled items, verificar se o runtime diagnostic do scheduler tem um status mais específico (como `missed` com `reason_code`).
-- Mover o bloco de `runtimeDiagnostic` para **antes** do bloco de `cancelledItems`, para que diagnósticos do scheduler tenham prioridade sobre itens cancelled genéricos.
-- Diferenciar claramente: "Ignorada por anti-spam" (cancelled na fila com reason) vs "Perdida porque o timer não disparou" (sem fila, sem timer).
-
-**Arquivo**: `deploy/backend/src/routes/groups-api.ts`
-
----
-
-### Resumo das mudanças
-
-| Arquivo | Mudança |
-|---------|---------|
-| `SchedulerDebugPanel.tsx` | Trocar `scrollIntoView` por `scrollLeft` direto |
-| `groups-api.ts` | Reordenar prioridades no `resolveSchedulerStatus` — runtime diagnostic antes de cancelled items |
+A causa raiz é que o `Card` pai não tem `overflow-hidden`, então o conteúdo do flex container interno (todos os cards lado a lado) empurra a largura do Card para fora da tela.
 
