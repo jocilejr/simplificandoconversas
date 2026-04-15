@@ -301,7 +301,8 @@ async function loadWorkspaceContext(
       .select("id, created_at, customer_name, customer_phone, customer_document, amount, metadata, external_id")
       .eq("workspace_id", workspaceId)
       .eq("type", "boleto")
-      .eq("status", "pendente"),
+      .eq("status", "pendente")
+      .order("created_at", { ascending: true }),
     sb
       .from("boleto_recovery_contacts")
       .select("transaction_id, rule_id, notes")
@@ -332,7 +333,7 @@ async function loadWorkspaceContext(
       .in("id", contactTransactionIds);
 
     for (const transaction of contactTransactions || []) {
-      const phone = ((transaction as any).customer_phone || "").replace(/\D/g, "");
+      const phone = (transaction as any).customer_phone || "";
       if (phone) {
         contactPhonesByTransactionId.set((transaction as any).id, phone);
       }
@@ -435,13 +436,35 @@ async function generateJobsForWorkspace(
       continue;
     }
 
-    // Deduplicate by CPF: if same CPF already has a job today, mark as duplicate
+    const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
+    const existingJob = existingJobsByKey.get(ruleKey);
+
+    // 2. Already contacted today? Skip
+    if (blockedRuleKeys.has(ruleKey)) {
+      result.skippedAlreadyContacted++;
+      result.skipped++;
+      continue;
+    }
+
+    // 3. Job already exists with final status? Skip
+    if (existingJob && FINAL_JOB_STATUSES.has(existingJob.status)) {
+      result.skipped++;
+      continue;
+    }
+
+    // 4. Has blocks?
+    const blocks = buildBlocks(matchingRule);
+    if (blocks.length === 0) {
+      result.skippedNoBlocks++;
+      result.skipped++;
+      continue;
+    }
+
+    // 5. NOW: CPF deduplication (only after all validations pass)
     const cpf = boleto.customer_document?.replace(/\D/g, "") || null;
     if (cpf && cpf.length >= 11) {
       if (processedCpfs.has(cpf)) {
-        const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
-        const blocks = buildBlocks(matchingRule);
-        const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
+        const normalized = boleto.customer_phone || null;
         const meta = (boleto.metadata as any) || {};
         const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
         await upsertDispatchJob(sb, {
@@ -472,24 +495,8 @@ async function generateJobsForWorkspace(
       processedCpfs.add(cpf);
     }
 
-    const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
-    const existingJob = existingJobsByKey.get(ruleKey);
-
-    if (blockedRuleKeys.has(ruleKey)) {
-      result.skippedAlreadyContacted++;
-      result.skipped++;
-      continue;
-    }
-
-    const blocks = buildBlocks(matchingRule);
-    if (blocks.length === 0) {
-      result.skippedNoBlocks++;
-      result.skipped++;
-      continue;
-    }
-
-    // Use the already-normalized phone from transactions (normalized at insertion time)
-    const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
+    // 6. Use customer_phone directly (already normalized in transactions table)
+    const normalized = boleto.customer_phone || null;
     const meta = (boleto.metadata as any) || {};
     const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
     const basePayload = {
@@ -775,7 +782,7 @@ async function processQueueForWorkspace(
     if (claimError) throw claimError;
     if (!claimedRows || claimedRows.length === 0) continue;
 
-    const normalizedPhone = (job.normalized_phone || job.phone || "").replace(/\D/g, "") || null;
+    const normalizedPhone = job.normalized_phone || job.phone || null;
     if (!normalizedPhone || normalizedPhone.length < 12) {
       await markQueueJob(sb, job.id, {
         status: "skipped_invalid_phone",
