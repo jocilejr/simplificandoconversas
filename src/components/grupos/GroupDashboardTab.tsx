@@ -6,7 +6,6 @@ import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents } from "@/hooks/useGroupEvents";
-import { useSchedulerDebug } from "@/hooks/useSchedulerDebug";
 import { format } from "date-fns";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
@@ -22,11 +21,11 @@ export default function GroupDashboardTab() {
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
   const { events } = useGroupEvents();
-  const { data: debugData } = useSchedulerDebug();
 
+  const hasSelectedGroups = selectedGroups.length > 0;
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
-  const groupsMonitored = selectedGroups.length > 0 ? selectedGroups.length : (debugData?.groups_count || 0);
+  const groupsMonitored = selectedGroups.length;
 
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
@@ -36,6 +35,17 @@ export default function GroupDashboardTab() {
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
       </div>
+
+      {!hasSelectedGroups && (
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-card">
+          <CardContent className="space-y-1.5 p-4">
+            <p className="text-sm font-semibold">Nenhum grupo monitorado ainda</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Abra a aba <span className="font-medium text-foreground">Selecionar</span> para buscar os grupos da sua instância e preencher esta visão geral.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="min-w-0 w-full overflow-hidden">
         <SchedulerDebugPanel />
@@ -47,8 +57,13 @@ export default function GroupDashboardTab() {
             <div className="px-4 py-3 border-b border-border/50">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos Monitorados</p>
             </div>
-            {selectedGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Nenhum grupo adicionado.</p>
+            {!hasSelectedGroups ? (
+              <div className="px-6 py-8 text-center space-y-1.5">
+                <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
+                <p className="text-sm text-muted-foreground">
+                  Use a aba Selecionar para adicionar grupos e preencher a contagem de membros.
+                </p>
+              </div>
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {selectedGroups.map((g) => (
@@ -71,7 +86,16 @@ export default function GroupDashboardTab() {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Eventos Recentes</p>
             </div>
             {events.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Nenhum evento registrado.</p>
+              <div className="px-6 py-8 text-center space-y-1.5">
+                <p className="text-sm font-medium">
+                  {hasSelectedGroups ? "Nenhum evento recente ainda." : "Selecione grupos para começar o monitoramento."}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {hasSelectedGroups
+                    ? "Depois, confirme na VPS se o webhook /api/groups/webhook/events está ativo para registrar entradas e saídas."
+                    : "Depois que você salvar os grupos, esta lista começará a receber as movimentações monitoradas."}
+                </p>
+              </div>
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {events.slice(0, 20).map((e: any) => {

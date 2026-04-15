@@ -25,18 +25,38 @@ export function useGroupSelected() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
+  const isLovablePreview = (import.meta.env.VITE_SUPABASE_URL || "").includes(".supabase.co");
 
   const { data: selectedGroups = [], isLoading } = useQuery({
     queryKey: ["group-selected", workspaceId],
     enabled: !!workspaceId,
+    refetchInterval: 15000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("group_selected")
-        .select("*")
-        .eq("workspace_id", workspaceId!)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return data as SelectedGroup[];
+      if (isLovablePreview) {
+        const { data, error } = await supabase
+          .from("group_selected")
+          .select("*")
+          .eq("workspace_id", workspaceId!)
+          .order("created_at", { ascending: true });
+
+        if (error) throw error;
+        return data as SelectedGroup[];
+      }
+
+      const resp = await fetch(`${apiUrl("groups/selected-groups")}?workspaceId=${encodeURIComponent(workspaceId!)}`);
+
+      if (!resp.ok) {
+        const contentType = resp.headers.get("content-type") || "";
+
+        if (contentType.includes("application/json")) {
+          const payload = await resp.json().catch(() => null);
+          throw new Error(payload?.error || payload?.message || "Erro ao carregar grupos monitorados");
+        }
+
+        throw new Error((await resp.text()) || "Erro ao carregar grupos monitorados");
+      }
+
+      return (await resp.json()) as SelectedGroup[];
     },
   });
 
