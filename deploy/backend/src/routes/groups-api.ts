@@ -1168,7 +1168,15 @@ router.post("/queue/process", async (req: Request, res: Response) => {
 
         if ((alreadySent || 0) > 0) {
           await sb.from("group_message_queue")
-            .update({ status: "cancelled", error_message: "Dedup: já enviada", completed_at: new Date().toISOString() })
+            .update({
+              status: "cancelled",
+              error_message: encodeDiagnosticMessage(
+                "dedup_recent_send",
+                "Bloqueada por deduplicação de 5 minutos",
+                "Já existia uma mensagem igual enviada recentemente para este grupo.",
+              ),
+              completed_at: new Date().toISOString(),
+            })
             .eq("id", item.id);
           skipped++;
           continue;
@@ -1186,6 +1194,17 @@ router.post("/queue/process", async (req: Request, res: Response) => {
 
       if ((count || 0) >= maxPerGroup) {
         console.log(`[groups-queue] ⏸ Rate limit: ${item.group_jid} has ${count}/${maxPerGroup} sends in ${perMinutes}min window`);
+        await sb.from("group_message_queue")
+          .update({
+            status: "cancelled",
+            error_message: encodeDiagnosticMessage(
+              "rate_limit_per_group",
+              "Limite de envios por grupo atingido",
+              `O grupo já recebeu ${count} envio(s) na janela de ${perMinutes} minuto(s), acima do limite ${maxPerGroup}.`,
+            ),
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", item.id);
         skipped++;
         continue;
       }
@@ -1223,7 +1242,15 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         await sb.from("group_message_queue").update({ status: "sent", completed_at: new Date().toISOString() }).eq("id", item.id);
         sent++;
       } catch (sendErr: any) {
-        await sb.from("group_message_queue").update({ status: "failed", error_message: sendErr.message, completed_at: new Date().toISOString() }).eq("id", item.id);
+        await sb.from("group_message_queue").update({
+          status: "failed",
+          error_message: encodeDiagnosticMessage(
+            "send_api_error",
+            "Falha ao enviar pela API do WhatsApp",
+            sendErr.message,
+          ),
+          completed_at: new Date().toISOString(),
+        }).eq("id", item.id);
         failed++;
       }
 
