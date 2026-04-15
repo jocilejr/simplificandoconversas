@@ -120,5 +120,31 @@ export function useUnseenTransactions() {
     [workspaceId, queryClient]
   );
 
-  return { hasUnseen, hasAnyUnseen, markSeen, markTabSeen, counts };
+  const markAllSeen = useCallback(
+    async () => {
+      if (!workspaceId) return;
+      try {
+        const resp = await fetch(apiUrl("platform/mark-all-seen"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId }),
+        });
+        const result = await resp.json();
+        if (result.error) {
+          console.error("[markAllSeen] backend error:", result.error);
+          return;
+        }
+        if (result.updated > 0) {
+          console.log("[markAllSeen] updated:", result.updated);
+        }
+        queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      } catch (err) {
+        console.error("[markAllSeen] fetch error:", err);
+      }
+    },
+    [workspaceId, queryClient]
+  );
+
+  return { hasUnseen, hasAnyUnseen, markSeen, markTabSeen, markAllSeen, counts };
 }
