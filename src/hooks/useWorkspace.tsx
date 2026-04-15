@@ -17,6 +17,7 @@ export const ALL_PERMISSIONS = [
   { key: "area_membros", label: "Área de Membros" },
   { key: "entrega", label: "Entrega Digital" },
   { key: "links_uteis", label: "Links Úteis" },
+  { key: "respostas_rapidas", label: "Respostas Rápidas" },
   { key: "settings", label: "Configurações" },
   { key: "disparar_fluxo", label: "Disparar Fluxo" },
 ] as const;

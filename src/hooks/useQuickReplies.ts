@@ -8,6 +8,7 @@ export type QuickReply = {
   user_id: string;
   title: string;
   content: string;
+  category: string;
   created_at: string;
 };
 
@@ -30,26 +31,28 @@ export function useQuickReplies() {
     },
   });
 
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["quick_replies"] });
+
   const create = useMutation({
-    mutationFn: async ({ title, content }: { title: string; content: string }) => {
+    mutationFn: async ({ title, content, category }: { title: string; content: string; category: string }) => {
       if (!workspaceId) throw new Error("Workspace não selecionado");
       const { error } = await supabase
         .from("quick_replies")
-        .insert({ title, content, user_id: user!.id, workspace_id: workspaceId });
+        .insert({ title, content, category, user_id: user!.id, workspace_id: workspaceId });
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["quick_replies"] }),
+    onSuccess: invalidate,
   });
 
   const update = useMutation({
-    mutationFn: async ({ id, title, content }: { id: string; title: string; content: string }) => {
+    mutationFn: async ({ id, title, content, category }: { id: string; title: string; content: string; category: string }) => {
       const { error } = await supabase
         .from("quick_replies")
-        .update({ title, content })
+        .update({ title, content, category })
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["quick_replies"] }),
+    onSuccess: invalidate,
   });
 
   const remove = useMutation({
@@ -57,8 +60,21 @@ export function useQuickReplies() {
       const { error } = await supabase.from("quick_replies").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["quick_replies"] }),
+    onSuccess: invalidate,
   });
 
-  return { ...query, create, update, remove };
+  const renameCategory = useMutation({
+    mutationFn: async ({ oldName, newName }: { oldName: string; newName: string }) => {
+      if (!workspaceId) throw new Error("Workspace não selecionado");
+      const { error } = await supabase
+        .from("quick_replies")
+        .update({ category: newName })
+        .eq("workspace_id", workspaceId)
+        .eq("category", oldName);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+
+  return { ...query, create, update, remove, renameCategory };
 }
