@@ -195,6 +195,7 @@ export default function SchedulerDebugPanel() {
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
+  const [edgeSpacerWidth, setEdgeSpacerWidth] = useState(0);
 
   const messages = data?.messages || [];
 
@@ -259,6 +260,26 @@ export default function SchedulerDebugPanel() {
         : closestIdx;
     }, 0);
   };
+
+  useEffect(() => {
+    const updateEdgeSpacerWidth = () => {
+      const container = scrollRef.current;
+      if (!container) return;
+
+      const firstCard = container.querySelector<HTMLElement>("[data-scheduler-card]");
+      if (!firstCard) {
+        setEdgeSpacerWidth(0);
+        return;
+      }
+
+      setEdgeSpacerWidth(Math.max(0, (container.clientWidth - firstCard.clientWidth) / 2));
+    };
+
+    updateEdgeSpacerWidth();
+    window.addEventListener("resize", updateEdgeSpacerWidth);
+
+    return () => window.removeEventListener("resize", updateEdgeSpacerWidth);
+  }, [sorted.length]);
 
   // Update scroll indicators
   const updateScrollState = () => {
@@ -381,16 +402,18 @@ export default function SchedulerDebugPanel() {
 
             <div
               ref={scrollRef}
-              className="flex gap-4 overflow-x-auto py-4 px-4 scroll-smooth"
+              className="flex gap-4 overflow-x-auto py-4 scroll-smooth"
               style={{
                 scrollSnapType: "x mandatory",
                 scrollbarWidth: "none",
                 msOverflowStyle: "none",
               }}
             >
+              <div aria-hidden className="shrink-0" style={{ width: edgeSpacerWidth }} />
               {sorted.map((msg, idx) => (
                 <ScheduleCard key={msg.id} msg={msg} isActive={idx === activeIndex} currentTimeMs={currentTimeMs} />
               ))}
+              <div aria-hidden className="shrink-0" style={{ width: edgeSpacerWidth }} />
             </div>
           </div>
         )}
