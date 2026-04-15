@@ -222,7 +222,7 @@ export default function SchedulerDebugPanel() {
     return idx >= 0 ? idx : sorted.length - 1;
   }, [currentTimeMs, sorted]);
 
-  const scrollToCard = (index: number, behavior: ScrollBehavior = "smooth") => {
+  const scrollToCard = (index: number, smooth = true) => {
     const container = scrollRef.current;
     if (!container) return;
 
@@ -230,11 +230,14 @@ export default function SchedulerDebugPanel() {
     const targetCard = cards[index];
     if (!targetCard) return;
 
-    targetCard.scrollIntoView({
-      behavior,
-      block: "nearest",
-      inline: "center",
-    });
+    const cardCenter = targetCard.offsetLeft + targetCard.offsetWidth / 2;
+    const target = cardCenter - container.clientWidth / 2;
+
+    if (smooth) {
+      container.scrollTo({ left: target, behavior: "smooth" });
+    } else {
+      container.scrollLeft = target;
+    }
   };
 
   const getClosestCardIndex = () => {
@@ -272,7 +275,7 @@ export default function SchedulerDebugPanel() {
     setActiveIndex(nextIdx);
 
     window.requestAnimationFrame(() => {
-      scrollToCard(nextIdx, "smooth");
+      scrollToCard(nextIdx, true);
     });
   }, [nextIdx, sorted.length]);
 
@@ -284,7 +287,7 @@ export default function SchedulerDebugPanel() {
       : Math.min(activeIndex + 1, sorted.length - 1);
 
     setActiveIndex(targetIndex);
-    scrollToCard(targetIndex, "smooth");
+    scrollToCard(targetIndex, true);
   };
 
   // Summary counters
