@@ -4,7 +4,7 @@ import { getMessageQueue } from "../lib/message-queue";
 
 
 const router = Router();
-const workspaceLocks = new Set<string>();
+
 const FOLLOWUP_QUEUE_TABLE = "followup_dispatch_queue" as any;
 const FINAL_JOB_STATUSES = new Set([
   "sent",
@@ -848,41 +848,34 @@ async function processQueueForWorkspace(
       continue;
     }
 
-    try {
-      await queue.enqueue(async () => {
-        await dispatchJob({ ...job, normalized_phone: normalizedPhone }, context.delayMs);
-      }, `followup:${job.transaction_id}:${job.rule_id}`);
-
-      await markQueueJob(sb, job.id, {
-        status: "sent",
-        last_error: null,
-        completed_at: new Date().toISOString(),
-        normalized_phone: normalizedPhone,
-      });
-
-      await insertRecoveryContact(sb, {
-        workspaceId: setting.workspace_id,
-        userId: setting.user_id,
-        transactionId: job.transaction_id,
-        ruleId: job.rule_id,
-        notes: "sent|followup_dispatch_queue",
-      });
-
-      blockingContactKeys.add(ruleKey);
-      failedContactKeys.delete(ruleKey);
-      phoneSendCount.set(normalizedPhone, currentCount + 1);
-      result.sent++;
-      console.log(`[followup-daily] ✅ Sent follow-up for boleto ${job.transaction_id} (workspace ${setting.workspace_id})`);
-    } catch (err: any) {
-      const message = err?.message?.slice(0, 500) || "Falha desconhecida";
-      await markQueueJob(sb, job.id, {
-        status: "failed",
-        last_error: message,
-        completed_at: new Date().toISOString(),
-        normalized_phone: normalizedPhone,
-      });
-
-      if (!failedContactKeys.has(ruleKey)) {
+    // Fire-and-forget: enqueue without blocking the HTTP request
+    queue.enqueue(async () => {
+      await dispatchJob({ ...job, normalized_phone: normalizedPhone }, context.delayMs);
+    }, `followup:${job.transaction_id}:${job.rule_id}`)
+      .then(async () => {
+        await markQueueJob(sb, job.id, {
+          status: "sent",
+          last_error: null,
+          completed_at: new Date().toISOString(),
+          normalized_phone: normalizedPhone,
+        });
+        await insertRecoveryContact(sb, {
+          workspaceId: setting.workspace_id,
+          userId: setting.user_id,
+          transactionId: job.transaction_id,
+          ruleId: job.rule_id,
+          notes: "sent|followup_dispatch_queue",
+        });
+        console.log(`[followup-daily] ✅ Sent follow-up for boleto ${job.transaction_id} (workspace ${setting.workspace_id})`);
+      })
+      .catch(async (err: any) => {
+        const message = err?.message?.slice(0, 500) || "Falha desconhecida";
+        await markQueueJob(sb, job.id, {
+          status: "failed",
+          last_error: message,
+          completed_at: new Date().toISOString(),
+          normalized_phone: normalizedPhone,
+        });
         await insertRecoveryContact(sb, {
           workspaceId: setting.workspace_id,
           userId: setting.user_id,
@@ -890,12 +883,13 @@ async function processQueueForWorkspace(
           ruleId: job.rule_id,
           notes: `failed_api|${message}`,
         });
-        failedContactKeys.add(ruleKey);
-      }
+        console.error(`[followup-daily] ❌ Failed follow-up for boleto ${job.transaction_id}: ${message}`);
+      });
 
-      result.failed++;
-      console.error(`[followup-daily] ❌ Failed follow-up for boleto ${job.transaction_id}: ${message}`);
-    }
+    // Count immediately as enqueued (the queue will process in background)
+    phoneSendCount.set(normalizedPhone, currentCount + 1);
+    result.sent++;
+    console.log(`[followup-daily] 📤 Enqueued follow-up for boleto ${job.transaction_id} (workspace ${setting.workspace_id})`);
   }
 
   const { count } = await sb
@@ -921,32 +915,21 @@ async function processWorkspace(
     return result;
   }
 
-  if (workspaceLocks.has(workspaceId)) {
-    result.locked = true;
+  const context = await loadWorkspaceContext(sb, workspaceId, setting.instance_name);
+  if (context.rules.length === 0 || context.boletos.length === 0) {
     return result;
   }
 
-  workspaceLocks.add(workspaceId);
+  console.log(`[followup-daily] Processing workspace ${workspaceId} for ${context.today} (includeFailed=${includeFailed})`);
 
-  try {
-    const context = await loadWorkspaceContext(sb, workspaceId, setting.instance_name);
-    if (context.rules.length === 0 || context.boletos.length === 0) {
-      return result;
-    }
+  await generateJobsForWorkspace(sb, setting, context, includeFailed, result);
+  await processQueueForWorkspace(sb, setting, context, includeFailed, result);
 
-    console.log(`[followup-daily] Processing workspace ${workspaceId} for ${context.today} (includeFailed=${includeFailed})`);
+  console.log(
+    `[followup-daily] Workspace ${workspaceId} summary: generated=${result.generated}, requeued=${result.requeued}, enqueued=${result.sent}, skipped=${result.skipped}, pending_after_run=${result.pendingAfterRun}`,
+  );
 
-    await generateJobsForWorkspace(sb, setting, context, includeFailed, result);
-    await processQueueForWorkspace(sb, setting, context, includeFailed, result);
-
-    console.log(
-      `[followup-daily] Workspace ${workspaceId} summary: generated=${result.generated}, requeued=${result.requeued}, sent=${result.sent}, failed=${result.failed}, skipped=${result.skipped}, pending_after_run=${result.pendingAfterRun}`,
-    );
-
-    return result;
-  } finally {
-    workspaceLocks.delete(workspaceId);
-  }
+  return result;
 }
 
 export async function processFollowUpDaily(options: ProcessOptions = {}) {

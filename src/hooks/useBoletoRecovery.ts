@@ -57,7 +57,7 @@ export interface BoletoWithRecovery extends Transaction {
   applicableRule: RecoveryRule | null;
   formattedMessage: string | null;
   contactedToday: boolean;
-  sendStatus: "pending" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone";
+  sendStatus: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate";
 }
 
 export function useBoletoRecovery() {
@@ -208,7 +208,7 @@ export function useBoletoRecovery() {
 
   // Derived lists
   const todayBoletos = useMemo(() => processedBoletos.filter((b) => b.applicableRule !== null), [processedBoletos]);
-  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "pending" || b.sendStatus === "failed"), [todayBoletos]);
+  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "pending" || b.sendStatus === "processing" || b.sendStatus === "failed"), [todayBoletos]);
   const sentTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "sent"), [todayBoletos]);
   const pendingBoletos = useMemo(() => processedBoletos.filter((b) => !b.isOverdue), [processedBoletos]);
   const overdueBoletos = useMemo(() => processedBoletos.filter((b) => b.isOverdue), [processedBoletos]);
