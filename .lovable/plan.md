@@ -1,90 +1,51 @@
 
 
-# Dashboard de Debug Completo do Scheduler
+# Scheduler Debug: Carrossel com Preview WhatsApp
 
-## Resumo
+## Problema Atual
+- Layout em lista que sai da tela, sem filtragem correta por "hoje" no BRT
+- Cards sem sentido, sem preview visual das mensagens
+- Contagem de grupos monitorados incorreta (mostra 0)
 
-Criar um painel de debug detalhado que mostra o estado completo de cada mensagem agendada: futuras com timer ativo/ausente, passadas com status de envio por grupo, horarios de entrada na fila e envio, falhas, e detecção de "timer passou mas não enviou".
+## Solução
 
-## Backend — Novo endpoint
-
+### 1. Backend — Expor dados completos para preview
 **Arquivo:** `deploy/backend/src/routes/groups-api.ts`
 
-Novo `GET /groups/scheduler-debug?workspaceId=...` que retorna:
+- Além do `content_preview` (string), retornar o campo `content` completo (JSON) com `text`, `caption`, `mediaUrl`, `audioUrl`, etc. para alimentar o componente WhatsAppPreview
+- Retornar também o total de grupos monitorados (`groups_count`) e total de grupos-alvo por mensagem (`target_groups_count`)
 
-1. **Todas as mensagens agendadas** (ativas e inativas do dia) com join em `group_campaigns` para nome
-2. **Status do timer in-memory** via `groupScheduler.hasTimer(msgId)` e `groupScheduler.activeCount`
-3. **Itens da fila associados** — para cada `scheduled_message_id`, busca em `group_message_queue` os registros das ultimas 24h com: `status`, `group_jid`, `group_name`, `created_at` (entrada na fila), `started_at`, `completed_at`, `error_message`
-4. **Detecção de anomalia**: se `next_run_at` está no passado, `is_active = true`, e não há item na fila recente → flag `missed: true`
+### 2. Frontend — Novo SchedulerDebugPanel completo em carrossel
+**Arquivo:** `src/components/grupos/SchedulerDebugPanel.tsx` (reescrita total)
 
-Resposta:
-```json
-{
-  "timers_active": 42,
-  "server_time_utc": "...",
-  "server_time_brt": "...",
-  "messages": [{
-    "id": "...",
-    "schedule_type": "weekly",
-    "message_type": "text",
-    "is_active": true,
-    "next_run_at": "...",
-    "last_run_at": "...",
-    "has_timer": true,
-    "missed": false,
-    "campaign_name": "Campanha X",
-    "content_preview": "Texto da mensagem...",
-    "queue_items": [{
-      "group_jid": "...",
-      "group_name": "Grupo Y",
-      "status": "sent",
-      "created_at": "...",
-      "started_at": "...",
-      "completed_at": "...",
-      "error_message": null
-    }]
-  }]
-}
-```
+Layout:
+- **Header**: Timers ativos, hora do servidor BRT, grupos monitorados, botão refresh
+- **Carrossel horizontal** com scroll snap, navegação por setas
+  - Cada card tem largura fixa (~320px), mostra:
+    - Horário BRT grande no topo
+    - Badge de tipo (text/image/video/audio)
+    - Status (Timer ativo, Enviada, Falhou, Perdida)
+    - **Preview WhatsApp** reutilizando o componente `WhatsAppPreview` existente com os dados do `content`
+    - Contadores: X grupos enviados, Y falhas
+    - Detalhes da fila (compacto) ao expandir
+  - **Card focado** = próxima publicação futura (centralizado, borda highlight primary)
+  - Cards passados à esquerda (opacidade reduzida, borda verde/vermelha conforme status)
+  - Cards futuros à direita (borda neutra)
+- **Rodapé**: Totais do dia (enviadas, falhas, perdidas)
+- Filtra apenas mensagens de HOJE no BRT (já feito no backend, mas reforçar no frontend)
 
-## Frontend — 3 novos arquivos + 1 modificado
+### 3. Hook — Atualizar tipos
+**Arquivo:** `src/hooks/useSchedulerDebug.ts`
 
-### `src/hooks/useSchedulerDebug.ts`
-- useQuery com polling de 30s
-- Busca `GET /groups/scheduler-debug?workspaceId=...`
+- Adicionar campo `content` (object) ao tipo `ScheduledMessageDebug`
+- Adicionar `groups_count` ao `SchedulerDebugData`
 
-### `src/components/grupos/SchedulerDebugPanel.tsx`
-Card completo com:
-- **Header**: Timers ativos, horario do servidor (BRT), botao de refresh
-- **Filtros**: Todas / Futuras / Passadas / Com problemas
-- **Lista cronologica** de cada mensagem agendada mostrando:
-  - Horario BRT (destaque visual: passada=esmaecida, proxima=highlight, futura=normal)
-  - Badge tipo (text/image/audio/file)
-  - Nome da campanha
-  - Indicador timer: verde (ativo) / vermelho (ausente) / amarelo (missed — timer passou sem enviar)
-  - `last_run_at` formatado
-- **Expansivel por mensagem**: ao clicar, mostra tabela detalhada dos `queue_items`:
-  - Grupo (nome + JID curto)
-  - Status com cor (sent=verde, failed=vermelho, pending=amarelo, cancelled=cinza, processing=azul)
-  - Horario entrada na fila (`created_at`)
-  - Horario inicio processamento (`started_at`)
-  - Horario conclusao (`completed_at`)
-  - Tempo total (completed - created)
-  - Mensagem de erro (se houver)
-- **Contadores por mensagem**: X enviadas, Y falhas, Z canceladas
+### 4. GroupDashboardTab — Corrigir contagem de grupos
+**Arquivo:** `src/components/grupos/GroupDashboardTab.tsx`
 
-### `src/components/grupos/GroupDashboardTab.tsx`
-- Importar e adicionar `SchedulerDebugPanel` como card full-width abaixo dos cards existentes
-
-## Detecção de problemas (visual)
-
-- **Timer ausente**: mensagem ativa com `next_run_at` futuro mas `has_timer = false` → badge vermelho "Sem Timer"
-- **Missed**: `next_run_at` no passado, `is_active = true`, sem queue items recentes → badge amarelo "Perdida"
-- **Falha total**: todos queue_items com status `failed` → badge vermelho "Falhou"
-- **OK**: timer ativo ou já executou com sucesso → badge verde
+- Usar dados do scheduler debug para mostrar quantidade real de grupos monitorados quando `selectedGroups` estiver vazio (fallback para dados do backend)
 
 ## Pós-deploy
-
 ```bash
 cd ~/simplificandoconversas && git pull origin main
 cd deploy && docker compose up -d --build backend
