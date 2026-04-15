@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
-import { Link2, Copy, RefreshCw, Users, MousePointerClick, CheckCircle2, XCircle, Trash2, Search, Plus, ArrowLeft, AlertTriangle } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Link2, Copy, RefreshCw, Users, MousePointerClick, CheckCircle2, XCircle, Trash2, Search, Plus, ArrowLeft, AlertTriangle, ExternalLink, Clock } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
