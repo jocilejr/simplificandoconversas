@@ -185,7 +185,9 @@ async function sendBlock(
 }
 
 /**
- * Dispatch recovery for a single transaction immediately.
+ * Dispatch recovery for a single transaction.
+ * Flow: validate → enqueue in universal instance queue → audit record created AFTER enqueue.
+ * The queue processes and returns sent/failed/cancelled. No cron, no retry, one shot.
  */
 export async function dispatchRecovery(opts: {
   workspaceId: string;
@@ -195,7 +197,6 @@ export async function dispatchRecovery(opts: {
   customerName: string | null;
   amount: number;
   transactionType: string;
-  skipDuplicateCheck?: boolean;
 }) {
   console.log(`[recovery-dispatch] START tx=${opts.transactionId} type=${opts.transactionType} phone=${opts.customerPhone}`);
 
@@ -221,7 +222,7 @@ export async function dispatchRecovery(opts: {
 
   console.log(`[recovery-dispatch] Settings: enabled_boleto=${settings.enabled_boleto} enabled_pix=${settings.enabled_pix} enabled_yampi=${settings.enabled_yampi}`);
 
-  // 2. Check per-type enablement
+  // 2. Check per-type enablement (automation active?)
   if (txType === "boleto" && !settings.enabled_boleto) {
     console.log(`[recovery-dispatch] SKIP — boleto not enabled`);
     return;
@@ -233,19 +234,17 @@ export async function dispatchRecovery(opts: {
     return;
   }
 
-  // 3. Check duplicate (skip if retrying from manual process)
-  if (!opts.skipDuplicateCheck) {
-    const { data: existing } = await sb
-      .from("recovery_queue")
-      .select("id")
-      .eq("transaction_id", opts.transactionId)
-      .eq("workspace_id", opts.workspaceId)
-      .maybeSingle();
+  // 3. Check duplicate — never send twice for the same transaction
+  const { data: existing } = await sb
+    .from("recovery_queue")
+    .select("id")
+    .eq("transaction_id", opts.transactionId)
+    .eq("workspace_id", opts.workspaceId)
+    .maybeSingle();
 
-    if (existing) {
-      console.log(`[recovery-dispatch] Already queued for tx ${opts.transactionId}`);
-      return;
-    }
+  if (existing) {
+    console.log(`[recovery-dispatch] Already queued for tx ${opts.transactionId}`);
+    return;
   }
 
   // 4. Resolve instance
@@ -287,7 +286,6 @@ export async function dispatchRecovery(opts: {
   let blocks: RecoveryBlock[] = [];
 
   if (txType === "boleto") {
-    // Boleto: use multi-block template from boleto_recovery_templates (absolute, no fallback)
     const { data: defaultTemplate } = await sb
       .from("boleto_recovery_templates")
       .select("blocks")
@@ -317,7 +315,6 @@ export async function dispatchRecovery(opts: {
       return;
     }
   } else {
-    // PIX/Cartão or Rejected/Abandoned: load single text message from profiles — NO FALLBACK
     const fieldKey = (txType === "yampi_cart" || txType === "yampi")
       ? "recovery_message_abandoned"
       : "recovery_message_pix";
@@ -355,29 +352,9 @@ export async function dispatchRecovery(opts: {
     blocks = [{ id: "profile-text", type: "text", content: message }];
   }
 
-  console.log(`[recovery-dispatch] Default template loaded: ${blocks.length} block(s) [${blocks.map(b => b.type).join(", ")}]`);
+  console.log(`[recovery-dispatch] Template loaded: ${blocks.length} block(s) [${blocks.map(b => b.type).join(", ")}]`);
 
-  // 7. Insert audit record as pending
-  const { data: queueItem } = await sb
-    .from("recovery_queue")
-    .insert({
-      workspace_id: opts.workspaceId,
-      user_id: opts.userId,
-      transaction_id: opts.transactionId,
-      customer_phone: normalizedPhone,
-      customer_name: opts.customerName || null,
-      amount: opts.amount,
-      transaction_type: txType,
-      status: "pending",
-      scheduled_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  const queueId = queueItem?.id;
-  console.log(`[recovery-dispatch] Queued tx ${opts.transactionId} (${txType}), queue id: ${queueId}`);
-
-  // 8. Load message_queue_config for delay
+  // 7. Load message_queue_config for delay
   let configDelaySeconds = 30;
   let configPauseAfterSends: number | null = null;
   let configPauseMinutes: number | null = null;
@@ -401,15 +378,41 @@ export async function dispatchRecovery(opts: {
   }
 
   const delayMs = Math.max(configDelaySeconds, 5) * 1000;
-  console.log(`[recovery-dispatch] Queue delay: ${delayMs}ms (config: ${configDelaySeconds}s), cooldown: after=${configPauseAfterSends} pause=${configPauseMinutes}min for instance: ${instanceName}`);
+  console.log(`[recovery-dispatch] Queue delay: ${delayMs}ms, cooldown: after=${configPauseAfterSends} pause=${configPauseMinutes}min for instance: ${instanceName}`);
 
-  // 9. Enqueue into the global message queue for this instance
+  // 8. Create audit record FIRST as "queued" — then enqueue into the universal queue
+  //    The record is created right before enqueue so if the process crashes between
+  //    insert and enqueue, the record stays "queued" (harmless audit trail).
+  const { data: queueItem } = await sb
+    .from("recovery_queue")
+    .insert({
+      workspace_id: opts.workspaceId,
+      user_id: opts.userId,
+      transaction_id: opts.transactionId,
+      customer_phone: normalizedPhone,
+      customer_name: opts.customerName || null,
+      amount: opts.amount,
+      transaction_type: txType,
+      status: "queued",
+      scheduled_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  const queueId = queueItem?.id;
+  if (!queueId) {
+    console.error(`[recovery-dispatch] Failed to create audit record for tx ${opts.transactionId}`);
+    return;
+  }
+
+  console.log(`[recovery-dispatch] Audit record created (queued), id=${queueId}`);
+
+  // 9. Enqueue into the universal instance queue — ONE TIME, the queue handles everything
   const queue = getMessageQueue(instanceName, delayMs, configPauseAfterSends, configPauseMinutes);
-
   const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
   const evoApiKey = process.env.EVOLUTION_API_KEY || "";
-
   const vars = { name: opts.customerName, amount: opts.amount };
+  const label = `tx:${txType}:${normalizedPhone}`;
 
   queue.enqueue(async () => {
     // Re-check transaction status before sending
@@ -425,15 +428,13 @@ export async function dispatchRecovery(opts: {
       return;
     }
 
-    console.log(`[recovery-dispatch] Sending ${blocks.length} block(s) to ${normalizedPhone} via ${instanceName} (delay between blocks: ${delayMs}ms)`);
+    console.log(`[recovery-dispatch] Sending ${blocks.length} block(s) to ${normalizedPhone} via ${instanceName}`);
 
-    // Send each block sequentially with the CONFIGURED delay between them
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
       console.log(`[recovery-dispatch] Block ${i + 1}/${blocks.length}: type=${block.type}`);
       await sendBlock(block, vars, normalizedPhone, instanceName!, evoBaseUrl, evoApiKey, opts.transactionId, sb);
 
-      // Use the configured delay between blocks (not a hardcoded 2s)
       if (i < blocks.length - 1) {
         console.log(`[recovery-dispatch] Waiting ${delayMs}ms before next block...`);
         await new Promise((r) => setTimeout(r, delayMs));
@@ -446,17 +447,17 @@ export async function dispatchRecovery(opts: {
     }).eq("id", queueId);
 
     console.log(`[recovery-dispatch] ✅ Sent ${blocks.length} block(s) to ${normalizedPhone} (tx: ${opts.transactionId})`);
-  }, `recovery:${opts.transactionId}`).catch(async (err: any) => {
-    if (queueId) {
-      try {
-        await sb.from("recovery_queue").update({
-          status: "failed",
-          error_message: err.message?.substring(0, 500),
-        }).eq("id", queueId);
-      } catch (_) {}
-    }
+  }, label).catch(async (err: any) => {
+    try {
+      await sb.from("recovery_queue").update({
+        status: "failed",
+        error_message: err.message?.substring(0, 500),
+      }).eq("id", queueId);
+    } catch (_) {}
     console.error(`[recovery-dispatch] ❌ Failed for ${normalizedPhone}:`, err.message);
   });
+
+  console.log(`[recovery-dispatch] ✅ Enqueued tx ${opts.transactionId} into ${instanceName} queue as "${label}"`);
 }
 
 /**
