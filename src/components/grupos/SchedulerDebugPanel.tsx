@@ -191,8 +191,6 @@ export default function SchedulerDebugPanel() {
   const { data, isLoading, refresh } = useSchedulerDebug();
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoCenteredIdxRef = useRef<number | null>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -259,17 +257,6 @@ export default function SchedulerDebugPanel() {
     }, 0);
   };
 
-  // Update scroll indicators
-  const updateScrollState = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 10);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 10);
-    setActiveIndex((prev) => {
-      const nextActiveIndex = getClosestCardIndex();
-      return prev === nextActiveIndex ? prev : nextActiveIndex;
-    });
-  };
 
   // Auto-center only when the next scheduled card actually changes
   useEffect(() => {
@@ -286,17 +273,8 @@ export default function SchedulerDebugPanel() {
 
     window.requestAnimationFrame(() => {
       scrollToCard(nextIdx, "smooth");
-      window.setTimeout(updateScrollState, 350);
     });
   }, [nextIdx, sorted.length]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", updateScrollState, { passive: true });
-    updateScrollState();
-    return () => el.removeEventListener("scroll", updateScrollState);
-  }, []);
 
   const scroll = (dir: "left" | "right") => {
     if (sorted.length === 0) return;
@@ -359,7 +337,7 @@ export default function SchedulerDebugPanel() {
         ) : (
           <div className="relative">
             {/* Left arrow */}
-            {canScrollLeft && (
+            {activeIndex > 0 && (
               <button
                 onClick={() => scroll("left")}
                 className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-colors shadow-md"
@@ -369,7 +347,7 @@ export default function SchedulerDebugPanel() {
             )}
 
             {/* Right arrow */}
-            {canScrollRight && (
+            {activeIndex < sorted.length - 1 && (
               <button
                 onClick={() => scroll("right")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-colors shadow-md"
