@@ -1167,6 +1167,14 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           .gte("created_at", dedupWindow);
 
         if ((alreadySent || 0) > 0) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "skipped",
+            status_label: "Ignorada",
+            reason_code: "dedup_recent_send",
+            reason_label: "Bloqueada por deduplicação de 5 minutos",
+            reason_details: "Já existia uma mensagem igual enviada recentemente para este grupo.",
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
           await sb.from("group_message_queue")
             .update({
               status: "cancelled",
@@ -1194,6 +1202,16 @@ router.post("/queue/process", async (req: Request, res: Response) => {
 
       if ((count || 0) >= maxPerGroup) {
         console.log(`[groups-queue] ⏸ Rate limit: ${item.group_jid} has ${count}/${maxPerGroup} sends in ${perMinutes}min window`);
+        if (item.scheduled_message_id) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "failed",
+            status_label: "Falhou",
+            reason_code: "rate_limit_per_group",
+            reason_label: "Limite de envios por grupo atingido",
+            reason_details: `O grupo já recebeu ${count} envio(s) na janela de ${perMinutes} minuto(s), acima do limite ${maxPerGroup}.`,
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
+        }
         await sb.from("group_message_queue")
           .update({
             status: "cancelled",
@@ -1240,8 +1258,28 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         }
 
         await sb.from("group_message_queue").update({ status: "sent", completed_at: new Date().toISOString() }).eq("id", item.id);
+        if (item.scheduled_message_id) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "sent",
+            status_label: "Enviada",
+            reason_code: "sent_successfully",
+            reason_label: "Mensagem enviada com sucesso",
+            reason_details: `A mensagem foi enviada com sucesso para o grupo ${item.group_name || item.group_jid}.`,
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
+        }
         sent++;
       } catch (sendErr: any) {
+        if (item.scheduled_message_id) {
+          groupScheduler.recordDiagnostic(item.scheduled_message_id, {
+            status_code: "failed",
+            status_label: "Falhou",
+            reason_code: "send_api_error",
+            reason_label: "Falha ao enviar pela API do WhatsApp",
+            reason_details: sendErr.message,
+            diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
+          });
+        }
         await sb.from("group_message_queue").update({
           status: "failed",
           error_message: encodeDiagnosticMessage(
@@ -2108,17 +2146,17 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       return isWithinToday(m.next_run_at) || isWithinToday(m.last_run_at) || isWithinToday(m.scheduled_at);
     });
 
-    // Get campaign names
+    // Get campaign data
     const campaignIds = [...new Set(todayMessages.map((m: any) => m.campaign_id))];
-    const campaignMap: Record<string, string> = {};
+    const campaignMap: Record<string, any> = {};
     if (campaignIds.length > 0) {
       const { data: campaigns } = await sb
         .from("group_campaigns")
-        .select("id, name, workspace_id")
+        .select("id, name, workspace_id, is_active, group_jids")
         .in("id", campaignIds)
         .eq("workspace_id", workspaceId);
       for (const c of campaigns || []) {
-        campaignMap[c.id] = c.name;
+        campaignMap[c.id] = c;
       }
     }
 
@@ -2154,14 +2192,22 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     // Build response
     const result = todayMessages.map((m: any) => {
       const hasTimer = groupScheduler.hasTimer(m.id);
+      const runtimeDiagnostic = groupScheduler.getDiagnostic(m.id);
       const effectiveRunAt = resolveTodayRunAt(m);
       const nextRun = effectiveRunAt ? new Date(effectiveRunAt) : null;
       const queueItems = queueMap[m.id] || [];
+      const campaign = campaignMap[m.campaign_id] || null;
 
-      // Detect missed: next_run_at in the past, active, no queue items for this run
       const isPast = nextRun && nextRun < now;
-      const hasRecentQueue = queueItems.length > 0;
-      const missed = !!(isPast && m.is_active && !hasRecentQueue && !hasTimer);
+      const resolvedStatus = resolveSchedulerStatus({
+        queueItems,
+        runtimeDiagnostic,
+        campaign,
+        hasTimer,
+        isPast: !!isPast,
+        isActive: m.is_active,
+      });
+      const missed = resolvedStatus.status_code === "missed";
 
       // Content preview
       let contentPreview = "";
@@ -2171,9 +2217,6 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         contentData = c || {};
         contentPreview = c.text || c.caption || c.fileName || c.audioUrl?.slice(-30) || JSON.stringify(c).slice(0, 80);
       } catch { contentPreview = "—"; }
-
-      // Count target groups for this message's campaign
-      const campaignGroups = todayMessages.filter((tm: any) => tm.campaign_id === m.campaign_id);
 
       return {
         id: m.id,
@@ -2185,7 +2228,14 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         effective_run_at: effectiveRunAt,
         has_timer: hasTimer,
         missed,
-        campaign_name: campaignMap[m.campaign_id] || "Campanha desconhecida",
+        status_code: resolvedStatus.status_code,
+        status_label: resolvedStatus.status_label,
+        failure_reason: resolvedStatus.failure_reason,
+        failure_details: resolvedStatus.failure_details,
+        diagnostics: resolvedStatus.diagnostics,
+        queue_error_summary: resolvedStatus.queue_error_summary,
+        campaign_name: campaign?.name || "Campanha desconhecida",
+        target_groups_count: Array.isArray(campaign?.group_jids) ? campaign.group_jids.length : 0,
         content_preview: contentPreview,
         content: contentData,
         queue_items: queueItems.map((qi: any) => ({
