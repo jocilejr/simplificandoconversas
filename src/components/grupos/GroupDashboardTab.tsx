@@ -93,7 +93,8 @@ export default function GroupDashboardTab() {
                       <Badge variant="outline" className="text-xs border-border/50">{g.member_count}</Badge>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
