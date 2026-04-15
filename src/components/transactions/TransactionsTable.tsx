@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Trash2, Download, Search, ChevronDown, ChevronUp,
   Users, Clock, CheckCircle2, AlertCircle, RefreshCw,
-  CalendarIcon, Copy, ExternalLink, Settings2,
+  CalendarIcon, Copy, ExternalLink, Settings2, Crown,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -520,9 +520,19 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
             onClick={() => handleRowClick(tx)}
           >
             <div className="flex items-center justify-between mb-2">
-              <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
-                {typeLabels[tx.type] || tx.type}
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
+                  {typeLabels[tx.type] || tx.type}
+                </Badge>
+                {tx.source === "member-area" && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Crown className="h-3.5 w-3.5 text-amber-500" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">Área de Membros</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
               <Badge variant="outline" className={cn("font-medium text-xs", statusStyles[tx.status])}>
                 {statusLabels[tx.status] || tx.status}
               </Badge>
@@ -618,9 +628,19 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                     onClick={() => handleRowClick(tx)}
                   >
                     <td className="py-3.5 px-4">
-                      <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
-                        {typeLabels[tx.type] || tx.type}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="outline" className={cn("font-medium text-xs", typeStyles[tx.type])}>
+                          {typeLabels[tx.type] || tx.type}
+                        </Badge>
+                        {tx.source === "member-area" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Crown className="h-3.5 w-3.5 text-amber-500" />
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="text-xs">Área de Membros</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex flex-col">
