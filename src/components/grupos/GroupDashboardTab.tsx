@@ -6,6 +6,7 @@ import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents } from "@/hooks/useGroupEvents";
+import { useSchedulerDebug } from "@/hooks/useSchedulerDebug";
 import { format } from "date-fns";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
@@ -21,14 +22,16 @@ export default function GroupDashboardTab() {
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
   const { events } = useGroupEvents();
+  const { data: debugData } = useSchedulerDebug();
 
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
+  const groupsMonitored = selectedGroups.length > 0 ? selectedGroups.length : (debugData?.groups_count || 0);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Grupos Monitorados" value={String(selectedGroups.length)} icon={UsersRound} iconColor="text-primary" />
+        <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />

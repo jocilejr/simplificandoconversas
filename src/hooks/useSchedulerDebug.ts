@@ -23,6 +23,16 @@ export interface ScheduledMessageDebug {
   missed: boolean;
   campaign_name: string;
   content_preview: string;
+  content: {
+    text?: string;
+    caption?: string;
+    mediaUrl?: string;
+    audioUrl?: string;
+    fileName?: string;
+    mentionAll?: boolean;
+    forceLinkPreview?: boolean;
+    [key: string]: any;
+  };
   queue_items: QueueItem[];
 }
 
@@ -30,6 +40,7 @@ export interface SchedulerDebugData {
   timers_active: number;
   server_time_utc: string;
   server_time_brt: string;
+  groups_count: number;
   messages: ScheduledMessageDebug[];
 }
 
