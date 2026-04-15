@@ -133,7 +133,7 @@ export function FollowUpDashboard() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefone</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Valor</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Vencimento</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Regra</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Envio</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
               </tr>
@@ -152,14 +152,10 @@ export function FollowUpDashboard() {
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    {boleto.contactedToday ? (
-                      <Badge variant="outline" className="bg-green-500/15 text-green-500 border-green-500/25 text-[10px] gap-1 font-medium"><CheckCircle2 className="h-3 w-3" />Enviado</Badge>
-                    ) : boleto.isOverdue ? (
-                      <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><AlertTriangle className="h-3 w-3" />Vencido</Badge>
-                    ) : boleto.applicableRule ? (
-                      <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25 text-[10px] gap-1 font-medium"><Clock className="h-3 w-3" />{boleto.applicableRule.name}</Badge>
+                    {boleto.applicableRule ? (
+                      <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25 text-[10px] gap-1 font-medium">{boleto.applicableRule.name}</Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] font-medium">Pendente</Badge>
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </td>
                   <td className="py-3 px-4">

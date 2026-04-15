@@ -164,7 +164,7 @@ export function useBoletoRecovery() {
   // Process boletos
   const processedBoletos = useMemo(() => {
     const boletos = unpaidBoletos ?? [];
-    const expirationDays = settings?.default_expiration_days || 3;
+    const expirationDays = settings?.default_expiration_days || 7;
     const today = getTodayBrazil();
 
     return boletos.map((boleto): BoletoWithRecovery => {
