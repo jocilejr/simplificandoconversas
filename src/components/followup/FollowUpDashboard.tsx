@@ -81,8 +81,8 @@ export function FollowUpDashboard() {
   const queueCounts = dispatchStatus?.counts;
   const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.failed : stats.pendingToday;
   const effectiveSent = queueCounts ? queueCounts.sent : stats.sentToday;
-  const effectiveResolved = queueCounts ? queueCounts.sent + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone : stats.sentToday;
-  const progressBase = effectiveSent + effectivePending + (queueCounts ? queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone : 0);
+  const effectiveResolved = queueCounts ? queueCounts.sent + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
+  const progressBase = effectiveSent + effectivePending + (queueCounts ? queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : 0);
   const progressPercent = progressBase > 0 ? Math.round((effectiveResolved / progressBase) * 100) : 0;
 
   const handleRunNow = async () => {
@@ -255,7 +255,7 @@ export function FollowUpDashboard() {
       {(() => {
         const isProcessing = queueCounts && queueCounts.processing > 0;
         const hasFailed = queueCounts && queueCounts.failed > 0;
-        const isComplete = queueCounts && queueCounts.pending === 0 && queueCounts.processing === 0 && (queueCounts.sent > 0 || queueCounts.skipped_phone_limit > 0 || queueCounts.skipped_invalid_phone > 0);
+        const isComplete = queueCounts && queueCounts.pending === 0 && queueCounts.processing === 0 && (queueCounts.sent > 0 || queueCounts.skipped_phone_limit > 0 || queueCounts.skipped_invalid_phone > 0 || queueCounts.skipped_duplicate > 0);
         
         if (isProcessing) return (
           <div className="flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary/5 animate-pulse">
@@ -272,7 +272,7 @@ export function FollowUpDashboard() {
         if (isComplete) return (
           <div className="flex items-center gap-2 p-3 rounded-lg border border-green-500/30 bg-green-500/5">
             <CheckCircle2 className="h-4 w-4 text-green-500" />
-            <span className="text-sm font-medium text-green-600">Concluído — {queueCounts!.sent} enviados{queueCounts!.failed > 0 ? `, ${queueCounts!.failed} com falha` : ""}{queueCounts!.skipped_invalid_phone > 0 ? `, ${queueCounts!.skipped_invalid_phone} tel. inválido` : ""}</span>
+            <span className="text-sm font-medium text-green-600">Concluído — {queueCounts!.sent} enviados{queueCounts!.skipped_duplicate > 0 ? `, ${queueCounts!.skipped_duplicate} duplicados (CPF)` : ""}{queueCounts!.failed > 0 ? `, ${queueCounts!.failed} com falha` : ""}{queueCounts!.skipped_invalid_phone > 0 ? `, ${queueCounts!.skipped_invalid_phone} tel. inválido` : ""}</span>
           </div>
         );
         return null;
@@ -335,10 +335,11 @@ export function FollowUpDashboard() {
               <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{progressPercent}% processado</span>
             </div>
             {queueCounts && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                 <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Processando: <span className="font-semibold">{queueCounts.processing}</span></div>
                 <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Falhas: <span className="font-semibold">{queueCounts.failed}</span></div>
-                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Duplicados: <span className="font-semibold">{queueCounts.skipped_phone_limit}</span></div>
+                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Duplicados (CPF): <span className="font-semibold">{queueCounts.skipped_duplicate}</span></div>
+                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Limite tel.: <span className="font-semibold">{queueCounts.skipped_phone_limit}</span></div>
                 <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Tel. inválido: <span className="font-semibold">{queueCounts.skipped_invalid_phone}</span></div>
               </div>
             )}
