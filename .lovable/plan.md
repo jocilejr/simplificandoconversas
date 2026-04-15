@@ -1,46 +1,43 @@
 
 
-# Plano: Só bloquear boletos enviados ou duplicados
+# Plano: Acelerar fetch de grupos e mostrar todos
 
 ## Problema
-Existem **duas camadas** de bloqueio que impedem boletos pendentes de entrar na fila:
+O endpoint `POST /fetch-groups` faz uma chamada sequencial `findGroupInfos` para **cada grupo** individualmente (linha 676). Com 50+ grupos, isso leva minutos e causa timeouts. Além disso, grupos são descartados se o `findGroupInfos` falhar ou se o owner não for encontrado nos participantes.
 
-1. **`isBlockingContact`** (linha 227): bloqueia tudo que não é `failed_api` — inclui `skipped_phone_limit`, `skipped_invalid_phone`
-2. **`FINAL_JOB_STATUSES`** (linha 10): marca `sent`, `skipped_phone_limit`, `skipped_invalid_phone`, `skipped_duplicate` como status final — boleto com qualquer um desses nunca é reprocessado
-
-## Regra correta (conforme solicitado)
-- **Bloqueia**: `sent` e `skipped_duplicate` → boleto já foi tratado
-- **NÃO bloqueia**: `skipped_phone_limit`, `skipped_invalid_phone`, `failed_api` → boleto deve poder ser reprocessado
-
-## Correções
-
-### 1. `FINAL_JOB_STATUSES` (linha 10-15)
-Remover `skipped_phone_limit` e `skipped_invalid_phone` — só `sent` e `skipped_duplicate` são finais:
-```typescript
-const FINAL_JOB_STATUSES = new Set(["sent", "skipped_duplicate"]);
+## Causa raiz
 ```
-
-### 2. `isBlockingContact` (linha 227-228)
-Mudar para bloquear **apenas** `sent` e `skipped_duplicate`:
-```typescript
-function isBlockingContact(notes: string | null | undefined) {
-  if (!notes) return false;
-  return notes.startsWith("sent") || notes.startsWith("skipped_duplicate");
-}
+fetchAllGroups → loop sobre cada grupo → findGroupInfos (1 request por grupo, sequencial)
 ```
+Se a instância tem 100 grupos, são 100+ requests HTTP sequenciais à Evolution API.
 
-### 3. `countsAsSuccessfulContact` (linha 231-232)
-Manter como está — já exclui todos os skips e falhas da contagem de limite/dia.
+## Solução
+Usar os dados já retornados pelo `fetchAllGroups` sem chamar `findGroupInfos` para cada grupo. O `fetchAllGroups` já retorna nome e tamanho. A validação de owner é desnecessária para listar grupos disponíveis — o usuário decide o que monitorar.
+
+### Alteração em `deploy/backend/src/routes/groups-api.ts` (linhas 656-719)
+
+Substituir o loop com `findGroupInfos` por mapeamento direto:
+
+```typescript
+const groups = gusOnly.map((g: any) => {
+  const jid = g.id || g.jid || g.groupJid || "";
+  const name = g.subject || g.name || "Sem nome";
+  const memberCount = g.size || g.participants?.length || 0;
+  return { jid, name, memberCount };
+});
+
+console.log(`[groups-api] Total groups returned: ${groups.length} (from ${list.length} raw)`);
+res.json(groups);
+```
 
 ## Resultado
-- Boleto `sent` → bloqueado (não reenvia)
-- Boleto `skipped_duplicate` → bloqueado (CPF já foi atendido)
-- Boleto `skipped_phone_limit` → **reprocessável** na próxima execução
-- Boleto `skipped_invalid_phone` → **reprocessável** (caso telefone seja corrigido)
-- Boleto `failed_api` → **reprocessável** (já funciona)
+- Fetch de grupos passa de ~30-60s para ~1-2s (uma única chamada à Evolution API)
+- **Todos** os grupos `@g.us` da instância são listados
+- Nenhuma validação de owner ou participantes — o usuário escolhe o que monitorar
+- A validação real de participação continua sendo feita no envio de campanhas (que já usa `findGroupInfos`)
 
 ## Arquivo modificado
-- `deploy/backend/src/routes/followup-daily.ts` — 3 alterações cirúrgicas
+- `deploy/backend/src/routes/groups-api.ts` — simplificar `POST /fetch-groups`
 
 ## Após deploy
 ```bash
