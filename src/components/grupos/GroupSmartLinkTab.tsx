@@ -443,8 +443,8 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
       {/* Groups Table */}
       {groupLinks.length > 0 && (
         <Card className="border-border/50">
-          <CardContent className="p-0">
-                 <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-2">
+           <CardContent className="p-0">
+              <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
                 </div>
@@ -453,12 +453,13 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                     <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7">
-                  <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
-                </Button>
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
+                  </Button>
+                </div>
               </div>
-             <div className="overflow-hidden">
-               <Table>
-                 <TableHeader>
+              <div className="overflow-hidden">
+                <Table>
+                  <TableHeader>
                     <TableRow>
                       <TableHead>Grupo</TableHead>
                       <TableHead className="text-center w-24">Membros</TableHead>
@@ -468,7 +469,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                       <TableHead className="text-center w-28">Último Sync</TableHead>
                     </TableRow>
                   </TableHeader>
-                 <TableBody>
+                  <TableBody>
                     {groupLinks.map((gl) => {
                       const isBanned = (gl as any).status === "banned";
                       const isFull = !isBanned && (gl.member_count || 0) >= maxMembersLimit;
@@ -508,9 +509,59 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                         </TableRow>
                       );
                     })}
-                 </TableBody>
-               </Table>
-             </div>
+                  </TableBody>
+                </Table>
+              </div>
+           </CardContent>
+         </Card>
+       )}
+
+      {/* Add Groups Panel */}
+      {addingGroups && (
+        <Card className="border-primary/30">
+          <CardContent className="p-0">
+            <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Grupos</p>
+              <Button size="sm" variant="ghost" onClick={() => { setAddingGroups(false); setFetchedGroups([]); setSelectedNewJids(new Set()); }} className="h-7 text-xs">
+                Cancelar
+              </Button>
+            </div>
+            <div className="p-4 space-y-3">
+              {fetchingGroups ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+                  <RefreshCw className="h-4 w-4 animate-spin" /> Buscando grupos da instância...
+                </div>
+              ) : fetchedGroups.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum grupo novo encontrado na instância.</p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">{selectedNewJids.size} de {fetchedGroups.length} grupo(s) selecionado(s)</p>
+                  <div className="rounded-md border border-border/50 max-h-60 overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10"></TableHead>
+                          <TableHead>Grupo</TableHead>
+                          <TableHead className="text-center w-24">Membros</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {fetchedGroups.map(g => (
+                          <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleNewGroup(g.jid)}>
+                            <TableCell><Checkbox checked={selectedNewJids.has(g.jid)} onCheckedChange={() => toggleNewGroup(g.jid)} /></TableCell>
+                            <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
+                            <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <Button size="sm" onClick={handleAddGroups} disabled={selectedNewJids.size === 0 || updateSmartLink.isPending}>
+                    <Plus className="h-4 w-4 mr-1" /> Adicionar {selectedNewJids.size} grupo(s)
+                  </Button>
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
