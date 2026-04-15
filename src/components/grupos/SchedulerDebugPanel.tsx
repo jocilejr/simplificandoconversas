@@ -107,58 +107,58 @@ function ScheduleCard({
           : "border border-border/15 bg-card/50"
       }`}>
         <div className="flex h-full min-h-0">
-          {/* LEFT — 45% */}
-          <div className="flex flex-col w-[45%] min-w-0">
+          {/* LEFT — 42% */}
+          <div className="flex flex-col w-[42%] min-w-0">
             {/* Time + Status header */}
-            <div className="px-2.5 py-2 border-b border-border/10">
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <div className="flex items-baseline gap-1">
-                  <span className={`text-lg font-bold font-mono leading-none tracking-tight ${
+            <div className="px-3.5 py-2.5 border-b border-border/10">
+              <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                <div className="flex items-baseline gap-1.5">
+                  <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
                     isPast ? "text-muted-foreground" : isCurrent ? "text-primary" : "text-foreground"
                   }`}>
                     {formatTimeBrt(runAt)}
                   </span>
-                  <span className="text-[9px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
+                  <span className="text-[10px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
                 </div>
-                <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[8px] gap-0.5 shrink-0 px-1 py-0 h-4`}>
-                  <StatusIcon className="h-2.5 w-2.5" />{msg.status_label}
+                <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[9px] gap-0.5 shrink-0 px-1.5 py-0 h-[18px]`}>
+                  <StatusIcon className="h-3 w-3" />{msg.status_label}
                 </Badge>
               </div>
-              <div className="flex items-center gap-1">
-                <Badge variant="secondary" className="text-[8px] gap-0.5 px-1 py-0 h-3.5">
-                  <Icon className="h-2 w-2" />{typeLabels[msg.message_type] || msg.message_type}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 py-0 h-4">
+                  <Icon className="h-2.5 w-2.5" />{typeLabels[msg.message_type] || msg.message_type}
                 </Badge>
-                <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-border/20">
-                  <CalendarClock className="h-2 w-2 mr-0.5" />
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-border/20">
+                  <CalendarClock className="h-2.5 w-2.5 mr-0.5" />
                   {scheduleLabels[msg.schedule_type] || msg.schedule_type}
                 </Badge>
               </div>
             </div>
 
             {/* Details */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-1.5 space-y-1.5 scrollbar-none">
-              <div className="flex items-center gap-1.5">
-                <Megaphone className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-                <p className="text-[10px] font-medium truncate leading-tight">{msg.campaign_name}</p>
+            <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-2.5 space-y-2 scrollbar-none">
+              <div className="flex items-center gap-2">
+                <Megaphone className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                <p className="text-xs font-medium truncate leading-tight">{msg.campaign_name}</p>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <UsersRound className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-                <p className="text-[10px] text-muted-foreground leading-tight">
+              <div className="flex items-center gap-2">
+                <UsersRound className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                <p className="text-xs text-muted-foreground leading-tight">
                   {msg.target_groups_count} grupo{msg.target_groups_count !== 1 ? "s" : ""}
                 </p>
               </div>
 
               {(sentCount > 0 || failedCount > 0) && (
-                <div className="flex items-center gap-2 pt-0.5">
+                <div className="flex items-center gap-3 pt-0.5">
                   {sentCount > 0 && (
-                    <span className="flex items-center gap-0.5 text-[9px] text-emerald-400">
-                      <CheckCircle2 className="h-2.5 w-2.5" />{sentCount}
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" />{sentCount}
                     </span>
                   )}
                   {failedCount > 0 && (
-                    <span className="flex items-center gap-0.5 text-[9px] text-red-400">
-                      <XCircle className="h-2.5 w-2.5" />{failedCount}
+                    <span className="flex items-center gap-1 text-[10px] text-red-400">
+                      <XCircle className="h-3 w-3" />{failedCount}
                     </span>
                   )}
                 </div>
@@ -167,15 +167,15 @@ function ScheduleCard({
 
             {/* Diagnostic footer */}
             {reasonTitle && (
-              <div className="px-2.5 py-1.5 border-t border-border/10 bg-destructive/5">
-                <p className="text-[8px] font-medium leading-tight text-destructive/80 line-clamp-2">{reasonTitle}</p>
+              <div className="px-3.5 py-2 border-t border-border/10 bg-destructive/5">
+                <p className="text-[9px] font-medium leading-tight text-destructive/80 line-clamp-2">{reasonTitle}</p>
               </div>
             )}
           </div>
 
-          {/* RIGHT — 55% preview */}
-          <div className="w-[55%] min-w-0 border-l border-border/10 overflow-hidden">
-            <div className="h-full">
+          {/* RIGHT — 58% preview */}
+          <div className="w-[58%] min-w-0 border-l border-border/10 overflow-hidden">
+            <div className="h-full overflow-y-auto scrollbar-none">
               <WhatsAppPreview {...previewProps} />
             </div>
           </div>

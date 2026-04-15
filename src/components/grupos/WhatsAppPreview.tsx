@@ -398,17 +398,16 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
 
   if (compact) {
     return (
-      <div className="w-full h-full overflow-hidden relative" style={{ borderRadius: '8px' }}>
+      <div className="w-full h-full overflow-y-auto overflow-x-hidden scrollbar-none relative" style={{ borderRadius: '8px' }}>
         <div
           style={{
-            transform: 'scale(0.72)',
+            transform: 'scale(0.75)',
             transformOrigin: 'top left',
-            width: '138.9%',
-            height: '138.9%',
+            width: '133.33%',
           }}
         >
-          <div className="flex flex-col w-full h-full" style={{ backgroundColor: '#0b141a' }}>
-            <div className="flex-1" style={{ ...wallpaperStyle, padding: '8px 0' }}>
+          <div className="flex flex-col w-full" style={{ backgroundColor: '#0b141a' }}>
+            <div style={{ ...wallpaperStyle, padding: '10px 0' }}>
               {!hasContent() ? <EmptyState /> : <div className="py-1">{renderContent()}</div>}
             </div>
           </div>
