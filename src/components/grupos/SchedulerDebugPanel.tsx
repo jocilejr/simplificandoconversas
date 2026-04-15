@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   RefreshCw, Clock, Timer, AlertTriangle, CheckCircle2, XCircle,
   ChevronLeft, ChevronRight, FileText, Image, Mic, File, Video,
-  Send, UsersRound,
+  Send, UsersRound, CalendarClock,
 } from "lucide-react";
 import { useSchedulerDebug, type ScheduledMessageDebug } from "@/hooks/useSchedulerDebug";
 import WhatsAppPreview from "@/components/grupos/WhatsAppPreview";
@@ -44,19 +44,14 @@ const scheduleLabels: Record<string, string> = {
   once: "Única", daily: "Diária", weekly: "Semanal", monthly: "Mensal", interval: "Intervalo",
 };
 
-const statusConfig: Record<string, { color: string; bg: string; border: string }> = {
-  waiting: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
-  processing: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30" },
-  sent: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
-  failed: { color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30" },
-  missed: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/30" },
-  skipped: { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30" },
+const statusConfig: Record<string, { color: string; bg: string; border: string; icon: typeof Clock }> = {
+  waiting: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: Timer },
+  processing: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", icon: Clock },
+  sent: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: CheckCircle2 },
+  failed: { color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", icon: XCircle },
+  missed: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/30", icon: AlertTriangle },
+  skipped: { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: AlertTriangle },
 };
-
-const statusIcons = {
-  waiting: Timer, processing: Clock, sent: CheckCircle2, failed: XCircle,
-  missed: AlertTriangle, skipped: AlertTriangle,
-} satisfies Record<ScheduledMessageDebug["status_code"], typeof Clock>;
 
 /* ─── Horizontal card ─── */
 function ScheduleCard({
@@ -67,7 +62,13 @@ function ScheduleCard({
   currentTimeMs: number;
 }) {
   if (!msg) {
-    return <div className="flex-1 min-w-0" />;
+    // Ghost placeholder for empty slot
+    return (
+      <div
+        className="flex-1 min-w-0 transition-all duration-500 ease-out"
+        style={{ opacity: 0 }}
+      />
+    );
   }
 
   const runAt = getMessageRunAt(msg);
@@ -76,8 +77,8 @@ function ScheduleCard({
   const isCurrent = position === "current";
 
   const Icon = typeIcons[msg.message_type] || FileText;
-  const StatusIcon = statusIcons[msg.status_code] || Clock;
   const cfg = statusConfig[msg.status_code] || statusConfig.waiting;
+  const StatusIcon = cfg.icon;
 
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
   const failedCount = msg.queue_items.filter(qi => qi.status === "failed").length;
@@ -94,94 +95,94 @@ function ScheduleCard({
     caption: content.caption || "",
     mentionAll: content.mentionAll || false,
     forceLinkPreview: content.forceLinkPreview,
+    compact: true,
   };
 
   return (
     <div
-      className={`flex-1 min-w-0 transition-all duration-300 ${
-        isCurrent ? "scale-100 opacity-100" : "scale-[0.94] opacity-50"
-      }`}
-      style={!isCurrent ? { filter: "blur(0.5px)" } : undefined}
-    >
-      <div className={`h-full rounded-xl border overflow-hidden ${
+      className={`flex-1 min-w-0 transition-all duration-500 ease-out ${
         isCurrent
-          ? "border-primary/40 ring-1 ring-primary/20 bg-card shadow-lg"
-          : "border-border/30 bg-card/80"
+          ? "scale-100 opacity-100 z-10"
+          : "scale-[0.92] opacity-40 z-0"
+      }`}
+      style={!isCurrent ? { filter: "blur(1px)" } : undefined}
+    >
+      <div className={`h-full rounded-xl border overflow-hidden transition-all duration-500 ${
+        isCurrent
+          ? "border-primary/50 shadow-xl shadow-primary/5 bg-card"
+          : "border-border/20 bg-card/60"
       }`}>
-        {/* Horizontal layout: info left, preview right */}
         <div className="flex h-full min-h-0">
-          {/* LEFT: Info */}
-          <div className="flex flex-col w-[55%] min-w-0 border-r border-border/20">
-            {/* Header */}
-            <div className="px-3 py-2.5 border-b border-border/20 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className={`text-lg font-bold font-mono leading-none ${
-                  isPast ? "text-muted-foreground" : isCurrent ? "text-primary" : "text-foreground"
-                }`}>
-                  {formatTimeBrt(runAt)}
-                </span>
-                <span className="text-[10px] text-muted-foreground">{formatDateBrt(runAt)}</span>
-              </div>
-              <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[10px] gap-0.5 shrink-0`}>
-                <StatusIcon className="h-3 w-3" />{msg.status_label}
-              </Badge>
-            </div>
-
-            {/* Details */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
-              {/* Type + Schedule */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0">
-                  <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
+          {/* LEFT: Info — 40% */}
+          <div className="flex flex-col w-[40%] min-w-0 border-r border-border/15">
+            {/* Time header */}
+            <div className="px-3 py-2.5 border-b border-border/15">
+              <div className="flex items-center justify-between gap-1 mb-1.5">
+                <div className="flex items-baseline gap-1.5">
+                  <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
+                    isPast ? "text-muted-foreground" : isCurrent ? "text-primary" : "text-foreground"
+                  }`}>
+                    {formatTimeBrt(runAt)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60">{formatDateBrt(runAt)}</span>
+                </div>
+                <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[9px] gap-0.5 shrink-0 px-1.5 py-0`}>
+                  <StatusIcon className="h-2.5 w-2.5" />{msg.status_label}
                 </Badge>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/40">
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 py-0 h-4">
+                  <Icon className="h-2.5 w-2.5" />{typeLabels[msg.message_type] || msg.message_type}
+                </Badge>
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-border/30">
+                  <CalendarClock className="h-2.5 w-2.5 mr-0.5" />
                   {scheduleLabels[msg.schedule_type] || msg.schedule_type}
                 </Badge>
               </div>
+            </div>
 
-              {/* Campaign */}
+            {/* Details */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2.5">
               <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Campanha</p>
-                <p className="text-xs truncate">{msg.campaign_name}</p>
+                <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest font-medium mb-0.5">Campanha</p>
+                <p className="text-[11px] font-medium truncate">{msg.campaign_name}</p>
               </div>
 
-              {/* Groups */}
               <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Grupos</p>
-                <p className="text-xs flex items-center gap-1">
-                  <UsersRound className="h-3 w-3 text-muted-foreground" />
+                <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest font-medium mb-0.5">Grupos</p>
+                <p className="text-[11px] flex items-center gap-1">
+                  <UsersRound className="h-3 w-3 text-muted-foreground/60" />
                   {msg.target_groups_count} grupo{msg.target_groups_count !== 1 ? "s" : ""}
                 </p>
               </div>
 
               {/* Queue stats */}
-              <div className="flex items-center gap-3">
-                {sentCount > 0 && (
-                  <span className="flex items-center gap-0.5 text-[11px] text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" />{sentCount}
-                  </span>
-                )}
-                {failedCount > 0 && (
-                  <span className="flex items-center gap-0.5 text-[11px] text-red-400">
-                    <XCircle className="h-3 w-3" />{failedCount}
-                  </span>
-                )}
-                {sentCount === 0 && failedCount === 0 && (
-                  <span className="text-[11px] text-muted-foreground">{msg.status_label}</span>
-                )}
-              </div>
+              {(sentCount > 0 || failedCount > 0) && (
+                <div className="flex items-center gap-2">
+                  {sentCount > 0 && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" />{sentCount}
+                    </span>
+                  )}
+                  {failedCount > 0 && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                      <XCircle className="h-3 w-3" />{failedCount}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Diagnostic */}
               {reasonTitle && (
-                <div className="mt-1 rounded-md border border-border/20 bg-muted/30 px-2 py-1.5">
-                  <p className="text-[10px] font-medium leading-tight">{reasonTitle}</p>
+                <div className="rounded-md border border-border/15 bg-muted/20 px-2 py-1.5">
+                  <p className="text-[9px] font-medium leading-tight text-muted-foreground">{reasonTitle}</p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* RIGHT: Preview */}
-          <div className="w-[45%] min-w-0 overflow-hidden">
+          {/* RIGHT: Preview — 60% */}
+          <div className="w-[60%] min-w-0 overflow-hidden">
             <div className="h-full overflow-y-auto">
               <WhatsAppPreview {...previewProps} />
             </div>
@@ -197,6 +198,7 @@ export default function SchedulerDebugPanel() {
   const { data, isLoading, refresh } = useSchedulerDebug();
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const messages = data?.messages || [];
 
@@ -214,7 +216,6 @@ export default function SchedulerDebugPanel() {
     [messages],
   );
 
-  // Auto-select next upcoming message
   const nextIdx = useMemo(() => {
     const idx = sorted.findIndex((m) => {
       const runAt = getMessageRunAt(m);
@@ -226,6 +227,17 @@ export default function SchedulerDebugPanel() {
   useEffect(() => {
     setActiveIndex(nextIdx);
   }, [nextIdx]);
+
+  const navigate = useCallback((dir: "prev" | "next") => {
+    if (isTransitioning) return;
+    const newIdx = dir === "prev" 
+      ? Math.max(activeIndex - 1, 0)
+      : Math.min(activeIndex + 1, sorted.length - 1);
+    if (newIdx === activeIndex) return;
+    setIsTransitioning(true);
+    setActiveIndex(newIdx);
+    setTimeout(() => setIsTransitioning(false), 400);
+  }, [activeIndex, sorted.length, isTransitioning]);
 
   const canPrev = activeIndex > 0;
   const canNext = activeIndex < sorted.length - 1;
@@ -242,29 +254,39 @@ export default function SchedulerDebugPanel() {
     <Card className="border-border/50 overflow-hidden isolate min-w-0 w-full">
       <CardContent className="p-0 overflow-hidden min-w-0">
         {/* Header */}
-        <div className="px-4 py-2.5 border-b border-border/50 flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="px-4 py-2 border-b border-border/40 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Publicações de Hoje
             </p>
             {data && (
-              <div className="hidden sm:flex items-center gap-3 text-[11px] text-muted-foreground">
+              <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground/70">
                 <span className="flex items-center gap-1">
-                  <Timer className="h-3 w-3" />{data.timers_active} timers
+                  <Timer className="h-3 w-3" />{data.timers_active}
                 </span>
                 <span className="flex items-center gap-1">
-                  <UsersRound className="h-3 w-3" />{data.groups_count} grupos
+                  <UsersRound className="h-3 w-3" />{data.groups_count}
                 </span>
               </div>
             )}
           </div>
           <div className="flex items-center gap-2">
             {sorted.length > 0 && (
-              <span className="text-[11px] text-muted-foreground tabular-nums">
-                {activeIndex + 1}/{sorted.length}
-              </span>
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+                {Array.from({ length: Math.min(sorted.length, 12) }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1 rounded-full transition-all duration-300 ${
+                      i === activeIndex ? "w-4 bg-primary" : "w-1 bg-muted-foreground/30"
+                    }`}
+                  />
+                ))}
+                {sorted.length > 12 && (
+                  <span className="ml-1 text-[9px]">+{sorted.length - 12}</span>
+                )}
+              </div>
             )}
-            <Button variant="ghost" size="sm" onClick={refresh} className="h-7 text-xs gap-1 px-2">
+            <Button variant="ghost" size="sm" onClick={refresh} className="h-6 w-6 p-0">
               <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
           </div>
@@ -272,34 +294,36 @@ export default function SchedulerDebugPanel() {
 
         {/* Stage */}
         {isLoading ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">Carregando...</div>
+          <div className="py-16 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : sorted.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
+          <div className="py-16 text-center text-sm text-muted-foreground">
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="w-full min-w-0 overflow-hidden px-3 py-3">
-            {/* Navigation + Stage */}
-            <div className="flex items-center gap-2">
+          <div className="w-full min-w-0 overflow-hidden px-2 py-3">
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={() => canPrev && setActiveIndex(i => i - 1)}
+                onClick={() => navigate("prev")}
                 disabled={!canPrev}
-                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-border/40 bg-background/80 transition-all hover:bg-muted/40 disabled:opacity-0 disabled:pointer-events-none"
+                className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
                 aria-label="Anterior"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
 
-              <div className="flex flex-1 min-w-0 gap-3 items-stretch" style={{ height: "280px" }}>
-                <ScheduleCard msg={prev} position="prev" currentTimeMs={currentTimeMs} />
-                <ScheduleCard msg={current} position="current" currentTimeMs={currentTimeMs} />
-                <ScheduleCard msg={next} position="next" currentTimeMs={currentTimeMs} />
+              <div
+                className="flex flex-1 min-w-0 gap-2 items-stretch"
+                style={{ height: "320px" }}
+              >
+                <ScheduleCard key={prev?.id || "ghost-prev"} msg={prev} position="prev" currentTimeMs={currentTimeMs} />
+                <ScheduleCard key={current?.id || "ghost-current"} msg={current} position="current" currentTimeMs={currentTimeMs} />
+                <ScheduleCard key={next?.id || "ghost-next"} msg={next} position="next" currentTimeMs={currentTimeMs} />
               </div>
 
               <button
-                onClick={() => canNext && setActiveIndex(i => i + 1)}
+                onClick={() => navigate("next")}
                 disabled={!canNext}
-                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-border/40 bg-background/80 transition-all hover:bg-muted/40 disabled:opacity-0 disabled:pointer-events-none"
+                className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
                 aria-label="Próximo"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -310,15 +334,15 @@ export default function SchedulerDebugPanel() {
 
         {/* Footer */}
         {data && messages.length > 0 && (
-          <div className="px-4 py-1.5 border-t border-border/30 flex items-center gap-4 text-[11px] text-muted-foreground">
+          <div className="px-4 py-1.5 border-t border-border/30 flex items-center gap-4 text-[10px] text-muted-foreground/70">
             <span className="flex items-center gap-1">
-              <Send className="h-3 w-3" />{totalSent} enviadas
+              <Send className="h-2.5 w-2.5" />{totalSent} enviadas
             </span>
             <span className="flex items-center gap-1">
-              <XCircle className="h-3 w-3 text-red-400" />{totalFailed} falhas
+              <XCircle className="h-2.5 w-2.5 text-red-400/70" />{totalFailed} falhas
             </span>
             <span className="flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3 text-amber-400" />{totalMissed} perdidas
+              <AlertTriangle className="h-2.5 w-2.5 text-amber-400/70" />{totalMissed} perdidas
             </span>
           </div>
         )}
