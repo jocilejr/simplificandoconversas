@@ -396,10 +396,31 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
     backgroundColor: '#0b141a',
   };
 
+  if (compact) {
+    return (
+      <div className="w-full h-full overflow-hidden relative" style={{ borderRadius: '8px' }}>
+        <div
+          style={{
+            transform: 'scale(0.72)',
+            transformOrigin: 'top left',
+            width: '138.9%',
+            height: '138.9%',
+          }}
+        >
+          <div className="flex flex-col w-full h-full" style={{ backgroundColor: '#0b141a' }}>
+            <div className="flex-1" style={{ ...wallpaperStyle, padding: '8px 0' }}>
+              {!hasContent() ? <EmptyState /> : <div className="py-1">{renderContent()}</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col w-full h-full rounded-xl overflow-hidden shadow-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', minHeight: compact ? undefined : '300px' }}>
+    <div className="flex flex-col w-full h-full rounded-xl overflow-hidden shadow-lg" style={{ border: '1px solid rgba(255,255,255,0.06)', minHeight: '300px' }}>
       {/* Header */}
-      {!compact && (
+      {true && (
         <div style={{ background: '#202c33', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#374045', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <User style={{ width: '18px', height: '18px', color: '#8696a0' }} />
