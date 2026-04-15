@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { normalizePhone } from "@/lib/normalizePhone";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -144,7 +145,7 @@ export function FollowUpDashboard() {
                   <td className="py-3 px-4">
                     <span className="font-medium truncate max-w-[200px] block">{boleto.customer_name || "Cliente"}</span>
                   </td>
-                  <td className="py-3 px-4 text-muted-foreground text-xs">{boleto.customer_phone || "—"}</td>
+                  <td className="py-3 px-4 text-muted-foreground text-xs">{normalizePhone(boleto.customer_phone)}</td>
                   <td className="py-3 px-4 text-right font-semibold">{formatCurrency(boleto.amount)}</td>
                   <td className="py-3 px-4">
                     <span className={boleto.isOverdue ? "text-destructive font-medium" : "text-muted-foreground"}>
@@ -432,7 +433,7 @@ function BoletoDetailDialog({ boleto, onClose, onMarkContacted }: { boleto: Bole
         <DialogHeader><DialogTitle className="flex items-center gap-2"><User className="h-5 w-5" />{boleto.customer_name || "Cliente"}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><span>{boleto.customer_phone || "Sem telefone"}</span></div>
+            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><span>{normalizePhone(boleto.customer_phone)}</span></div>
             <div className="flex items-center gap-2"><DollarSign className="h-4 w-4 text-muted-foreground" /><span className="font-medium">{formatCurrency(boleto.amount)}</span></div>
             <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /><span>Gerado {formatDistanceToNow(new Date(boleto.created_at), { locale: ptBR, addSuffix: true })}</span></div>
             <div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-muted-foreground" /><span>Vence {format(boleto.dueDate, "dd/MM/yyyy", { locale: ptBR })}</span></div>
