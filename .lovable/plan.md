@@ -1,52 +1,107 @@
 
+Objetivo: deixar o fluxo exatamente assim:
 
-# Plano: Criar página de Respostas Rápidas no estilo Finance Hub
-
-## Visão geral
-Criar uma nova página `/respostas-rapidas` com layout sidebar+grid inspirado no projeto Finance Hub, adaptado para a tabela `quick_replies` existente (que tem `title` e `content`, sem `category`).
-
-## Alterações
-
-### 1. Migração — Adicionar coluna `category` à tabela `quick_replies`
-```sql
-ALTER TABLE quick_replies ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'Geral';
+```text
+Nova transação
+  -> automação ativa?
+      -> não: encerra
+      -> sim: entra UMA vez na fila da instância
+                -> a própria fila executa
+                -> a própria fila retorna sent/failed/cancelled
 ```
 
-### 2. Novo componente `src/components/quick-replies/QuickReplyCard.tsx`
-Card com título, conteúdo (line-clamp-3), botão de copiar, menu dropdown (editar/excluir). Modo de edição inline com Input+Textarea. Estilo idêntico ao Finance Hub.
+O que identifiquei no código atual:
+- A fila universal da instância já existe e já é usada em `deploy/backend/src/lib/message-queue.ts`.
+- O follow-up já usa essa fila corretamente como processador universal.
+- O problema está em `deploy/backend/src/lib/recovery-dispatch.ts`: ele grava em `recovery_queue` como `pending` antes de garantir que o item realmente entrou na fila.
+- Também existe um fluxo paralelo/manual em `deploy/backend/src/routes/auto-recovery.ts`, que foge do modelo simples que você definiu.
+- O label atual do item na fila é genérico (`recovery:${txId}`), então no painel não fica claro que aquilo é uma transação.
 
-### 3. Novo componente `src/components/quick-replies/QuickRepliesList.tsx`
-Header com título da categoria, contador, campo de busca e botão "Nova Resposta" (dialog com título, categoria, mensagem). Grid responsivo de cards (`sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`). Estado vazio com ícone centralizado.
+Plano de implementação:
 
-### 4. Novo componente `src/components/quick-replies/QuickRepliesSidebar.tsx`
-Sidebar lateral (w-64) com lista de categorias, item "Todas", botão de criar categoria via dialog, renomear categoria via dropdown.
+1. Simplificar o `dispatchRecovery` para ser apenas “decidir e enfileirar”
+- Arquivo: `deploy/backend/src/lib/recovery-dispatch.ts`
+- Manter:
+  - validação de automação ativa
+  - resolução da instância correta
+  - carregamento do template/mensagem
+  - leitura da configuração da fila da instância
+- Mudar:
+  - só criar/atualizar o registro de auditoria depois que o item entrar na fila com sucesso
+  - a execução real, sucesso e erro ficam sob responsabilidade do callback da própria fila
+  - remover qualquer semântica de retry externo/manual desse fluxo
 
-### 5. Nova página `src/pages/RespostasRapidas.tsx`
-Composição: sidebar + lista. Usa `useQuickReplies` atualizado.
+2. Fazer a fila ser a única responsável pelo processamento
+- Arquivo: `deploy/backend/src/lib/recovery-dispatch.ts`
+- O item será enfileirado uma única vez via `getMessageQueue(instanceName, ...)`
+- Dentro do `queue.enqueue(...)`:
+  - revalida status da transação antes de enviar
+  - envia os blocos
+  - marca `sent`, `failed` ou `cancelled`
+- Se nem conseguiu entrar na fila:
+  - registrar erro imediato
+  - não deixar item “pendente órfão”
 
-### 6. Atualizar `src/hooks/useQuickReplies.ts`
-- Adicionar `category` ao tipo `QuickReply`
-- Expor `categories` (derived do data)
-- Adicionar `category` ao `create` e `update`
-- Adicionar mutation `renameCategory` (batch update)
+3. Remover o caminho paralelo de auto recovery
+- Arquivos:
+  - `deploy/backend/src/routes/auto-recovery.ts`
+  - `deploy/backend/src/index.ts`
+- Remover a rota manual `/api/auto-recovery`
+- Remover import e uso do router
+- Não criar cron
+- Resultado: não existe segundo processador; só a fila universal processa
 
-### 7. Atualizar `src/App.tsx`
-- Adicionar rota `/respostas-rapidas` com `PermissionGate` (usar permission existente ou nova)
+4. Ajustar a auditoria para refletir a fila real
+- Arquivo: `deploy/backend/src/lib/recovery-dispatch.ts`
+- `recovery_queue` passa a ser trilha de status do item que realmente entrou na fila
+- Estados esperados:
+  - `queued` ou `pending` somente quando já estiver dentro da fila
+  - `sent`
+  - `failed`
+  - `cancelled`
+- Sem registros “fantasma” criados antes do enqueue real
 
-### 8. Atualizar `src/components/AppSidebar.tsx`
-- Adicionar item "Respostas Rápidas" no grupo Operacional com ícone `MessageSquareText`
+5. Melhorar identificação do item na fila sem especializar a fila
+- Arquivos:
+  - `deploy/backend/src/lib/recovery-dispatch.ts`
+  - opcionalmente `src/components/settings/ConnectionsSection.tsx`
+- Não vou transformar a fila em fila “de transações”
+- Vou só mudar o label do item para algo humano, por exemplo:
+  - `tx:boleto:5534991167017`
+  - `tx:pix:5511999999999`
+- Assim continua universal, mas passa a aparecer claramente no painel e nos logs
 
-### 9. Atualizar `src/hooks/useWorkspace.tsx`
-- Adicionar permission key `respostas_rapidas` em `ALL_PERMISSIONS`
+6. Garantir que todas as entradas transacionais usem o mesmo ponto único
+- Arquivos que já chamam `dispatchRecovery` e devem continuar centralizados nele:
+  - `deploy/backend/src/routes/manual-payment-webhook.ts`
+  - `deploy/backend/src/routes/payment.ts`
+  - `deploy/backend/src/routes/platform-api.ts`
+  - `deploy/backend/src/routes/yampi-webhook.ts`
+- A ideia não é mexer na fila em vários lugares; é garantir que todos passem pelo mesmo dispatcher simples
 
-## Arquivos
-- **Migração SQL**: adicionar `category` a `quick_replies`
-- `src/components/quick-replies/QuickReplyCard.tsx` (novo)
-- `src/components/quick-replies/QuickRepliesList.tsx` (novo)
-- `src/components/quick-replies/QuickRepliesSidebar.tsx` (novo)
-- `src/pages/RespostasRapidas.tsx` (novo)
-- `src/hooks/useQuickReplies.ts` (atualizar)
-- `src/App.tsx` (nova rota)
-- `src/components/AppSidebar.tsx` (novo item sidebar)
-- `src/hooks/useWorkspace.tsx` (nova permission)
+Resultado esperado:
+- Nova transação
+- Automação ativa
+- Entra uma vez na fila da instância
+- A fila processa
+- O retorno final sai da própria fila
+- Sem cron
+- Sem auto-recovery
+- Sem fluxo paralelo
+- Sem “pending” órfão criado antes da hora
 
+Arquivos principais a alterar:
+- `deploy/backend/src/lib/recovery-dispatch.ts`
+- `deploy/backend/src/routes/auto-recovery.ts`
+- `deploy/backend/src/index.ts`
+
+Arquivos para validar integração:
+- `deploy/backend/src/routes/manual-payment-webhook.ts`
+- `deploy/backend/src/routes/payment.ts`
+- `deploy/backend/src/routes/platform-api.ts`
+- `deploy/backend/src/routes/yampi-webhook.ts`
+
+Detalhe técnico importante:
+- Não vou reconfigurar a fila para transações.
+- A fila continua universal e independente.
+- Só vou corrigir o ponto de entrada transacional para obedecer exatamente o contrato que você definiu: “entrou na fila uma vez, a fila resolve o resto”.
