@@ -5,11 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { WorkspaceProvider } from "@/hooks/useWorkspace";
+import { WorkspaceProvider, useWorkspace } from "@/hooks/useWorkspace";
 import { PermissionGate } from "@/components/PermissionGate";
 import Auth from "./pages/Auth";
 import SmartLinkRedirect from "./pages/SmartLinkRedirect";
-import Dashboard from "./pages/Dashboard";
 import Leads from "./pages/Leads";
 import ChatbotBuilder from "./pages/ChatbotBuilder";
 import SettingsPage from "./pages/SettingsPage";
@@ -38,6 +37,12 @@ const queryClient = new QueryClient({
   },
 });
 
+function DefaultRedirect() {
+  const { isSuperAdmin, isLoading } = useWorkspace();
+  if (isLoading) return null;
+  return <Navigate to={isSuperAdmin ? "/relatorio" : "/transacoes"} replace />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <WorkspaceProvider>
@@ -52,10 +57,9 @@ const App = () => (
              <Route path="/a/entrega/:phone" element={<MemberAccess />} />
              <Route path="/membros/:phone" element={<MemberAccess />} />
              <Route path="/:phone" element={<MemberAccess />} />
-            <Route path="/" element={<Navigate to="/relatorio" replace />} />
+            <Route path="/" element={<DefaultRedirect />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
-                <Route path="/dashboard" element={<PermissionGate permission="dashboard" redirect><Dashboard /></PermissionGate>} />
                 <Route path="/leads" element={<PermissionGate permission="leads" redirect><Leads /></PermissionGate>} />
                 <Route path="/contacts" element={<Navigate to="/leads" replace />} />
                 <Route path="/clientes-financeiro" element={<Navigate to="/leads" replace />} />
@@ -73,6 +77,7 @@ const App = () => (
                 <Route path="/entrega" element={<PermissionGate permission="entrega" redirect><EntregaDigital /></PermissionGate>} />
                 <Route path="/links-uteis" element={<PermissionGate permission="links_uteis" redirect><LinksUteis /></PermissionGate>} />
                 <Route path="/follow-up" element={<PermissionGate permission="recuperacao" redirect><FollowUp /></PermissionGate>} />
+                <Route path="/dashboard" element={<Navigate to="/" replace />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />

@@ -16,7 +16,7 @@ export function PermissionGate({ permission, children, redirect = false }: Permi
   const { hasPermission, isLoading } = useWorkspace();
   if (isLoading) return null;
   if (!hasPermission(permission)) {
-    return redirect ? <Navigate to="/dashboard" replace /> : null;
+    return redirect ? <Navigate to="/" replace /> : null;
   }
   return <>{children}</>;
 }
