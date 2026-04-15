@@ -190,6 +190,46 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
     return null;
   }, [messageType, textContent, forceLinkPreview]);
 
+  const compactScale = 0.82;
+  const [compactContentEl, setCompactContentEl] = useState<HTMLDivElement | null>(null);
+  const [compactContentHeight, setCompactContentHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!compact) {
+      setCompactContentHeight(null);
+      return;
+    }
+
+    if (!compactContentEl) return;
+
+    const updateHeight = () => {
+      const nextHeight = Math.ceil(compactContentEl.scrollHeight * compactScale);
+      setCompactContentHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    updateHeight();
+
+    const resizeObserver = new ResizeObserver(() => updateHeight());
+    resizeObserver.observe(compactContentEl);
+
+    const mediaElements = Array.from(compactContentEl.querySelectorAll("img, video"));
+    mediaElements.forEach((element) => {
+      const eventName = element.tagName === "VIDEO" ? "loadedmetadata" : "load";
+      element.addEventListener(eventName, updateHeight);
+    });
+
+    window.addEventListener("resize", updateHeight);
+
+    return () => {
+      resizeObserver.disconnect();
+      mediaElements.forEach((element) => {
+        const eventName = element.tagName === "VIDEO" ? "loadedmetadata" : "load";
+        element.removeEventListener(eventName, updateHeight);
+      });
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, [compact, compactContentEl]);
+
   const hasContent = () => {
     switch (messageType) {
       case "text": return !!textContent?.trim();
@@ -390,7 +430,6 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
     }
   };
 
-  // WhatsApp wallpaper pattern
   const wallpaperStyle = {
     backgroundImage: `url("data:image/svg+xml,%3Csvg width='300' height='300' viewBox='0 0 300 300' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.015'%3E%3Cpath d='M60 60l20-20v20H60zm80 0l20-20v20h-20zm80 0l20-20v20h-20zM60 140l20-20v20H60zm80 0l20-20v20h-20zm80 0l20-20v20h-20zM60 220l20-20v20H60zm80 0l20-20v20h-20zm80 0l20-20v20h-20z'/%3E%3C/g%3E%3C/svg%3E")`,
     backgroundColor: '#0b141a',
@@ -400,14 +439,22 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
     return (
       <div
         style={{
-          transform: 'scale(0.82)',
-          transformOrigin: 'top left',
-          width: '121.95%',
+          height: compactContentHeight ? `${compactContentHeight}px` : undefined,
+          overflow: 'hidden',
         }}
       >
-        <div className="flex flex-col w-full" style={{ backgroundColor: '#0b141a' }}>
-          <div style={{ ...wallpaperStyle, padding: '10px 0' }}>
-            {!hasContent() ? <EmptyState /> : <div className="py-1">{renderContent()}</div>}
+        <div
+          ref={setCompactContentEl}
+          style={{
+            transform: `scale(${compactScale})`,
+            transformOrigin: 'top left',
+            width: `${100 / compactScale}%`,
+          }}
+        >
+          <div className="flex flex-col w-full" style={{ backgroundColor: '#0b141a' }}>
+            <div style={{ ...wallpaperStyle, padding: '10px 0' }}>
+              {!hasContent() ? <EmptyState /> : <div className="py-1">{renderContent()}</div>}
+            </div>
           </div>
         </div>
       </div>
