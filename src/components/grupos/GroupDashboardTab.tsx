@@ -22,9 +22,11 @@ export default function GroupDashboardTab() {
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
   const { events } = useGroupEvents();
+  const { data: debugData } = useSchedulerDebug();
 
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
+  const groupsMonitored = selectedGroups.length > 0 ? selectedGroups.length : (debugData?.groups_count || 0);
 
   return (
     <div className="space-y-4">
