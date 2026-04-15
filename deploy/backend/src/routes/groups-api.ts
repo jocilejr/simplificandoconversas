@@ -1808,10 +1808,16 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     }
 
     // Count unique groups across all campaigns for this workspace
-    const { count: groupsCount } = await sb
-      .from("group_campaign_groups")
-      .select("group_jid", { count: "exact", head: true })
-      .eq("workspace_id", workspaceId);
+    const { data: allCampaigns } = await sb
+      .from("group_campaigns")
+      .select("group_jids")
+      .eq("workspace_id", workspaceId)
+      .eq("is_active", true);
+    const uniqueGroups = new Set<string>();
+    for (const c of allCampaigns || []) {
+      for (const jid of c.group_jids || []) uniqueGroups.add(jid);
+    }
+    const groupsCount = uniqueGroups.size;
 
     // Build response
     const result = todayMessages.map((m: any) => {
