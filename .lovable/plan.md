@@ -1,53 +1,119 @@
 
+Objetivo: fazer as mensagens perdidas mostrarem o motivo exato, em vez de status genérico, sem depender de inferência frágil no frontend.
 
-# Scheduler Debug: Carrossel com Preview WhatsApp
+1. Diagnóstico do problema atual
+- Hoje o backend de debug (`/scheduler-debug`) só retorna `missed: boolean`.
+- O frontend (`SchedulerDebugPanel`) inventa o status com base em horário, timer e existência de itens na fila.
+- O scheduler e o processador da fila têm vários caminhos de falha/skip, mas quase nenhum grava um diagnóstico estruturado.
+- Resultado: o card mostra “Perdida” ou “Sem fila” sem dizer se foi por campanha inativa, sem grupos, deduplicação, rate limit, erro da API, falha ao inserir na fila ou falha ao disparar `queue/process`.
 
-## Problema Atual
-- Layout em lista que sai da tela, sem filtragem correta por "hoje" no BRT
-- Cards sem sentido, sem preview visual das mensagens
-- Contagem de grupos monitorados incorreta (mostra 0)
+2. Ajuste no backend para persistir a causa exata
+Arquivos:
+- `deploy/backend/src/lib/group-scheduler.ts`
+- `deploy/backend/src/routes/groups-api.ts`
 
-## Solução
+Implementação:
+- Criar um padrão único de diagnóstico para mensagens agendadas, por exemplo:
+  - `missed_reason_code`
+  - `missed_reason_label`
+  - `missed_reason_details`
+  - `diagnostics`
+- Sempre que uma execução não puder seguir, gravar a causa exata no banco/fila:
+  - campanha não encontrada
+  - campanha inativa
+  - campanha sem grupos
+  - deduplicada
+  - rate limit
+  - erro ao inserir itens na fila
+  - erro ao chamar `queue/process`
+  - erro de envio pela API do WhatsApp
+  - mensagem sem timer / timer perdido / execução passada sem processamento
+- Onde já existe `error_message` na `group_message_queue`, enriquecer com texto objetivo e consistente.
+- Para casos em que nem item de fila exista, o scheduler deve registrar diagnóstico no próprio agendamento antes de reagendar/pular.
 
-### 1. Backend — Expor dados completos para preview
-**Arquivo:** `deploy/backend/src/routes/groups-api.ts`
+3. Ajuste no endpoint de debug
+Arquivo:
+- `deploy/backend/src/routes/groups-api.ts`
 
-- Além do `content_preview` (string), retornar o campo `content` completo (JSON) com `text`, `caption`, `mediaUrl`, `audioUrl`, etc. para alimentar o componente WhatsAppPreview
-- Retornar também o total de grupos monitorados (`groups_count`) e total de grupos-alvo por mensagem (`target_groups_count`)
+Implementação:
+- O endpoint `scheduler-debug` deve parar de retornar só `missed: true/false`.
+- Passar a devolver, por mensagem:
+  - `status_code`
+  - `status_label`
+  - `failure_reason`
+  - `failure_details`
+  - `diagnostics`
+  - resumo dos erros de fila por grupo
+- A regra de status deve ser calculada no backend, com prioridade clara:
+  1. sent
+  2. failed
+  3. missed com motivo persistido
+  4. skipped com motivo persistido
+  5. processing
+  6. waiting/timer ativo
+- Assim o frontend só renderiza o que o backend já determinou.
 
-### 2. Frontend — Novo SchedulerDebugPanel completo em carrossel
-**Arquivo:** `src/components/grupos/SchedulerDebugPanel.tsx` (reescrita total)
+4. Ajuste no frontend para exibir o motivo exato
+Arquivos:
+- `src/hooks/useSchedulerDebug.ts`
+- `src/components/grupos/SchedulerDebugPanel.tsx`
 
-Layout:
-- **Header**: Timers ativos, hora do servidor BRT, grupos monitorados, botão refresh
-- **Carrossel horizontal** com scroll snap, navegação por setas
-  - Cada card tem largura fixa (~320px), mostra:
-    - Horário BRT grande no topo
-    - Badge de tipo (text/image/video/audio)
-    - Status (Timer ativo, Enviada, Falhou, Perdida)
-    - **Preview WhatsApp** reutilizando o componente `WhatsAppPreview` existente com os dados do `content`
-    - Contadores: X grupos enviados, Y falhas
-    - Detalhes da fila (compacto) ao expandir
-  - **Card focado** = próxima publicação futura (centralizado, borda highlight primary)
-  - Cards passados à esquerda (opacidade reduzida, borda verde/vermelha conforme status)
-  - Cards futuros à direita (borda neutra)
-- **Rodapé**: Totais do dia (enviadas, falhas, perdidas)
-- Filtra apenas mensagens de HOJE no BRT (já feito no backend, mas reforçar no frontend)
+Implementação:
+- Atualizar os tipos do hook para receber os novos campos.
+- Remover a lógica heurística que hoje deduz “perdida”.
+- No card, mostrar:
+  - status real vindo do backend
+  - motivo exato logo abaixo do status, por exemplo:
+    - “Campanha inativa no momento da execução”
+    - “Nenhum grupo vinculado à campanha”
+    - “Bloqueada por deduplicação de 5 min”
+    - “Limite de envio por grupo atingido”
+    - “Falha ao enviar via Evolution: [detalhe real]”
+    - “Timer expirou sem enqueue”
+- Se houver vários grupos com falhas diferentes, mostrar um resumo compacto e um detalhe expansível por grupo.
+- Para evitar quebrar layout novamente, manter esse detalhe dentro do box do preview com altura/overflow próprios, sem influenciar os cards vizinhos.
 
-### 3. Hook — Atualizar tipos
-**Arquivo:** `src/hooks/useSchedulerDebug.ts`
+5. Padronização das mensagens de erro
+- Trocar mensagens genéricas por textos operacionais prontos para leitura.
+- Exemplo:
+  - ruim: “Sem fila”
+  - bom: “Não entrou na fila porque a campanha estava sem grupos”
+- Exibir a mensagem original da API somente como detalhe secundário, quando existir.
 
-- Adicionar campo `content` (object) ao tipo `ScheduledMessageDebug`
-- Adicionar `groups_count` ao `SchedulerDebugData`
+6. Verificação na VPS
+Como você usa só a VPS, depois da implementação eu vou te entregar comandos prontos para validar:
+- mensagens agendadas do dia
+- itens da `group_message_queue`
+- erros reais salvos
+- diferença entre “não entrou na fila” e “entrou na fila mas falhou ao enviar”
 
-### 4. GroupDashboardTab — Corrigir contagem de grupos
-**Arquivo:** `src/components/grupos/GroupDashboardTab.tsx`
+7. Resultado esperado
+- Cada publicação perdida passa a mostrar o motivo exato.
+- O painel deixa de “adivinhar” e passa a refletir o estado real do backend.
+- Fica possível saber imediatamente se o problema foi scheduler, fila, deduplicação, limite, campanha ou API de envio.
 
-- Usar dados do scheduler debug para mostrar quantidade real de grupos monitorados quando `selectedGroups` estiver vazio (fallback para dados do backend)
+Detalhes técnicos
+```text
+Fluxo alvo:
 
-## Pós-deploy
-```bash
-cd ~/simplificandoconversas && git pull origin main
-cd deploy && docker compose up -d --build backend
+scheduler/fireMessage
+  -> tenta resolver campanha
+  -> tenta montar queueItems
+  -> tenta inserir fila
+  -> tenta disparar queue/process
+  -> registra diagnóstico estruturado em cada saída anormal
+
+queue/process
+  -> para cada item:
+     dedup?      => status/diagnóstico exato
+     rate limit? => status/diagnóstico exato
+     send fail?  => status/diagnóstico exato com erro bruto anexado
+     sent?       => status real de sucesso
+
+scheduler-debug
+  -> agrega:
+     status real
+     reason code
+     label amigável
+     detalhes por grupo
 ```
-
