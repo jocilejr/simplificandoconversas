@@ -395,20 +395,13 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
         <Card className="border-border/50">
           <CardContent className="p-0">
              <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-2">
-               <div className="flex items-center gap-2 flex-1 min-w-0">
-                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
-                 <SyncStatusBadge smartLink={smartLink} />
-                 {smartLink.sync_progress && (
-                   <Badge variant="secondary" className="text-xs gap-1 animate-pulse">
-                     <RefreshCw className="h-3 w-3 animate-spin" />
-                     Sincronizando {smartLink.sync_progress.current}/{smartLink.sync_progress.total}...
-                   </Badge>
-                 )}
-               </div>
-               <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7 shrink-0">
-                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
-               </Button>
-             </div>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7 shrink-0">
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
+                </Button>
+              </div>
              <div className="overflow-hidden">
                <Table>
                  <TableHeader>
@@ -422,21 +415,16 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                     </TableRow>
                   </TableHeader>
                  <TableBody>
-                    {groupLinks.map((gl, idx) => {
+                    {groupLinks.map((gl) => {
                       const isBanned = (gl as any).status === "banned";
                       const isFull = !isBanned && (gl.member_count || 0) >= maxMembersLimit;
                       const isActive = gl.group_jid === activeGroupJid;
                       const sp = smartLink.sync_progress;
-                      const isSyncingThis = sp && sp.currentJid === gl.group_jid && !sp.done;
-                      const isSyncDone = sp && sp.done && sp.current > idx;
+                      const isSyncingThis = !!sp && sp.currentJid === gl.group_jid && !sp.done;
                       return (
                         <TableRow key={gl.group_jid} className={isSyncingThis ? "bg-primary/5" : isBanned ? "opacity-60" : isActive ? "bg-primary/5" : ""}>
                           <TableCell className="text-sm truncate max-w-[200px]">
-                            <div className="flex items-center gap-1.5">
-                              {isSyncingThis && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />}
-                              {isSyncDone && !isSyncingThis && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
-                              <span className="truncate">{gl.group_name || gl.group_jid}</span>
-                            </div>
+                            <span className="truncate">{gl.group_name || gl.group_jid}</span>
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
@@ -461,7 +449,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                               : <span className="text-xs text-muted-foreground">Espera</span>}
                           </TableCell>
                           <TableCell className="text-center">
-                            <GroupSyncIndicator gl={gl} />
+                            <GroupSyncIndicator gl={gl} isSyncing={isSyncingThis} />
                           </TableCell>
                         </TableRow>
                       );
@@ -513,12 +501,20 @@ function formatTimeAgo(dateStr: string | null | undefined): string {
   return `há ${Math.floor(hours / 24)}d`;
 }
 
-function GroupSyncIndicator({ gl }: { gl: GroupLink }) {
+function GroupSyncIndicator({ gl, isSyncing }: { gl: GroupLink; isSyncing: boolean }) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 10000);
     return () => clearInterval(id);
   }, []);
+
+  if (isSyncing) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-primary">
+        <RefreshCw className="h-3 w-3 animate-spin" /> Sincronizando...
+      </span>
+    );
+  }
 
   const syncStatus = gl.last_sync_status;
   const syncAt = gl.last_synced_at;
