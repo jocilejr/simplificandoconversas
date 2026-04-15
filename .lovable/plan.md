@@ -1,39 +1,99 @@
 
 
-# Plano: Contadores de entrada/saída por grupo + totais no dashboard
+# Plano: Corrigir monitoramento de entradas/saídas de grupos
 
-## O que muda
+## Causa raiz
+A Evolution API envia TODOS os webhooks (mensagens, conexão, **grupos**) para a URL global única: `http://backend:3001/api/webhook`. O endpoint `/api/groups/webhook/events` é uma rota separada que **nunca recebe tráfego** porque a Evolution não sabe que ela existe. A tabela `group_participant_events` está vazia por isso.
 
-### 1. Grid de estatísticas — 2 novos StatCards totais
-Expandir de 4 para 6 cards (`lg:grid-cols-6`), adicionando:
-- **Entraram** (UserPlus, verde) — total de eventos `action === "add"`
-- **Saíram** (UserMinus, vermelho) — total de eventos `action === "remove"`
+## Solução
+Interceptar eventos de grupo diretamente no webhook principal (`deploy/backend/src/routes/webhook.ts`), redirecionando para a lógica do `groups-webhook` antes de processar mensagens normais.
 
-### 2. Card "Grupos Monitorados" — contadores por grupo
-Cada linha de grupo passa a mostrar, além do badge de membros, dois mini-contadores:
-- `+N` em verde (entradas naquele grupo)
-- `-N` em vermelho (saídas naquele grupo)
+### Alteração em `deploy/backend/src/routes/webhook.ts`
 
-Derivado cruzando `events` com `selectedGroups` via `group_jid`:
+No início do handler principal (antes da lógica de mensagens), adicionar detecção de eventos de grupo:
 
 ```typescript
-const eventsByGroup = events.reduce((acc, e) => {
-  const jid = e.group_jid;
-  if (!acc[jid]) acc[jid] = { add: 0, remove: 0 };
-  if (e.action === "add") acc[jid].add++;
-  if (e.action === "remove") acc[jid].remove++;
-  return acc;
-}, {});
-```
+// No topo do arquivo, importar o handler
+import groupsWebhookRouter from "./groups-webhook";
 
-Na listagem, cada grupo mostra:
-```
-Nome do Grupo          +3  -1  [125]
-Instância
+// Ou, mais simples — inline no webhook principal:
+const event = body.event || "";
+if (event.includes("group") || event.includes("participant")) {
+  // Forward para a lógica de grupos
+  // Reusar a lógica do groups-webhook.ts inline
+  try {
+    const data = body.data || body;
+    const instanceName = body.instance || body.instanceName || "";
+    const groupJid = data.groupJid || data.id || "";
+    const participants = data.participants || [];
+    const action = data.action || event;
+
+    if (groupJid && participants.length > 0) {
+      const sb = getServiceClient();
+      const { data: inst } = await sb
+        .from("whatsapp_instances")
+        .select("workspace_id, user_id")
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+
+      if (inst) {
+        const { data: sg } = await sb
+          .from("group_selected")
+          .select("group_name, member_count")
+          .eq("workspace_id", inst.workspace_id)
+          .eq("group_jid", groupJid)
+          .maybeSingle();
+
+        const rows = participants.map((p: string) => ({
+          workspace_id: inst.workspace_id,
+          user_id: inst.user_id,
+          instance_name: instanceName,
+          group_jid: groupJid,
+          group_name: sg?.group_name || "",
+          participant_jid: p,
+          action,
+        }));
+
+        await sb.from("group_participant_events").insert(rows);
+
+        // Atualizar member_count no group_selected
+        if (sg) {
+          const increment = action === "add" ? participants.length 
+                          : action === "remove" ? -participants.length : 0;
+          if (increment !== 0) {
+            const newCount = Math.max(0, (sg.member_count || 0) + increment);
+            await sb.from("group_selected")
+              .update({ member_count: newCount })
+              .eq("workspace_id", inst.workspace_id)
+              .eq("group_jid", groupJid);
+          }
+        }
+
+        // Atualizar smart links JSONB
+        // (mesma lógica do groups-webhook.ts)
+
+        console.log(`[webhook] group event: ${action} ${participants.length} in ${groupJid}`);
+      }
+    }
+  } catch (e: any) {
+    console.error("[webhook] group event error:", e.message);
+  }
+  return res.json({ ok: true });
+}
 ```
 
 ## Arquivo modificado
-- `src/components/grupos/GroupDashboardTab.tsx` — novos StatCards + contadores inline por grupo
+- `deploy/backend/src/routes/webhook.ts` — adicionar interceptação de eventos de grupo no handler principal
 
-Sem alterações no backend. Os dados já vêm do `useGroupEvents` (últimos 50 eventos).
+## Após deploy
+```bash
+cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
+```
+
+## Validação
+Após rebuild, rodar na VPS:
+```bash
+docker compose logs -f backend 2>&1 | grep "group event"
+```
+Quando alguém entrar/sair de um grupo, deve aparecer o log e a tabela `group_participant_events` vai popular.
 
