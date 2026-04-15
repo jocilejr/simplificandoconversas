@@ -35,12 +35,14 @@ export function useGroupSmartLinks() {
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
 
-  const isSyncing = smartLinks.some(sl => sl.sync_progress != null);
-
-  const { data: smartLinks: rawSmartLinks = [], isLoading } = useQuery({
+  const { data: smartLinks = [], isLoading } = useQuery({
     queryKey: ["group-smart-links", workspaceId],
     enabled: !!workspaceId,
-    refetchInterval: isSyncing ? 3000 : 15000,
+    refetchInterval: (query) => {
+      const data = query.state.data as SmartLink[] | undefined;
+      const syncing = data?.some(sl => sl.sync_progress != null);
+      return syncing ? 3000 : 15000;
+    },
     queryFn: async () => {
       const params = new URLSearchParams({ workspaceId: workspaceId! });
       const resp = await fetch(apiUrl(`groups/smart-links?${params}`));
