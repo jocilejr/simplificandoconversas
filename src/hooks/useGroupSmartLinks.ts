@@ -20,6 +20,7 @@ export interface SmartLink {
   last_sync_error: string | null;
   last_sync_error_at: string | null;
   last_successful_sync_at: string | null;
+  sync_progress: { current: number; total: number; currentJid: string; done?: boolean } | null;
 }
 
 export interface GroupLink {
@@ -34,10 +35,12 @@ export function useGroupSmartLinks() {
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
 
-  const { data: smartLinks = [], isLoading } = useQuery({
+  const isSyncing = smartLinks.some(sl => sl.sync_progress != null);
+
+  const { data: smartLinks: rawSmartLinks = [], isLoading } = useQuery({
     queryKey: ["group-smart-links", workspaceId],
     enabled: !!workspaceId,
-    refetchInterval: 15000,
+    refetchInterval: isSyncing ? 3000 : 15000,
     queryFn: async () => {
       const params = new URLSearchParams({ workspaceId: workspaceId! });
       const resp = await fetch(apiUrl(`groups/smart-links?${params}`));
