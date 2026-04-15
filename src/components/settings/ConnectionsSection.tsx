@@ -706,7 +706,7 @@ export function ConnectionsSection() {
 
       {/* Queue Detail Dialog */}
       <Dialog open={!!queueDialogInstance} onOpenChange={(open) => !open && setQueueDialogInstance(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Inbox className="h-5 w-5" />
@@ -741,14 +741,14 @@ export function ConnectionsSection() {
                     ) : (
                       <div className="space-y-1 pr-3">
                         {qs.processing && qs.currentLabel && (
-                          <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                          <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 min-w-0">
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
                             <span className="text-xs truncate flex-1">{qs.currentLabel}</span>
                             <Badge className="text-[10px] bg-primary/20 text-primary border-primary/30 shrink-0">Enviando</Badge>
                           </div>
                         )}
                         {qs.pendingLabels.map((label, i) => (
-                          <div key={i} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                          <div key={i} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 min-w-0">
                             <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span className="text-xs truncate flex-1">{label}</span>
                             <Badge variant="outline" className="text-[10px] shrink-0">#{i + 1}</Badge>

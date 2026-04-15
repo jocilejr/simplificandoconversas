@@ -58,7 +58,26 @@ function StatCard({ label, value, color }: { label: string; value: string; color
   );
 }
 
-function TxCard({ tx }: { tx: any }) {
+function TxCard({ tx, onPhoneUpdated }: { tx: any; onPhoneUpdated?: () => void }) {
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneValue, setPhoneValue] = useState(tx.customer_phone || "");
+  const [savingPhone, setSavingPhone] = useState(false);
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true);
+    try {
+      const { error } = await supabase.from("transactions" as any).update({ customer_phone: phoneValue || null } as any).eq("id", tx.id);
+      if (error) throw error;
+      toast.success("Telefone atualizado!");
+      setEditingPhone(false);
+      onPhoneUpdated?.();
+    } catch (err: any) {
+      toast.error("Erro ao salvar: " + (err.message || "Erro"));
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
   return (
     <div className="rounded-lg border bg-card p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -72,6 +91,34 @@ function TxCard({ tx }: { tx: any }) {
         <Calendar className="h-3 w-3" />
         {format(new Date(tx.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
         {tx.description && <span className="truncate">— {tx.description}</span>}
+      </div>
+      {/* Phone display/edit */}
+      <div className="flex items-center gap-1.5 text-xs">
+        <Phone className="h-3 w-3 text-muted-foreground" />
+        {editingPhone ? (
+          <div className="flex items-center gap-1 flex-1">
+            <Input
+              value={phoneValue}
+              onChange={(e) => setPhoneValue(e.target.value)}
+              className="h-6 text-xs flex-1"
+              placeholder="Telefone..."
+              disabled={savingPhone}
+            />
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleSavePhone} disabled={savingPhone}>
+              <Save className="h-3 w-3 text-green-500" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditingPhone(false); setPhoneValue(tx.customer_phone || ""); }}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <span className="font-mono text-muted-foreground">{tx.customer_phone || "—"}</span>
+            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { setPhoneValue(tx.customer_phone || ""); setEditingPhone(true); }}>
+              <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
+            </Button>
+          </div>
+        )}
       </div>
       {tx.payment_url && (
         <div className="flex gap-1.5 pt-1">
