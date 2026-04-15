@@ -338,35 +338,38 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="relative h-[488px] overflow-hidden" style={{ contain: "layout paint" }}>
+          <div className="relative overflow-hidden" style={{ contain: "layout paint", height: "488px" }}>
             {/* Left arrow */}
-            {activeIndex > 0 && (
-              <button
-                onClick={() => scroll("left")}
-                className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-colors shadow-md"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              onClick={() => scroll("left")}
+              className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-all shadow-md ${activeIndex <= 0 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
 
             {/* Right arrow */}
-            {activeIndex < sorted.length - 1 && (
-              <button
-                onClick={() => scroll("right")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-colors shadow-md"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              onClick={() => scroll("right")}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background/90 border border-border/50 flex items-center justify-center hover:bg-muted/40 transition-all shadow-md ${activeIndex >= sorted.length - 1 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
 
             <div
               ref={scrollRef}
-              className="flex h-full w-full max-w-full items-start gap-4 overflow-x-auto overflow-y-hidden px-4 py-4 scroll-smooth"
+              onScroll={() => {
+                const idx = getClosestCardIndex();
+                if (idx !== activeIndex) setActiveIndex(idx);
+              }}
+              className="flex h-full items-start gap-4 px-4 py-4 scroll-smooth"
               style={{
+                overflowX: "auto",
+                overflowY: "hidden",
                 scrollSnapType: "x mandatory",
                 scrollbarWidth: "none",
                 msOverflowStyle: "none",
                 overscrollBehaviorX: "contain",
+                WebkitOverflowScrolling: "touch",
               }}
             >
               {sorted.map((msg, idx) => (
