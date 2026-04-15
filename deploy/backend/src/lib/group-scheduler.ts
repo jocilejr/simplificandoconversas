@@ -1,6 +1,18 @@
 import { getServiceClient } from "./supabase";
 import { calculateNextRunAt } from "../routes/groups-api";
 
+export type SchedulerStatusCode = "waiting" | "processing" | "sent" | "failed" | "missed" | "skipped";
+
+export interface SchedulerDiagnostic {
+  status_code: SchedulerStatusCode;
+  status_label: string;
+  reason_code: string | null;
+  reason_label: string | null;
+  reason_details: string | null;
+  diagnostics: Record<string, any> | null;
+  updated_at: string;
+}
+
 /**
  * GroupSchedulerManager — In-memory timer-based scheduler.
  *
