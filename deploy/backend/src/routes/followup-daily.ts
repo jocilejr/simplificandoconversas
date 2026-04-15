@@ -229,7 +229,7 @@ function isBlockingContact(notes: string | null | undefined) {
 }
 
 function countsAsSuccessfulContact(notes: string | null | undefined) {
-  return !notes || (!notes.startsWith("failed_api") && !notes.startsWith("skipped_phone_limit") && !notes.startsWith("skipped_invalid_phone"));
+  return !notes || (!notes.startsWith("failed_api") && !notes.startsWith("skipped_phone_limit") && !notes.startsWith("skipped_invalid_phone") && !notes.startsWith("skipped_duplicate"));
 }
 
 function isBlockingJobStatus(status: string | null | undefined) {
