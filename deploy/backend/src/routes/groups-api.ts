@@ -462,21 +462,7 @@ function resolveSchedulerStatus(params: {
     };
   }
 
-  if (cancelledItems.length > 0 && sentItems.length === 0) {
-    return {
-      status_code: "skipped",
-      status_label: "Ignorada",
-      failure_reason: primaryQueueReason?.reason_label || "A publicação foi bloqueada antes do envio",
-      failure_details: primaryQueueReason?.reason_details || `${cancelledItems.length} grupo(s) foram cancelados antes do envio.`,
-      diagnostics: {
-        source: "queue",
-        cancelled_groups: cancelledItems.length,
-        queue_error_summary: queueErrorSummary,
-      },
-      queue_error_summary: queueErrorSummary,
-    };
-  }
-
+  // Runtime diagnostic from scheduler takes priority over cancelled queue items
   if (runtimeDiagnostic && ["failed", "missed", "skipped", "processing"].includes(runtimeDiagnostic.status_code)) {
     return {
       status_code: runtimeDiagnostic.status_code,
@@ -487,6 +473,21 @@ function resolveSchedulerStatus(params: {
         source: "scheduler",
         runtime_diagnostic_updated_at: runtimeDiagnostic.updated_at,
         ...(runtimeDiagnostic.diagnostics || {}),
+      },
+      queue_error_summary: queueErrorSummary,
+    };
+  }
+
+  if (cancelledItems.length > 0 && sentItems.length === 0) {
+    return {
+      status_code: "skipped",
+      status_label: "Ignorada",
+      failure_reason: primaryQueueReason?.reason_label || "A publicação foi bloqueada antes do envio",
+      failure_details: primaryQueueReason?.reason_details || `${cancelledItems.length} grupo(s) foram cancelados antes do envio.`,
+      diagnostics: {
+        source: "queue",
+        cancelled_groups: cancelledItems.length,
+        queue_error_summary: queueErrorSummary,
       },
       queue_error_summary: queueErrorSummary,
     };
