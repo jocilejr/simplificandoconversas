@@ -394,51 +394,62 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
       {groupLinks.length > 0 && (
         <Card className="border-border/50">
           <CardContent className="p-0">
-            <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos</p>
-              <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending} className="text-xs border-border/50 h-7">
-                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncInviteLinks.isPending ? "animate-spin" : ""}`} /> Sincronizar
-              </Button>
-            </div>
-            <div className="overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Grupo</TableHead>
-                    <TableHead className="text-center w-24">Membros</TableHead>
-                    <TableHead className="text-center w-20">Cliques</TableHead>
-                    <TableHead className="text-center w-16">URL</TableHead>
-                    <TableHead className="text-center w-20">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {groupLinks.map(gl => {
-                    const isBanned = (gl as any).status === "banned";
-                    const isFull = !isBanned && (gl.member_count || 0) >= maxMembersLimit;
-                    const isActive = gl.group_jid === activeGroupJid;
-                    return (
-                      <TableRow key={gl.group_jid} className={isBanned ? "opacity-60" : isActive ? "bg-primary/5" : ""}>
-                        <TableCell className="text-sm truncate max-w-[200px]">{gl.group_name || gl.group_jid}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
-                        </TableCell>
-                        <TableCell className="text-center text-sm">{byGroup[gl.group_jid] || 0}</TableCell>
-                        <TableCell className="text-center">
-                          {isBanned ? <XCircle className="h-4 w-4 text-destructive mx-auto" />
-                            : gl.invite_url ? <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" /> : <XCircle className="h-4 w-4 text-muted-foreground mx-auto" />}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {isBanned ? <Badge variant="destructive" className="text-xs">Banido</Badge>
-                            : isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Ativo</Badge>
-                            : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
-                            : <span className="text-xs text-muted-foreground">Espera</span>}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+             <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-2">
+               <div className="flex items-center gap-2 flex-1 min-w-0">
+                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
+                 <SyncStatusBadge smartLink={smartLink} />
+               </div>
+               <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending} className="text-xs border-border/50 h-7 shrink-0">
+                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncInviteLinks.isPending ? "animate-spin" : ""}`} /> Sincronizar
+               </Button>
+             </div>
+             <div className="overflow-hidden">
+               <Table>
+                 <TableHeader>
+                   <TableRow>
+                     <TableHead>Grupo</TableHead>
+                     <TableHead className="text-center w-24">Membros</TableHead>
+                     <TableHead className="text-center w-20">Cliques</TableHead>
+                     <TableHead className="w-[220px]">URL</TableHead>
+                     <TableHead className="text-center w-20">Status</TableHead>
+                   </TableRow>
+                 </TableHeader>
+                 <TableBody>
+                   {groupLinks.map(gl => {
+                     const isBanned = (gl as any).status === "banned";
+                     const isFull = !isBanned && (gl.member_count || 0) >= maxMembersLimit;
+                     const isActive = gl.group_jid === activeGroupJid;
+                     return (
+                       <TableRow key={gl.group_jid} className={isBanned ? "opacity-60" : isActive ? "bg-primary/5" : ""}>
+                         <TableCell className="text-sm truncate max-w-[200px]">{gl.group_name || gl.group_jid}</TableCell>
+                         <TableCell className="text-center">
+                           <Badge variant={isFull ? "destructive" : "secondary"} className="text-xs">{gl.member_count || 0}/{maxMembersLimit}</Badge>
+                         </TableCell>
+                         <TableCell className="text-center text-sm">{byGroup[gl.group_jid] || 0}</TableCell>
+                         <TableCell>
+                           {isBanned ? (
+                             <Badge variant="destructive" className="text-xs">Sem URL (banido)</Badge>
+                           ) : gl.invite_url ? (
+                             <a href={gl.invite_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline truncate max-w-[200px]">
+                               <ExternalLink className="h-3 w-3 shrink-0" />
+                               <span className="truncate">{gl.invite_url.replace("https://chat.whatsapp.com/", "")}</span>
+                             </a>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">Sem URL</span>
+                           )}
+                         </TableCell>
+                         <TableCell className="text-center">
+                           {isBanned ? <Badge variant="destructive" className="text-xs">Banido</Badge>
+                             : isActive ? <Badge className="text-xs bg-green-500/10 text-green-600 border-green-500/20">Ativo</Badge>
+                             : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
+                             : <span className="text-xs text-muted-foreground">Espera</span>}
+                         </TableCell>
+                       </TableRow>
+                     );
+                   })}
+                 </TableBody>
+               </Table>
+             </div>
           </CardContent>
         </Card>
       )}
