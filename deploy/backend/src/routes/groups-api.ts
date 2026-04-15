@@ -1776,53 +1776,64 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
           // Delay de 5s entre chamadas para evitar rate-limit
           if (gi > 0) await new Promise(r => setTimeout(r, 5000));
 
-          try {
-            // Fetch real participant count
-            const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
-              headers: { apikey: apiKey },
-              signal: AbortSignal.timeout(5000),
-            });
-            if (infoResp.ok) {
-              const info: any = await infoResp.json();
-              const participants = info?.participants || [];
-              if (Array.isArray(participants) && participants.length > 0) {
-                gl.member_count = participants.length;
+          // Fetch real participant count (com retry)
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              const infoResp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+                headers: { apikey: apiKey },
+                signal: AbortSignal.timeout(8000),
+              });
+              if (infoResp.ok) {
+                const info: any = await infoResp.json();
+                const participants = info?.participants || [];
+                if (Array.isArray(participants) && participants.length > 0) {
+                  gl.member_count = participants.length;
+                }
               }
+              break;
+            } catch (e: any) {
+              console.warn(`[sync-all] findGroupInfos attempt ${attempt + 1}/4 failed for ${gl.group_jid}:`, e.message);
+              if (attempt < 3) await new Promise(r => setTimeout(r, 5000));
             }
-          } catch (e: any) {
-            console.warn(`[sync-all] Failed to get info for ${gl.group_jid}:`, e.message);
           }
 
-          try {
-            // Refresh invite code
-            const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
-              headers: { apikey: apiKey },
-              signal: AbortSignal.timeout(5000),
-            });
-            if (r.ok) {
-              const body: any = await r.json();
-              const code = body?.inviteCode || body?.code || body?.invite || "";
-              if (code) {
-                gl.invite_url = `https://chat.whatsapp.com/${code}`;
-                gl.status = "active";
-                synced++;
+          // Refresh invite code (com retry)
+          let inviteFetched = false;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+                headers: { apikey: apiKey },
+                signal: AbortSignal.timeout(8000),
+              });
+              if (r.ok) {
+                const body: any = await r.json();
+                const code = body?.inviteCode || body?.code || body?.invite || "";
+                if (code) {
+                  gl.invite_url = `https://chat.whatsapp.com/${code}`;
+                  gl.status = "active";
+                  synced++;
+                  inviteFetched = true;
+                  break;
+                } else {
+                  gl.status = "banned";
+                  gl.invite_url = "";
+                  console.warn(`[sync-all] Group ${gl.group_jid} returned empty inviteCode — marked as banned`);
+                  inviteFetched = true;
+                  break;
+                }
               } else {
-                // Instance online but no code returned — mark as banned
-                gl.status = "banned";
-                gl.invite_url = "";
-                console.warn(`[sync-all] Group ${gl.group_jid} returned empty inviteCode — marked as banned`);
+                console.warn(`[sync-all] inviteCode attempt ${attempt + 1}/4 failed for ${gl.group_jid} (status ${r.status})`);
+                if (attempt < 3) await new Promise(r => setTimeout(r, 5000));
               }
-            } else {
-              // Instance online but inviteCode request failed — mark as banned
-              gl.status = "banned";
-              gl.invite_url = "";
-              console.warn(`[sync-all] Group ${gl.group_jid} inviteCode failed (${r.status}) — marked as banned`);
+            } catch (e: any) {
+              console.warn(`[sync-all] inviteCode attempt ${attempt + 1}/4 error for ${gl.group_jid}:`, e.message);
+              if (attempt < 3) await new Promise(r => setTimeout(r, 5000));
             }
-          } catch (e: any) {
-            // Instance online but request error — mark as banned
+          }
+          if (!inviteFetched) {
             gl.status = "banned";
             gl.invite_url = "";
-            console.warn(`[sync-all] Group ${gl.group_jid} inviteCode error — marked as banned:`, e.message);
+            console.warn(`[sync-all] Group ${gl.group_jid} inviteCode failed after 4 attempts — marked as banned`);
           }
         }
 
