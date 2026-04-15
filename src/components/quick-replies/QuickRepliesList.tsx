@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, MessageSquareText } from "lucide-react";
+import { Plus, Search, MessageSquareText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -26,7 +27,7 @@ interface QuickRepliesListProps {
   categories: string[];
   activeCategory: string | null;
   onUpdate: (data: { id: string; title: string; content: string; category: string }) => void;
-  onCreate: (data: { title: string; content: string; category: string }) => void;
+  onCreate: (data: { title: string; content: string; category: string }) => Promise<void>;
   onDelete: (id: string) => void;
 }
 
@@ -43,6 +44,7 @@ export function QuickRepliesList({
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newCategory, setNewCategory] = useState(activeCategory || "Geral");
+  const [creating, setCreating] = useState(false);
 
   const filtered = items.filter(
     (i) =>
@@ -52,13 +54,20 @@ export function QuickRepliesList({
         i.content.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newTitle.trim() || !newContent.trim()) return;
-    onCreate({ title: newTitle.trim(), content: newContent.trim(), category: newCategory });
-    setNewTitle("");
-    setNewContent("");
-    setNewCategory(activeCategory || "Geral");
-    setDialogOpen(false);
+    setCreating(true);
+    try {
+      await onCreate({ title: newTitle.trim(), content: newContent.trim(), category: newCategory });
+      setNewTitle("");
+      setNewContent("");
+      setNewCategory(activeCategory || "Geral");
+      setDialogOpen(false);
+    } catch {
+      // toast already shown by parent
+    } finally {
+      setCreating(false);
+    }
   };
 
   const label = activeCategory || "Todas";
@@ -116,6 +125,7 @@ export function QuickRepliesList({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nova Resposta Rápida</DialogTitle>
+            <DialogDescription>Preencha os campos abaixo para criar uma nova resposta rápida.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -153,11 +163,11 @@ export function QuickRepliesList({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
+            <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)} disabled={creating}>
               Cancelar
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={!newTitle.trim() || !newContent.trim()}>
-              Criar
+            <Button size="sm" onClick={handleCreate} disabled={!newTitle.trim() || !newContent.trim() || creating}>
+              {creating ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> Criando...</> : "Criar"}
             </Button>
           </DialogFooter>
         </DialogContent>

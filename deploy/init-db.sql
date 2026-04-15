@@ -176,10 +176,47 @@ CREATE TABLE IF NOT EXISTS public.conversation_labels (
 CREATE TABLE IF NOT EXISTS public.quick_replies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
   title text NOT NULL,
   content text NOT NULL,
+  category text NOT NULL DEFAULT 'Geral',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.quick_replies ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_quick_replies_workspace ON public.quick_replies(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_quick_replies_user ON public.quick_replies(user_id);
+
+DO $$
+BEGIN
+  BEGIN
+    ALTER TABLE public.quick_replies
+      ADD CONSTRAINT fk_quick_replies_workspace
+      FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+END $$;
+
+CREATE POLICY ws_select ON public.quick_replies
+  FOR SELECT TO authenticated
+  USING (public.is_workspace_member(auth.uid(), workspace_id));
+
+CREATE POLICY ws_insert ON public.quick_replies
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = user_id
+    AND public.can_write_workspace(auth.uid(), workspace_id)
+  );
+
+CREATE POLICY ws_update ON public.quick_replies
+  FOR UPDATE TO authenticated
+  USING (public.can_write_workspace(auth.uid(), workspace_id))
+  WITH CHECK (public.can_write_workspace(auth.uid(), workspace_id));
+
+CREATE POLICY ws_delete ON public.quick_replies
+  FOR DELETE TO authenticated
+  USING (public.has_workspace_role(auth.uid(), workspace_id, 'admin'));
 
 CREATE TABLE IF NOT EXISTS public.contact_photos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
