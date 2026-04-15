@@ -111,82 +111,89 @@ function ScheduleCard({
         }}
       >
         {/* LEFT — Info */}
-        <div className="flex flex-col justify-between flex-1 min-w-0 p-5">
+        <div className="flex flex-col justify-between flex-1 min-w-0 p-4">
           {/* Top info */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {/* Time */}
             <div className="flex items-baseline gap-2">
-              <span className={`text-3xl font-bold font-mono leading-none tracking-tight ${
+              <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
                 isPast ? "text-muted-foreground" : "text-foreground"
               }`}>
                 {formatTimeBrt(runAt)}
               </span>
-              <span className="text-sm text-muted-foreground/50">{formatDateBrt(runAt)}</span>
+              <span className="text-[11px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
             </div>
 
             {/* Campaign name */}
-            <div className="flex items-center gap-2.5">
-              <Megaphone className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-              <p className="text-base font-semibold truncate flex-1">{msg.campaign_name}</p>
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+              <p className="text-sm font-semibold truncate flex-1">{msg.campaign_name}</p>
             </div>
 
             {/* Status badge */}
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs gap-1 px-2.5 py-1 border-border/30 font-medium">
-                <StatusIcon className="h-3.5 w-3.5" />{msg.status_label}
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="text-[10px] gap-1 px-2 py-0.5 border-border/30 font-medium">
+                <StatusIcon className="h-3 w-3" />{msg.status_label}
               </Badge>
             </div>
 
             {/* Type + Schedule */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary" className="text-xs gap-1 px-2.5 py-1 h-6">
-                <Icon className="h-3.5 w-3.5" />{typeLabels[msg.message_type] || msg.message_type}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge variant="secondary" className="text-[10px] gap-1 px-2 py-0.5 h-5">
+                <Icon className="h-3 w-3" />{typeLabels[msg.message_type] || msg.message_type}
               </Badge>
-              <Badge variant="outline" className="text-xs px-2.5 py-1 h-6 border-border/20">
-                <CalendarClock className="h-3.5 w-3.5 mr-1" />
+              <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 border-border/20">
+                <CalendarClock className="h-3 w-3 mr-0.5" />
                 {scheduleLabels[msg.schedule_type] || msg.schedule_type}
               </Badge>
-              <span className="flex items-center gap-1.5 text-sm text-muted-foreground ml-auto">
-                <UsersRound className="h-4 w-4" />
-                {msg.target_groups_count}
-              </span>
             </div>
 
             {/* Error reason */}
-            {reasonTitle && (
-              <p className="text-xs text-destructive/80 leading-tight line-clamp-2">{reasonTitle}</p>
+            {reasonTitle && failedCount > 0 && (
+              <p className="text-[10px] text-destructive/80 leading-tight line-clamp-2">{reasonTitle}</p>
             )}
           </div>
 
-          {/* Bottom stats */}
-          <div className={`flex items-center justify-around rounded-xl py-3 bg-gradient-to-r ${cfg.accent} mt-4`}>
-            <div className="flex flex-col items-center">
-              <span className="text-xl font-bold text-white leading-none">{sentCount}</span>
-              <span className="text-[10px] text-white/70 uppercase tracking-wider mt-1 font-medium">Enviadas</span>
+          {/* Bottom stats — colored individually */}
+          <div className="flex items-center gap-3 mt-3">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="text-sm font-bold text-emerald-400 leading-none">{sentCount}</span>
+              <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider font-medium">env.</span>
             </div>
-            <div className="w-px h-8 bg-white/20" />
-            <div className="flex flex-col items-center">
-              <span className="text-xl font-bold text-white leading-none">{msg.target_groups_count}</span>
-              <span className="text-[10px] text-white/70 uppercase tracking-wider mt-1 font-medium">Grupos</span>
+            <div className="flex items-center gap-1.5">
+              <UsersRound className="h-3.5 w-3.5 text-primary" />
+              <span className="text-sm font-bold text-primary leading-none">{msg.target_groups_count}</span>
+              <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider font-medium">grupos</span>
             </div>
-            <div className="w-px h-8 bg-white/20" />
-            <div className="flex flex-col items-center">
-              <span className="text-xl font-bold text-white leading-none">{failedCount}</span>
-              <span className="text-[10px] text-white/70 uppercase tracking-wider mt-1 font-medium">Falhas</span>
-            </div>
+            {failedCount > 0 && (
+              <div className="flex items-center gap-1.5">
+                <XCircle className="h-3.5 w-3.5 text-destructive" />
+                <span className="text-sm font-bold text-destructive leading-none">{failedCount}</span>
+                <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider font-medium">falhas</span>
+              </div>
+            )}
+            {pendingCount > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-sm font-bold text-amber-400 leading-none">{pendingCount}</span>
+                <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider font-medium">pend.</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* RIGHT — Preview */}
-        <div className="w-[45%] shrink-0 relative overflow-hidden" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="w-[42%] shrink-0 relative" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
           {/* Scrollable preview with hidden scrollbar */}
           <div
-            className="absolute inset-0 overflow-y-auto [&::-webkit-scrollbar]:hidden"
+            className="absolute inset-0 overflow-y-auto"
             style={{
               scrollbarWidth: 'none',
               msOverflowStyle: 'none',
             }}
           >
+            <style dangerouslySetInnerHTML={{ __html: `.preview-scroll::-webkit-scrollbar { display: none; }` }} />
             <WhatsAppPreview {...previewProps} />
           </div>
           {/* Top fade */}
