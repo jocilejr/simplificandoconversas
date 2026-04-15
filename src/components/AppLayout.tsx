@@ -13,9 +13,9 @@ export function AppLayout() {
 
   return (
     <SidebarProvider>
-      <div className="h-screen flex w-full overflow-hidden">
+      <div className="flex h-screen w-full min-w-0 overflow-hidden">
         <AppSidebar />
-        <div className="flex-1 flex flex-col">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card/50 backdrop-blur-sm">
             <SidebarTrigger />
             <NotificationPopup
@@ -25,8 +25,8 @@ export function AppLayout() {
             />
           </header>
           <main className={cn(
-            "flex-1 overflow-hidden",
-            isFullscreen ? "p-0" : "overflow-auto p-6"
+            "min-w-0 flex-1 overflow-hidden",
+            isFullscreen ? "p-0" : "overflow-x-hidden overflow-y-auto p-6"
           )}>
             <Outlet />
           </main>
