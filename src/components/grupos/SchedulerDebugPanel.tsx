@@ -104,7 +104,9 @@ function ScheduleCard({
     >
       <div
         className={`h-full rounded-2xl overflow-hidden flex flex-col transition-all duration-500 ${
-          isCurrent ? "shadow-[0_8px_40px_-8px_rgba(0,0,0,0.5)]" : "shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)]"
+          isCurrent
+            ? "shadow-[0_12px_50px_-10px_rgba(0,0,0,0.6)]"
+            : "shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)]"
         }`}
         style={{
           background: 'hsl(var(--card))',
@@ -112,13 +114,25 @@ function ScheduleCard({
       >
         {/* TOP — Preview (fills ~55%) */}
         <div className="flex-1 min-h-0 overflow-hidden relative">
-          <div className="absolute inset-0 overflow-y-auto scrollbar-none">
+          <div className="absolute inset-0 overflow-hidden">
             <WhatsAppPreview {...previewProps} />
           </div>
+          {/* Fade overlay at bottom of preview */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+            style={{
+              background: 'linear-gradient(to top, hsl(var(--card)), transparent)',
+            }}
+          />
         </div>
 
+        {/* Separator */}
+        <div className="border-t border-border/10" />
+
         {/* MIDDLE — Info strip */}
-        <div className="px-4 py-3 space-y-1.5" style={{ background: 'hsl(var(--card))' }}>
+        <div className="px-4 py-3 space-y-1.5" style={{
+          background: 'linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card) / 0.8))',
+        }}>
           {/* Time + Status */}
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2">
@@ -154,26 +168,26 @@ function ScheduleCard({
             </span>
           </div>
 
-          {/* Error reason */}
-          {reasonTitle && (
+          {/* Error reason — only show when there are actual failures */}
+          {reasonTitle && failedCount > 0 && (
             <p className="text-[10px] text-destructive/80 leading-tight line-clamp-1">{reasonTitle}</p>
           )}
         </div>
 
         {/* BOTTOM — Stats bar with accent gradient */}
-        <div className={`flex items-center justify-around px-3 py-2.5 bg-gradient-to-r ${cfg.accent} rounded-b-2xl`}>
+        <div className={`flex items-center justify-around px-3 py-3 bg-gradient-to-r ${cfg.accent} rounded-b-2xl`}>
           <div className="flex flex-col items-center">
-            <span className="text-base font-bold text-white leading-none">{sentCount}</span>
+            <span className="text-lg font-bold text-white leading-none">{sentCount}</span>
             <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Enviadas</span>
           </div>
-          <div className="w-px h-6 bg-white/20" />
+          <div className="w-px h-7 bg-white/20" />
           <div className="flex flex-col items-center">
-            <span className="text-base font-bold text-white leading-none">{msg.target_groups_count}</span>
+            <span className="text-lg font-bold text-white leading-none">{msg.target_groups_count}</span>
             <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Grupos</span>
           </div>
-          <div className="w-px h-6 bg-white/20" />
+          <div className="w-px h-7 bg-white/20" />
           <div className="flex flex-col items-center">
-            <span className="text-base font-bold text-white leading-none">{failedCount}</span>
+            <span className="text-lg font-bold text-white leading-none">{failedCount}</span>
             <span className="text-[9px] text-white/70 uppercase tracking-wider mt-0.5">Falhas</span>
           </div>
         </div>
