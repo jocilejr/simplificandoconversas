@@ -400,7 +400,7 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
     return (
       <div className="w-full overflow-hidden relative" style={{ borderRadius: '8px', height: '100%' }}>
         <div
-          className="overflow-y-auto overflow-x-hidden scrollbar-none"
+          className="overflow-hidden"
           style={{ height: '100%' }}
         >
           <div
