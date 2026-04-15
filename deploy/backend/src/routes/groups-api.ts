@@ -1807,6 +1807,12 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       }
     }
 
+    // Count unique groups across all campaigns for this workspace
+    const { count: groupsCount } = await sb
+      .from("group_campaign_groups")
+      .select("group_jid", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId);
+
     // Build response
     const result = todayMessages.map((m: any) => {
       const hasTimer = groupScheduler.hasTimer(m.id);
@@ -1820,10 +1826,15 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
 
       // Content preview
       let contentPreview = "";
+      let contentData: any = {};
       try {
         const c = typeof m.content === "string" ? JSON.parse(m.content) : m.content;
+        contentData = c || {};
         contentPreview = c.text || c.caption || c.fileName || c.audioUrl?.slice(-30) || JSON.stringify(c).slice(0, 80);
       } catch { contentPreview = "—"; }
+
+      // Count target groups for this message's campaign
+      const campaignGroups = todayMessages.filter((tm: any) => tm.campaign_id === m.campaign_id);
 
       return {
         id: m.id,
@@ -1836,6 +1847,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         missed,
         campaign_name: campaignMap[m.campaign_id] || "Campanha desconhecida",
         content_preview: contentPreview,
+        content: contentData,
         queue_items: queueItems.map((qi: any) => ({
           group_jid: qi.group_jid,
           group_name: qi.group_name,
@@ -1855,6 +1867,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       timers_active: groupScheduler.activeCount,
       server_time_utc: serverTimeUtc,
       server_time_brt: serverTimeBrt,
+      groups_count: groupsCount || 0,
       messages: result,
     });
   } catch (err: any) {
