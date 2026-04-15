@@ -25,12 +25,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useFollowUpDispatchStatus, useRunFollowUpNow } from "@/hooks/useFollowUpDispatch";
 
 export function FollowUpDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
   const { extensionStatus, sendText } = useWhatsAppExtension();
+  const { data: dispatchStatus } = useFollowUpDispatchStatus();
+  const runFollowUpNow = useRunFollowUpNow();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoSettingsOpen, setAutoSettingsOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -75,7 +78,29 @@ export function FollowUpDashboard() {
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const progressPercent = stats.totalToday > 0 ? Math.round((stats.sentToday / stats.totalToday) * 100) : 0;
+  const queueCounts = dispatchStatus?.counts;
+  const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.failed : stats.pendingToday;
+  const effectiveSent = queueCounts ? queueCounts.sent : stats.sentToday;
+  const effectiveResolved = queueCounts ? queueCounts.sent + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone : stats.sentToday;
+  const progressBase = effectiveSent + effectivePending + (queueCounts ? queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone : 0);
+  const progressPercent = progressBase > 0 ? Math.round((effectiveResolved / progressBase) * 100) : 0;
+
+  const handleRunNow = async () => {
+    try {
+      const result = await runFollowUpNow.mutateAsync();
+      toast({
+        title: "Execução iniciada",
+        description: `Gerados ${result.generated}, reencolados ${result.requeued}, enviados ${result.sent}, falhas ${result.failed}.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro",
+        description: err?.message || "Não foi possível executar o Follow Up agora.",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -218,9 +243,13 @@ export function FollowUpDashboard() {
             <Settings2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Régua</span>
           </Button>
-          <Button onClick={() => setQueueOpen(true)} size="sm" className="gap-2 h-8 text-xs">
+          <Button onClick={handleRunNow} size="sm" className="gap-2 h-8 text-xs" disabled={runFollowUpNow.isPending || !workspaceId}>
             <Play className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Iniciar</span>
+            <span className="hidden sm:inline">{runFollowUpNow.isPending ? "Executando..." : "Executar agora"}</span>
+          </Button>
+          <Button onClick={() => setQueueOpen(true)} variant="outline" size="sm" className="gap-2 h-8 text-xs">
+            <Timer className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Fila</span>
           </Button>
         </div>
       </div>
@@ -251,7 +280,7 @@ export function FollowUpDashboard() {
               <Send className="h-4 w-4 text-green-500" />
             </div>
             <div>
-              <p className="text-lg font-bold"><span className="text-green-500">{stats.sentToday}</span><span className="text-muted-foreground text-sm font-normal">/{stats.totalToday}</span></p>
+              <p className="text-lg font-bold"><span className="text-green-500">{effectiveSent}</span><span className="text-muted-foreground text-sm font-normal">/{progressBase || stats.totalToday}</span></p>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Enviados</p>
             </div>
           </div>
@@ -260,7 +289,7 @@ export function FollowUpDashboard() {
               <Timer className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-lg font-bold">{stats.pendingToday}</p>
+              <p className="text-lg font-bold">{effectivePending}</p>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pendentes</p>
             </div>
           </div>
@@ -275,10 +304,20 @@ export function FollowUpDashboard() {
           </div>
         </div>
 
-        {stats.totalToday > 0 && (
-          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-border/20">
-            <Progress value={progressPercent} className="h-2 flex-1" />
-            <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{progressPercent}% do dia</span>
+        {(progressBase > 0 || stats.totalToday > 0) && (
+          <div className="mt-4 pt-3 border-t border-border/20 space-y-3">
+            <div className="flex items-center gap-3">
+              <Progress value={progressPercent} className="h-2 flex-1" />
+              <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{progressPercent}% processado</span>
+            </div>
+            {queueCounts && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Processando: <span className="font-semibold">{queueCounts.processing}</span></div>
+                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Falhas: <span className="font-semibold">{queueCounts.failed}</span></div>
+                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Duplicados: <span className="font-semibold">{queueCounts.skipped_phone_limit}</span></div>
+                <div className="rounded-md border border-border/30 bg-background/40 px-3 py-2">Tel. inválido: <span className="font-semibold">{queueCounts.skipped_invalid_phone}</span></div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -334,6 +373,8 @@ function BoletoDetailDialog({ boleto, onClose, onMarkContacted }: { boleto: Bole
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
   const { extensionStatus, sendText } = useWhatsAppExtension();
+  const { data: dispatchStatus } = useFollowUpDispatchStatus();
+  const runFollowUpNow = useRunFollowUpNow();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
