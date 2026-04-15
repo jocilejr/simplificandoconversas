@@ -460,6 +460,9 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                               : isFull ? <Badge variant="destructive" className="text-xs">Lotado</Badge>
                               : <span className="text-xs text-muted-foreground">Espera</span>}
                           </TableCell>
+                          <TableCell className="text-center">
+                            <GroupSyncIndicator gl={gl} />
+                          </TableCell>
                         </TableRow>
                       );
                     })}
