@@ -10,6 +10,7 @@ const FINAL_JOB_STATUSES = new Set([
   "sent",
   "skipped_phone_limit",
   "skipped_invalid_phone",
+  "skipped_duplicate",
 ]);
 
 interface Rule {
@@ -36,6 +37,7 @@ interface BoletoRow {
   created_at: string;
   customer_name: string | null;
   customer_phone: string | null;
+  customer_document: string | null;
   amount: number;
   metadata: any;
   external_id: string | null;
@@ -103,6 +105,7 @@ interface WorkspaceRunResult {
   skippedInvalidPhone: number;
   skippedPhoneLimit: number;
   skippedNoBlocks: number;
+  skippedDuplicate: number;
   pendingAfterRun: number;
   locked?: boolean;
   instanceMissing?: boolean;
@@ -259,6 +262,7 @@ function makeEmptyWorkspaceResult(workspaceId: string): WorkspaceRunResult {
     skippedInvalidPhone: 0,
     skippedPhoneLimit: 0,
     skippedNoBlocks: 0,
+    skippedDuplicate: 0,
     pendingAfterRun: 0,
   };
 }
@@ -294,7 +298,7 @@ async function loadWorkspaceContext(
       .maybeSingle(),
     sb
       .from("transactions")
-      .select("id, created_at, customer_name, customer_phone, amount, metadata, external_id")
+      .select("id, created_at, customer_name, customer_phone, customer_document, amount, metadata, external_id")
       .eq("workspace_id", workspaceId)
       .eq("type", "boleto")
       .eq("status", "pendente"),
@@ -414,6 +418,9 @@ async function generateJobsForWorkspace(
     }
   }
 
+  // CPF-based deduplication: only the first boleto per CPF gets processed
+  const processedCpfs = new Set<string>();
+
   for (const boleto of context.boletos) {
     const dueDate = new Date(
       new Date(boleto.created_at).getTime() + context.expirationDays * 24 * 60 * 60 * 1000,
@@ -426,6 +433,43 @@ async function generateJobsForWorkspace(
       result.skippedNoRule++;
       result.skipped++;
       continue;
+    }
+
+    // Deduplicate by CPF: if same CPF already has a job today, mark as duplicate
+    const cpf = boleto.customer_document?.replace(/\D/g, "") || null;
+    if (cpf && cpf.length >= 11) {
+      if (processedCpfs.has(cpf)) {
+        const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
+        const blocks = buildBlocks(matchingRule);
+        const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
+        const meta = (boleto.metadata as any) || {};
+        const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
+        await upsertDispatchJob(sb, {
+          workspace_id: setting.workspace_id,
+          user_id: setting.user_id,
+          transaction_id: boleto.id,
+          rule_id: matchingRule.id,
+          instance_name: setting.instance_name,
+          phone: boleto.customer_phone,
+          normalized_phone: normalized,
+          customer_name: boleto.customer_name,
+          amount: Number(boleto.amount) || 0,
+          barcode,
+          boleto_file: meta.boleto_file || null,
+          due_date: dueDate,
+          dispatch_date: context.today,
+          message_snapshot: matchingRule.message || null,
+          blocks_snapshot: blocks,
+          updated_at: new Date().toISOString(),
+          status: "skipped_duplicate",
+          last_error: `CPF duplicado: ${cpf}`,
+          completed_at: new Date().toISOString(),
+        });
+        result.skippedDuplicate++;
+        result.skipped++;
+        continue;
+      }
+      processedCpfs.add(cpf);
     }
 
     const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
@@ -1007,6 +1051,7 @@ router.get("/status", async (req, res) => {
       failed: 0,
       skipped_phone_limit: 0,
       skipped_invalid_phone: 0,
+      skipped_duplicate: 0,
     };
 
     for (const job of jobs || []) {
