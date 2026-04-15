@@ -296,8 +296,8 @@ export default function SchedulerDebugPanel() {
   const totalMissed = messages.filter((m) => m.status_code === "missed").length;
 
   return (
-    <Card className="border-border/50 overflow-hidden isolate">
-      <CardContent className="p-0 overflow-hidden">
+    <Card className="border-border/50 overflow-hidden isolate min-w-0 w-full">
+      <CardContent className="p-0 overflow-hidden min-w-0">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-4">
@@ -338,7 +338,7 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="relative overflow-hidden" style={{ contain: "layout paint", height: "488px" }}>
+          <div className="relative overflow-hidden max-w-full" style={{ contain: "layout paint", height: "488px" }}>
             {/* Left arrow */}
             <button
               onClick={() => scroll("left")}
