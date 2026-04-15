@@ -1786,6 +1786,11 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
         for (let gi = 0; gi < groupLinks.length; gi++) {
           const gl = groupLinks[gi];
 
+          // Write sync_progress for frontend visibility
+          await sb.from("group_smart_links").update({
+            sync_progress: { current: gi + 1, total: groupLinks.length, currentJid: gl.group_jid },
+          }).eq("id", sl.id);
+
           // Delay de 5s entre chamadas para evitar rate-limit
           if (gi > 0) await new Promise(r => setTimeout(r, 5000));
 
@@ -1848,10 +1853,18 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
             gl.invite_url = "";
             console.warn(`[sync-all] Group ${gl.group_jid} inviteCode failed after 4 attempts — marked as banned`);
           }
+
+          // Save incrementally after each group
+          await sb.from("group_smart_links").update({
+            group_links: groupLinks,
+            sync_progress: { current: gi + 1, total: groupLinks.length, currentJid: gl.group_jid, done: true },
+          }).eq("id", sl.id);
         }
 
+        // Final: clear progress, set success
         await sb.from("group_smart_links").update({
           group_links: groupLinks,
+          sync_progress: null,
           last_successful_sync_at: new Date().toISOString(),
           last_sync_error: null,
           last_sync_error_at: null,
