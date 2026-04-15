@@ -5,17 +5,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Zap, Clock } from "lucide-react";
+import { Loader2, Zap, Clock, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useFollowUpSettings } from "@/hooks/useFollowUpSettings";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
+import { Separator } from "@/components/ui/separator";
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onRunNow?: () => Promise<void>;
+  isRunning?: boolean;
 }
 
-export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
+export function FollowUpSettingsDialog({ open, onOpenChange, onRunNow, isRunning }: Props) {
   const { settings, upsert } = useFollowUpSettings();
   const { instances } = useWhatsAppInstances();
 
@@ -106,6 +109,24 @@ export function FollowUpSettingsDialog({ open, onOpenChange }: Props) {
               Salvar
             </Button>
           </div>
+
+          {onRunNow && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Execução Manual
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Dispare o follow up imediatamente, sem aguardar o horário agendado.
+                </p>
+                <Button onClick={onRunNow} size="sm" className="gap-2 w-full" disabled={isRunning}>
+                  {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                  {isRunning ? "Executando..." : "Executar agora"}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
