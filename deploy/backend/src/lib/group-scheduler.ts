@@ -23,6 +23,7 @@ export interface SchedulerDiagnostic {
  */
 export class GroupSchedulerManager {
   private timers = new Map<string, NodeJS.Timeout>();
+  private diagnostics = new Map<string, SchedulerDiagnostic>();
 
   /** Load all active messages and create timers. Called once on startup. */
   async loadAll(): Promise<void> {
@@ -114,9 +115,21 @@ export class GroupSchedulerManager {
     return this.timers.has(msgId);
   }
 
+  /** Get the latest diagnostic for a scheduled message. */
+  getDiagnostic(msgId: string): SchedulerDiagnostic | null {
+    return this.diagnostics.get(msgId) || null;
+  }
+
   /** Get count of active timers (for diagnostics). */
   get activeCount(): number {
     return this.timers.size;
+  }
+
+  private setDiagnostic(msgId: string, diagnostic: Omit<SchedulerDiagnostic, "updated_at">): void {
+    this.diagnostics.set(msgId, {
+      ...diagnostic,
+      updated_at: new Date().toISOString(),
+    });
   }
 
   /** Safety sweep: find active messages without timers and recreate them. */
