@@ -1,46 +1,26 @@
 
 
-# Plano: Delay 5s, detecção de banimento no sync manual, e validação do auto sync
-
-## Diagnóstico
-
-Analisei os 3 pontos:
-
-1. **Delay**: O `sync-invite` (manual) tem delay de 500ms. O `sync-all` (cron) **não tem nenhum delay** entre grupos. Ambos precisam de 5s.
-
-2. **Auto sync (`sync-all`)**: Já está implementado e roda a cada 15 minutos via cron. Já atualiza `invite_url` e `member_count` (via `findGroupInfos`). Já grava `last_successful_sync_at`, `last_sync_error`, etc. Funciona corretamente.
-
-3. **Detecção de banimento**: 
-   - **`sync-all` (cron)**: Implementado. Se a instância está online e o `inviteCode` falha ou retorna vazio → marca `gl.status = "banned"` e limpa a URL.
-   - **`sync-invite` (manual)**: **NÃO implementado**. Se o `inviteCode` falha, simplesmente ignora. Não marca como banido nem como ativo. Também não busca `member_count` real via `findGroupInfos` — só lê da tabela `group_selected`.
+# Plano: URL visual, tempo do último sync e status do auto sync
 
 ## Alterações
 
-### 1. `deploy/backend/src/routes/groups-api.ts` — endpoint `sync-invite` (linhas 1546-1578)
+### `src/components/grupos/GroupSmartLinkTab.tsx`
 
-- Mudar delay de `500` para `5000` (5 segundos)
-- Adicionar chamada `findGroupInfos` para obter `member_count` real (igual ao `sync-all`)
-- Adicionar lógica de detecção de banimento:
-  - Se `inviteCode` retorna código → `gl.status = "active"`, atualiza URL
-  - Se `inviteCode` retorna vazio ou falha (mas instância online) → `gl.status = "banned"`, limpa URL
-- Atualizar `last_successful_sync_at` e campos de erro no banco após sync
+**1. Coluna URL visual**
+- Na tabela de grupos (linha 425-428), em vez de só mostrar um ícone de check/X, mostrar a URL real como link clicável (`<a href={gl.invite_url} target="_blank">`) truncado, com ícone de link externo. Se banido ou sem URL, mostrar badge "Sem URL".
 
-### 2. `deploy/backend/src/routes/groups-api.ts` — endpoint `sync-all` (linhas 1730-1778)
+**2. Indicador de último auto sync**
+- Abaixo do card de sync error ou junto ao header dos grupos (linha 396-401), mostrar:
+  - `last_successful_sync_at` como "há X segundos/minutos/horas" usando cálculo relativo com `Date.now() - new Date(ts).getTime()`
+  - Se `last_sync_error` existir, mostrar badge vermelho "Falha" com tooltip do erro
+  - Se não houver erro, badge verde "OK"
+- Usar os campos já existentes no `SmartLink`: `last_successful_sync_at`, `last_sync_error`, `last_sync_error_at`
 
-- Adicionar `await new Promise(r => setTimeout(r, 5000))` entre cada grupo no loop
-- Manter toda a lógica existente de banimento (já funciona)
+**3. Status visual do sync no header da tabela**
+- Junto ao botão "Sincronizar", adicionar:
+  - Badge com cor: verde "Sync OK" / vermelho "Sync Falhou" / cinza "Nunca sincronizado"
+  - Texto "há Xs" atualizado automaticamente (o query já tem `refetchInterval: 15000`)
 
-### 3. Nada no frontend
-A tabela já renderiza o badge "Banido" e o ícone correto — só precisa que o backend preencha o campo `status` corretamente no sync manual.
-
-## Resultado
-- Sync manual e automático processam 1 grupo a cada 5 segundos
-- Ambos detectam grupos banidos com a mesma lógica
-- Ambos atualizam `member_count` real via Evolution API
-- A tabela no frontend reflete o status atualizado automaticamente
-
-## Deploy
-```bash
-cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
-```
+### Nenhuma alteração no backend
+Todos os campos necessários já são retornados pela API (`last_successful_sync_at`, `last_sync_error`, `last_sync_error_at`).
 
