@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
 import { getMessageQueue } from "../lib/message-queue";
-import { normalizePhone } from "../lib/normalize-phone";
+
 
 const router = Router();
 const workspaceLocks = new Set<string>();
@@ -86,7 +86,6 @@ interface WorkspaceContext {
   todayContacts: TodayContactRow[];
   existingJobs: FollowUpQueueRow[];
   contactPhonesByTransactionId: Map<string, string>;
-  convPhoneByLast8: Map<string, string>;
   delayMs: number;
   pauseAfterSends: number | null;
   pauseMinutes: number | null;
@@ -280,7 +279,6 @@ async function loadWorkspaceContext(
     todayContactsResult,
     queueConfigResult,
     existingJobsResult,
-    conversationsResult,
   ] = await Promise.all([
     sb
       .from("boleto_recovery_rules")
@@ -317,26 +315,7 @@ async function loadWorkspaceContext(
       .select("*")
       .eq("workspace_id", workspaceId)
       .eq("dispatch_date", today),
-    sb
-      .from("conversations")
-      .select("remote_jid, phone_number")
-      .eq("workspace_id", workspaceId)
-      .not("remote_jid", "like", "%@lid"),
   ]);
-
-  // Build conversations phone index by last 8 digits for cross-reference
-  const convPhoneByLast8 = new Map<string, string>();
-  for (const conv of (conversationsResult.data || []) as { remote_jid: string; phone_number: string | null }[]) {
-    const jidDigits = conv.remote_jid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
-    if (jidDigits.length >= 8) {
-      const last8 = jidDigits.slice(-8);
-      // Normalize the JID phone as the canonical phone
-      const normalized = normalizePhone(jidDigits);
-      if (normalized && !convPhoneByLast8.has(last8)) {
-        convPhoneByLast8.set(last8, normalized);
-      }
-    }
-  }
 
   const todayContacts = (todayContactsResult.data || []) as TodayContactRow[];
   const contactTransactionIds = [...new Set(todayContacts.map((item) => item.transaction_id).filter(Boolean))];
@@ -349,9 +328,9 @@ async function loadWorkspaceContext(
       .in("id", contactTransactionIds);
 
     for (const transaction of contactTransactions || []) {
-      const normalized = normalizePhone((transaction as any).customer_phone);
-      if (normalized) {
-        contactPhonesByTransactionId.set((transaction as any).id, normalized);
+      const phone = ((transaction as any).customer_phone || "").replace(/\D/g, "");
+      if (phone) {
+        contactPhonesByTransactionId.set((transaction as any).id, phone);
       }
     }
   }
@@ -367,7 +346,6 @@ async function loadWorkspaceContext(
     todayContacts,
     existingJobs: ((existingJobsResult.data || []) as FollowUpQueueRow[]).sort((a, b) => a.created_at.localeCompare(b.created_at)),
     contactPhonesByTransactionId,
-    convPhoneByLast8,
     delayMs,
     pauseAfterSends: queueConfig?.pause_after_sends ?? null,
     pauseMinutes: queueConfig?.pause_minutes ?? null,
@@ -466,15 +444,8 @@ async function generateJobsForWorkspace(
       continue;
     }
 
-    // Cross-reference with conversations to get the correct normalized phone
-    let normalized = normalizePhone(boleto.customer_phone);
-    if (normalized && normalized.length >= 8) {
-      const last8 = normalized.slice(-8);
-      const convPhone = context.convPhoneByLast8.get(last8);
-      if (convPhone) {
-        normalized = convPhone;
-      }
-    }
+    // Use the already-normalized phone from transactions (normalized at insertion time)
+    const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
     const meta = (boleto.metadata as any) || {};
     const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
     const basePayload = {
@@ -760,7 +731,7 @@ async function processQueueForWorkspace(
     if (claimError) throw claimError;
     if (!claimedRows || claimedRows.length === 0) continue;
 
-    const normalizedPhone = normalizePhone(job.phone || job.normalized_phone);
+    const normalizedPhone = (job.normalized_phone || job.phone || "").replace(/\D/g, "") || null;
     if (!normalizedPhone || normalizedPhone.length < 12) {
       await markQueueJob(sb, job.id, {
         status: "skipped_invalid_phone",
