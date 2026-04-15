@@ -9,8 +9,6 @@ const router = Router();
 const FOLLOWUP_QUEUE_TABLE = "followup_dispatch_queue" as any;
 const FINAL_JOB_STATUSES = new Set([
   "sent",
-  "skipped_phone_limit",
-  "skipped_invalid_phone",
   "skipped_duplicate",
 ]);
 
@@ -225,7 +223,8 @@ function isFailedContact(notes: string | null | undefined) {
 }
 
 function isBlockingContact(notes: string | null | undefined) {
-  return !isFailedContact(notes);
+  if (!notes) return false;
+  return notes.startsWith("sent") || notes.startsWith("skipped_duplicate");
 }
 
 function countsAsSuccessfulContact(notes: string | null | undefined) {
