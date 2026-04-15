@@ -334,7 +334,7 @@ async function loadWorkspaceContext(
       .in("id", contactTransactionIds);
 
     for (const transaction of contactTransactions || []) {
-      const phone = normalizePhoneDefensive((transaction as any).customer_phone);
+      const phone = normalizePhone((transaction as any).customer_phone);
       if (phone) {
         contactPhonesByTransactionId.set((transaction as any).id, phone);
       }
@@ -465,7 +465,7 @@ async function generateJobsForWorkspace(
     const cpf = boleto.customer_document?.replace(/\D/g, "") || null;
     if (cpf && cpf.length >= 11) {
       if (processedCpfs.has(cpf)) {
-        const normalized = boleto.customer_phone || null;
+        const normalized = normalizePhone(boleto.customer_phone);
         const meta = (boleto.metadata as any) || {};
         const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
         await upsertDispatchJob(sb, {
@@ -474,7 +474,7 @@ async function generateJobsForWorkspace(
           transaction_id: boleto.id,
           rule_id: matchingRule.id,
           instance_name: setting.instance_name,
-          phone: boleto.customer_phone,
+          phone: normalized,
           normalized_phone: normalized,
           customer_name: boleto.customer_name,
           amount: Number(boleto.amount) || 0,
@@ -497,7 +497,7 @@ async function generateJobsForWorkspace(
     }
 
     // 6. Use customer_phone directly (already normalized in transactions table)
-    const normalized = boleto.customer_phone || null;
+    const normalized = normalizePhone(boleto.customer_phone);
     const meta = (boleto.metadata as any) || {};
     const barcode = meta.barcode || meta.digitable_line || boleto.external_id || "";
     const basePayload = {
@@ -506,7 +506,7 @@ async function generateJobsForWorkspace(
       transaction_id: boleto.id,
       rule_id: matchingRule.id,
       instance_name: setting.instance_name,
-      phone: boleto.customer_phone,
+      phone: normalized,
       normalized_phone: normalized,
       customer_name: boleto.customer_name,
       amount: Number(boleto.amount) || 0,
@@ -783,7 +783,7 @@ async function processQueueForWorkspace(
     if (claimError) throw claimError;
     if (!claimedRows || claimedRows.length === 0) continue;
 
-    const normalizedPhone = job.normalized_phone || job.phone || null;
+    const normalizedPhone = normalizePhone(job.normalized_phone || job.phone) || null;
     if (!normalizedPhone || normalizedPhone.length < 12) {
       await markQueueJob(sb, job.id, {
         status: "skipped_invalid_phone",
