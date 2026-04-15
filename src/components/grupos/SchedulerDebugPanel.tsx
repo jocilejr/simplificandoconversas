@@ -181,16 +181,13 @@ function ScheduleCard({
         <div className="w-[45%] shrink-0 relative overflow-hidden" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
           {/* Scrollable preview with hidden scrollbar */}
           <div
-            className="absolute inset-0 overflow-y-auto"
+            className="absolute inset-0 overflow-y-auto [&::-webkit-scrollbar]:hidden"
             style={{
               scrollbarWidth: 'none',
               msOverflowStyle: 'none',
             }}
           >
-            <style>{`.scheduler-preview-scroll::-webkit-scrollbar { display: none; }`}</style>
-            <div className="scheduler-preview-scroll h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-              <WhatsAppPreview {...previewProps} />
-            </div>
+            <WhatsAppPreview {...previewProps} />
           </div>
           {/* Top fade */}
           <div
