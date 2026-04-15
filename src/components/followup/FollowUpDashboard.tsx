@@ -251,6 +251,33 @@ export function FollowUpDashboard() {
         </div>
       </div>
 
+      {/* Status Banner */}
+      {(() => {
+        const isProcessing = queueCounts && queueCounts.processing > 0;
+        const hasFailed = queueCounts && queueCounts.failed > 0;
+        const isComplete = queueCounts && queueCounts.pending === 0 && queueCounts.processing === 0 && (queueCounts.sent > 0 || queueCounts.skipped_phone_limit > 0 || queueCounts.skipped_invalid_phone > 0);
+        
+        if (isProcessing) return (
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary/5 animate-pulse">
+            <RefreshCw className="h-4 w-4 text-primary animate-spin" />
+            <span className="text-sm font-medium text-primary">Em progresso — {queueCounts!.processing} processando, {queueCounts!.pending} pendentes</span>
+          </div>
+        );
+        if (hasFailed && !isComplete) return (
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <span className="text-sm font-medium text-destructive">{queueCounts!.failed} mensagens com falha — {queueCounts!.pending > 0 ? `${queueCounts!.pending} pendentes` : "execute novamente para retentar"}</span>
+          </div>
+        );
+        if (isComplete) return (
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-green-500/30 bg-green-500/5">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <span className="text-sm font-medium text-green-600">Concluído — {queueCounts!.sent} enviados{queueCounts!.failed > 0 ? `, ${queueCounts!.failed} com falha` : ""}{queueCounts!.skipped_invalid_phone > 0 ? `, ${queueCounts!.skipped_invalid_phone} tel. inválido` : ""}</span>
+          </div>
+        );
+        return null;
+      })()}
+
       {/* Stats bar */}
       <div className="p-4 bg-secondary/20 rounded-lg border border-border/30">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -355,7 +382,7 @@ export function FollowUpDashboard() {
         </DialogContent>
       </Dialog>
 
-      <FollowUpSettingsDialog open={autoSettingsOpen} onOpenChange={setAutoSettingsOpen} />
+      <FollowUpSettingsDialog open={autoSettingsOpen} onOpenChange={setAutoSettingsOpen} onRunNow={handleRunNow} isRunning={runFollowUpNow.isPending} />
 
       <FollowUpQueue open={queueOpen} onOpenChange={setQueueOpen} boletos={pendingTodayBoletos} onMarkContacted={handleMarkContacted} />
 
