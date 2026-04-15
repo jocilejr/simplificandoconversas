@@ -44,16 +44,16 @@ const scheduleLabels: Record<string, string> = {
   once: "Única", daily: "Diária", weekly: "Semanal", monthly: "Mensal", interval: "Intervalo",
 };
 
-const statusConfig: Record<string, { color: string; bg: string; border: string; icon: typeof Clock }> = {
-  waiting: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: Timer },
-  processing: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/30", icon: Clock },
-  sent: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: CheckCircle2 },
-  failed: { color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/30", icon: XCircle },
-  missed: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/30", icon: AlertTriangle },
-  skipped: { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", icon: AlertTriangle },
+const statusConfig: Record<string, { accent: string; icon: typeof Clock }> = {
+  waiting: { accent: "from-emerald-500 to-emerald-600", icon: Timer },
+  processing: { accent: "from-blue-500 to-blue-600", icon: Clock },
+  sent: { accent: "from-emerald-500 to-emerald-600", icon: CheckCircle2 },
+  failed: { accent: "from-red-500 to-red-600", icon: XCircle },
+  missed: { accent: "from-amber-500 to-amber-600", icon: AlertTriangle },
+  skipped: { accent: "from-orange-500 to-orange-600", icon: AlertTriangle },
 };
 
-/* ─── Card ─── */
+/* ─── Vertical Card ─── */
 function ScheduleCard({
   msg, position, currentTimeMs,
 }: {
@@ -76,6 +76,7 @@ function ScheduleCard({
 
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
   const failedCount = msg.queue_items.filter(qi => qi.status === "failed").length;
+  const pendingCount = msg.queue_items.filter(qi => qi.status === "pending" || qi.status === "waiting").length;
   const primaryQueueError = msg.queue_error_summary[0];
   const reasonTitle = msg.failure_reason || primaryQueueError?.reason_label || null;
 
@@ -97,87 +98,83 @@ function ScheduleCard({
       className={`flex-1 min-w-0 transition-all duration-500 ease-out ${
         isCurrent
           ? "scale-100 opacity-100 z-10"
-          : "scale-[0.93] opacity-45 z-0"
+          : "scale-[0.93] opacity-50 z-0"
       }`}
       style={!isCurrent ? { filter: "blur(1.5px)" } : undefined}
     >
-      <div className={`h-full rounded-2xl overflow-hidden transition-all duration-500 ${
-        isCurrent
-          ? "border border-primary/30 ring-1 ring-white/5 shadow-2xl shadow-black/20 bg-card"
-          : "border border-border/15 bg-card/50"
-      }`}>
-        <div className="flex h-full min-h-0">
-          {/* LEFT — 42% */}
-          <div className="flex flex-col w-[42%] min-w-0">
-            {/* Time + Status header */}
-            <div className="px-3.5 py-2.5 border-b border-border/10">
-              <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                <div className="flex items-baseline gap-1.5">
-                  <span className={`text-xl font-bold font-mono leading-none tracking-tight ${
-                    isPast ? "text-muted-foreground" : isCurrent ? "text-primary" : "text-foreground"
-                  }`}>
-                    {formatTimeBrt(runAt)}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
-                </div>
-                <Badge variant="outline" className={`${cfg.color} ${cfg.bg} ${cfg.border} text-[9px] gap-0.5 shrink-0 px-1.5 py-0 h-[18px]`}>
-                  <StatusIcon className="h-3 w-3" />{msg.status_label}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 py-0 h-4">
-                  <Icon className="h-2.5 w-2.5" />{typeLabels[msg.message_type] || msg.message_type}
-                </Badge>
-                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-border/20">
-                  <CalendarClock className="h-2.5 w-2.5 mr-0.5" />
-                  {scheduleLabels[msg.schedule_type] || msg.schedule_type}
-                </Badge>
-              </div>
+      <div
+        className={`h-full rounded-2xl overflow-hidden flex flex-col transition-all duration-500 ${
+          isCurrent ? "shadow-[0_8px_40px_-8px_rgba(0,0,0,0.5)]" : "shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)]"
+        }`}
+        style={{
+          background: 'hsl(var(--card))',
+        }}
+      >
+        {/* TOP — Preview (fills ~55%) */}
+        <div className="flex-1 min-h-0 overflow-hidden relative">
+          <div className="absolute inset-0 overflow-y-auto scrollbar-none">
+            <WhatsAppPreview {...previewProps} />
+          </div>
+        </div>
+
+        {/* MIDDLE — Info strip */}
+        <div className="px-4 py-3 space-y-2" style={{ background: 'hsl(var(--card))' }}>
+          {/* Time + Status */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-lg font-bold font-mono leading-none tracking-tight ${
+                isPast ? "text-muted-foreground" : "text-foreground"
+              }`}>
+                {formatTimeBrt(runAt)}
+              </span>
+              <span className="text-[10px] text-muted-foreground/50">{formatDateBrt(runAt)}</span>
             </div>
-
-            {/* Details */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-2.5 space-y-2 scrollbar-none">
-              <div className="flex items-center gap-2">
-                <Megaphone className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-                <p className="text-xs font-medium truncate leading-tight">{msg.campaign_name}</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <UsersRound className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-                <p className="text-xs text-muted-foreground leading-tight">
-                  {msg.target_groups_count} grupo{msg.target_groups_count !== 1 ? "s" : ""}
-                </p>
-              </div>
-
-              {(sentCount > 0 || failedCount > 0) && (
-                <div className="flex items-center gap-3 pt-0.5">
-                  {sentCount > 0 && (
-                    <span className="flex items-center gap-1 text-[10px] text-emerald-400">
-                      <CheckCircle2 className="h-3 w-3" />{sentCount}
-                    </span>
-                  )}
-                  {failedCount > 0 && (
-                    <span className="flex items-center gap-1 text-[10px] text-red-400">
-                      <XCircle className="h-3 w-3" />{failedCount}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Diagnostic footer */}
-            {reasonTitle && (
-              <div className="px-3.5 py-2 border-t border-border/10 bg-destructive/5">
-                <p className="text-[9px] font-medium leading-tight text-destructive/80 line-clamp-2">{reasonTitle}</p>
-              </div>
-            )}
+            <Badge variant="outline" className={`text-[9px] gap-0.5 px-1.5 py-0 h-[18px] border-border/30`}>
+              <StatusIcon className="h-3 w-3" />{msg.status_label}
+            </Badge>
           </div>
 
-          {/* RIGHT — 58% preview */}
-          <div className="w-[58%] min-w-0 border-l border-border/10 overflow-hidden">
-            <div className="h-full overflow-y-auto scrollbar-none">
-              <WhatsAppPreview {...previewProps} />
-            </div>
+          {/* Campaign + Type */}
+          <div className="flex items-center gap-1.5">
+            <Megaphone className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+            <p className="text-xs font-medium truncate flex-1">{msg.campaign_name}</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="secondary" className="text-[9px] gap-0.5 px-1.5 py-0 h-4">
+              <Icon className="h-2.5 w-2.5" />{typeLabels[msg.message_type] || msg.message_type}
+            </Badge>
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-border/20">
+              <CalendarClock className="h-2.5 w-2.5 mr-0.5" />
+              {scheduleLabels[msg.schedule_type] || msg.schedule_type}
+            </Badge>
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
+              <UsersRound className="h-3 w-3" />
+              {msg.target_groups_count}
+            </span>
+          </div>
+
+          {/* Error reason */}
+          {reasonTitle && (
+            <p className="text-[9px] text-destructive/80 leading-tight line-clamp-1">{reasonTitle}</p>
+          )}
+        </div>
+
+        {/* BOTTOM — Stats bar with accent gradient */}
+        <div className={`flex items-center justify-around px-3 py-2 bg-gradient-to-r ${cfg.accent}`}>
+          <div className="flex flex-col items-center">
+            <span className="text-sm font-bold text-white leading-none">{sentCount}</span>
+            <span className="text-[8px] text-white/70 uppercase tracking-wider mt-0.5">Enviadas</span>
+          </div>
+          <div className="w-px h-5 bg-white/20" />
+          <div className="flex flex-col items-center">
+            <span className="text-sm font-bold text-white leading-none">{msg.target_groups_count}</span>
+            <span className="text-[8px] text-white/70 uppercase tracking-wider mt-0.5">Grupos</span>
+          </div>
+          <div className="w-px h-5 bg-white/20" />
+          <div className="flex flex-col items-center">
+            <span className="text-sm font-bold text-white leading-none">{failedCount}</span>
+            <span className="text-[8px] text-white/70 uppercase tracking-wider mt-0.5">Falhas</span>
           </div>
         </div>
       </div>
@@ -238,15 +235,11 @@ export default function SchedulerDebugPanel() {
   const current = sorted[activeIndex] || null;
   const next = canNext ? sorted[activeIndex + 1] : null;
 
-  const totalSent = messages.filter((m) => m.status_code === "sent").length;
-  const totalFailed = messages.filter((m) => m.status_code === "failed").length;
-  const totalMissed = messages.filter((m) => m.status_code === "missed").length;
-
   return (
-    <Card className="border-border/50 overflow-hidden isolate min-w-0 w-full">
+    <Card className="border-0 bg-transparent shadow-none overflow-hidden isolate min-w-0 w-full">
       <CardContent className="p-0 overflow-hidden min-w-0">
         {/* Header */}
-        <div className="px-4 py-2 border-b border-border/40 flex items-center justify-between gap-2">
+        <div className="px-4 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Publicações de Hoje
@@ -292,20 +285,20 @@ export default function SchedulerDebugPanel() {
             Nenhuma publicação agendada para hoje.
           </div>
         ) : (
-          <div className="w-full min-w-0 overflow-hidden px-2 py-3">
-            <div className="flex items-center gap-1.5">
+          <div className="w-full min-w-0 overflow-hidden px-3 py-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => navigate("prev")}
                 disabled={!canPrev}
-                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
+                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 backdrop-blur-sm transition-all duration-300 hover:bg-muted disabled:opacity-0 disabled:pointer-events-none"
                 aria-label="Anterior"
               >
-                <ChevronLeft className="h-3.5 w-3.5" />
+                <ChevronLeft className="h-4 w-4" />
               </button>
 
               <div
-                className="flex flex-1 min-w-0 gap-2 items-stretch"
-                style={{ height: "280px" }}
+                className="flex flex-1 min-w-0 gap-4 items-stretch"
+                style={{ height: "340px" }}
               >
                 <ScheduleCard key={prev?.id || "ghost-prev"} msg={prev} position="prev" currentTimeMs={currentTimeMs} />
                 <ScheduleCard key={current?.id || "ghost-current"} msg={current} position="current" currentTimeMs={currentTimeMs} />
@@ -315,27 +308,12 @@ export default function SchedulerDebugPanel() {
               <button
                 onClick={() => navigate("next")}
                 disabled={!canNext}
-                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-background/80 backdrop-blur-sm transition-all duration-300 hover:bg-muted/50 hover:border-border/60 disabled:opacity-0 disabled:pointer-events-none"
+                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 backdrop-blur-sm transition-all duration-300 hover:bg-muted disabled:opacity-0 disabled:pointer-events-none"
                 aria-label="Próximo"
               >
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Footer */}
-        {data && messages.length > 0 && (
-          <div className="px-4 py-1.5 border-t border-border/30 flex items-center gap-4 text-[10px] text-muted-foreground/70">
-            <span className="flex items-center gap-1">
-              <Send className="h-2.5 w-2.5" />{totalSent} enviadas
-            </span>
-            <span className="flex items-center gap-1">
-              <XCircle className="h-2.5 w-2.5 text-red-400/70" />{totalFailed} falhas
-            </span>
-            <span className="flex items-center gap-1">
-              <AlertTriangle className="h-2.5 w-2.5 text-amber-400/70" />{totalMissed} perdidas
-            </span>
           </div>
         )}
       </CardContent>
