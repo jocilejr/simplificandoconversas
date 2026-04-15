@@ -1,54 +1,52 @@
 
 
-## Plano — 5 Correções Integradas
+## Plano — Follow Up usar telefone normalizado direto da transação
 
-### 1. Follow Up usando número bruto em vez de normalizado
+### Diagnóstico
+A tabela `transactions` já armazena o telefone normalizado via `normalizePhone()` no momento da inserção (linhas 266, 328 de `payment.ts`). O Follow Up não precisa aplicar normalização própria — basta usar `customer_phone` diretamente.
 
-**Problema**: Na linha 447 de `followup-daily.ts`, o sistema pega `boleto.customer_phone` direto da tabela `transactions` e passa por `normalizePhone`. Mas muitos números chegam em formatos inconsistentes (ex: `073998341528`, `47999338941`, `31999759987`). O `normalizePhone` só adiciona `55` para 10-11 dígitos — números com `0` na frente (ex: `073...` = 12 dígitos após strip de `0` = 11 dígitos) funcionam, mas outros padrões falham.
+Atualmente há **3 pontos** onde o Follow Up aplica normalização desnecessária:
 
-**Correção em `deploy/backend/src/routes/followup-daily.ts`**:
-- Após normalizar o `customer_phone`, tentar cruzar com a tabela `conversations` usando os últimos 8 dígitos (mesma lógica do frontend `useLeads.ts`)
-- Se encontrar uma conversa com telefone normalizado, usar esse telefone em vez do bruto da transação
-- Isso garante que o número usado no envio é o mesmo que aparece no lead
+1. **Linha 470** — `generateJobsForWorkspace`: `normalizePhone(boleto.customer_phone)` + cross-reference com conversations
+2. **Linha 763** — `processQueueForWorkspace`: `normalizePhone(job.phone || job.normalized_phone)` — re-normaliza antes do envio
 
-### 2. Editar telefone da transação no card do Lead
+### Correção em `deploy/backend/src/routes/followup-daily.ts`
 
-**Problema**: Não é possível corrigir o telefone de uma transação específica pelo card do lead.
+**Ponto 1 (linha 469-477)** — Substituir toda a lógica de normalização + cross-reference por uso direto:
+```typescript
+// DE:
+let normalized = normalizePhone(boleto.customer_phone);
+if (normalized && normalized.length >= 8) {
+  const last8 = normalized.slice(-8);
+  const convPhone = context.convPhoneByLast8.get(last8);
+  if (convPhone) normalized = convPhone;
+}
 
-**Correção em `src/components/leads/LeadDetailDialog.tsx`**:
-- Modificar `TxCard` para aceitar um callback `onPhoneEdit`
-- Adicionar botão de edição (ícone lápis) que mostra um input inline com o telefone atual
-- Ao salvar, fazer `UPDATE transactions SET customer_phone = ? WHERE id = ?` via Supabase
-- Invalidar queries de leads e transactions
-- Exibir o `customer_phone` atual no card para visibilidade
+// PARA:
+const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
+```
+Apenas strip de caracteres não-numéricos, sem adicionar prefixos. O valor já vem normalizado do banco.
 
-### 3. Layout da fila de conexões saindo do popup
+**Ponto 2 (linha 763)** — Remover re-normalização no processamento:
+```typescript
+// DE:
+const normalizedPhone = normalizePhone(job.phone || job.normalized_phone);
 
-**Correção em `src/components/settings/ConnectionsSection.tsx`** (linha 709):
-- Adicionar `overflow-hidden` no `DialogContent`
-- Os containers dos labels (linhas 744, 751) já têm `truncate flex-1`, mas falta `min-w-0` no container pai flex para que o truncamento funcione
+// PARA:
+const normalizedPhone = (job.normalized_phone || job.phone || "").replace(/\D/g, "") || null;
+```
 
-### 4. Botão "Executar agora" dentro do dialog "Automático"
+**Ponto 3** — Remover o `import { normalizePhone }` e a construção do `convPhoneByLast8` no contexto (já que não será mais usado para cross-reference).
 
-**Correção em `FollowUpDashboard.tsx` e `FollowUpSettingsDialog.tsx`**:
-- Remover o botão do header do dashboard
-- Adicionar dentro do dialog do "Automático" com separador e feedback do resultado
+Também limpar o `convPhoneByLast8` do `WorkspaceContext` e a query de conversations que alimentava esse mapa.
 
-### 5. Banner de status do Follow Up
+### Resumo
+- 1 arquivo: `deploy/backend/src/routes/followup-daily.ts`
+- Remoção de `normalizePhone` e `convPhoneByLast8`
+- Uso direto do `customer_phone` da transação (já normalizado na inserção)
 
-**Correção em `FollowUpDashboard.tsx`**:
-- Banner visual com estados: Em progresso, Concluído, Falha, Agendado, Inativo
-
-### Arquivos modificados
-- `deploy/backend/src/routes/followup-daily.ts` — cruzar telefone com conversations
-- `src/components/leads/LeadDetailDialog.tsx` — edição de telefone na transação
-- `src/components/settings/ConnectionsSection.tsx` — overflow fix
-- `src/components/followup/FollowUpDashboard.tsx` — mover botão, banner de status
-- `src/components/followup/FollowUpSettingsDialog.tsx` — receber botão "Executar agora"
-
-### Validação VPS após deploy
+### Validação VPS
 ```bash
-docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT customer_phone, id FROM transactions WHERE type='boleto' AND status='pendente' LIMIT 10;"
-docker compose logs backend --tail=100 | grep followup-daily
+docker compose exec -T postgres psql -U postgres -d postgres -c "SELECT customer_phone, length(customer_phone) FROM transactions WHERE type='boleto' AND status='pendente' LIMIT 20;"
 ```
 
