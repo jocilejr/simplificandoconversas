@@ -59,6 +59,14 @@ export class GroupSchedulerManager {
           await sb.from("group_scheduled_messages")
             .update({ is_active: false, next_run_at: null })
             .eq("id", msg.id);
+          this.setDiagnostic(msg.id, {
+            status_code: "missed",
+            status_label: "Perdida",
+            reason_code: "once_expired_before_start",
+            reason_label: "A publicação única expirou antes do disparo",
+            reason_details: "O horário agendado já havia passado quando o scheduler carregou essa publicação.",
+            diagnostics: { source: "loadAll", next_run_at: msg.next_run_at },
+          });
           skippedOnce++;
           continue;
         }
@@ -67,6 +75,14 @@ export class GroupSchedulerManager {
         const newNextRun = calculateNextRunAt({ schedule_type: msg.schedule_type, content: msg.content });
         if (!newNextRun) {
           console.warn(`[scheduler] Could not compute next_run for msg ${msg.id} (type=${msg.schedule_type})`);
+          this.setDiagnostic(msg.id, {
+            status_code: "failed",
+            status_label: "Falhou",
+            reason_code: "next_run_unavailable",
+            reason_label: "Não foi possível calcular o próximo disparo",
+            reason_details: `O agendamento recorrente do tipo ${msg.schedule_type} não gerou uma próxima data válida.`,
+            diagnostics: { source: "loadAll" },
+          });
           continue;
         }
 
