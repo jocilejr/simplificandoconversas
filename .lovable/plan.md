@@ -1,46 +1,63 @@
 
 
-## Plano — Deduplicação por CPF no Follow Up
+## Plano — Fix: Follow Up fire-and-forget + remover lock
 
-### Problema
-A deduplicação atual usa `phoneSendCount` (por telefone) e `max_messages_per_phone_per_day`. Se o mesmo cliente (mesmo CPF) tem 3 boletos pendentes com telefones ligeiramente diferentes, todos passam. Com CPF, a dedup é precisa: 1 cliente = 1 mensagem.
+### Problema raiz
+1. **`await queue.enqueue()`** (linha 852) bloqueia até o envio real na fila anti-ban (30s+ delay por mensagem). Com 40 jobs = 20+ minutos bloqueado. O HTTP dá timeout.
+2. **`workspaceLocks`** (linha 924-929) impede re-execuções. Se o timeout mata a request, o lock fica preso em memória indefinidamente.
+3. Jobs ficam travados em `processing` — nunca chegam a `sent` ou `failed`.
+4. O frontend mostra "concluído" porque o POST retornou (com timeout ou 0 enviados), mas a table mostra `pending`/`processing`.
 
-### Mudanças em `deploy/backend/src/routes/followup-daily.ts`
+### Correções em `deploy/backend/src/routes/followup-daily.ts`
 
-**1. Incluir `customer_document` na query de boletos (linha 297)**
+**1. Remover `workspaceLocks` (linhas 7, 924-929, 947-948)**
+Desnecessário: a geração é idempotente (upsert com unique constraint) e o claim usa `eq("status", currentStatus)`.
+
+**2. Fire-and-forget no envio (linhas 851-898)**
+Trocar `await queue.enqueue()` por enfileiramento sem bloqueio com callbacks:
+
 ```typescript
-.select("id, created_at, customer_name, customer_phone, customer_document, amount, metadata, external_id")
+queue.enqueue(async () => {
+  await dispatchJob({ ...job, normalized_phone: normalizedPhone }, context.delayMs);
+}, `followup:${job.transaction_id}:${job.rule_id}`)
+  .then(async () => {
+    await markQueueJob(sb, job.id, {
+      status: "sent", last_error: null,
+      completed_at: new Date().toISOString(),
+      normalized_phone: normalizedPhone,
+    });
+    await insertRecoveryContact(sb, { ... notes: "sent|followup_dispatch_queue" });
+  })
+  .catch(async (err) => {
+    const msg = err?.message?.slice(0, 500) || "Falha desconhecida";
+    await markQueueJob(sb, job.id, {
+      status: "failed", last_error: msg,
+      completed_at: new Date().toISOString(),
+      normalized_phone: normalizedPhone,
+    });
+    await insertRecoveryContact(sb, { ... notes: `failed_api|${msg}` });
+  });
+
+// Não bloqueia — conta como enfileirado
+phoneSendCount.set(normalizedPhone, currentCount + 1);
+result.sent++; // significa "enfileirado"
 ```
 
-**2. Adicionar `customer_document` ao tipo `BoletoRow`**
+O job já está como `processing` pelo claim. A fila da instância processa no ritmo dela e o callback atualiza o status final.
 
-**3. Deduplicação por CPF em `generateJobsForWorkspace` (após linha 416)**
-Antes do loop de boletos, construir um Set de CPFs já processados:
-```typescript
-const processedCpfs = new Set<string>();
+**3. Adicionar `"processing"` como status no frontend**
+Atualizar `useFollowUpDispatch.ts` e `FollowUpDashboard.tsx` para exibir `processing` (jobs enfileirados aguardando envio real).
+
+**4. Toast mais preciso no dashboard**
+Mudar a mensagem de sucesso para "X jobs enfileirados" em vez de "X enviados".
+
+### Resumo de arquivos
+- `deploy/backend/src/routes/followup-daily.ts` — fire-and-forget + remover locks
+- `src/hooks/useFollowUpDispatch.ts` — adicionar `processing` ao tipo
+- `src/components/followup/FollowUpDashboard.tsx` — exibir processing + toast ajustado
+
+### Validação VPS após deploy
+```bash
+docker compose logs backend --tail=100 | grep "followup-daily"
 ```
-
-Dentro do loop, após encontrar a `matchingRule` e antes de gerar o job:
-- Extrair CPF: `const cpf = boleto.customer_document?.replace(/\D/g, "") || null;`
-- Se `cpf` existe e `cpf.length >= 11`:
-  - Se `processedCpfs.has(cpf)` → marcar como `skipped_duplicate` e `continue`
-  - Senão → `processedCpfs.add(cpf)`
-- Se não tem CPF → segue o fluxo normal (não bloqueia por falta de CPF)
-
-**4. Adicionar status `skipped_duplicate` ao `FINAL_JOB_STATUSES`**
-
-**5. Adicionar contador `skippedDuplicate` ao `WorkspaceRunResult` e ao response**
-
-**6. Dedup por CPF também no `buildPhoneSendCount` → `buildCpfSendCount`**
-Trocar a limitação diária de phone-based para CPF-based:
-- Se o boleto tem CPF, contar por CPF
-- Fallback para phone se não tem CPF
-
-**7. Frontend — `useFollowUpDispatch.ts` e `FollowUpDashboard.tsx`**
-Adicionar `skipped_duplicate` ao tipo de status e exibir no dashboard.
-
-### Resumo
-- 1 arquivo backend: `deploy/backend/src/routes/followup-daily.ts`
-- 2 arquivos frontend: `useFollowUpDispatch.ts`, `FollowUpDashboard.tsx`
-- Dedup primária por CPF, fallback por telefone quando CPF ausente
 
