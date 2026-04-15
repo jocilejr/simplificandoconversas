@@ -1398,6 +1398,29 @@ router.post("/mark-tab-seen", async (req: Request, res: Response) => {
   }
 });
 
+// ── Mark ALL unseen transactions as seen (clears orphans too) ──
+router.post("/mark-all-seen", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.body;
+    if (!workspaceId) return res.json({ updated: 0 });
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("transactions")
+      .update({ viewed_at: new Date().toISOString() })
+      .eq("workspace_id", workspaceId)
+      .is("viewed_at", null)
+      .select("id");
+    if (error) {
+      console.error("[mark-all-seen] error:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ updated: data?.length || 0 });
+  } catch (err: any) {
+    console.error("[mark-all-seen] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /member-products — list member products by phone variations ──
 router.get("/member-products", async (req: Request, res: Response) => {
   try {
