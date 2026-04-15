@@ -275,7 +275,7 @@ export default function SchedulerDebugPanel() {
     setActiveIndex(nextIdx);
 
     window.requestAnimationFrame(() => {
-      scrollToCard(nextIdx, "smooth");
+      scrollToCard(nextIdx, true);
     });
   }, [nextIdx, sorted.length]);
 
@@ -287,7 +287,7 @@ export default function SchedulerDebugPanel() {
       : Math.min(activeIndex + 1, sorted.length - 1);
 
     setActiveIndex(targetIndex);
-    scrollToCard(targetIndex, "smooth");
+    scrollToCard(targetIndex, true);
   };
 
   // Summary counters
