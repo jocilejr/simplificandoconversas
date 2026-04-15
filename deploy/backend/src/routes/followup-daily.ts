@@ -10,6 +10,7 @@ const FINAL_JOB_STATUSES = new Set([
   "sent",
   "skipped_phone_limit",
   "skipped_invalid_phone",
+  "skipped_duplicate",
 ]);
 
 interface Rule {
