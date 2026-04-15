@@ -165,6 +165,8 @@ export function FollowUpDashboard() {
                   <td className="py-3 px-4">
                     {boleto.sendStatus === "sent" ? (
                       <Badge variant="outline" className="bg-green-500/15 text-green-500 border-green-500/25 text-[10px] gap-1 font-medium"><CheckCircle2 className="h-3 w-3" />Enviado</Badge>
+                    ) : boleto.sendStatus === "processing" ? (
+                      <Badge variant="outline" className="bg-primary/15 text-primary border-primary/25 text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3 animate-spin" />Na fila</Badge>
                     ) : boleto.sendStatus === "failed" ? (
                       <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><AlertTriangle className="h-3 w-3" />Falha API</Badge>
                     ) : boleto.sendStatus === "skipped_phone_limit" ? (
