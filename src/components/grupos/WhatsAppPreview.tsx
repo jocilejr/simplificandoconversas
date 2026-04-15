@@ -24,6 +24,7 @@ export interface WhatsAppPreviewProps {
   listSections?: { title: string; rows: { title: string; description: string }[] }[];
   mentionAll?: boolean;
   forceLinkPreview?: boolean;
+  compact?: boolean;
 }
 
 function TimeStamp() {
@@ -178,7 +179,7 @@ export default function WhatsAppPreview(props: WhatsAppPreviewProps) {
     locName, locAddress, locLat, locLng,
     contactName, contactPhone, pollName, pollOptions,
     listTitle, listDescription, listButtonText, listFooter,
-    mentionAll, forceLinkPreview,
+    mentionAll, forceLinkPreview, compact,
   } = props;
 
   const detectedUrl = useMemo(() => {
