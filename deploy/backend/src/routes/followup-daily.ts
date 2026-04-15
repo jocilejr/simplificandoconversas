@@ -489,6 +489,14 @@ async function generateJobsForWorkspace(
           last_error: `CPF duplicado: ${cpf}`,
           completed_at: new Date().toISOString(),
         });
+        // Register in boleto_recovery_contacts so frontend detects the duplicate
+        await sb.from("boleto_recovery_contacts").insert({
+          workspace_id: setting.workspace_id,
+          user_id: setting.user_id,
+          transaction_id: boleto.id,
+          rule_id: matchingRule.id,
+          notes: `skipped_duplicate:${cpf}`,
+        });
         result.skippedDuplicate++;
         result.skipped++;
         continue;
