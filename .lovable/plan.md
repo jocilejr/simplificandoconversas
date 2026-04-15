@@ -1,75 +1,68 @@
 
+Diagnóstico: não é “só no front”, e também não é “todas as transações entram normalizadas”.
 
-## Plano — Corrigir Follow Up: usar telefone direto + ordem de deduplicação
+O que encontrei no código:
 
-### Problemas identificados
+1. Na interface, vários pontos normalizam apenas para exibição:
+- `src/components/transactions/TransactionDetailDialog.tsx`
+- `src/components/transactions/RecoveryPopover.tsx`
+- `src/components/transactions/BoletoQuickRecovery.tsx`
+Todos usam `src/lib/normalizePhone.ts` ao mostrar o telefone.
 
-1. **Telefone não normalizado**: Linhas 444 e 492 fazem `.replace(/\D/g, "")` no `customer_phone` — isso remove formatação mas NÃO adiciona "55". O `customer_phone` já vem normalizado da `transactions` (com 55 prefix), então basta usar direto sem transformação.
+2. No backend, há rotas que salvam `transactions.customer_phone` já normalizado:
+- `deploy/backend/src/routes/payment.ts`
+- `deploy/backend/src/routes/manual-payment-webhook.ts`
+- `deploy/backend/src/routes/member-purchase.ts`
+- `deploy/backend/src/routes/yampi-webhook.ts`
 
-2. **Deduplicação CPF antes de validações**: A checagem de CPF (linha 440) roda ANTES de `blockedRuleKeys` (linha 478). Resultado: boleto A (CPF X) já foi contactado → CPF X entra no Set → boleto A é pulado por `blockedRuleKeys` → boleto B (mesmo CPF, legítimo) é marcado como duplicado sem nenhum ter sido enviado.
+3. Mas há rotas que salvam telefone cru/inconsistente:
+- `deploy/backend/src/routes/platform-api.ts`
+  - em `/transactions` salva só `replace(/\D/g, "")`
+  - em `generate-payment` salva `customer_phone || null` sem normalizar
+- `deploy/backend/src/routes/external-webhook.ts`
+  - cria transação com `cleanedPhone`, que pode não seguir o padrão final usado pela recuperação
 
-3. **Ordem de boletos indeterminada**: Sem ORDER BY na query (linha 299-304), a ordem muda entre execuções.
+4. O Follow Up hoje está lendo o valor bruto de `transactions`:
+- `deploy/backend/src/routes/followup-daily.ts`
+- hoje ele faz `const normalized = boleto.customer_phone || null`
+- por isso a fila herda exatamente o valor salvo no banco, certo ou errado
 
-### Correções em `deploy/backend/src/routes/followup-daily.ts`
+Conclusão
+A recuperação automática “funciona” quando a transação veio de uma rota que normaliza na escrita.
+Ela quebra quando a transação veio de uma rota que grava cru.
+A tela mascara isso porque formata na leitura.
 
-**1. Query com ORDER BY (linha 304)**
-Adicionar `.order("created_at", { ascending: true })` para processar boletos do mais antigo ao mais recente.
+Plano de correção
 
-**2. Usar `customer_phone` direto como `normalized_phone`**
-Nas linhas 444 e 492, trocar:
-```typescript
-const normalized = boleto.customer_phone?.replace(/\D/g, "") || null;
-```
-Por:
-```typescript
-const normalized = boleto.customer_phone || null;
-```
-O telefone já está normalizado na inserção da transação. Mesma mudança na linha 778 do processamento.
+1. Padronizar a origem da verdade no backend
+- Criar/usar uma única função de normalização no backend (`deploy/backend/src/lib/normalize-phone.ts`) para toda gravação de `transactions.customer_phone`.
 
-**3. Reordenar: validações ANTES da deduplicação CPF**
-Mover `blockedRuleKeys`, `existingJob` e `blocks.length === 0` para ANTES da checagem de CPF. Só adicionar o CPF ao Set se o boleto realmente vai gerar um job pendente:
+2. Corrigir todas as rotas que ainda gravam bruto
+- Ajustar `deploy/backend/src/routes/platform-api.ts`
+- Ajustar `deploy/backend/src/routes/external-webhook.ts`
+- Revisar qualquer insert/update restante em `transactions.customer_phone` para garantir padrão único `55...`.
 
-```typescript
-for (const boleto of context.boletos) {
-  // 1. Encontrar regra
-  const matchingRule = findMatchingRule(...);
-  if (!matchingRule) { skip; continue; }
+3. Blindar o Follow Up
+- Em `deploy/backend/src/routes/followup-daily.ts`, normalizar antes de gravar `phone` e `normalized_phone` na fila.
+- No processamento da fila, normalizar novamente como defesa para jobs antigos.
 
-  const ruleKey = makeRuleKey(boleto.id, matchingRule.id);
+4. Parar de depender do “telefone exibido”
+- O Follow Up deve sempre trabalhar com o telefone normalizado do backend, nunca com o valor “como veio” nem com aparência da UI.
 
-  // 2. Já contactado hoje?
-  if (blockedRuleKeys.has(ruleKey)) { skip; continue; }
+5. Limpeza de dados já gerados
+- Após corrigir o código, limpar os jobs do dia na `followup_dispatch_queue` para regenerar com os números corretos.
+- Se quiser consistência histórica, fazer um script/migração para corrigir `transactions.customer_phone` legado.
 
-  // 3. Job já existe com status final?
-  const existingJob = existingJobsByKey.get(ruleKey);
-  if (existingJob && FINAL_JOB_STATUSES.has(existingJob.status)) { skip; continue; }
+Validação na VPS
+Vou te orientar a validar exatamente dentro da VPS, comparando:
+- transações criadas por cada rota/origem
+- telefone salvo em `transactions`
+- telefone gravado em `followup_dispatch_queue`
 
-  // 4. Tem blocos?
-  const blocks = buildBlocks(matchingRule);
-  if (blocks.length === 0) { skip; continue; }
+Arquivos que precisam ser ajustados
+- `deploy/backend/src/routes/followup-daily.ts`
+- `deploy/backend/src/routes/platform-api.ts`
+- `deploy/backend/src/routes/external-webhook.ts`
 
-  // 5. AGORA sim: deduplicação por CPF
-  const cpf = boleto.customer_document?.replace(/\D/g, "") || null;
-  if (cpf && cpf.length >= 11) {
-    if (processedCpfs.has(cpf)) { upsert skipped_duplicate; continue; }
-    processedCpfs.add(cpf);
-  }
-
-  // 6. Gerar job pendente
-  const normalized = boleto.customer_phone || null;
-  // ... upsert pending job
-}
-```
-
-### Resumo
-- 1 arquivo: `deploy/backend/src/routes/followup-daily.ts`
-- Usar `customer_phone` direto (sem re-processar)
-- Mover dedup CPF para DEPOIS das validações de regra/contato/blocos
-- Adicionar ORDER BY na query de boletos
-
-### Validação VPS
-```bash
-docker compose exec -T postgres psql -U postgres -d postgres -c \
-  "SELECT customer_phone, length(customer_phone) FROM transactions WHERE type='boleto' AND status='pendente' ORDER BY created_at DESC LIMIT 10;"
-```
-
+Observação importante
+Existe um indício adicional de inconsistência no próprio `followup-daily.ts`: ele referencia `normalizePhoneDefensive(...)` no carregamento de contatos do dia, mas essa função não aparece definida no arquivo lido. Na implementação eu também revisaria isso para remover qualquer lógica “paralela” de normalização e centralizar tudo em uma única função backend.
