@@ -833,6 +833,16 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
   try {
     const sb = getServiceClient();
     const { name, description, instanceName, groupJids, isActive } = req.body;
+
+    // Fetch old state to detect activation changes
+    const { data: oldCampaign } = await sb
+      .from("group_campaigns")
+      .select("is_active")
+      .eq("id", req.params.id)
+      .single();
+
+    const wasActive = oldCampaign?.is_active ?? false;
+
     const update: any = {};
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
@@ -847,6 +857,61 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
       .select()
       .single();
     if (error) throw error;
+
+    // Sync scheduler timers when campaign activation state changes
+    const nowActive = data.is_active;
+    if (isActive !== undefined && wasActive !== nowActive) {
+      const { data: msgs } = await sb
+        .from("group_scheduled_messages")
+        .select("id, schedule_type, content, campaign_id, next_run_at, is_active")
+        .eq("campaign_id", req.params.id)
+        .eq("is_active", true);
+
+      if (msgs && msgs.length > 0) {
+        if (nowActive) {
+          // Campaign activated → register all active message timers
+          let synced = 0;
+          for (const m of msgs) {
+            let nextRun = m.next_run_at;
+            // Recalculate if null or in the past
+            if (!nextRun || new Date(nextRun) <= new Date()) {
+              if (m.schedule_type === "once") {
+                // Expired once — deactivate
+                await sb.from("group_scheduled_messages")
+                  .update({ is_active: false, next_run_at: null })
+                  .eq("id", m.id);
+                continue;
+              }
+              nextRun = calculateNextRunAt({ schedule_type: m.schedule_type, content: m.content });
+              if (nextRun) {
+                await sb.from("group_scheduled_messages")
+                  .update({ next_run_at: nextRun })
+                  .eq("id", m.id);
+              } else {
+                continue;
+              }
+            }
+            groupScheduler.scheduleMessage({
+              id: m.id,
+              schedule_type: m.schedule_type,
+              content: m.content,
+              campaign_id: m.campaign_id,
+              next_run_at: nextRun,
+              is_active: true,
+            });
+            synced++;
+          }
+          console.log(`[groups-api] Campaign ${req.params.id} activated → synced ${synced} timer(s)`);
+        } else {
+          // Campaign deactivated → cancel all message timers
+          for (const m of msgs) {
+            groupScheduler.cancelMessage(m.id);
+          }
+          console.log(`[groups-api] Campaign ${req.params.id} deactivated → cancelled ${msgs.length} timer(s)`);
+        }
+      }
+    }
+
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
