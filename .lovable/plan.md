@@ -1,46 +1,39 @@
 
 
-# Plano: Acelerar fetch de grupos e mostrar todos
+# Plano: Contadores de entrada/saída por grupo + totais no dashboard
 
-## Problema
-O endpoint `POST /fetch-groups` faz uma chamada sequencial `findGroupInfos` para **cada grupo** individualmente (linha 676). Com 50+ grupos, isso leva minutos e causa timeouts. Além disso, grupos são descartados se o `findGroupInfos` falhar ou se o owner não for encontrado nos participantes.
+## O que muda
 
-## Causa raiz
-```
-fetchAllGroups → loop sobre cada grupo → findGroupInfos (1 request por grupo, sequencial)
-```
-Se a instância tem 100 grupos, são 100+ requests HTTP sequenciais à Evolution API.
+### 1. Grid de estatísticas — 2 novos StatCards totais
+Expandir de 4 para 6 cards (`lg:grid-cols-6`), adicionando:
+- **Entraram** (UserPlus, verde) — total de eventos `action === "add"`
+- **Saíram** (UserMinus, vermelho) — total de eventos `action === "remove"`
 
-## Solução
-Usar os dados já retornados pelo `fetchAllGroups` sem chamar `findGroupInfos` para cada grupo. O `fetchAllGroups` já retorna nome e tamanho. A validação de owner é desnecessária para listar grupos disponíveis — o usuário decide o que monitorar.
+### 2. Card "Grupos Monitorados" — contadores por grupo
+Cada linha de grupo passa a mostrar, além do badge de membros, dois mini-contadores:
+- `+N` em verde (entradas naquele grupo)
+- `-N` em vermelho (saídas naquele grupo)
 
-### Alteração em `deploy/backend/src/routes/groups-api.ts` (linhas 656-719)
-
-Substituir o loop com `findGroupInfos` por mapeamento direto:
+Derivado cruzando `events` com `selectedGroups` via `group_jid`:
 
 ```typescript
-const groups = gusOnly.map((g: any) => {
-  const jid = g.id || g.jid || g.groupJid || "";
-  const name = g.subject || g.name || "Sem nome";
-  const memberCount = g.size || g.participants?.length || 0;
-  return { jid, name, memberCount };
-});
-
-console.log(`[groups-api] Total groups returned: ${groups.length} (from ${list.length} raw)`);
-res.json(groups);
+const eventsByGroup = events.reduce((acc, e) => {
+  const jid = e.group_jid;
+  if (!acc[jid]) acc[jid] = { add: 0, remove: 0 };
+  if (e.action === "add") acc[jid].add++;
+  if (e.action === "remove") acc[jid].remove++;
+  return acc;
+}, {});
 ```
 
-## Resultado
-- Fetch de grupos passa de ~30-60s para ~1-2s (uma única chamada à Evolution API)
-- **Todos** os grupos `@g.us` da instância são listados
-- Nenhuma validação de owner ou participantes — o usuário escolhe o que monitorar
-- A validação real de participação continua sendo feita no envio de campanhas (que já usa `findGroupInfos`)
+Na listagem, cada grupo mostra:
+```
+Nome do Grupo          +3  -1  [125]
+Instância
+```
 
 ## Arquivo modificado
-- `deploy/backend/src/routes/groups-api.ts` — simplificar `POST /fetch-groups`
+- `src/components/grupos/GroupDashboardTab.tsx` — novos StatCards + contadores inline por grupo
 
-## Após deploy
-```bash
-cd /root/deploy && docker compose up -d --build backend
-```
+Sem alterações no backend. Os dados já vêm do `useGroupEvents` (últimos 50 eventos).
 
