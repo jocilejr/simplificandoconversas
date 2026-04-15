@@ -1,45 +1,47 @@
 
 
-# Plano: Indicador individual de sync por grupo
+# Plano: Criar tabela `quick_replies` na VPS
 
-## Contexto
-O auto-sync **está funcionando** — o log mostra "2 link(s) processed". O que falta é gravar e exibir o status individual de cada grupo.
+## Problema
+A tabela `quick_replies` não existe no banco da VPS. O hook tenta fazer insert direto via Supabase client e falha.
 
-## Alterações
+## Solução
 
-### 1. Backend — `deploy/backend/src/routes/groups-api.ts`
+Execute na VPS:
 
-No `sync-invite` (manual) e `sync-all` (automático), após processar cada grupo no loop, gravar dentro do objeto `gl`:
-
-```js
-gl.last_synced_at = new Date().toISOString();
-gl.last_sync_status = inviteFetched ? (gl.status === "banned" ? "banned" : "ok") : "error";
-```
-
-Esses campos ficam no JSONB `group_links` — sem migration.
-
-### 2. Frontend — `src/hooks/useGroupSmartLinks.ts`
-
-Adicionar ao tipo `GroupLink`:
-- `last_synced_at?: string`
-- `last_sync_status?: "ok" | "banned" | "error"`
-- `status?: string`
-
-### 3. Frontend — `src/components/grupos/GroupSmartLinkTab.tsx`
-
-Na tabela, adicionar uma coluna **"Último Sync"** com:
-- Tempo relativo ("há 5s", "há 3min") usando `formatTimeAgo`
-- Cor baseada no `last_sync_status`:
-  - Verde: ok
-  - Vermelho: banned/error  
-  - Cinza: nunca sincronizado
-- Tooltip com detalhes quando hover
-
-### Nenhuma migration necessária
-Todos os dados ficam no JSONB existente `group_links`.
-
-### Deploy
 ```bash
-cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+CREATE TABLE IF NOT EXISTS public.quick_replies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  workspace_id uuid NOT NULL,
+  category text NOT NULL DEFAULT 'Geral'
+);
+
+CREATE INDEX IF NOT EXISTS idx_quick_replies_workspace ON public.quick_replies(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_quick_replies_user ON public.quick_replies(user_id);
+
+ALTER TABLE public.quick_replies ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY \"quick_replies_select\" ON public.quick_replies FOR SELECT USING (true);
+CREATE POLICY \"quick_replies_insert\" ON public.quick_replies FOR INSERT WITH CHECK (true);
+CREATE POLICY \"quick_replies_update\" ON public.quick_replies FOR UPDATE USING (true);
+CREATE POLICY \"quick_replies_delete\" ON public.quick_replies FOR DELETE USING (true);
+
+NOTIFY pgrst, 'reload schema';
+"
 ```
+
+Também registre a tabela no `migrate-workspace.sql` para futuros workspaces:
+
+```bash
+# Adicionar ao array de tabelas no migrate-workspace.sql
+grep -q 'quick_replies' /root/simplificandoconversas/deploy/migrate-workspace.sql || echo "-- quick_replies já registrada"
+```
+
+## Nenhuma alteração de código necessária
+O hook já está correto — só falta a tabela no banco da VPS.
 
