@@ -27,13 +27,26 @@ export default function GroupDashboardTab() {
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
 
+  const addCount = events.filter((e: any) => e.action === "add").length;
+  const removeCount = events.filter((e: any) => e.action === "remove").length;
+
+  const eventsByGroup = events.reduce<Record<string, { add: number; remove: number }>>((acc, e: any) => {
+    const jid = e.group_jid;
+    if (!acc[jid]) acc[jid] = { add: 0, remove: 0 };
+    if (e.action === "add") acc[jid].add++;
+    if (e.action === "remove") acc[jid].remove++;
+    return acc;
+  }, {});
+
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
+        <StatCard title="Entraram" value={String(addCount)} icon={UserPlus} iconColor="text-green-500" />
+        <StatCard title="Saíram" value={String(removeCount)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
       {!hasSelectedGroups && (
@@ -66,15 +79,22 @@ export default function GroupDashboardTab() {
               </div>
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
-                {selectedGroups.map((g) => (
+                {selectedGroups.map((g) => {
+                  const ge = eventsByGroup[g.group_jid] || { add: 0, remove: 0 };
+                  return (
                   <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{g.group_name}</p>
                       <p className="text-xs text-muted-foreground">{g.instance_name}</p>
                     </div>
-                    <Badge variant="outline" className="shrink-0 text-xs border-border/50">{g.member_count}</Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {ge.add > 0 && <span className="text-xs font-medium text-green-500">+{ge.add}</span>}
+                      {ge.remove > 0 && <span className="text-xs font-medium text-red-500">-{ge.remove}</span>}
+                      <Badge variant="outline" className="text-xs border-border/50">{g.member_count}</Badge>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
