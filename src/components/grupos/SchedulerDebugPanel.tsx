@@ -90,9 +90,8 @@ function StatusBadge({ msg, isPast }: { msg: ScheduledMessageDebug; isPast: bool
 
 /* ─── single card ─── */
 function ScheduleCard({ msg, isNext }: { msg: ScheduledMessageDebug; isNext: boolean }) {
-  const now = new Date();
   const nextRun = msg.next_run_at ? new Date(msg.next_run_at) : null;
-  const isPast = nextRun ? nextRun < now : true;
+  const isPast = nextRun ? nextRun.getTime() < Date.now() : true;
 
   const Icon = typeIcons[msg.message_type] || FileText;
   const sentCount = msg.queue_items.filter(qi => qi.status === "sent").length;
