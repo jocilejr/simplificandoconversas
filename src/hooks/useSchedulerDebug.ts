@@ -19,6 +19,7 @@ export interface ScheduledMessageDebug {
   is_active: boolean;
   next_run_at: string | null;
   last_run_at: string | null;
+  effective_run_at: string | null;
   has_timer: boolean;
   missed: boolean;
   campaign_name: string;
@@ -51,7 +52,8 @@ export function useSchedulerDebug() {
   const { data, isLoading, error } = useQuery<SchedulerDebugData>({
     queryKey: ["scheduler-debug", workspaceId],
     enabled: !!workspaceId,
-    refetchInterval: 30000,
+    refetchInterval: 3000,
+    refetchIntervalInBackground: true,
     queryFn: async () => {
       const resp = await fetch(apiUrl(`groups/scheduler-debug?workspaceId=${workspaceId}`));
       if (!resp.ok) throw new Error(await resp.text());

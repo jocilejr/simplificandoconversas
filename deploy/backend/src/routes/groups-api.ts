@@ -1759,21 +1759,60 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     const todayEndUtc = new Date(todayEndBrt.getTime() - brtOffset).toISOString();
 
     // Fetch all active scheduled messages for today (by next_run_at or last_run_at)
+    const isWithinToday = (value: string | null | undefined) => {
+      if (!value) return false;
+      const dt = new Date(value);
+      return dt >= new Date(todayStartUtc) && dt <= new Date(todayEndUtc);
+    };
+
+    const resolveTodayRunAt = (message: any): string | null => {
+      const nextRunToday = isWithinToday(message.next_run_at);
+      const lastRunToday = isWithinToday(message.last_run_at);
+
+      let contentData: any = {};
+      try {
+        contentData = typeof message.content === "string" ? JSON.parse(message.content) : (message.content || {});
+      } catch {
+        contentData = {};
+      }
+
+      if (message.schedule_type === "once") {
+        if (nextRunToday) return message.next_run_at;
+        if (isWithinToday(message.scheduled_at)) return message.scheduled_at;
+        if (lastRunToday) return message.last_run_at;
+        return message.next_run_at || message.last_run_at || message.scheduled_at || null;
+      }
+
+      const runTime = contentData.runTime || contentData.time;
+      if (runTime && (nextRunToday || lastRunToday)) {
+        const [hhStr, mmStr] = String(runTime).split(":");
+        const hh = parseInt(hhStr || "0", 10);
+        const mm = parseInt(mmStr || "0", 10);
+        return brtToUtc(
+          todayStartBrt.getUTCFullYear(),
+          todayStartBrt.getUTCMonth(),
+          todayStartBrt.getUTCDate(),
+          hh,
+          mm,
+        ).toISOString();
+      }
+
+      if (nextRunToday) return message.next_run_at;
+      if (lastRunToday) return message.last_run_at;
+      return message.next_run_at || message.last_run_at || null;
+    };
+
     const { data: messages, error: msgErr } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, message_type, content, is_active, next_run_at, last_run_at, campaign_id")
-      .eq("is_active", true)
+      .select("id, schedule_type, message_type, content, is_active, next_run_at, last_run_at, scheduled_at, campaign_id")
+      .eq("workspace_id", workspaceId)
       .order("next_run_at", { ascending: true });
 
     if (msgErr) return res.status(500).json({ error: msgErr.message });
 
     // Filter messages relevant to today (next_run_at today OR last_run_at today)
     const todayMessages = (messages || []).filter((m: any) => {
-      const nextRun = m.next_run_at ? new Date(m.next_run_at) : null;
-      const lastRun = m.last_run_at ? new Date(m.last_run_at) : null;
-      const nextRunToday = nextRun && nextRun >= new Date(todayStartUtc) && nextRun <= new Date(todayEndUtc);
-      const lastRunToday = lastRun && lastRun >= new Date(todayStartUtc) && lastRun <= new Date(todayEndUtc);
-      return nextRunToday || lastRunToday;
+      return isWithinToday(m.next_run_at) || isWithinToday(m.last_run_at) || isWithinToday(m.scheduled_at);
     });
 
     // Get campaign names
@@ -1822,7 +1861,8 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     // Build response
     const result = todayMessages.map((m: any) => {
       const hasTimer = groupScheduler.hasTimer(m.id);
-      const nextRun = m.next_run_at ? new Date(m.next_run_at) : null;
+      const effectiveRunAt = resolveTodayRunAt(m);
+      const nextRun = effectiveRunAt ? new Date(effectiveRunAt) : null;
       const queueItems = queueMap[m.id] || [];
 
       // Detect missed: next_run_at in the past, active, no queue items for this run
@@ -1849,6 +1889,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         is_active: m.is_active,
         next_run_at: m.next_run_at,
         last_run_at: m.last_run_at,
+        effective_run_at: effectiveRunAt,
         has_timer: hasTimer,
         missed,
         campaign_name: campaignMap[m.campaign_id] || "Campanha desconhecida",
@@ -1864,6 +1905,12 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
           error_message: qi.error_message,
         })),
       };
+    });
+
+    result.sort((a: any, b: any) => {
+      const aTime = a.effective_run_at ? new Date(a.effective_run_at).getTime() : 0;
+      const bTime = b.effective_run_at ? new Date(b.effective_run_at).getTime() : 0;
+      return aTime - bTime;
     });
 
     const serverTimeUtc = now.toISOString();
