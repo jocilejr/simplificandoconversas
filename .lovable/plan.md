@@ -1,49 +1,45 @@
 
 
-# Plano: Sync incremental + indicador visual em tempo real
+# Plano: Indicador individual de sync por grupo
 
-## Problema
-1. O backend salva `group_links` no DB **apenas no final** do loop. Se o refetch do frontend ocorre antes da escrita final, os últimos grupos aparecem sem URL.
-2. Não há indicador visual de qual grupo está sendo sincronizado.
+## Contexto
+O auto-sync **está funcionando** — o log mostra "2 link(s) processed". O que falta é gravar e exibir o status individual de cada grupo.
 
-## Solução
+## Alterações
 
-### 1. `deploy/backend/src/routes/groups-api.ts` — sync-invite (linhas 1546-1622)
-- **Salvar no DB após CADA grupo** (não só no final). Mover o `sb.from("group_smart_links").update({ group_links })` para dentro do loop, após processar cada grupo.
-- Adicionar campo temporário `sync_progress` (JSON) no update: `{ current: i+1, total: groupLinks.length, currentJid: gl.group_jid }` — permite o frontend saber qual grupo está sendo processado.
-- Manter o update final com `last_successful_sync_at` e reset de erros.
+### 1. Backend — `deploy/backend/src/routes/groups-api.ts`
 
-### 2. `src/hooks/useGroupSmartLinks.ts` — SmartLink interface + hook
-- Adicionar `sync_progress` ao tipo `SmartLink`: `sync_progress: { current: number; total: number; currentJid: string } | null`
-- No `syncInviteLinks.onSuccess`: setar `sync_progress: null` via `queryClient.setQueryData` para limpar o progresso imediatamente.
+No `sync-invite` (manual) e `sync-all` (automático), após processar cada grupo no loop, gravar dentro do objeto `gl`:
 
-### 3. `src/components/grupos/GroupSmartLinkTab.tsx` — indicador visual
-- Na tabela de grupos, quando `smartLink.sync_progress?.currentJid === gl.group_jid`: mostrar spinner animado (ícone `RefreshCw` com `animate-spin`) na linha do grupo.
-- Grupos já processados (index < current): mostrar check verde temporário.
-- Grupos pendentes (index > current): manter visual normal.
-- Header: mostrar progresso "Sincronizando 5/15..." ao lado do botão.
-- Aumentar `refetchInterval` para **3 segundos** enquanto `sync_progress` não for null (via lógica condicional no hook ou no componente).
+```js
+gl.last_synced_at = new Date().toISOString();
+gl.last_sync_status = inviteFetched ? (gl.status === "banned" ? "banned" : "ok") : "error";
+```
 
-### 4. Nenhuma migração de DB necessária
-O campo `sync_progress` será armazenado como JSONB dentro da coluna existente ou como coluna adicional. Como `group_smart_links` já tem estrutura flexível, vou usar uma coluna nova `sync_progress jsonb default null` — precisa de uma migration simples.
+Esses campos ficam no JSONB `group_links` — sem migration.
 
-**Correção**: Na verdade, posso evitar a migration usando o campo `last_sync_error` temporariamente ou adicionando ao JSON do `group_links`. Melhor: adicionar coluna `sync_progress` via migration.
+### 2. Frontend — `src/hooks/useGroupSmartLinks.ts`
 
-### Resumo das alterações
-| Arquivo | O quê |
-|---------|-------|
-| `deploy/backend/src/routes/groups-api.ts` | Save incremental + write `sync_progress` a cada iteração, limpar no final |
-| `src/hooks/useGroupSmartLinks.ts` | Tipo `sync_progress`, refetchInterval dinâmico (3s quando syncing) |
-| `src/components/grupos/GroupSmartLinkTab.tsx` | Spinner no grupo atual, check nos processados, "Sincronizando X/Y" no header |
-| Migration SQL | `ALTER TABLE group_smart_links ADD COLUMN sync_progress jsonb DEFAULT NULL` |
+Adicionar ao tipo `GroupLink`:
+- `last_synced_at?: string`
+- `last_sync_status?: "ok" | "banned" | "error"`
+- `status?: string`
+
+### 3. Frontend — `src/components/grupos/GroupSmartLinkTab.tsx`
+
+Na tabela, adicionar uma coluna **"Último Sync"** com:
+- Tempo relativo ("há 5s", "há 3min") usando `formatTimeAgo`
+- Cor baseada no `last_sync_status`:
+  - Verde: ok
+  - Vermelho: banned/error  
+  - Cinza: nunca sincronizado
+- Tooltip com detalhes quando hover
+
+### Nenhuma migration necessária
+Todos os dados ficam no JSONB existente `group_links`.
 
 ### Deploy
 ```bash
 cd /root/simplificandoconversas/deploy && docker compose up -d --build backend
-```
-E rodar a migration na VPS:
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "ALTER TABLE group_smart_links ADD COLUMN IF NOT EXISTS sync_progress jsonb DEFAULT NULL;"
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
 ```
 
