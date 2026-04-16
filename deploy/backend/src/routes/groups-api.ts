@@ -843,9 +843,11 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
       .single();
     if (error) throw error;
 
-    // Sync scheduler timers when campaign activation state changes
+    // Sync scheduler timers idempotently whenever isActive is sent
     const nowActive = data.is_active;
-    if (isActive !== undefined && wasActive !== nowActive) {
+    console.log(`[groups-api] PUT /campaigns/${req.params.id} isActive=${isActive} wasActive=${wasActive} nowActive=${nowActive}`);
+
+    if (isActive !== undefined) {
       const { data: msgs } = await sb
         .from("group_scheduled_messages")
         .select("id, schedule_type, content, campaign_id, next_run_at, is_active")
@@ -854,14 +856,12 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
 
       if (msgs && msgs.length > 0) {
         if (nowActive) {
-          // Campaign activated → register all active message timers
+          // Campaign active → ensure all active message timers exist (idempotent)
           let synced = 0;
           for (const m of msgs) {
             let nextRun = m.next_run_at;
-            // Recalculate if null or in the past
             if (!nextRun || new Date(nextRun) <= new Date()) {
               if (m.schedule_type === "once") {
-                // Expired once — deactivate
                 await sb.from("group_scheduled_messages")
                   .update({ is_active: false, next_run_at: null, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
@@ -875,11 +875,11 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
               } else {
                 continue;
               }
+            } else {
+              await sb.from("group_scheduled_messages")
+                .update({ updated_at: new Date().toISOString() })
+                .eq("id", m.id);
             }
-            // Mark message as freshly reactivated
-            await sb.from("group_scheduled_messages")
-              .update({ updated_at: new Date().toISOString() })
-              .eq("id", m.id);
             groupScheduler.scheduleMessage({
               id: m.id,
               schedule_type: m.schedule_type,
@@ -898,6 +898,8 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
           }
           console.log(`[groups-api] Campaign ${req.params.id} deactivated → cancelled ${msgs.length} timer(s)`);
         }
+      } else {
+        console.log(`[groups-api] Campaign ${req.params.id} toggle → 0 active messages found`);
       }
     }
 
