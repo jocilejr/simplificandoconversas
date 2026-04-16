@@ -183,10 +183,22 @@ router.post("/*", async (req, res) => {
       messageTimestamp: data?.messageTimestamp,
     }));
 
-    // ── Group events are handled exclusively by /api/groups/webhook/events ──
+    // ── Forward group events to dedicated handler ──
     if (event && (event.includes("group") || event.includes("participant"))) {
-      console.log(`[webhook] ignoring legacy group event: ${event}`);
-      return res.json({ ok: true, ignored: "group events handled by /api/groups/webhook/events" });
+      const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
+      try {
+        const fwd = await fetch(`${baseUrl}/api/groups/webhook/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(req.body),
+        });
+        const result = await fwd.json();
+        console.log(`[webhook] forwarded group event: ${event}`, result);
+        return res.json(result);
+      } catch (e: any) {
+        console.error("[webhook] failed to forward group event:", e.message);
+        return res.status(500).json({ error: "forward failed" });
+      }
     }
 
     if (event === "messages.update" && data) {
