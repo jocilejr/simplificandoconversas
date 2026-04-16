@@ -828,7 +828,7 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
 
     const wasActive = oldCampaign?.is_active ?? false;
 
-    const update: any = {};
+    const update: any = { updated_at: new Date().toISOString() };
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
     if (instanceName !== undefined) update.instance_name = instanceName;
@@ -863,19 +863,23 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
               if (m.schedule_type === "once") {
                 // Expired once — deactivate
                 await sb.from("group_scheduled_messages")
-                  .update({ is_active: false, next_run_at: null })
+                  .update({ is_active: false, next_run_at: null, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
                 continue;
               }
               nextRun = calculateNextRunAt({ schedule_type: m.schedule_type, content: m.content });
               if (nextRun) {
                 await sb.from("group_scheduled_messages")
-                  .update({ next_run_at: nextRun })
+                  .update({ next_run_at: nextRun, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
               } else {
                 continue;
               }
             }
+            // Mark message as freshly reactivated
+            await sb.from("group_scheduled_messages")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", m.id);
             groupScheduler.scheduleMessage({
               id: m.id,
               schedule_type: m.schedule_type,
