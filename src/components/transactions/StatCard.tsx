@@ -11,7 +11,7 @@ interface StatCardProps {
 
 export function StatCard({ title, value, subtitle, icon: Icon, iconColor = "text-primary" }: StatCardProps) {
   return (
-    <Card>
+    <Card className="outline-none ring-0 focus:outline-none focus-visible:outline-none select-none">
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg bg-muted ${iconColor}`}>
