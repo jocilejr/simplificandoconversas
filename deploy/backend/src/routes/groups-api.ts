@@ -250,7 +250,7 @@ export function calculateNextRunAt(msg: { schedule_type: string; content: any })
 }
 
 /* ─── calculateFirstRunAt — para criação de mensagem ─── */
-function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?: string | null; content: any }): string | null {
+export function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?: string | null; content: any }): string | null {
   if (msg.schedule_type === "once") {
     if (!msg.scheduled_at) return null;
     const dt = new Date(msg.scheduled_at);
