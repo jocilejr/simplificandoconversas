@@ -33,6 +33,39 @@ async function validateInstanceOwnership(instanceName: string, workspaceId: stri
   return !!data;
 }
 
+type EvolutionGroupPayload = {
+  id?: string;
+  jid?: string;
+  groupJid?: string;
+  subject?: string;
+  name?: string;
+  size?: number;
+  participants?: unknown[];
+};
+
+function normalizeEvolutionGroupsPayload(payload: unknown) {
+  const rawGroups = Array.isArray(payload)
+    ? payload
+    : Array.isArray((payload as { groups?: unknown[] } | null)?.groups)
+      ? (payload as { groups: unknown[] }).groups
+      : [];
+
+  return rawGroups
+    .map((raw) => {
+      const group = raw as EvolutionGroupPayload;
+      const jid = group.id || group.jid || group.groupJid || "";
+      const participantCount = Array.isArray(group.participants) ? group.participants.length : 0;
+      const memberCount = typeof group.size === "number" ? group.size : participantCount;
+
+      return {
+        jid,
+        name: group.subject || group.name || "Sem nome",
+        memberCount,
+      };
+    })
+    .filter((group) => group.jid.endsWith("@g.us"));
+}
+
 /* ─── helpers: normalização de JID ─── */
 const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
 
@@ -672,24 +705,10 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
       return res.status(resp.status).json({ error: txt });
     }
 
-    const raw: any = await resp.json();
-    const list = Array.isArray(raw) ? raw : (raw?.groups || []);
+    const raw = await resp.json();
+    const groups = normalizeEvolutionGroupsPayload(raw);
 
-    const gusOnly = list.filter((g: any) => {
-      const jid = g.id || g.jid || g.groupJid || "";
-      return jid.endsWith("@g.us");
-    });
-
-    console.log(`[groups-api] Total raw: ${list.length}, @g.us candidates: ${gusOnly.length}`);
-
-    const groups = gusOnly.map((g: any) => {
-      const jid = g.id || g.jid || g.groupJid || "";
-      const name = g.subject || g.name || "Sem nome";
-      const memberCount = g.size || g.participants?.length || 0;
-      return { jid, name, memberCount };
-    });
-
-    console.log(`[groups-api] Total groups returned: ${groups.length} (from ${list.length} raw)`);
+    console.log(`[groups-api] Total groups returned: ${groups.length}`);
     res.json(groups);
   } catch (err: any) {
     console.error("[groups-api] fetch-groups error:", err?.message || err?.details || JSON.stringify(err));
@@ -2449,9 +2468,17 @@ router.post("/sync-stats", async (req: Request, res: Response) => {
     }
 
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
-    const monitoredMap = new Map(monitored.map(g => [g.group_jid, g]));
+    const monitoredMap = new Map(monitored.map((group) => [`${group.instance_name}::${group.group_jid}`, group]));
+    const syncedCounts = new Map<string, number>();
+    const syncedNames = new Map<string, string>();
     let synced = 0;
     const results: any[] = [];
+
+    const { data: smartLinks } = await sb
+      .from("group_smart_links")
+      .select("id, group_links")
+      .eq("workspace_id", workspaceId)
+      .eq("is_active", true);
 
     // Fetch groups from each instance
     for (const inst of instances) {
@@ -2465,58 +2492,59 @@ router.post("/sync-stats", async (req: Request, res: Response) => {
           console.warn(`[sync-stats] fetchAllGroups failed for ${inst.instance_name}: ${resp.status}`);
           continue;
         }
-        const groups = await resp.json() as any[];
-        if (!Array.isArray(groups)) continue;
+        const payload = await resp.json();
+        const groups = normalizeEvolutionGroupsPayload(payload);
 
         for (const g of groups) {
-          const jid = g.id || g.jid || "";
-          const entry = monitoredMap.get(jid);
+          const entry = monitoredMap.get(`${inst.instance_name}::${g.jid}`);
           if (!entry) continue;
 
-          const realCount = g.participants?.length || g.size || 0;
-          if (realCount <= 0) continue;
+          const realCount = g.memberCount;
 
-          // Update member_count in group_selected
           await sb
             .from("group_selected")
-            .update({ member_count: realCount })
+            .update({
+              member_count: realCount,
+              group_name: g.name || entry.group_name,
+            })
             .eq("id", entry.id);
 
-          // Also update smart links JSONB
-          try {
-            const { data: links } = await sb
-              .from("group_smart_links")
-              .select("id, group_links")
-              .eq("workspace_id", workspaceId)
-              .eq("is_active", true);
-
-            if (links) {
-              for (const sl of links) {
-                const groupLinks = (sl.group_links as any[]) || [];
-                let changed = false;
-                for (const gl of groupLinks) {
-                  if (gl.group_jid === jid) {
-                    gl.member_count = realCount;
-                    changed = true;
-                  }
-                }
-                if (changed) {
-                  await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", sl.id);
-                }
-              }
-            }
-          } catch (_e) {}
+          syncedCounts.set(entry.group_jid, realCount);
+          syncedNames.set(entry.group_jid, g.name || entry.group_name);
 
           results.push({
-            group_jid: jid,
-            group_name: entry.group_name,
+            group_jid: entry.group_jid,
+            group_name: g.name || entry.group_name,
             old_count: entry.member_count,
             new_count: realCount,
+            instance_name: inst.instance_name,
           });
+
+          entry.member_count = realCount;
           synced++;
         }
       } catch (e: any) {
         console.warn(`[sync-stats] Error fetching groups for ${inst.instance_name}:`, e.message);
+      }
+    }
+
+    if (smartLinks?.length) {
+      for (const smartLink of smartLinks) {
+        const groupLinks = Array.isArray(smartLink.group_links) ? [...smartLink.group_links] : [];
+        let changed = false;
+
+        for (const groupLink of groupLinks) {
+          if (!groupLink?.group_jid || !syncedCounts.has(groupLink.group_jid)) continue;
+          groupLink.member_count = syncedCounts.get(groupLink.group_jid) || 0;
+          if (syncedNames.has(groupLink.group_jid)) {
+            groupLink.group_name = syncedNames.get(groupLink.group_jid);
+          }
+          changed = true;
+        }
+
+        if (changed) {
+          await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLink.id);
+        }
       }
     }
 

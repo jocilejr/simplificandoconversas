@@ -11,7 +11,7 @@ import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents, EventPeriod } from "@/hooks/useGroupEvents";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ export default function GroupDashboardTab() {
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
   const monitoredJids = selectedGroups.map(g => g.group_jid);
-  const { events, eventCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents(monitoredJids);
+  const { events, eventCounts, groupCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents(monitoredJids);
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
@@ -50,14 +50,6 @@ export default function GroupDashboardTab() {
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
-
-  const eventsByGroup = events.reduce<Record<string, { add: number; remove: number }>>((acc, e: any) => {
-    const jid = e.group_jid;
-    if (!acc[jid]) acc[jid] = { add: 0, remove: 0 };
-    if (e.action === "add") acc[jid].add++;
-    if (e.action === "remove") acc[jid].remove++;
-    return acc;
-  }, {});
 
   // Sync member counts from Evolution API
   const syncStats = async (silent = false) => {
@@ -208,7 +200,7 @@ export default function GroupDashboardTab() {
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {selectedGroups.map((g) => {
-                  const ge = eventsByGroup[g.group_jid] || { add: 0, remove: 0 };
+                  const ge = groupCounts[g.group_jid] || { add: 0, remove: 0, promote: 0, demote: 0 };
                   return (
                   <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">
