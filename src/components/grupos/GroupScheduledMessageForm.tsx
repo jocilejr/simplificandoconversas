@@ -292,11 +292,11 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Arquivo</Label>
-                  <Input
+                  <MediaUpload
+                    label=""
                     value={mediaUrl}
-                    onChange={(e) => setMediaUrl(e.target.value)}
-                    placeholder="URL da mídia"
-                    className="bg-background/50 border-border/50"
+                    accept={ACCEPT_BY_TYPE[messageType] || "*/*"}
+                    onChange={setMediaUrl}
                   />
                 </div>
                 {messageType !== "sticker" && messageType !== "audio" && (
