@@ -1163,6 +1163,12 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     if (error) throw error;
     if (!pending || pending.length === 0) return res.json({ processed: 0, sent: 0, failed: 0, skipped: 0 });
 
+    // ─── BATCH LOCK: mark all as processing BEFORE the loop ───
+    const pendingIds = pending.map((p: any) => p.id);
+    await sb.from("group_message_queue")
+      .update({ status: "processing", started_at: new Date().toISOString() })
+      .in("id", pendingIds);
+
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     let sent = 0;
     let failed = 0;
@@ -1172,45 +1178,6 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     const windowStart = new Date(Date.now() - perMinutes * 60000).toISOString();
 
     for (const item of pending) {
-      // ─── Deduplication: skip if already sent for this scheduled_message + group ───
-      if (item.scheduled_message_id) {
-        const dedupWindow = new Date(Date.now() - 5 * 60000).toISOString();
-        const { count: alreadySent } = await sb
-          .from("group_message_queue")
-          .select("id", { count: "exact", head: true })
-          .eq("scheduled_message_id", item.scheduled_message_id)
-          .eq("group_jid", item.group_jid)
-          .eq("status", "sent")
-          .neq("id", item.id)
-          .gte("created_at", dedupWindow);
-
-        if ((alreadySent || 0) > 0) {
-          if (item.scheduled_message_id) {
-            groupScheduler.recordDiagnostic(item.scheduled_message_id, {
-              status_code: "skipped",
-              status_label: "Ignorada",
-              reason_code: "dedup_recent_send",
-              reason_label: "Bloqueada por deduplicação de 5 minutos",
-              reason_details: "Já existia uma mensagem igual enviada recentemente para este grupo.",
-              diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
-            });
-          }
-          await sb.from("group_message_queue")
-            .update({
-              status: "cancelled",
-              error_message: encodeDiagnosticMessage(
-                "dedup_recent_send",
-                "Bloqueada por deduplicação de 5 minutos",
-                "Já existia uma mensagem igual enviada recentemente para este grupo.",
-              ),
-              completed_at: new Date().toISOString(),
-            })
-            .eq("id", item.id);
-          skipped++;
-          continue;
-        }
-      }
-
       // Rate limit check: count recent sends to this group
       const { count } = await sb
         .from("group_message_queue")
@@ -1246,8 +1213,6 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         skipped++;
         continue;
       }
-
-      await sb.from("group_message_queue").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", item.id);
 
       try {
         const encoded = encodeURIComponent(item.instance_name);
