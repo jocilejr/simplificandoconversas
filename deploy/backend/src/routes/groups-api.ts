@@ -1607,6 +1607,17 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     res.json({ synced, groupLinks });
   } catch (err: any) {
     console.error("[smart-link] sync-invite error:", err?.message);
+    // Clear sync_progress on error to prevent infinite "Sincronizando..."
+    try {
+      const smartLinkId = req.body?.smartLinkId;
+      if (smartLinkId) {
+        await sb.from("group_smart_links").update({
+          sync_progress: null,
+          last_sync_error: err?.message || "Unknown error",
+          last_sync_error_at: new Date().toISOString(),
+        }).eq("id", smartLinkId);
+      }
+    } catch {}
     res.status(500).json({ error: err?.message || "Unknown error" });
   }
 });
@@ -1712,6 +1723,13 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
     const { data: smartLinks, error } = await sb.from("group_smart_links").select("*").eq("is_active", true);
     if (error) throw error;
     if (!smartLinks || smartLinks.length === 0) return res.json({ synced: 0, message: "No active smart links" });
+
+    // Recover stale syncs (stuck >10 min)
+    const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    await sb.from("group_smart_links")
+      .update({ sync_progress: null, last_sync_error: "Sync travou — resetado automaticamente", last_sync_error_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .not("sync_progress", "is", null)
+      .lt("updated_at", staleCutoff);
 
     const results: any[] = [];
 
@@ -1851,6 +1869,7 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
       } catch (e: any) {
         console.error(`[sync-all] Error syncing smart link ${sl.id}:`, e.message);
         await sb.from("group_smart_links").update({
+          sync_progress: null,
           last_sync_error: e.message || "Unknown error",
           last_sync_error_at: new Date().toISOString(),
         }).eq("id", sl.id);
