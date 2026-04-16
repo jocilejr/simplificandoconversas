@@ -1,81 +1,91 @@
 
 
-# Plano: Corrigir contagens e reconciliar member_count
+# Plano: Adotar a arquitetura de sync do whats-grupos
 
-## Problemas restantes
+## Problema raiz
 
-### 1. `member_count` nunca foi reconciliado com a Evolution API
-Os logs não mostram "real member count" — o backend provavelmente não foi reconstruído com o código novo, ou nenhum evento chegou desde o rebuild. Os valores atuais (ex: #16=24 quando deveria ser ~14) são resíduos do incremento duplicado anterior.
+O sistema atual tenta manter `member_count` via incrementos/decrementos no webhook. Isso gera drift inevitável (duplicações, webhooks perdidos, etc). O repositório de referência resolve isso com uma abordagem fundamentalmente diferente:
 
-### 2. Contadores "Entraram/Saíram" contam eventos de grupos NÃO monitorados
-O hook `useGroupEvents` busca TODOS os eventos do workspace, incluindo os 6 grupos órfãos (99 eventos). Isso infla os totais no dashboard.
+1. **`member_count` vem da API real** (sync), não de incrementos
+2. **Contadores "Entraram/Saíram" vêm da contagem direta** de eventos em `group_participant_events`
+3. **Sync automático** ao abrir a página
 
-### 3. Feed de eventos mostra grupos não monitorados
-O mesmo problema — eventos de grupos que não estão em `group_selected` aparecem no feed.
+## Mudanças
 
-## Correções
+### 1. Criar rota de sync no backend (`deploy/backend/src/routes/groups-api.ts`)
 
-### A. Frontend: Filtrar eventos apenas de grupos monitorados
+Adicionar endpoint `POST /api/groups/sync-stats` que:
+- Busca todos os grupos da instância Evolution API via `findGroupInfos` ou `fetchAllGroups`
+- Para cada grupo monitorado em `group_selected`, atualiza `member_count` com o valor real da API (`participants.length`)
+- Retorna a contagem atualizada
 
-**Arquivo: `src/hooks/useGroupEvents.ts`**
+Isso substitui o mecanismo de reconciliação atual no webhook (que nunca funcionou consistentemente).
 
-Adicionar filtro `.in("group_jid", selectedGroupJids)` nas queries de eventos e contadores. Como o hook não tem acesso direto aos grupos selecionados, receber os JIDs como parâmetro ou fazer um JOIN via query.
+### 2. Atualizar o frontend para usar sync automático
 
-Abordagem mais simples: buscar os JIDs dos grupos monitorados primeiro, depois filtrar:
+**`src/components/grupos/GroupDashboardTab.tsx`:**
+- Adicionar `useMutation` que chama `POST /api/groups/sync-stats` ao montar o componente (auto-sync)
+- Botão manual "Sincronizar" para forçar atualização
+- Após sync, invalidar queries de `group-selected`
 
-```typescript
-// Na query de eventos, adicionar:
-.in("group_jid", monitoredJids)
+### 3. Simplificar o webhook (`deploy/backend/src/routes/groups-webhook.ts`)
+
+- Remover toda a lógica de incremento/decremento de `member_count`
+- Remover a chamada `fetchRealMemberCount` por evento (ineficiente)
+- Manter apenas: inserir evento em `group_participant_events` + atualizar `group_daily_stats`
+- O `member_count` será corrigido pelo sync, não pelo webhook
+
+### 4. Manter a contagem de eventos como está (já funciona)
+
+O `useGroupEvents` já conta add/remove corretamente a partir de `group_participant_events` filtrado por `monitoredJids`. Isso não muda.
+
+## Detalhes técnicos
+
+### Nova rota: `POST /api/groups/sync-stats`
+
+```text
+Request: { workspaceId }
+1. Buscar instância ativa do workspace
+2. Chamar Evolution API: GET /group/fetchAllGroups/{instanceName}
+3. Para cada grupo retornado que exista em group_selected:
+   - UPDATE group_selected SET member_count = real_count
+4. Retornar { synced: N, groups: [...] }
 ```
 
-**Arquivo: `src/components/grupos/GroupDashboardTab.tsx`**
+### Frontend: auto-sync no mount
 
-Passar os JIDs monitorados para o hook, ou filtrar no componente.
-
-### B. VPS: Forçar reconciliação dos member_count
-
-Rodar na VPS um comando que reconstrua o backend e depois force a atualização:
-
-```bash
-# 1. Rebuild backend com código de reconciliação
-cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
-
-# 2. Resetar member_count dos grupos novos para valor correto baseado nos eventos
-# (temporário até a reconciliação via API funcionar)
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-UPDATE group_selected gs SET member_count = sub.net FROM (
-  SELECT group_jid, workspace_id,
-    GREATEST(0, SUM(CASE WHEN action='add' THEN 1 ELSE 0 END) - SUM(CASE WHEN action='remove' THEN 1 ELSE 0 END)) as net
-  FROM group_participant_events
-  GROUP BY group_jid, workspace_id
-) sub
-WHERE gs.group_jid = sub.group_jid AND gs.workspace_id = sub.workspace_id
-AND gs.group_name LIKE '%#1_' OR gs.group_name LIKE '%#2_';
-"
+```text
+GroupDashboardTab monta
+  → chama POST /api/groups/sync-stats (uma vez)
+  → invalida ["group-selected"]
+  → member_count atualizado em todos os cards
 ```
 
-### C. Limpar eventos de grupos não monitorados
+### Webhook simplificado
 
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-DELETE FROM group_participant_events e
-WHERE NOT EXISTS (
-  SELECT 1 FROM group_selected gs
-  WHERE gs.group_jid = e.group_jid AND gs.workspace_id = e.workspace_id
-);
-"
+```text
+Evento chega → insere em group_participant_events → atualiza group_daily_stats
+(NÃO toca em member_count — o sync cuida disso)
 ```
 
 ## Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `src/hooks/useGroupEvents.ts` | Filtrar eventos apenas de grupos monitorados |
-| `src/components/grupos/GroupDashboardTab.tsx` | Passar JIDs monitorados ao hook |
+| `deploy/backend/src/routes/groups-api.ts` | Nova rota `sync-stats` |
+| `deploy/backend/src/routes/groups-webhook.ts` | Remover lógica de member_count |
+| `src/components/grupos/GroupDashboardTab.tsx` | Auto-sync + botão manual |
+
+## Comandos VPS após deploy
+
+```bash
+cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
+```
 
 ## Resultado esperado
 
-- Contadores "Entraram/Saíram" mostram apenas eventos de grupos monitorados
-- Feed mostra apenas eventos relevantes
-- `member_count` corrigido via SQL e reconciliado automaticamente via Evolution API nos próximos eventos
+- `member_count` sempre correto (vem direto da API)
+- Contadores "Entraram/Saíram" corretos (contagem de eventos filtrados)
+- Sem drift acumulativo
+- Consistente com a lógica do repositório de referência
 
