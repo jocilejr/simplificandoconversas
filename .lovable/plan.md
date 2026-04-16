@@ -1,165 +1,86 @@
 
 
-# Plano: Corrigir inconsistências no monitoramento de grupos
+# Plano: Corrigir member_count e group_name nos eventos de grupos
 
-## 3 problemas encontrados
+## Problemas
 
-### 1. `participant_jid` está salvando objeto JSON inteiro em vez de só o número
-A Evolution API v2 envia `participants` como array de **objetos** `{id, phoneNumber, admin}`, não strings. O webhook trata como string (`p: string`) e grava o JSON inteiro no banco.
+### 1. `member_count` acumula drift e nunca se auto-corrige
+O webhook incrementa/decrementa `member_count` por evento, mas com duplicações anteriores e possíveis webhooks perdidos, o número fica desatualizado (ex: mostra 20 quando são 14). Não existe mecanismo de reconciliação.
 
-**Exemplo no banco:**
-```
-{"id":"48108381708350@lid","phoneNumber":"557199656380@s.whatsapp.net","admin":null}
-```
-
-**Deveria ser:** `557199656380` (número limpo)
-
-### 2. Eventos duplicados (cada evento aparece 2x)
-A Evolution API provavelmente envia o mesmo webhook 2 vezes (uma para `group-participants.update` e outra variação), ou o webhook está registrado em duplicidade. Cada participante tem 2 linhas com milissegundos de diferença.
-
-### 3. Tabela `group_daily_stats` não existe na VPS
-O código do webhook tenta inserir nela mas falha silenciosamente (erro 500 interno que não impede a resposta). A tabela nunca foi criada no `init-db.sql`.
-
-## Impacto combinado
-
-- **Contadores inflados**: cada entrada conta 2x (duplicação) → 147 "adds" no banco quando são ~73 reais
-- **member_count errado**: `participants.length` conta corretamente (1 por objeto), mas a duplicação do webhook dobra o incremento. Ex: 1 pessoa entra → member_count sobe 2.
-- **Feed ilegível**: `participant_jid` mostra JSON em vez do número
+### 2. Eventos de saída sem `group_name`
+No webhook, a busca por `group_name` usa `group_selected`, mas se não encontra (ex: grupo removido ou JID diferente), grava `group_name: ""`. No feed de eventos, aparece só o JID sem nome legível.
 
 ## Correções
 
-### Arquivo: `deploy/backend/src/routes/groups-webhook.ts`
+### A. Sincronizar `member_count` com a Evolution API (reconciliação real)
 
-**A. Extrair número limpo do participant:**
+**Arquivo: `deploy/backend/src/routes/groups-webhook.ts`**
+
+Após processar o evento, buscar o count real do grupo via Evolution API (`findGroupInfos`) e usar esse valor em vez do incremento relativo:
+
 ```typescript
-// Cada participant pode ser string OU objeto {id, phoneNumber}
-function extractPhone(p: any): string {
-  if (typeof p === "string") return p.replace(/@.*/, "").replace(/\D/g, "");
-  const raw = p.phoneNumber || p.id || "";
-  return raw.replace(/@.*/, "").replace(/\D/g, "");
+// Após inserir os eventos, buscar contagem real
+try {
+  const { baseUrl, apiKey } = getEvolutionConfig(inst);
+  const resp = await fetch(`${baseUrl}/group/findGroupInfos/${instanceName}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ groupJid }),
+  });
+  if (resp.ok) {
+    const info = await resp.json();
+    const realCount = info.participants?.length || info.size || 0;
+    await sb.from("group_selected")
+      .update({ member_count: realCount })
+      .eq("workspace_id", inst.workspace_id)
+      .eq("group_jid", groupJid);
+  }
+} catch (e) {
+  // fallback: manter o incremento relativo
 }
 ```
 
-**B. Deduplicar por participant + group_jid:**
-Antes de inserir, verificar se já existe um evento idêntico nos últimos 60 segundos para evitar duplicação.
+Isso garante que a cada evento de entrada/saída, o `member_count` é reconciliado com o valor real.
 
-**C. Usar números limpos nos rows:**
+### B. Resolver `group_name` com fallback
+
+**Arquivo: `deploy/backend/src/routes/groups-webhook.ts`**
+
+Se `group_selected` não retornar nome, usar o campo `subject` do payload do webhook (que a Evolution API envia):
+
 ```typescript
-const cleanParticipants = participants.map(extractPhone).filter(Boolean);
-// Deduplica dentro do mesmo payload
-const uniqueParticipants = [...new Set(cleanParticipants)];
+const groupName = sg?.group_name || data.subject || data.groupName || "";
 ```
 
-**D. Deduplicação temporal no banco** (evitar webhook duplicado):
-```typescript
-// Para cada participante, checar se já existe evento nos últimos 60s
-const cutoff = new Date(Date.now() - 60_000).toISOString();
-const { data: recent } = await sb
-  .from("group_participant_events")
-  .select("participant_jid")
-  .eq("workspace_id", inst.workspace_id)
-  .eq("group_jid", groupJid)
-  .eq("action", action)
-  .gte("created_at", cutoff);
+### C. Importar config da Evolution API no webhook
 
-const recentSet = new Set((recent || []).map(r => r.participant_jid));
-const newParticipants = uniqueParticipants.filter(p => !recentSet.has(p));
-```
+O webhook precisa acessar `getEvolutionConfig` para buscar o count real. Precisa importar ou duplicar o helper que já existe em `groups-api.ts`.
 
-Usar `newParticipants.length` para o incremento de `member_count` em vez de `participants.length`.
-
-### Arquivo: `deploy/init-db.sql` — criar tabela `group_daily_stats`
-
-```sql
-CREATE TABLE IF NOT EXISTS public.group_daily_stats (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  group_jid text NOT NULL,
-  group_name text NOT NULL DEFAULT '',
-  date date NOT NULL,
-  additions integer NOT NULL DEFAULT 0,
-  removals integer NOT NULL DEFAULT 0,
-  total_members integer NOT NULL DEFAULT 0,
-  UNIQUE(workspace_id, group_jid, date)
-);
-GRANT ALL ON public.group_daily_stats TO anon, authenticated, service_role;
-```
-
-### Arquivo: `deploy/migrate-workspace.sql` — registrar nova tabela
-
-Adicionar `'group_daily_stats'` nos arrays de tabelas.
-
-### Limpeza de dados existentes (SQL para rodar na VPS)
-
-```sql
--- Limpar participant_jid que são JSON (extrair phoneNumber)
-UPDATE group_participant_events
-SET participant_jid = regexp_replace(
-  (participant_jid::jsonb->>'phoneNumber'), '@.*', ''
-)
-WHERE participant_jid LIKE '{%';
-
--- Remover duplicatas (manter apenas o mais antigo)
-DELETE FROM group_participant_events a
-USING group_participant_events b
-WHERE a.id > b.id
-  AND a.workspace_id = b.workspace_id
-  AND a.group_jid = b.group_jid
-  AND a.participant_jid = b.participant_jid
-  AND a.action = b.action
-  AND a.created_at BETWEEN b.created_at - interval '2 minutes' AND b.created_at + interval '2 minutes';
-```
+Opção mais limpa: extrair `getEvolutionConfig` para um helper compartilhado, ou copiar a lógica inline no webhook.
 
 ## Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `deploy/backend/src/routes/groups-webhook.ts` | Extrair phone, deduplicar, usar contagem correta |
-| `deploy/init-db.sql` | Criar tabela `group_daily_stats` |
-| `deploy/migrate-workspace.sql` | Registrar `group_daily_stats` |
+| `deploy/backend/src/routes/groups-webhook.ts` | Reconciliar member_count via API real + fallback group_name |
 
-## Deploy + Limpeza
+## Verificação na VPS
 
 ```bash
-cd ~/simplificandoconversas && git pull && cd deploy
+cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
 
-# 1. Criar tabela que falta
+# Verificar se member_count está correto após próximo evento
 docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-CREATE TABLE IF NOT EXISTS public.group_daily_stats (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL,
-  group_jid text NOT NULL,
-  group_name text NOT NULL DEFAULT '',
-  date date NOT NULL,
-  additions integer NOT NULL DEFAULT 0,
-  removals integer NOT NULL DEFAULT 0,
-  total_members integer NOT NULL DEFAULT 0,
-  UNIQUE(workspace_id, group_jid, date)
-);
-GRANT ALL ON public.group_daily_stats TO anon, authenticated, service_role;
-NOTIFY pgrst, 'reload schema';
+SELECT group_name, member_count FROM group_selected ORDER BY group_name;
 "
 
-# 2. Limpar dados corrompidos
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-UPDATE group_participant_events
-SET participant_jid = regexp_replace((participant_jid::jsonb->>'phoneNumber'), '@.*', '')
-WHERE participant_jid LIKE '{%';
-"
-
-# 3. Remover duplicatas
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-DELETE FROM group_participant_events a
-USING group_participant_events b
-WHERE a.id > b.id
-  AND a.workspace_id = b.workspace_id
-  AND a.group_jid = b.group_jid
-  AND a.participant_jid = b.participant_jid
-  AND a.action = b.action
-  AND a.created_at BETWEEN b.created_at - interval '2 minutes' AND b.created_at + interval '2 minutes';
-"
-
-# 4. Rebuild backend
-docker compose up -d --build backend
+# Forçar reconciliação: remover e re-adicionar os grupos na aba Selecionar
+# Isso vai buscar o memberCount real da API e sobrescrever
 ```
+
+## Resultado esperado
+
+- `member_count` sempre reflete a contagem real de participantes (via API)
+- Eventos de saída mostram o nome do grupo corretamente
+- Sem drift acumulativo — cada webhook reconcilia o valor
 
