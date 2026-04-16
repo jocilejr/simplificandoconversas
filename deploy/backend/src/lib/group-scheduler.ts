@@ -194,20 +194,30 @@ export class GroupSchedulerManager {
     });
   }
 
-  /** Safety sweep: find active messages without timers and recreate them. */
+  /** Safety sweep: find messages without timers and recreate them (only for active campaigns). */
   async safetySweep(): Promise<void> {
     const sb = getServiceClient();
-    const { data: active, error } = await sb
+    const { data: allMsgs, error } = await sb
       .from("group_scheduled_messages")
       .select("id, schedule_type, content, next_run_at, campaign_id")
       .not("next_run_at", "is", null);
 
-    if (error || !active) return;
+    if (error || !allMsgs) return;
+
+    // Filter by active campaigns
+    const campaignIds = [...new Set(allMsgs.map(m => m.campaign_id))];
+    const { data: activeCampaigns } = await sb
+      .from("group_campaigns")
+      .select("id")
+      .in("id", campaignIds)
+      .eq("is_active", true);
+    const activeSet = new Set(activeCampaigns?.map(c => c.id) || []);
 
     let fixed = 0;
     const now = new Date();
 
-    for (const msg of active) {
+    for (const msg of allMsgs) {
+      if (!activeSet.has(msg.campaign_id)) continue; // Campaign inactive
       if (this.timers.has(msg.id)) continue; // Already has a timer
 
       const nextRun = new Date(msg.next_run_at);
