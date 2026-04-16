@@ -186,8 +186,10 @@ export function FollowUpDashboard() {
                       <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3" />Limite/dia</Badge>
                     ) : boleto.sendStatus === "skipped_invalid_phone" ? (
                       <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><Phone className="h-3 w-3" />Tel. inválido</Badge>
-                    ) : (
+                    ) : boleto.sendStatus === "pending" ? (
                       <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] gap-1 font-medium"><Timer className="h-3 w-3" />Pendente</Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </td>
                   <td className="py-3 px-4">
