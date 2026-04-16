@@ -1,48 +1,58 @@
 
 
-# Plano: Corrigir exibição de programações e status "Ignorada" falso
+# Plano: Corrigir contadores de eventos, filtro de campanhas inativas e status "Ignorada"
 
-## Problema identificado
+## 3 problemas e suas causas
 
-Dois problemas distintos:
+**1. Entraram/Saíram inconsistentes**
+- Os cards usam `events.filter(e => e.action === "add").length` sobre os últimos 50 eventos carregados pelo hook
+- Ao entrar novos eventos, os antigos saem da janela de 50 e o número diminui
+- Solução: usar uma query de agregação separada (`COUNT(*) ... GROUP BY action`) que retorna totais reais do banco, com filtro de data (hoje, últimos 7 dias, etc.)
 
-1. **Programações não aparecem no painel**: O endpoint `/scheduler-debug` filtra apenas mensagens cujo `next_run_at` ou `last_run_at` cai **dentro do dia de hoje BRT** (linhas 2270-2272). Ao ativar uma campanha nova, o `calculateFirstRunAt` pode calcular o `next_run_at` para **amanhã ou outro dia** (ex: se os `weekDays` não incluem o dia atual). Resultado: a programação das 22h simplesmente não aparece porque o `next_run_at` está num dia futuro.
+**2. Campanhas desativadas aparecem em "Amanhã"/"7 dias"**
+- O filtro `todayMessages` (linha 2325) só verifica se `next_run_at` cai no range de datas — não verifica se a campanha ou mensagem está ativa
+- Solução: adicionar checagem `m.is_active` e `campaign.is_active` no filtro para ranges futuros (tomorrow, week, all)
 
-2. **Status "Ignorada" indevido**: Para mensagens cujo horário já passou no momento da ativação, o `resolveSchedulerStatus` chega em `isPast=true` sem queue items, resultando em "Perdida" ou "Ignorada".
+**3. Campanhas recém-ativadas mostram "Ignorada"/"Perdida"**
+- O `isStaleInactiveDiagnostic` (linha 469) só limpa diagnósticos com `reason_code === "message_inactive"`
+- Diagnósticos como `next_run_already_passed`, `campaign_inactive`, `once_expired_before_start` permanecem stale e vencem sobre o estado real
+- Solução: expandir a limpeza para qualquer diagnóstico stale quando `isActive && hasTimer`
 
-## Solução
+## Arquivos a alterar
 
-### 1. Backend — Expandir filtro do `/scheduler-debug`
-**Arquivo:** `deploy/backend/src/routes/groups-api.ts`
+### 1. `src/hooks/useGroupEvents.ts`
+- Adicionar uma segunda query que faz `SELECT action, COUNT(*) FROM group_participant_events WHERE workspace_id = X AND created_at >= hoje GROUP BY action`
+- Retornar `{ events, eventCounts, isLoading }`
+- O feed continua com limit(50), os totais vêm da agregação
 
-- Aceitar query param `range` (`today` | `tomorrow` | `week` | `all`), default `today`
-- Para `today`: manter lógica atual
-- Para `tomorrow`: `todayStartBrt` + 1 dia
-- Para `week`: 7 dias a partir de hoje
-- Para `all`: não filtrar por data, apenas mensagens ativas com `next_run_at` futuro ou `last_run_at` recente (últimos 7 dias)
-- Incluir `updated_at` no select para diagnósticos mais precisos
+### 2. `src/components/grupos/GroupDashboardTab.tsx`
+- Usar `eventCounts` para os cards Entraram/Saíram em vez de `events.filter()`
+- Adicionar filtro de período (Hoje/7 dias/30 dias) nos cards
 
-### 2. Frontend — Adicionar seletor de período
-**Arquivo:** `src/hooks/useSchedulerDebug.ts`
+### 3. `deploy/backend/src/routes/groups-api.ts`
+- No filtro `todayMessages` (linha 2325): para ranges `tomorrow`, `week`, `all`, excluir mensagens onde `m.is_active === false`
+- Após resolver `campaignMap`, excluir mensagens cuja campanha está inativa para ranges futuros
+- Expandir `isStaleInactiveDiagnostic` para cobrir qualquer diagnóstico stale: se `isActive && hasTimer`, ignorar diagnósticos com códigos `message_inactive`, `campaign_inactive`, `next_run_already_passed`, `message_inactive_at_dispatch`
 
-- Adicionar parâmetro `range` na URL da query
-- Incluir `range` na `queryKey`
+### 4. `deploy/backend/src/lib/group-scheduler.ts`
+- No `scheduleMessage`, limpar **qualquer** diagnóstico anterior quando `msg.is_active` (não só `message_inactive`)
+- Isso garante que reativar uma campanha/mensagem sempre começa com estado limpo
 
-**Arquivo:** `src/components/grupos/SchedulerDebugPanel.tsx`
+## Resultado esperado
+- Entraram/Saíram mostram totais reais do banco, estáveis independentemente da paginação do feed
+- Campanhas desativadas não poluem as publicações de amanhã/semana
+- Campanhas recém-ativadas refletem o estado real do timer
 
-- Adicionar tabs compactas no header: **Hoje | Amanhã | 7 dias | Todas**
-- Atualizar título dinâmico ("Publicações de Hoje" → "Publicações da Semana" etc.)
-- Passar `range` para o hook
+## Validação na VPS após deploy
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT action, COUNT(*) FROM group_participant_events
+WHERE created_at >= NOW() - INTERVAL '1 day'
+GROUP BY action;
+"
+```
 
-### 3. Backend — Corrigir status "Ignorada" falso para mensagens recém-ativadas
-**Arquivo:** `deploy/backend/src/routes/groups-api.ts`
-
-Na `resolveSchedulerStatus`, antes de retornar "Perdida"/"Ignorada" para `isPast`:
-- Verificar se a mensagem foi ativada recentemente (via `updated_at`) — se `updated_at` > `effective_run_at`, o status deveria ser "Sem timer" ou "Aguardando recálculo", não "Ignorada"
-- Isso cobre o caso onde a campanha foi ativada depois do horário já ter passado
-
-### Resultado
-- O usuário verá todas as programações futuras, não só as de hoje
-- Programações recém-ativadas não mostrarão "Ignorada" indevidamente
-- A programação das 22h aparecerá corretamente no painel
+```bash
+docker logs deploy-backend-1 --since=10m 2>&1 | grep -i "\[scheduler\]" | tail -30
+```
 
