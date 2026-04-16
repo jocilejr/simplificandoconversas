@@ -303,8 +303,24 @@ export default function SchedulerDebugPanel() {
         <div className="px-4 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Publicações de Hoje
+              {titleLabels[range]}
             </p>
+            {/* Range tabs */}
+            <div className="flex items-center gap-0.5 bg-muted/40 rounded-md p-0.5">
+              {(Object.keys(rangeLabels) as SchedulerRange[]).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => { setRange(r); setActiveIndex(0); }}
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
+                    r === range
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {rangeLabels[r]}
+                </button>
+              ))}
+            </div>
             {data && (
               <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground/70">
                 <span className="flex items-center gap-1">
