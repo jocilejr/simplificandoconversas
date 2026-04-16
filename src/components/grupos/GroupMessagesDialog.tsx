@@ -46,7 +46,7 @@ interface Props {
 }
 
 export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Props) {
-  const { messages, isLoading, createMessage, updateMessage, deleteMessage, toggleMessage } = useGroupScheduledMessages(campaign?.id || null);
+  const { messages, isLoading, createMessage, updateMessage, deleteMessage } = useGroupScheduledMessages(campaign?.id || null);
   const [activeTab, setActiveTab] = useState("once");
   const [formOpen, setFormOpen] = useState(false);
   const [editingMsg, setEditingMsg] = useState<any>(null);
