@@ -11,6 +11,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import WhatsAppPreview from "./WhatsAppPreview";
+import { MediaUpload } from "@/components/chatbot/MediaUpload";
+
+const ACCEPT_BY_TYPE: Record<string, string> = {
+  image: "image/*",
+  video: "video/*",
+  audio: "audio/*",
+  sticker: "image/webp,image/png",
+  document: ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip",
+};
 
 const MESSAGE_TYPES = [
   { value: "text", label: "Texto", icon: FileText },
