@@ -1,55 +1,66 @@
 
 
-# Plano: Criar colunas faltantes no `group_smart_links`
+# Plano: Auto-retry de jobs com falha (10s delay, máx 5 tentativas)
 
 ## Problema
-A tabela `group_smart_links` **não possui** as colunas que o backend tenta usar: `sync_progress`, `last_sync_error`, `last_sync_error_at`, `last_successful_sync_at`. O PostgREST ignora ou falha silenciosamente, e o sync nunca funciona direito.
+Quando o `dispatchJob` falha (ex: Evolution API offline durante deploy), o job é marcado como `failed` imediatamente sem nenhuma tentativa de retry. Falhas momentâneas ficam permanentes.
 
 ## Correção
 
-### 1. Migração SQL — adicionar as 4 colunas faltantes
+### Arquivo: `deploy/backend/src/routes/followup-daily.ts`
 
-Executar na VPS:
-```sql
-ALTER TABLE group_smart_links
-  ADD COLUMN IF NOT EXISTS sync_progress jsonb DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS last_sync_error text DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS last_sync_error_at timestamptz DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS last_successful_sync_at timestamptz DEFAULT NULL;
+Alterar o bloco `.then()/.catch()` do `queue.enqueue()` (linhas 867-907) para implementar retry inline:
+
+**Lógica:**
+1. Envolver o `dispatchJob` em um loop de retry com máximo de 5 tentativas
+2. A cada falha, aguardar 10 segundos antes de tentar novamente
+3. Atualizar `attempts` no banco a cada tentativa
+4. Só marcar como `failed` definitivamente após esgotar as 5 tentativas
+5. Se conseguir na retry, marcar como `sent` normalmente
+
+**Pseudocódigo da alteração:**
+```typescript
+queue.enqueue(async () => {
+  const MAX_RETRIES = 5;
+  const RETRY_DELAY_MS = 10_000;
+  let lastError: string = "";
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await dispatchJob({ ...job, normalized_phone: normalizedPhone }, context.delayMs);
+      return; // success — exit loop
+    } catch (err: any) {
+      lastError = err?.message?.slice(0, 500) || "Falha desconhecida";
+      console.warn(`[followup-daily] ⚠️ Attempt ${attempt}/${MAX_RETRIES} failed for ${job.transaction_id}: ${lastError}`);
+      
+      if (attempt < MAX_RETRIES) {
+        // Update attempts count in DB
+        await markQueueJob(sb, job.id, {
+          attempts: attempt + (job.attempts || 0),
+          last_error: `Tentativa ${attempt}/${MAX_RETRIES}: ${lastError}`,
+        });
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      }
+    }
+  }
+  // All retries exhausted — throw to trigger the catch handler
+  throw new Error(lastError);
+}, ...)
 ```
 
-Seguido de:
-```sql
-NOTIFY pgrst, 'reload schema';
-```
+O `.then()` e `.catch()` externos permanecem iguais — o `.catch()` só será acionado se todas as 5 tentativas falharem.
 
-### 2. Backend — sem alterações adicionais
+### Frontend — sem alterações
+A lógica de status no frontend já trata `failed` corretamente após a correção anterior.
 
-O código que foi implementado na última sessão (catch blocks limpando `sync_progress: null` + stale recovery de 10 min) já está correto. Só faltava a estrutura no banco.
-
-### 3. Deploy
-
-Após a migração:
+### Deploy
 ```bash
 cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
 ```
 
-### Comando completo para a VPS
-
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-ALTER TABLE group_smart_links
-  ADD COLUMN IF NOT EXISTS sync_progress jsonb DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS last_sync_error text DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS last_sync_error_at timestamptz DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS last_successful_sync_at timestamptz DEFAULT NULL;
-
-NOTIFY pgrst, 'reload schema';
-"
-```
-
 ## Resultado esperado
-- O sync vai funcionar: o backend consegue escrever/limpar `sync_progress`
-- O frontend mostra o progresso real e para de congelar
-- A recuperação automática de syncs travados (>10 min) passa a funcionar
+- Falhas momentâneas (deploy, rede) são recuperadas automaticamente em ~10-50s
+- O log mostra cada tentativa com `⚠️ Attempt X/5`
+- Só marca `failed` definitivamente após 5 tentativas falhadas
+- Nenhum impacto em jobs que já funcionam normalmente
 
