@@ -1611,7 +1611,7 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     try {
       const smartLinkId = req.body?.smartLinkId;
       if (smartLinkId) {
-        await sb.from("group_smart_links").update({
+        await getServiceClient().from("group_smart_links").update({
           sync_progress: null,
           last_sync_error: err?.message || "Unknown error",
           last_sync_error_at: new Date().toISOString(),
