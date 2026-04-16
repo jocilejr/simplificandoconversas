@@ -2390,6 +2390,8 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         hasTimer,
         isPast: !!isPast,
         isActive: m.is_active,
+        updatedAt: m.updated_at,
+        effectiveRunAt,
       });
       const missed = resolvedStatus.status_code === "missed";
 
