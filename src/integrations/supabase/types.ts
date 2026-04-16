@@ -1782,6 +1782,50 @@ export type Database = {
           },
         ]
       }
+      group_daily_stats: {
+        Row: {
+          additions: number
+          created_at: string
+          date: string
+          group_jid: string
+          group_name: string
+          id: string
+          removals: number
+          total_members: number
+          workspace_id: string
+        }
+        Insert: {
+          additions?: number
+          created_at?: string
+          date: string
+          group_jid: string
+          group_name?: string
+          id?: string
+          removals?: number
+          total_members?: number
+          workspace_id: string
+        }
+        Update: {
+          additions?: number
+          created_at?: string
+          date?: string
+          group_jid?: string
+          group_name?: string
+          id?: string
+          removals?: number
+          total_members?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_daily_stats_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_message_queue: {
         Row: {
           campaign_id: string | null
