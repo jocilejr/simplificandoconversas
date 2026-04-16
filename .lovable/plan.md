@@ -1,81 +1,48 @@
 
-# Plano: corrigir status falso "Inativa" no dashboard de Publicações
 
-## Diagnóstico
-O status do card não está vindo do banco diretamente. Ele pode ser sobrescrito por um `runtimeDiagnostic` em memória do scheduler.
+# Plano: Corrigir exibição de programações e status "Ignorada" falso
 
-No código atual:
-- `group-scheduler.ts` grava `status_label: "Inativa"` quando a publicação é desativada
-- `groups-api.ts` no endpoint `/scheduler-debug` dá prioridade a esse diagnóstico em memória
-- se a publicação for reativada depois, o dashboard pode continuar mostrando o diagnóstico antigo, mesmo com a publicação existente e ativa
+## Problema identificado
 
-O detalhe importante é este:
-- o label exato **"Inativa"** só nasce no scheduler em memória
-- o fallback derivado do banco usaria **"Ignorada"**, não "Inativa"
+Dois problemas distintos:
 
-Então o problema mais provável é: **diagnóstico antigo/stale tendo prioridade sobre o estado atual da publicação**.
+1. **Programações não aparecem no painel**: O endpoint `/scheduler-debug` filtra apenas mensagens cujo `next_run_at` ou `last_run_at` cai **dentro do dia de hoje BRT** (linhas 2270-2272). Ao ativar uma campanha nova, o `calculateFirstRunAt` pode calcular o `next_run_at` para **amanhã ou outro dia** (ex: se os `weekDays` não incluem o dia atual). Resultado: a programação das 22h simplesmente não aparece porque o `next_run_at` está num dia futuro.
 
-## O que vou ajustar
+2. **Status "Ignorada" indevido**: Para mensagens cujo horário já passou no momento da ativação, o `resolveSchedulerStatus` chega em `isPast=true` sem queue items, resultando em "Perdida" ou "Ignorada".
 
-### 1) Blindar o `/scheduler-debug` contra diagnóstico antigo
-Arquivo:
-- `deploy/backend/src/routes/groups-api.ts`
+## Solução
 
-Vou ajustar a montagem do status para **ignorar runtime diagnostics inconsistentes com o estado atual**, por exemplo:
-- publicação está `is_active = true`, mas o diagnóstico antigo diz `message_inactive`
-- existe `hasTimer = true` e próximo horário futuro, mas o diagnóstico antigo ainda diz "Inativa"
-- a publicação foi alterada depois do diagnóstico (comparando com `updated_at`)
+### 1. Backend — Expandir filtro do `/scheduler-debug`
+**Arquivo:** `deploy/backend/src/routes/groups-api.ts`
 
-## 2) Incluir `updated_at` na leitura das publicações
-Ainda em:
-- `deploy/backend/src/routes/groups-api.ts`
+- Aceitar query param `range` (`today` | `tomorrow` | `week` | `all`), default `today`
+- Para `today`: manter lógica atual
+- Para `tomorrow`: `todayStartBrt` + 1 dia
+- Para `week`: 7 dias a partir de hoje
+- Para `all`: não filtrar por data, apenas mensagens ativas com `next_run_at` futuro ou `last_run_at` recente (últimos 7 dias)
+- Incluir `updated_at` no select para diagnósticos mais precisos
 
-Vou buscar `updated_at` de `group_scheduled_messages` e usar isso para invalidar diagnóstico velho quando a publicação tiver sido reativada/editada depois.
+### 2. Frontend — Adicionar seletor de período
+**Arquivo:** `src/hooks/useSchedulerDebug.ts`
 
-## 3) Criar uma normalização do status antes de renderizar no debug
-Em vez de passar o `runtimeDiagnostic` bruto, vou aplicar uma regra tipo:
+- Adicionar parâmetro `range` na URL da query
+- Incluir `range` na `queryKey`
 
-```text
-Se o diagnóstico disser "Inativa" mas:
-- a publicação está ativa, ou
-- há timer ativo, ou
-- o próximo disparo é futuro,
-então esse diagnóstico será descartado.
-```
+**Arquivo:** `src/components/grupos/SchedulerDebugPanel.tsx`
 
-Assim o painel volta a mostrar o estado real:
-- `Timer ativo` se estiver programada corretamente
-- `Perdida` se realmente perdeu a janela
-- `Ignorada` só quando fizer sentido
-- nunca "Inativa" por memória velha
+- Adicionar tabs compactas no header: **Hoje | Amanhã | 7 dias | Todas**
+- Atualizar título dinâmico ("Publicações de Hoje" → "Publicações da Semana" etc.)
+- Passar `range` para o hook
 
-## 4) Se necessário, reforçar o resync ao reativar
-Arquivo:
-- `deploy/backend/src/lib/group-scheduler.ts`
+### 3. Backend — Corrigir status "Ignorada" falso para mensagens recém-ativadas
+**Arquivo:** `deploy/backend/src/routes/groups-api.ts`
 
-Se eu encontrar na revisão final que o scheduler não está limpando/substituindo o diagnóstico em algum fluxo de reativação, vou reforçar isso no próprio `scheduleMessage`, para garantir que uma publicação reativada sempre saia de "Inativa" e entre em "Aguardando/Timer ativo".
+Na `resolveSchedulerStatus`, antes de retornar "Perdida"/"Ignorada" para `isPast`:
+- Verificar se a mensagem foi ativada recentemente (via `updated_at`) — se `updated_at` > `effective_run_at`, o status deveria ser "Sem timer" ou "Aguardando recálculo", não "Ignorada"
+- Isso cobre o caso onde a campanha foi ativada depois do horário já ter passado
 
-## Arquivos previstos
-- `deploy/backend/src/routes/groups-api.ts`
-- possivelmente `deploy/backend/src/lib/group-scheduler.ts`
+### Resultado
+- O usuário verá todas as programações futuras, não só as de hoje
+- Programações recém-ativadas não mostrarão "Ignorada" indevidamente
+- A programação das 22h aparecerá corretamente no painel
 
-## Como vou validar depois
-Depois da correção, a validação na sua VPS vai ser:
-
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT id, is_active, next_run_at, last_run_at, updated_at, content->>'runTime' AS run_time
-FROM group_scheduled_messages
-WHERE campaign_id = 'b63ff159-21b2-4c79-b1b7-8709ab1b0272'
-ORDER BY updated_at DESC
-LIMIT 20;
-"
-```
-
-E também:
-```bash
-docker logs deploy-backend-1 --since=30m 2>&1 | grep -i "\[scheduler\]\|scheduler-debug\|Timer set" | tail -80
-```
-
-## Resultado esperado
-O card deixa de mostrar **"Inativa"** indevidamente para publicações que existem e estão ativas, e passa a refletir o estado real do scheduler.
