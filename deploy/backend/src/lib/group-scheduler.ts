@@ -215,7 +215,7 @@ export class GroupSchedulerManager {
         // Past — recalculate without enqueuing
         if (msg.schedule_type === "once") {
           await sb.from("group_scheduled_messages")
-            .update({ is_active: false, next_run_at: null })
+            .update({ next_run_at: null })
             .eq("id", msg.id);
           this.setDiagnostic(msg.id, {
             status_code: "missed",
