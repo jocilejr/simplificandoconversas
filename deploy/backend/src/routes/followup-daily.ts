@@ -1032,6 +1032,24 @@ router.get("/status", async (req, res) => {
 
     const sb = getServiceClient();
     const today = getTodayBrasilia();
+    const nowIso = new Date().toISOString();
+    const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+    const { error: staleError } = await sb
+      .from(FOLLOWUP_QUEUE_TABLE)
+      .update({
+        status: "failed",
+        last_error: "Job travado — tempo limite de processamento excedido",
+        completed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("workspace_id", workspaceId)
+      .eq("dispatch_date", today)
+      .eq("status", "processing")
+      .lte("updated_at", staleCutoff);
+
+    if (staleError) throw staleError;
+
     const { data: jobs, error } = await sb
       .from(FOLLOWUP_QUEUE_TABLE)
       .select("id, transaction_id, rule_id, customer_name, normalized_phone, status, last_error, attempts, created_at, started_at, completed_at")
