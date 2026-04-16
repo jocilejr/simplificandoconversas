@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Image, Mic, File, Video,
   Send, UsersRound, CalendarClock, Megaphone, Search,
 } from "lucide-react";
-import { useSchedulerDebug, type ScheduledMessageDebug } from "@/hooks/useSchedulerDebug";
+import { useSchedulerDebug, type ScheduledMessageDebug, type SchedulerRange } from "@/hooks/useSchedulerDebug";
 import WhatsAppPreview from "@/components/grupos/WhatsAppPreview";
 
 function formatTimeBrt(utcStr: string | null): string {
@@ -208,11 +208,26 @@ function ScheduleCard({
 }
 /* ─── Main panel ─── */
 export default function SchedulerDebugPanel() {
-  const { data, isLoading, refresh } = useSchedulerDebug();
+  const [range, setRange] = useState<SchedulerRange>("today");
+  const { data, isLoading, refresh } = useSchedulerDebug(range);
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+
+  const rangeLabels: Record<SchedulerRange, string> = {
+    today: "Hoje",
+    tomorrow: "Amanhã",
+    week: "7 dias",
+    all: "Todas",
+  };
+
+  const titleLabels: Record<SchedulerRange, string> = {
+    today: "Publicações de Hoje",
+    tomorrow: "Publicações de Amanhã",
+    week: "Publicações da Semana",
+    all: "Todas as Publicações",
+  };
 
   const messages = data?.messages || [];
 
@@ -288,8 +303,24 @@ export default function SchedulerDebugPanel() {
         <div className="px-4 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Publicações de Hoje
+              {titleLabels[range]}
             </p>
+            {/* Range tabs */}
+            <div className="flex items-center gap-0.5 bg-muted/40 rounded-md p-0.5">
+              {(Object.keys(rangeLabels) as SchedulerRange[]).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => { setRange(r); setActiveIndex(0); }}
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
+                    r === range
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {rangeLabels[r]}
+                </button>
+              ))}
+            </div>
             {data && (
               <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground/70">
                 <span className="flex items-center gap-1">
@@ -337,7 +368,7 @@ export default function SchedulerDebugPanel() {
           <div className="py-16 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : sorted.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
-            Nenhuma publicação agendada para hoje.
+            Nenhuma publicação agendada para este período.
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">

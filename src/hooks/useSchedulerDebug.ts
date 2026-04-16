@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl } from "@/lib/api";
 
+export type SchedulerRange = "today" | "tomorrow" | "week" | "all";
+
 export interface QueueItem {
   group_jid: string;
   group_name: string;
@@ -65,23 +67,23 @@ export interface SchedulerDebugData {
   messages: ScheduledMessageDebug[];
 }
 
-export function useSchedulerDebug() {
+export function useSchedulerDebug(range: SchedulerRange = "today") {
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery<SchedulerDebugData>({
-    queryKey: ["scheduler-debug", workspaceId],
+    queryKey: ["scheduler-debug", workspaceId, range],
     enabled: !!workspaceId,
     refetchInterval: 3000,
     refetchIntervalInBackground: true,
     queryFn: async () => {
-      const resp = await fetch(apiUrl(`groups/scheduler-debug?workspaceId=${workspaceId}`));
+      const resp = await fetch(apiUrl(`groups/scheduler-debug?workspaceId=${workspaceId}&range=${range}`));
       if (!resp.ok) throw new Error(await resp.text());
       return resp.json();
     },
   });
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["scheduler-debug", workspaceId] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["scheduler-debug", workspaceId, range] });
 
   return { data, isLoading, error, refresh };
 }

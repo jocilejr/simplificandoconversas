@@ -400,6 +400,8 @@ function resolveSchedulerStatus(params: {
   hasTimer: boolean;
   isPast: boolean;
   isActive: boolean;
+  updatedAt?: string | null;
+  effectiveRunAt?: string | null;
 }) {
   const { queueItems, runtimeDiagnostic, campaign, hasTimer, isPast, isActive } = params;
 
@@ -499,6 +501,32 @@ function resolveSchedulerStatus(params: {
   }
 
   if (isPast) {
+    // Check if message was activated/updated AFTER the effective run time
+    // In that case, it's not truly "missed" — it was activated too late for this slot
+    const activatedAfterSlot = params.updatedAt && params.effectiveRunAt
+      && new Date(params.updatedAt) > new Date(params.effectiveRunAt);
+
+    if (activatedAfterSlot && isActive) {
+      if (hasTimer) {
+        return {
+          status_code: "waiting" as const,
+          status_label: "Timer ativo",
+          failure_reason: "Ativada após o horário — aguardando próximo disparo",
+          failure_details: "A publicação foi ativada/editada depois do horário programado. O próximo disparo será executado normalmente.",
+          diagnostics: { source: "derived", activated_after_slot: true },
+          queue_error_summary: queueErrorSummary,
+        };
+      }
+      return {
+        status_code: "waiting" as const,
+        status_label: "Aguardando recálculo",
+        failure_reason: "Ativada após o horário — aguardando próximo ciclo",
+        failure_details: "A publicação foi ativada/editada depois do horário programado. O scheduler irá recalcular o próximo disparo.",
+        diagnostics: { source: "derived", activated_after_slot: true },
+        queue_error_summary: queueErrorSummary,
+      };
+    }
+
     if (!isActive) {
       return {
         status_code: "skipped",
@@ -2197,6 +2225,7 @@ router.post("/import-remap-media", async (req: Request, res: Response) => {
 router.get("/scheduler-debug", async (req: Request, res: Response) => {
   try {
     const workspaceId = req.query.workspaceId as string;
+    const range = (req.query.range as string) || "today";
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const sb = getServiceClient();
@@ -2207,23 +2236,46 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     const nowBrt = new Date(now.getTime() + brtOffset);
     const todayStartBrt = new Date(nowBrt);
     todayStartBrt.setUTCHours(0, 0, 0, 0);
-    const todayEndBrt = new Date(nowBrt);
-    todayEndBrt.setUTCHours(23, 59, 59, 999);
+
+    // Calculate range boundaries based on selected period
+    let rangeEndBrt: Date;
+    if (range === "tomorrow") {
+      const tomorrowStart = new Date(todayStartBrt);
+      tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+      todayStartBrt.setUTCDate(todayStartBrt.getUTCDate() + 1);
+      todayStartBrt.setUTCHours(0, 0, 0, 0);
+      rangeEndBrt = new Date(tomorrowStart);
+      rangeEndBrt.setUTCHours(23, 59, 59, 999);
+    } else if (range === "week") {
+      rangeEndBrt = new Date(todayStartBrt);
+      rangeEndBrt.setUTCDate(rangeEndBrt.getUTCDate() + 6);
+      rangeEndBrt.setUTCHours(23, 59, 59, 999);
+    } else if (range === "all") {
+      // For "all": show everything from today onwards + last 7 days of history
+      const pastStart = new Date(todayStartBrt);
+      pastStart.setUTCDate(pastStart.getUTCDate() - 7);
+      todayStartBrt.setTime(pastStart.getTime());
+      rangeEndBrt = new Date(nowBrt);
+      rangeEndBrt.setUTCDate(rangeEndBrt.getUTCDate() + 365);
+    } else {
+      // today (default)
+      rangeEndBrt = new Date(nowBrt);
+      rangeEndBrt.setUTCHours(23, 59, 59, 999);
+    }
 
     // Convert BRT boundaries back to UTC for query
     const todayStartUtc = new Date(todayStartBrt.getTime() - brtOffset).toISOString();
-    const todayEndUtc = new Date(todayEndBrt.getTime() - brtOffset).toISOString();
+    const todayEndUtc = new Date(rangeEndBrt.getTime() - brtOffset).toISOString();
 
-    // Fetch all active scheduled messages for today (by next_run_at or last_run_at)
-    const isWithinToday = (value: string | null | undefined) => {
+    const isWithinRange = (value: string | null | undefined) => {
       if (!value) return false;
       const dt = new Date(value);
       return dt >= new Date(todayStartUtc) && dt <= new Date(todayEndUtc);
     };
 
     const resolveTodayRunAt = (message: any): string | null => {
-      const nextRunToday = isWithinToday(message.next_run_at);
-      const lastRunToday = isWithinToday(message.last_run_at);
+      const nextRunInRange = isWithinRange(message.next_run_at);
+      const lastRunInRange = isWithinRange(message.last_run_at);
 
       let contentData: any = {};
       try {
@@ -2233,42 +2285,49 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       }
 
       if (message.schedule_type === "once") {
-        if (nextRunToday) return message.next_run_at;
-        if (isWithinToday(message.scheduled_at)) return message.scheduled_at;
-        if (lastRunToday) return message.last_run_at;
+        if (nextRunInRange) return message.next_run_at;
+        if (isWithinRange(message.scheduled_at)) return message.scheduled_at;
+        if (lastRunInRange) return message.last_run_at;
         return message.next_run_at || message.last_run_at || message.scheduled_at || null;
       }
 
+      // For recurring messages, try to build a precise run time from content.runTime
       const runTime = contentData.runTime || contentData.time;
-      if (runTime && (nextRunToday || lastRunToday)) {
+      if (runTime && (nextRunInRange || lastRunInRange)) {
+        const refDate = nextRunInRange && message.next_run_at ? new Date(message.next_run_at) : new Date(message.last_run_at);
+        const refBrt = new Date(refDate.getTime() + brtOffset);
         const [hhStr, mmStr] = String(runTime).split(":");
         const hh = parseInt(hhStr || "0", 10);
         const mm = parseInt(mmStr || "0", 10);
         return brtToUtc(
-          todayStartBrt.getUTCFullYear(),
-          todayStartBrt.getUTCMonth(),
-          todayStartBrt.getUTCDate(),
+          refBrt.getUTCFullYear(),
+          refBrt.getUTCMonth(),
+          refBrt.getUTCDate(),
           hh,
           mm,
         ).toISOString();
       }
 
-      if (nextRunToday) return message.next_run_at;
-      if (lastRunToday) return message.last_run_at;
+      if (nextRunInRange) return message.next_run_at;
+      if (lastRunInRange) return message.last_run_at;
       return message.next_run_at || message.last_run_at || null;
     };
 
     const { data: messages, error: msgErr } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, message_type, content, is_active, next_run_at, last_run_at, scheduled_at, campaign_id")
+      .select("id, schedule_type, message_type, content, is_active, next_run_at, last_run_at, scheduled_at, campaign_id, updated_at")
       .eq("workspace_id", workspaceId)
       .order("next_run_at", { ascending: true });
 
     if (msgErr) return res.status(500).json({ error: msgErr.message });
 
-    // Filter messages relevant to today (next_run_at today OR last_run_at today)
+    // Filter messages relevant to the selected range
     const todayMessages = (messages || []).filter((m: any) => {
-      return isWithinToday(m.next_run_at) || isWithinToday(m.last_run_at) || isWithinToday(m.scheduled_at);
+      if (range === "all") {
+        // For "all": show active messages with future next_run_at, plus any with activity in range
+        if (m.is_active && m.next_run_at && new Date(m.next_run_at) > now) return true;
+      }
+      return isWithinRange(m.next_run_at) || isWithinRange(m.last_run_at) || isWithinRange(m.scheduled_at);
     });
 
     // Get campaign data
@@ -2331,6 +2390,8 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         hasTimer,
         isPast: !!isPast,
         isActive: m.is_active,
+        updatedAt: m.updated_at,
+        effectiveRunAt,
       });
       const missed = resolvedStatus.status_code === "missed";
 
