@@ -691,6 +691,20 @@ CREATE TABLE IF NOT EXISTS public.group_participant_events (
 );
 GRANT ALL ON public.group_participant_events TO anon, authenticated, service_role;
 
+CREATE TABLE IF NOT EXISTS public.group_daily_stats (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  date date NOT NULL,
+  additions integer NOT NULL DEFAULT 0,
+  removals integer NOT NULL DEFAULT 0,
+  total_members integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, group_jid, date)
+);
+GRANT ALL ON public.group_daily_stats TO anon, authenticated, service_role;
+
 -- ============================================================
 -- DELIVERY DIGITAL + AREA DE MEMBROS
 -- ============================================================
