@@ -2391,7 +2391,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     const groupsCount = uniqueGroups.size;
 
     // Build response
-    const result = todayMessages.map((m: any) => {
+    const result = filteredMessages.map((m: any) => {
       const hasTimer = groupScheduler.hasTimer(m.id);
       const runtimeDiagnostic = groupScheduler.getDiagnostic(m.id);
       const effectiveRunAt = resolveTodayRunAt(m);
