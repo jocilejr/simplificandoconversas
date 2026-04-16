@@ -105,6 +105,14 @@ export class GroupSchedulerManager {
     // Cancel existing timer first
     this.cancelMessage(msg.id);
 
+    // Clear stale "inactive" diagnostic when reactivating
+    if (msg.is_active) {
+      const prev = this.diagnostics.get(msg.id);
+      if (prev && prev.reason_code === "message_inactive") {
+        this.diagnostics.delete(msg.id);
+      }
+    }
+
     if (!msg.is_active) {
       this.setDiagnostic(msg.id, {
         status_code: "skipped",
