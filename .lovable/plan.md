@@ -1,40 +1,40 @@
 
 
-# Plano: Forward de eventos de grupo no webhook principal
+# Plano: Corrigir fonte de dados dos eventos de grupo
 
-## Problema
-A Evolution API envia todos os webhooks para `/api/webhook`. O código atual (linha 186-190 de `webhook.ts`) ignora eventos de grupo em vez de encaminhá-los ao handler dedicado `/api/groups/webhook/events`.
+## Problema raiz
 
-## Mudança
+O `useGroupEvents.ts` consulta os eventos via **Supabase client** (`supabase.from("group_participant_events")`), que aponta para o banco do **Lovable Cloud**. Mas os dados reais estão no banco da **VPS** (`deploy-postgres-1`). Por isso os números nunca batem — o frontend está lendo de um banco vazio/diferente.
 
-### `deploy/backend/src/routes/webhook.ts` (linhas 186-190)
+Outros hooks como `useGroupSelected` já resolvem isso corretamente: detectam se estão na VPS e usam `apiUrl()` + `fetch` para consultar o backend da VPS.
 
-Substituir o bloco que ignora por um forward interno via `fetch`:
+## Solução
 
-```typescript
-if (event && (event.includes("group") || event.includes("participant"))) {
-  const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
-  try {
-    const fwd = await fetch(`${baseUrl}/api/groups/webhook/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
-    });
-    const result = await fwd.json();
-    console.log(`[webhook] forwarded group event: ${event}`, result);
-    return res.json(result);
-  } catch (e: any) {
-    console.error("[webhook] failed to forward group event:", e.message);
-    return res.status(500).json({ error: "forward failed" });
-  }
-}
-```
+### 1. Criar endpoint no backend VPS: `GET /api/groups/events`
 
-## Arquivo modificado
+Em `deploy/backend/src/routes/groups-api.ts`, adicionar uma rota que aceita:
+- `workspaceId` (obrigatório)
+- `groupJids` (lista separada por vírgula)
+- `start` e `end` (ISO strings para filtrar período)
+
+A rota consulta `group_participant_events` no banco local e retorna todos os eventos do período, sem limite artificial.
+
+### 2. Refatorar `src/hooks/useGroupEvents.ts`
+
+Substituir a consulta direta ao Supabase por uma chamada via `apiUrl("groups/events")` + `fetch`, similar ao padrão do `useGroupSelected`. Manter fallback para Supabase client quando em preview do Lovable.
+
+A lógica de `buildEventCounts` e `buildGroupCounts` continua no frontend (são apenas contadores simples sobre o array retornado).
+
+### 3. Nenhuma mudança no dashboard
+
+O `GroupDashboardTab.tsx` já consome `eventCounts` e `groupCounts` do hook — não precisa mudar.
+
+## Arquivos alterados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `deploy/backend/src/routes/webhook.ts` | Forward interno em vez de ignorar |
+| `deploy/backend/src/routes/groups-api.ts` | Nova rota `GET /events` |
+| `src/hooks/useGroupEvents.ts` | Usar `apiUrl` + `fetch` em vez de `supabase.from()` |
 
 ## Comando VPS após deploy
 
@@ -44,7 +44,5 @@ cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --b
 
 ## Resultado esperado
 
-- Eventos de grupo voltam a ser salvos em `group_participant_events`
-- Contadores "Entraram/Saíram" passam a refletir dados reais
-- Nenhuma alteração necessária na Evolution API
+Os números no dashboard vão bater exatamente com a query SQL do banco da VPS.
 
