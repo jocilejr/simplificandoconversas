@@ -463,7 +463,12 @@ function resolveSchedulerStatus(params: {
   }
 
   // Runtime diagnostic from scheduler takes priority over cancelled queue items
-  if (runtimeDiagnostic && ["failed", "missed", "skipped", "processing"].includes(runtimeDiagnostic.status_code)) {
+  // BUT: ignore stale diagnostics that say "inactive" when the message is actually active
+  const isStaleInactiveDiagnostic = runtimeDiagnostic
+    && runtimeDiagnostic.reason_code === "message_inactive"
+    && isActive;
+
+  if (runtimeDiagnostic && !isStaleInactiveDiagnostic && ["failed", "missed", "skipped", "processing"].includes(runtimeDiagnostic.status_code)) {
     return {
       status_code: runtimeDiagnostic.status_code,
       status_label: runtimeDiagnostic.status_label,
