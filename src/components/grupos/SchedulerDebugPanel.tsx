@@ -208,13 +208,26 @@ function ScheduleCard({
 }
 /* ─── Main panel ─── */
 export default function SchedulerDebugPanel() {
-  const { data, isLoading, refresh } = useSchedulerDebug();
+  const [range, setRange] = useState<SchedulerRange>("today");
+  const { data, isLoading, refresh } = useSchedulerDebug(range);
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const messages = data?.messages || [];
+  const rangeLabels: Record<SchedulerRange, string> = {
+    today: "Hoje",
+    tomorrow: "Amanhã",
+    week: "7 dias",
+    all: "Todas",
+  };
+
+  const titleLabels: Record<SchedulerRange, string> = {
+    today: "Publicações de Hoje",
+    tomorrow: "Publicações de Amanhã",
+    week: "Publicações da Semana",
+    all: "Todas as Publicações",
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTimeMs(Date.now()), 1000);
