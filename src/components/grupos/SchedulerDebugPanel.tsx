@@ -368,7 +368,7 @@ export default function SchedulerDebugPanel() {
           <div className="py-16 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : sorted.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
-            Nenhuma publicação agendada para hoje.
+            Nenhuma publicação agendada para este período.
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
