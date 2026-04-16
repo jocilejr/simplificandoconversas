@@ -1,69 +1,69 @@
 
 
-# Plano: Remover `is_active` das publicações — ativação apenas por campanha
+# Plano: Eliminar `is_active` das mensagens — campanha é a única fonte de verdade
 
-## Conceito
-
-Publicações (`group_scheduled_messages`) não terão mais estado `is_active` próprio. Se a campanha está ativa, **todas** as suas publicações estão ativas. Se está inativa, nenhuma está. A coluna `is_active` na tabela continuará existindo (para não quebrar queries existentes), mas será sempre `true` — ignorada na lógica.
+## Contexto
+Mensagens (`group_scheduled_messages`) ainda possuem `is_active` em vários pontos do código. Isso causa o bug onde todas as 185 mensagens estão com `is_active=false` e mesmo ativando a campanha nada funciona. A coluna continuará existindo na tabela (para não quebrar o schema), mas será completamente ignorada no código.
 
 ## Alterações
 
-### 1. Backend — `deploy/backend/src/routes/groups-api.ts`
+### 1. `deploy/backend/src/routes/groups-api.ts`
 
-**PUT /campaigns/:id (sync ao ativar):**
-- Remover `.eq("is_active", true)` da query de mensagens — buscar **todas** as mensagens da campanha
-- Quando campanha ativa: agendar todas as mensagens (recalcular `next_run_at` se expirado; `once` expirado = pular)
-- Quando campanha inativa: cancelar todos os timers
+**Inserção de mensagem (linha 1040):** Remover `is_active: true` do insert (ou manter como default, tanto faz — será ignorado).
 
-**POST /campaigns/:id/messages (criar mensagem):**
-- Manter `is_active: true` no insert (sempre true)
-- Verificar se a campanha pai está ativa; se sim, registrar timer imediatamente
+**Import de backup (linha 1993):** Trocar `is_active: msg.is_active ?? true` por `is_active: true` (hardcode, nunca false).
 
-**PUT /campaigns/:id/messages/:msgId (editar mensagem):**
-- Não mexer em `is_active`
-- Se campanha ativa, re-registrar timer com novo horário
+**scheduler-debug endpoint (linhas 2300-2319):**
+- Remover `is_active` do select (linha 2300)
+- Remover filtro `m.is_active` (linhas 2312, 2317) — usar apenas filtro de campanha ativa (linhas 2336-2342)
+- Remover `is_active: m.is_active` do response (linha 2408)
+- Passar `isActive: true` hardcoded para `resolveSchedulerStatus` (linha 2389)
 
-**DELETE rota de toggle:** Remover completamente o endpoint `PATCH /campaigns/:id/messages/:msgId/toggle`
+**`resolveSchedulerStatus` (linhas 396-541):**
+- Remover parâmetro `isActive` da interface
+- Remover bloco que checa `!isActive` (linhas 532-541) — "publicação desativada"
+- Remover referências a `isActive` nos stale diagnostic checks (linhas 471-473, 511)
+- Remover `"message_inactive"` e `"message_inactive_at_dispatch"` dos stale codes (linha 470)
 
-**POST /campaigns/:id/send-now (envio imediato):**
-- Remover o `if (!msg.is_active) continue` (linha 966) — todas as mensagens participam
+**enqueue endpoint (linha 964-966):** Já está correto (sem filtro de is_active na mensagem).
 
-### 2. Backend — `deploy/backend/src/lib/group-scheduler.ts`
+### 2. `deploy/backend/src/lib/group-scheduler.ts`
 
-**`loadAll()`:**
-- Remover `.eq("is_active", true)` da query de mensagens — buscar todas
-- Manter apenas o filtro por campanha ativa (já existe)
-- Remover lógica de `is_active: false` no deactivate de `once` expirado (apenas pular, sem marcar)
+Já foi limpo na rodada anterior. Verificar que não resta nenhuma referência a `msg.is_active` (confirmado: não há).
 
-**`scheduleMessage()`:**
-- Remover o check `if (!msg.is_active)` que retorna "Inativa"
-- Remover `is_active` do tipo do parâmetro
+### 3. `src/hooks/useSchedulerDebug.ts`
 
-**`fireMessage()`:**
-- Remover `if (!msg.is_active)` check — substituir por check de campanha ativa (já existe)
-- Após `once` disparar, marcar `next_run_at = null` sem tocar `is_active`
-- Quando não conseguir calcular próximo run de recorrente, marcar `next_run_at = null` sem `is_active = false`
+- Remover `is_active: boolean` do type `ScheduledMessageDebug` (linha 34)
 
-**`selfHeal()`:**
-- Remover `.eq("is_active", true)` — buscar todas e filtrar por campanha ativa
+### 4. `src/hooks/useGroupScheduledMessages.ts`
 
-### 3. Frontend — `src/hooks/useGroupScheduledMessages.ts`
+- Já limpo (toggleMessage removido na rodada anterior). Sem alteração.
 
-- Remover o `toggleMessage` mutation completamente
-- Remover do return
+### 5. SQL — Corrigir dados legados
 
-### 4. Frontend — `src/components/grupos/GroupMessagesDialog.tsx`
-
-- Remover qualquer referência a toggle de mensagem individual (se existir na UI)
-- As publicações são listadas sem switch de ativação
-
-### 5. Frontend — `src/components/grupos/SchedulerDebugPanel.tsx` (se aplicável)
-
-- Remover referências a "publicação inativa" nos diagnósticos
+Executar na VPS para corrigir as 185 mensagens com `is_active=false`:
+```sql
+UPDATE group_scheduled_messages SET is_active = true WHERE is_active = false;
+```
 
 ## Resultado
-- Ativar campanha = todas as publicações recebem timers
-- Desativar campanha = todos os timers cancelados
-- Sem estado fantasma de `is_active = false` em publicações
-- Código mais simples e previsível
+- `is_active` nas mensagens é completamente ignorado em todo o código
+- Ativar campanha = scheduler busca TODAS as mensagens e cria timers
+- Visão geral mostra TODAS as publicações de campanhas ativas
+- Dados legados corrigidos com UPDATE simples
+
+## Validação
+```bash
+cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
+```
+
+Corrigir dados:
+```bash
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "UPDATE group_scheduled_messages SET is_active = true WHERE is_active = false;"
+```
+
+Verificar:
+```bash
+docker logs deploy-backend-1 --since=2m 2>&1 | grep -i "\[groups-api\]\|\[scheduler\]" | tail -30
+```
 
