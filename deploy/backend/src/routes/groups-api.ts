@@ -2352,8 +2352,17 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       }
     }
 
+    // For future ranges, filter out messages whose campaign is inactive
+    const filteredMessages = isFutureRange
+      ? todayMessages.filter((m: any) => {
+          const campaign = campaignMap[m.campaign_id];
+          if (!campaign) return true; // unknown campaign, keep for debugging
+          return campaign.is_active;
+        })
+      : todayMessages;
+
     // Get queue items for today
-    const msgIds = todayMessages.map((m: any) => m.id);
+    const msgIds = filteredMessages.map((m: any) => m.id);
     let queueMap: Record<string, any[]> = {};
     if (msgIds.length > 0) {
       const { data: queueItems } = await sb
