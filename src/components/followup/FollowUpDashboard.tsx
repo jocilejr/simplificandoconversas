@@ -319,7 +319,7 @@ export function FollowUpDashboard() {
               <Send className="h-4 w-4 text-green-500" />
             </div>
             <div>
-              <p className="text-lg font-bold"><span className="text-green-500">{effectiveSent}</span><span className="text-muted-foreground text-sm font-normal">/{progressBase || stats.totalToday}</span></p>
+              <p className="text-lg font-bold"><span className="text-green-500">{effectiveSent}</span><span className="text-muted-foreground text-sm font-normal">/{totalJobs || stats.totalToday}</span></p>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Enviados</p>
             </div>
           </div>
@@ -343,7 +343,7 @@ export function FollowUpDashboard() {
           </div>
         </div>
 
-        {(progressBase > 0 || stats.totalToday > 0) && (
+        {(totalJobs > 0 || stats.totalToday > 0) && (
           <div className="mt-4 pt-3 border-t border-border/20 space-y-3">
             <div className="flex items-center gap-3">
               <Progress value={progressPercent} className="h-2 flex-1" />
