@@ -105,12 +105,9 @@ export class GroupSchedulerManager {
     // Cancel existing timer first
     this.cancelMessage(msg.id);
 
-    // Clear stale "inactive" diagnostic when reactivating
+    // Clear ALL stale diagnostics when reactivating — prevents old "inactive"/"missed"/"campaign_inactive" from contaminating the panel
     if (msg.is_active) {
-      const prev = this.diagnostics.get(msg.id);
-      if (prev && prev.reason_code === "message_inactive") {
-        this.diagnostics.delete(msg.id);
-      }
+      this.diagnostics.delete(msg.id);
     }
 
     if (!msg.is_active) {

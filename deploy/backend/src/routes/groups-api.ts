@@ -466,9 +466,11 @@ function resolveSchedulerStatus(params: {
 
   // Runtime diagnostic from scheduler takes priority over cancelled queue items
   // BUT: ignore stale diagnostics that say "inactive" when the message is actually active
+  // Stale diagnostic: message is active now (and optionally has a timer), but diagnostic says otherwise
+  const staleDiagnosticCodes = ["message_inactive", "campaign_inactive", "next_run_already_passed", "message_inactive_at_dispatch", "once_expired_before_start"];
   const isStaleInactiveDiagnostic = runtimeDiagnostic
-    && runtimeDiagnostic.reason_code === "message_inactive"
-    && isActive;
+    && isActive
+    && staleDiagnosticCodes.includes(runtimeDiagnostic.reason_code || "");
 
   if (runtimeDiagnostic && !isStaleInactiveDiagnostic && ["failed", "missed", "skipped", "processing"].includes(runtimeDiagnostic.status_code)) {
     return {
@@ -2322,12 +2324,18 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     if (msgErr) return res.status(500).json({ error: msgErr.message });
 
     // Filter messages relevant to the selected range
+    // For future ranges (tomorrow, week, all), exclude inactive messages/campaigns
+    const isFutureRange = range === "tomorrow" || range === "week" || range === "all";
     const todayMessages = (messages || []).filter((m: any) => {
       if (range === "all") {
         // For "all": show active messages with future next_run_at, plus any with activity in range
         if (m.is_active && m.next_run_at && new Date(m.next_run_at) > now) return true;
       }
-      return isWithinRange(m.next_run_at) || isWithinRange(m.last_run_at) || isWithinRange(m.scheduled_at);
+      const inRange = isWithinRange(m.next_run_at) || isWithinRange(m.last_run_at) || isWithinRange(m.scheduled_at);
+      if (!inRange) return false;
+      // For future ranges, only show active messages
+      if (isFutureRange && !m.is_active) return false;
+      return true;
     });
 
     // Get campaign data
@@ -2344,8 +2352,17 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
       }
     }
 
+    // For future ranges, filter out messages whose campaign is inactive
+    const filteredMessages = isFutureRange
+      ? todayMessages.filter((m: any) => {
+          const campaign = campaignMap[m.campaign_id];
+          if (!campaign) return true; // unknown campaign, keep for debugging
+          return campaign.is_active;
+        })
+      : todayMessages;
+
     // Get queue items for today
-    const msgIds = todayMessages.map((m: any) => m.id);
+    const msgIds = filteredMessages.map((m: any) => m.id);
     let queueMap: Record<string, any[]> = {};
     if (msgIds.length > 0) {
       const { data: queueItems } = await sb
@@ -2374,7 +2391,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     const groupsCount = uniqueGroups.size;
 
     // Build response
-    const result = todayMessages.map((m: any) => {
+    const result = filteredMessages.map((m: any) => {
       const hasTimer = groupScheduler.hasTimer(m.id);
       const runtimeDiagnostic = groupScheduler.getDiagnostic(m.id);
       const effectiveRunAt = resolveTodayRunAt(m);

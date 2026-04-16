@@ -5,7 +5,7 @@ import { StatCard } from "@/components/transactions/StatCard";
 import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
-import { useGroupEvents } from "@/hooks/useGroupEvents";
+import { useGroupEvents, EventPeriod } from "@/hooks/useGroupEvents";
 import { format } from "date-fns";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
@@ -16,19 +16,22 @@ const actionConfig: Record<string, { icon: typeof UserPlus; color: string; label
   demote: { icon: ShieldMinus, color: "text-orange-500 bg-orange-500/10", label: "rebaixado em" },
 };
 
+const periodLabels: Record<EventPeriod, string> = {
+  today: "Hoje",
+  "7d": "7 dias",
+  "30d": "30 dias",
+};
+
 export default function GroupDashboardTab() {
   const { selectedGroups } = useGroupSelected();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
-  const { events } = useGroupEvents();
+  const { events, eventCounts, period, setPeriod } = useGroupEvents();
 
   const hasSelectedGroups = selectedGroups.length > 0;
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
-
-  const addCount = events.filter((e: any) => e.action === "add").length;
-  const removeCount = events.filter((e: any) => e.action === "remove").length;
 
   const eventsByGroup = events.reduce<Record<string, { add: number; remove: number }>>((acc, e: any) => {
     const jid = e.group_jid;
@@ -40,13 +43,32 @@ export default function GroupDashboardTab() {
 
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
+      <div className="flex items-center justify-between">
+        <div />
+        <div className="flex items-center gap-1 bg-card border border-border/50 rounded-md p-0.5">
+          {(Object.keys(periodLabels) as EventPeriod[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-2.5 py-1 text-xs rounded transition-colors ${
+                period === p
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {periodLabels[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
-        <StatCard title="Entraram" value={String(addCount)} icon={UserPlus} iconColor="text-green-500" />
-        <StatCard title="Saíram" value={String(removeCount)} icon={UserMinus} iconColor="text-red-500" />
+        <StatCard title="Entraram" value={String(eventCounts.add)} icon={UserPlus} iconColor="text-green-500" />
+        <StatCard title="Saíram" value={String(eventCounts.remove)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
       {!hasSelectedGroups && (
