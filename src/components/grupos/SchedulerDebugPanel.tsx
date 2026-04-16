@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   RefreshCw, Clock, Timer, AlertTriangle, CheckCircle2, XCircle,
   ChevronLeft, ChevronRight, FileText, Image, Mic, File, Video,
-  Send, UsersRound, CalendarClock, Megaphone, Search,
+  Send, UsersRound, CalendarClock, Megaphone,
 } from "lucide-react";
 import { useSchedulerDebug, type ScheduledMessageDebug, type SchedulerRange } from "@/hooks/useSchedulerDebug";
+import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import WhatsAppPreview from "@/components/grupos/WhatsAppPreview";
 
 function formatTimeBrt(utcStr: string | null): string {
@@ -213,7 +216,8 @@ export default function SchedulerDebugPanel() {
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [campaignFilter, setCampaignFilter] = useState("all");
+  const { campaigns } = useGroupCampaigns();
 
   const rangeLabels: Record<SchedulerRange, string> = {
     today: "Hoje",
@@ -246,21 +250,9 @@ export default function SchedulerDebugPanel() {
   );
 
   const filtered = useMemo(() => {
-    if (!searchTerm.trim()) return sorted;
-    const term = searchTerm.toLowerCase();
-    return sorted.filter((m) => {
-      const fields = [
-        m.campaign_name,
-        m.content_preview,
-        m.content?.text,
-        m.content?.caption,
-        m.status_label,
-        typeLabels[m.message_type] || m.message_type,
-        scheduleLabels[m.schedule_type] || m.schedule_type,
-      ];
-      return fields.some((f) => f && f.toLowerCase().includes(term));
-    });
-  }, [sorted, searchTerm]);
+    if (campaignFilter === "all") return sorted;
+    return sorted.filter((m) => m.campaign_name === campaignFilter);
+  }, [sorted, campaignFilter]);
 
   const nextIdx = useMemo(() => {
     const idx = filtered.findIndex((m) => {
@@ -272,11 +264,11 @@ export default function SchedulerDebugPanel() {
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [searchTerm]);
+  }, [campaignFilter]);
 
   useEffect(() => {
-    if (!searchTerm.trim()) setActiveIndex(nextIdx);
-  }, [nextIdx, searchTerm]);
+    if (campaignFilter === "all") setActiveIndex(nextIdx);
+  }, [nextIdx, campaignFilter]);
 
   const navigate = useCallback((dir: "prev" | "next") => {
     if (isTransitioning) return;
@@ -333,15 +325,17 @@ export default function SchedulerDebugPanel() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground/50" />
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar programação..."
-                className="h-7 w-40 pl-7 text-xs bg-muted/30 border-border/20"
-              />
-            </div>
+            <Select value={campaignFilter} onValueChange={(v) => { setCampaignFilter(v); setActiveIndex(0); }}>
+              <SelectTrigger className="h-7 w-44 text-xs bg-muted/30 border-border/20">
+                <SelectValue placeholder="Campanha" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas campanhas</SelectItem>
+                {campaigns.filter((c: any) => c.is_active).map((c: any) => (
+                  <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {filtered.length > 0 && (
               <div className="hidden sm:flex items-center gap-1 text-[10px] text-muted-foreground/60">
                 {Array.from({ length: Math.min(filtered.length, 12) }).map((_, i) => (
@@ -372,7 +366,7 @@ export default function SchedulerDebugPanel() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
-            Nenhuma publicação encontrada para "{searchTerm}".
+            Nenhuma publicação encontrada para esta campanha.
           </div>
         ) : (
           <div className="w-full min-w-0 overflow-hidden px-3 py-3">

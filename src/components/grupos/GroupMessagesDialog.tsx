@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   CalendarClock, Plus, Pencil, Trash2, MessageSquare, Image, Video, Mic,
   FileText, Sticker, MapPin, Contact, BarChart3, List, AtSign, ChevronDown,
-  Clock, Eye, Settings2
+  Clock, Eye, Settings2, Search
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
   const [editingMsg, setEditingMsg] = useState<any>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [weekdayFilter, setWeekdayFilter] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const getPreview = (msg: any) => {
     const c = msg.content || {};
@@ -120,7 +122,16 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
             </DialogDescription>
           </DialogHeader>
 
-          <div className="w-full min-w-0">
+          <div className="w-full min-w-0 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar publicação por texto..."
+                className="h-8 pl-8 text-xs bg-muted/30 border-border/20"
+              />
+            </div>
             <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedId(null); setWeekdayFilter(null); }}>
               <TabsList className="w-full flex flex-wrap gap-1 h-auto p-1">
                 {SCHEDULE_TABS.map(t => {
@@ -139,8 +150,19 @@ export default function GroupMessagesDialog({ open, onOpenChange, campaign }: Pr
               {SCHEDULE_TABS.map(tab => {
                 const tabMessages = messages.filter((m: any) => m.schedule_type === tab.value);
                 let displayMessages = tabMessages;
+                if (searchTerm.trim()) {
+                  const term = searchTerm.toLowerCase();
+                  displayMessages = displayMessages.filter((m: any) => {
+                    const fields = [
+                      m.content?.text, m.content?.caption, m.content?.question,
+                      m.content?.title, m.content?.contactName, m.content?.name,
+                      getPreview(m),
+                    ];
+                    return fields.some((f) => f && f.toLowerCase().includes(term));
+                  });
+                }
                 if (tab.value === "weekly" && weekdayFilter !== null) {
-                  displayMessages = tabMessages.filter((m: any) =>
+                  displayMessages = displayMessages.filter((m: any) =>
                     (m.content?.weekDays || m.content?.weekdays || []).includes(weekdayFilter)
                   );
                 }
