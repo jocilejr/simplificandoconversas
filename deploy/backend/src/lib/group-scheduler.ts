@@ -30,8 +30,7 @@ export class GroupSchedulerManager {
     const sb = getServiceClient();
     const { data: allMessages, error } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, content, next_run_at, is_active, campaign_id")
-      .eq("is_active", true);
+      .select("id, schedule_type, content, next_run_at, campaign_id");
 
     if (error) {
       console.error("[scheduler] loadAll query error:", error.message);
@@ -76,9 +75,9 @@ export class GroupSchedulerManager {
       // If next_run_at is null or in the past, recalculate (DON'T enqueue)
       if (!nextRun || nextRun <= now) {
         if (msg.schedule_type === "once") {
-          // Once messages in the past — deactivate, don't fire
+          // Once messages in the past — clear next_run, don't fire
           await sb.from("group_scheduled_messages")
-            .update({ is_active: false, next_run_at: null })
+            .update({ next_run_at: null })
             .eq("id", msg.id);
           this.setDiagnostic(msg.id, {
             status_code: "missed",
@@ -122,26 +121,12 @@ export class GroupSchedulerManager {
   }
 
   /** Schedule (or reschedule) a single message. Called from API routes. */
-  scheduleMessage(msg: { id: string; schedule_type: string; content: any; campaign_id: string; next_run_at: string | null; is_active: boolean }): void {
+  scheduleMessage(msg: { id: string; schedule_type: string; content: any; campaign_id: string; next_run_at: string | null }): void {
     // Cancel existing timer first
     this.cancelMessage(msg.id);
 
-    // Clear ALL stale diagnostics when reactivating — prevents old "inactive"/"missed"/"campaign_inactive" from contaminating the panel
-    if (msg.is_active) {
-      this.diagnostics.delete(msg.id);
-    }
-
-    if (!msg.is_active) {
-      this.setDiagnostic(msg.id, {
-        status_code: "skipped",
-        status_label: "Inativa",
-        reason_code: "message_inactive",
-        reason_label: "A publicação está desativada",
-        reason_details: "O timer foi removido porque a publicação foi marcada como inativa.",
-        diagnostics: { source: "scheduleMessage" },
-      });
-      return;
-    }
+    // Clear stale diagnostics when scheduling
+    this.diagnostics.delete(msg.id);
 
     if (!msg.next_run_at) {
       this.setDiagnostic(msg.id, {
@@ -214,8 +199,7 @@ export class GroupSchedulerManager {
     const sb = getServiceClient();
     const { data: active, error } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, content, next_run_at, campaign_id, is_active")
-      .eq("is_active", true)
+      .select("id, schedule_type, content, next_run_at, campaign_id")
       .not("next_run_at", "is", null);
 
     if (error || !active) return;
