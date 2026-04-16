@@ -23,7 +23,7 @@ import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 
 import followupDailyRouter from "./routes/followup-daily";
-import { processFollowUpDaily } from "./routes/followup-daily";
+import { processFollowUpDaily, prepareFollowUpDaily } from "./routes/followup-daily";
 import groupsApiRouter from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
