@@ -10,6 +10,43 @@ function extractPhone(p: any): string {
   return raw.replace(/@.*/, "").replace(/\D/g, "");
 }
 
+/** Get Evolution API config for a workspace */
+async function getEvolutionConfig(workspaceId: string) {
+  const sb = getServiceClient();
+  const { data } = await sb
+    .from("whatsapp_instances")
+    .select("proxy_url")
+    .eq("workspace_id", workspaceId)
+    .limit(1)
+    .maybeSingle();
+
+  const baseUrl = data?.proxy_url || process.env.EVOLUTION_API_URL || "http://evolution:8080";
+  const apiKey = process.env.EVOLUTION_API_KEY || "";
+  return { baseUrl, apiKey };
+}
+
+/** Fetch real participant count from Evolution API */
+async function fetchRealMemberCount(workspaceId: string, instanceName: string, groupJid: string): Promise<number | null> {
+  try {
+    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const encoded = encodeURIComponent(instanceName);
+    const resp = await fetch(`${baseUrl}/group/findGroupInfos/${encoded}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ groupJid }),
+    });
+    if (resp.ok) {
+      const info = await resp.json();
+      // Evolution API v2 returns participants array or size
+      const count = info.participants?.length || info.size || 0;
+      return count > 0 ? count : null;
+    }
+  } catch (e: any) {
+    console.warn("[groups-webhook] Failed to fetch real member count:", e.message);
+  }
+  return null;
+}
+
 /* POST /api/groups/webhook/events
    Receives group-participants.update from Evolution API */
 router.post("/events", async (req: Request, res: Response) => {
@@ -57,6 +94,9 @@ router.post("/events", async (req: Request, res: Response) => {
       .eq("group_jid", groupJid)
       .maybeSingle();
 
+    // Resolve group name with fallback from webhook payload
+    const groupName = sg?.group_name || data.subject || data.groupName || "";
+
     // ── Temporal deduplication: skip participants already recorded in last 60s ──
     const cutoff = new Date(Date.now() - 60_000).toISOString();
     const { data: recent } = await sb
@@ -79,16 +119,27 @@ router.post("/events", async (req: Request, res: Response) => {
       user_id: inst.user_id,
       instance_name: instanceName,
       group_jid: groupJid,
-      group_name: sg?.group_name || "",
+      group_name: groupName,
       participant_jid: phone,
       action,
     }));
 
     await sb.from("group_participant_events").insert(rows);
 
-    // Update member count if group is selected
+    // ── Reconcile member_count with real Evolution API data ──
     let updatedMemberCount = 0;
-    if (sg) {
+    const realCount = await fetchRealMemberCount(inst.workspace_id, instanceName, groupJid);
+
+    if (realCount !== null) {
+      // Use real count from Evolution API — eliminates drift
+      updatedMemberCount = realCount;
+      await sb
+        .from("group_selected")
+        .update({ member_count: realCount })
+        .eq("workspace_id", inst.workspace_id)
+        .eq("group_jid", groupJid);
+    } else if (sg) {
+      // Fallback: relative increment if API call failed
       const increment = action === "add" ? newParticipants.length : action === "remove" ? -newParticipants.length : 0;
       if (increment !== 0) {
         const { data: current } = await sb
@@ -142,7 +193,7 @@ router.post("/events", async (req: Request, res: Response) => {
           workspace_id: inst.workspace_id,
           date: todayBrt,
           group_jid: groupJid,
-          group_name: sg?.group_name || "",
+          group_name: groupName,
           additions,
           removals,
           total_members: updatedMemberCount,
@@ -153,8 +204,8 @@ router.post("/events", async (req: Request, res: Response) => {
     }
 
     // ── Update member_count inside group_smart_links JSONB (real-time) ──
-    const incrementSL = action === "add" ? newParticipants.length : action === "remove" ? -newParticipants.length : 0;
-    if (incrementSL !== 0) {
+    // Use realCount if available, otherwise use relative increment
+    if (realCount !== null) {
       try {
         const { data: affectedLinks } = await sb
           .from("group_smart_links")
@@ -168,7 +219,7 @@ router.post("/events", async (req: Request, res: Response) => {
             let changed = false;
             for (const gl of groupLinks) {
               if (gl.group_jid === groupJid) {
-                gl.member_count = Math.max(0, (gl.member_count || 0) + incrementSL);
+                gl.member_count = realCount;
                 changed = true;
               }
             }
@@ -180,9 +231,38 @@ router.post("/events", async (req: Request, res: Response) => {
       } catch (e: any) {
         console.warn("[groups-webhook] Failed to update smart link member_count:", e.message);
       }
+    } else {
+      const incrementSL = action === "add" ? newParticipants.length : action === "remove" ? -newParticipants.length : 0;
+      if (incrementSL !== 0) {
+        try {
+          const { data: affectedLinks } = await sb
+            .from("group_smart_links")
+            .select("id, group_links")
+            .eq("workspace_id", inst.workspace_id)
+            .eq("is_active", true);
+
+          if (affectedLinks && affectedLinks.length > 0) {
+            for (const sl of affectedLinks) {
+              const groupLinks = (sl.group_links as any[]) || [];
+              let changed = false;
+              for (const gl of groupLinks) {
+                if (gl.group_jid === groupJid) {
+                  gl.member_count = Math.max(0, (gl.member_count || 0) + incrementSL);
+                  changed = true;
+                }
+              }
+              if (changed) {
+                await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", sl.id);
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn("[groups-webhook] Failed to update smart link member_count:", e.message);
+        }
+      }
     }
 
-    res.json({ ok: true, events: rows.length });
+    res.json({ ok: true, events: rows.length, realCount });
   } catch (err: any) {
     console.error("[groups-webhook] error:", err.message);
     res.status(500).json({ error: err.message });
