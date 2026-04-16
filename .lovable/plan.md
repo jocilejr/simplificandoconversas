@@ -1,61 +1,78 @@
 
 
-# Plano: Corrigir `updated_at` no PUT de campanhas e garantir sync do scheduler
+# Plano: Garantir sync do scheduler ao ativar campanha
 
-## Problema raiz
+## Diagnóstico real
 
-O endpoint `PUT /campaigns/:id` (linha 831-843 de `groups-api.ts`) monta o objeto `update` **sem incluir `updated_at`**. Resultado:
-- `updated_at` fica congelado na data de criação (14/04)
-- Toda a lógica de diagnóstico que depende de `updated_at` para detectar "ativado recentemente" falha
-- O `wasActive !== nowActive` funciona, mas como `updated_at` não muda, o painel de debug e o `resolveSchedulerStatus` não conseguem distinguir ativações recentes
+O código no PUT `/campaigns/:id` tem uma guarda `wasActive !== nowActive` (linha 848). Se a campanha **já está ativa** no banco e o usuário clica no toggle (que já está ON), `wasActive = true` e `nowActive = true` → nenhum sync acontece. Também, se o backend reiniciou e o `loadAll` carregou os timers, mas algum timer falhou ou a mensagem não estava com `is_active = true`, o toggle não re-sincroniza porque o estado não mudou.
 
-Além disso, o `group_scheduled_messages` também precisa ter seu `updated_at` atualizado quando recalculado na ativação da campanha.
+Além disso, `loadAll` carrega mensagens de **todas** as campanhas (inclusive inativas), desperdiçando timers que serão cancelados em `fireMessage`.
 
 ## Correções
 
-### 1. Backend — `deploy/backend/src/routes/groups-api.ts`
+### 1. `deploy/backend/src/routes/groups-api.ts` — Sync idempotente
 
-**No PUT de campanhas (linha ~831):** Adicionar `updated_at` ao update object:
+Remover a guarda `wasActive !== nowActive`. Sempre que o PUT receber `isActive`, sincronizar os timers de forma idempotente:
+
+- Se `isActive === true` → para cada mensagem ativa da campanha, garantir que existe timer (se já existe, recria)
+- Se `isActive === false` → cancelar todos os timers
+- Adicionar log de entrada no PUT handler: `[groups-api] PUT /campaigns/:id isActive=X wasActive=Y`
+
 ```typescript
-const update: any = { updated_at: new Date().toISOString() };
+// Substituir a guarda wasActive !== nowActive por:
+if (isActive !== undefined) {
+  const { data: msgs } = await sb
+    .from("group_scheduled_messages")
+    .select(...)
+    .eq("campaign_id", req.params.id)
+    .eq("is_active", true);
+
+  if (nowActive) {
+    // Sempre garantir timers (idempotente)
+    for (const m of msgs) { ... scheduleMessage ... }
+  } else {
+    // Sempre cancelar
+    for (const m of msgs) { groupScheduler.cancelMessage(m.id); }
+  }
+}
 ```
 
-**Na ativação de campanha (linha ~872):** Ao recalcular `next_run_at` das mensagens, também atualizar `updated_at`:
+### 2. `deploy/backend/src/lib/group-scheduler.ts` — `loadAll` filtra por campanha ativa
+
+Após carregar as mensagens ativas, buscar quais campanhas estão ativas e filtrar:
+
 ```typescript
-await sb.from("group_scheduled_messages")
-  .update({ next_run_at: nextRun, updated_at: new Date().toISOString() })
-  .eq("id", m.id);
+const campaignIds = [...new Set(messages.map(m => m.campaign_id))];
+const { data: activeCampaigns } = await sb
+  .from("group_campaigns")
+  .select("id")
+  .in("id", campaignIds)
+  .eq("is_active", true);
+
+const activeSet = new Set(activeCampaigns?.map(c => c.id) || []);
+const validMessages = messages.filter(m => activeSet.has(m.campaign_id));
 ```
 
-**Para mensagens que já têm `next_run_at` válido (linha ~879):** Mesmo sem recalcular, atualizar `updated_at` para marcar a reativação:
+### 3. Log de entrada no PUT
+
+Adicionar no início do handler:
 ```typescript
-await sb.from("group_scheduled_messages")
-  .update({ updated_at: new Date().toISOString() })
-  .eq("id", m.id);
+console.log(`[groups-api] PUT /campaigns/${req.params.id} body:`, JSON.stringify(req.body));
 ```
-
-### 2. Garantir que `group_campaigns` tenha trigger de `updated_at` (verificação)
-
-Confirmar se existe trigger `update_updated_at_column` na tabela `group_campaigns`. Se não existir, a única forma de atualizar é explicitamente no código (que é o que estamos fazendo acima).
 
 ## Resultado
-- O toggle ativa/desativa vai atualizar `updated_at` na campanha e nas mensagens
-- O painel de debug vai identificar corretamente ativações recentes
-- O `resolveSchedulerStatus` vai poder ignorar diagnósticos stale com base no timestamp real de ativação
+- Toggle ON sempre sincroniza timers, mesmo que a campanha já estivesse ativa
+- Toggle OFF sempre cancela timers
+- `loadAll` não carrega timers de campanhas inativas
+- Logs detalhados para diagnosticar qualquer problema futuro
 
 ## Validação pós-deploy
 ```bash
 cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
 ```
 
-Depois, ative uma campanha pela UI e verifique:
+Ative uma campanha e verifique:
 ```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT id, name, is_active, updated_at FROM group_campaigns ORDER BY updated_at DESC LIMIT 5;
-"
-```
-
-```bash
-docker logs deploy-backend-1 --since=5m 2>&1 | grep -i "activated\|synced\|timer" | tail -20
+docker logs deploy-backend-1 --since=2m 2>&1 | grep -i "\[groups-api\]\|\[scheduler\]" | tail -30
 ```
 
