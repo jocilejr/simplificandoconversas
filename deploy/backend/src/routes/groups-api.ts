@@ -2420,6 +2420,114 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── POST /sync-stats — Sincronizar member_count real da Evolution API ─── */
+router.post("/sync-stats", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.body;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+
+    // Get all instances for this workspace
+    const { data: instances } = await sb
+      .from("whatsapp_instances")
+      .select("instance_name")
+      .eq("workspace_id", workspaceId);
+
+    if (!instances || instances.length === 0) {
+      return res.json({ synced: 0, message: "No instances found" });
+    }
+
+    // Get monitored groups
+    const { data: monitored } = await sb
+      .from("group_selected")
+      .select("id, group_jid, group_name, member_count, instance_name")
+      .eq("workspace_id", workspaceId);
+
+    if (!monitored || monitored.length === 0) {
+      return res.json({ synced: 0, message: "No monitored groups" });
+    }
+
+    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const monitoredMap = new Map(monitored.map(g => [g.group_jid, g]));
+    let synced = 0;
+    const results: any[] = [];
+
+    // Fetch groups from each instance
+    for (const inst of instances) {
+      const encoded = encodeURIComponent(inst.instance_name);
+      try {
+        const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}`, {
+          method: "GET",
+          headers: { apikey: apiKey },
+        });
+        if (!resp.ok) {
+          console.warn(`[sync-stats] fetchAllGroups failed for ${inst.instance_name}: ${resp.status}`);
+          continue;
+        }
+        const groups = await resp.json() as any[];
+        if (!Array.isArray(groups)) continue;
+
+        for (const g of groups) {
+          const jid = g.id || g.jid || "";
+          const entry = monitoredMap.get(jid);
+          if (!entry) continue;
+
+          const realCount = g.participants?.length || g.size || 0;
+          if (realCount <= 0) continue;
+
+          // Update member_count in group_selected
+          await sb
+            .from("group_selected")
+            .update({ member_count: realCount })
+            .eq("id", entry.id);
+
+          // Also update smart links JSONB
+          try {
+            const { data: links } = await sb
+              .from("group_smart_links")
+              .select("id, group_links")
+              .eq("workspace_id", workspaceId)
+              .eq("is_active", true);
+
+            if (links) {
+              for (const sl of links) {
+                const groupLinks = (sl.group_links as any[]) || [];
+                let changed = false;
+                for (const gl of groupLinks) {
+                  if (gl.group_jid === jid) {
+                    gl.member_count = realCount;
+                    changed = true;
+                  }
+                }
+                if (changed) {
+                  await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", sl.id);
+                }
+              }
+            }
+          } catch (_e) {}
+
+          results.push({
+            group_jid: jid,
+            group_name: entry.group_name,
+            old_count: entry.member_count,
+            new_count: realCount,
+          });
+          synced++;
+        }
+      } catch (e: any) {
+        console.warn(`[sync-stats] Error fetching groups for ${inst.instance_name}:`, e.message);
+      }
+    }
+
+    console.log(`[sync-stats] Synced ${synced} groups for workspace ${workspaceId}`);
+    res.json({ synced, groups: results });
+  } catch (err: any) {
+    console.error("[sync-stats] error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { getEvolutionConfig };
 
