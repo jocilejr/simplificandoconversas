@@ -11,6 +11,7 @@ type GroupActionCounts = { add: number; remove: number; promote: number; demote:
 
 const BRAZIL_TIMEZONE = "America/Sao_Paulo";
 const emptyCounts: GroupActionCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
+const EVENTS_PAGE_SIZE = 1000;
 
 function getBrazilNow(): Date {
   return toZonedTime(new Date(), BRAZIL_TIMEZONE);
@@ -66,6 +67,37 @@ function buildGroupCounts(rows: Array<{ group_jid: string | null; action: string
   }, {});
 }
 
+async function fetchAllGroupEvents(workspaceId: string, monitoredJids: string[], start: string, end: string) {
+  const allRows: any[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + EVENTS_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("group_participant_events")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .in("group_jid", monitoredJids)
+      .gte("created_at", start)
+      .lte("created_at", end)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+
+    const batch = data || [];
+    allRows.push(...batch);
+
+    if (batch.length < EVENTS_PAGE_SIZE) {
+      break;
+    }
+
+    from += EVENTS_PAGE_SIZE;
+  }
+
+  return allRows;
+}
+
 export function useGroupEvents(monitoredJids: string[] = []) {
   const { workspaceId } = useWorkspace();
   const [period, setPeriod] = useState<EventPeriod>("today");
@@ -76,41 +108,15 @@ export function useGroupEvents(monitoredJids: string[] = []) {
   const hasJids = monitoredJids.length > 0;
 
   // Feed: eventos filtrados por data e grupos monitorados
-  const { data: events = [], isLoading } = useQuery({
+  const { data: metrics = { events: [], eventCounts: emptyCounts, groupCounts: {} as Record<string, GroupActionCounts> }, isLoading } = useQuery({
     queryKey: ["group-events", workspaceId, start, end, monitoredJids],
     enabled: !!workspaceId && hasJids,
     refetchInterval: 15000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("group_participant_events")
-        .select("*")
-        .eq("workspace_id", workspaceId!)
-        .in("group_jid", monitoredJids)
-        .gte("created_at", start)
-        .lte("created_at", end)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Métricas reais do período completo, independentes do feed visual limitado
-  const { data: metrics = { eventCounts: emptyCounts, groupCounts: {} as Record<string, GroupActionCounts> }, isLoading: isMetricsLoading } = useQuery({
-    queryKey: ["group-event-metrics", workspaceId, start, end, monitoredJids],
-    enabled: !!workspaceId && hasJids,
-    refetchInterval: 15000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("group_participant_events")
-        .select("group_jid, action")
-        .eq("workspace_id", workspaceId!)
-        .in("group_jid", monitoredJids)
-        .gte("created_at", start)
-        .lte("created_at", end);
-      if (error) throw error;
+      const data = await fetchAllGroupEvents(workspaceId!, monitoredJids, start, end);
 
       return {
+        events: data,
         eventCounts: buildEventCounts(data || []),
         groupCounts: buildGroupCounts(data || []),
       };
@@ -118,13 +124,13 @@ export function useGroupEvents(monitoredJids: string[] = []) {
   });
 
   return {
-    events,
+    events: metrics.events,
     eventCounts: metrics.eventCounts,
     groupCounts: metrics.groupCounts,
     period,
     setPeriod,
     customRange,
     setCustomRange,
-    isLoading: isLoading || isMetricsLoading,
+    isLoading,
   };
 }
