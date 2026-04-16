@@ -1168,6 +1168,7 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
           .single();
 
         if (!template) {
+          console.error(`[email/queue] Template ${item.template_id} não encontrado para item ${item.id} (${item.recipient_email})`);
           await supabase.from("email_queue").update({
             status: "failed",
             error_message: "Template não encontrado",
@@ -1242,15 +1243,16 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         }
 
         processed++;
-        console.log(`[email/queue] Enviado para ${item.recipient_email} (${processed}/${items.length})`);
+        console.log(`[email/queue] ✅ Enviado para ${item.recipient_email} (campanha: ${item.campaign_id || "n/a"}) (${processed}/${items.length})`);
       } catch (sendErr: any) {
         failed++;
+        const errMsg = sendErr?.message || String(sendErr);
         await supabase.from("email_queue").update({
           status: "failed",
-          error_message: sendErr.message,
+          error_message: errMsg,
           processed_at: new Date().toISOString(),
         }).eq("id", item.id);
-        console.error(`[email/queue] Falha para ${item.recipient_email}:`, sendErr.message);
+        console.error(`[email/queue] ❌ Falha para ${item.recipient_email} (campanha: ${item.campaign_id || "n/a"}): ${errMsg}`);
       }
 
       // Delay between sends to prevent SMTP blocking
