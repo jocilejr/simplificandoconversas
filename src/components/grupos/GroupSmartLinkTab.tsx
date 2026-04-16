@@ -317,6 +317,13 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
       },
     });
   };
+  const handleRemoveGroup = (jid: string) => {
+    const updated = groupLinks.filter(g => g.group_jid !== jid);
+    updateSmartLink.mutate({ id: smartLink.id, groupLinks: updated }, {
+      onSuccess: () => toast({ title: "Grupo removido do Smart Link" }),
+    });
+  };
+
   const maxMembersLimit = smartLink.max_members_per_group || 200;
 
   const activeGroupJid = useMemo(() => {
@@ -467,6 +474,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                       <TableHead className="w-[220px]">URL</TableHead>
                       <TableHead className="text-center w-20">Status</TableHead>
                       <TableHead className="text-center w-28">Último Sync</TableHead>
+                      <TableHead className="text-center w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -505,6 +513,29 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                           </TableCell>
                           <TableCell className="text-center">
                             <GroupSyncIndicator gl={gl} isSyncing={isSyncingThis} />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Remover grupo?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    O grupo <strong>{gl.group_name || gl.group_jid}</strong> será removido deste Smart Link. Novos cliques não serão redirecionados para ele.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleRemoveGroup(gl.group_jid)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                    Remover
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </TableCell>
                         </TableRow>
                       );
