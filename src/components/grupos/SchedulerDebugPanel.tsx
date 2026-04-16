@@ -229,6 +229,8 @@ export default function SchedulerDebugPanel() {
     all: "Todas as Publicações",
   };
 
+  const messages = data?.messages || [];
+
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTimeMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
