@@ -863,14 +863,14 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
               if (m.schedule_type === "once") {
                 // Expired once — deactivate
                 await sb.from("group_scheduled_messages")
-                  .update({ is_active: false, next_run_at: null })
+                  .update({ is_active: false, next_run_at: null, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
                 continue;
               }
               nextRun = calculateNextRunAt({ schedule_type: m.schedule_type, content: m.content });
               if (nextRun) {
                 await sb.from("group_scheduled_messages")
-                  .update({ next_run_at: nextRun })
+                  .update({ next_run_at: nextRun, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
               } else {
                 continue;
