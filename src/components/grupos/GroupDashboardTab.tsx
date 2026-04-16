@@ -71,7 +71,6 @@ export default function GroupDashboardTab() {
       });
       if (resp.ok) {
         const result = await resp.json();
-        await refetchGroups();
         queryClient.invalidateQueries({ queryKey: ["group-selected"] });
         if (!silent && result.synced > 0) {
           toast.success(`Sincronizado: ${result.synced} grupo(s) atualizado(s)`);
