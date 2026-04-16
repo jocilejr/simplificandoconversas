@@ -117,6 +117,10 @@ function getTodayBrasilia(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
 
+function toBrasiliaDate(ts: string): string {
+  return new Date(ts).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
 function daysBetween(dateA: string, dateB: string): number {
   const a = new Date(dateA.slice(0, 10));
   const b = new Date(dateB.slice(0, 10));
@@ -218,8 +222,11 @@ async function prepareWorkspace(
   const matches: MatchedBoleto[] = [];
 
   for (const boleto of boletos) {
-    const dueDate = new Date(new Date(boleto.created_at).getTime() + expirationDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const matchingRule = findMatchingRule(rules, boleto.created_at, dueDate, today);
+    const createdDateBRT = toBrasiliaDate(boleto.created_at);
+    const dueDateObj = new Date(createdDateBRT + "T12:00:00");
+    dueDateObj.setDate(dueDateObj.getDate() + expirationDays);
+    const dueDate = dueDateObj.toISOString().slice(0, 10);
+    const matchingRule = findMatchingRule(rules, createdDateBRT, dueDate, today);
     if (!matchingRule) { result.skippedNoRule++; continue; }
 
     const key = `${boleto.id}:${matchingRule.id}`;

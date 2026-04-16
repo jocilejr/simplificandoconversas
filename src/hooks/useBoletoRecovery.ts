@@ -183,9 +183,9 @@ export function useBoletoRecovery() {
   }, [unpaidBoletos, settings, rules, dispatchMap]);
 
   // Derived lists
-  // todayBoletos: ONLY items present in the dispatch queue (single source of truth)
-  const todayBoletos = useMemo(() => processedBoletos.filter((b) => dispatchMap.has(b.id)), [processedBoletos, dispatchMap]);
-  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "pending" || b.sendStatus === "processing"), [todayBoletos]);
+  // todayBoletos: boletos that have a matching rule for today (frontend rule-matching for visibility)
+  const todayBoletos = useMemo(() => processedBoletos.filter((b) => b.applicableRule !== null), [processedBoletos]);
+  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => !b.contactedToday && (b.sendStatus === null || b.sendStatus === "pending" || b.sendStatus === "processing")), [todayBoletos]);
   const sentTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "sent"), [todayBoletos]);
   const pendingBoletos = useMemo(() => processedBoletos.filter((b) => !b.isOverdue), [processedBoletos]);
   const overdueBoletos = useMemo(() => processedBoletos.filter((b) => b.isOverdue), [processedBoletos]);
