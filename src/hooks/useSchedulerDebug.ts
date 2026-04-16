@@ -31,7 +31,7 @@ export interface ScheduledMessageDebug {
   id: string;
   schedule_type: string;
   message_type: string;
-  is_active: boolean;
+  
   next_run_at: string | null;
   last_run_at: string | null;
   effective_run_at: string | null;

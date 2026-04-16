@@ -399,11 +399,10 @@ function resolveSchedulerStatus(params: {
   campaign: any;
   hasTimer: boolean;
   isPast: boolean;
-  isActive: boolean;
   updatedAt?: string | null;
   effectiveRunAt?: string | null;
 }) {
-  const { queueItems, runtimeDiagnostic, campaign, hasTimer, isPast, isActive } = params;
+  const { queueItems, runtimeDiagnostic, campaign, hasTimer, isPast } = params;
 
   const sentItems = queueItems.filter((item) => item.status === "sent");
   const failedItems = queueItems.filter((item) => item.status === "failed");
@@ -467,9 +466,8 @@ function resolveSchedulerStatus(params: {
   // Runtime diagnostic from scheduler takes priority over cancelled queue items
   // BUT: ignore stale diagnostics that say "inactive" when the message is actually active
   // Stale diagnostic: message is active now (and optionally has a timer), but diagnostic says otherwise
-  const staleDiagnosticCodes = ["message_inactive", "campaign_inactive", "next_run_already_passed", "message_inactive_at_dispatch", "once_expired_before_start"];
+  const staleDiagnosticCodes = ["campaign_inactive", "next_run_already_passed", "once_expired_before_start"];
   const isStaleInactiveDiagnostic = runtimeDiagnostic
-    && isActive
     && staleDiagnosticCodes.includes(runtimeDiagnostic.reason_code || "");
 
   if (runtimeDiagnostic && !isStaleInactiveDiagnostic && ["failed", "missed", "skipped", "processing"].includes(runtimeDiagnostic.status_code)) {
@@ -508,7 +506,7 @@ function resolveSchedulerStatus(params: {
     const activatedAfterSlot = params.updatedAt && params.effectiveRunAt
       && new Date(params.updatedAt) > new Date(params.effectiveRunAt);
 
-    if (activatedAfterSlot && isActive) {
+    if (activatedAfterSlot) {
       if (hasTimer) {
         return {
           status_code: "waiting" as const,
@@ -525,17 +523,6 @@ function resolveSchedulerStatus(params: {
         failure_reason: "Ativada após o horário — aguardando próximo ciclo",
         failure_details: "A publicação foi ativada/editada depois do horário programado. O scheduler irá recalcular o próximo disparo.",
         diagnostics: { source: "derived", activated_after_slot: true },
-        queue_error_summary: queueErrorSummary,
-      };
-    }
-
-    if (!isActive) {
-      return {
-        status_code: "skipped",
-        status_label: "Ignorada",
-        failure_reason: "A publicação estava desativada",
-        failure_details: "Ela passou do horário, mas estava marcada como inativa quando o painel avaliou a execução.",
-        diagnostics: { source: "derived" },
         queue_error_summary: queueErrorSummary,
       };
     }
@@ -1990,7 +1977,7 @@ router.post("/import-backup", async (req: Request, res: Response) => {
           scheduled_at: scheduledAt,
           cron_expression: null,
           interval_minutes: intervalMinutes,
-          is_active: msg.is_active ?? true,
+          is_active: true,
           next_run_at: nextRunAt,
         })
         .select("id")
@@ -2297,7 +2284,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
 
     const { data: messages, error: msgErr } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, message_type, content, is_active, next_run_at, last_run_at, scheduled_at, campaign_id, updated_at")
+      .select("id, schedule_type, message_type, content, next_run_at, last_run_at, scheduled_at, campaign_id, updated_at")
       .eq("workspace_id", workspaceId)
       .order("next_run_at", { ascending: true });
 
@@ -2308,13 +2295,10 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
     const isFutureRange = range === "tomorrow" || range === "week" || range === "all";
     const todayMessages = (messages || []).filter((m: any) => {
       if (range === "all") {
-        // For "all": show active messages with future next_run_at, plus any with activity in range
-        if (m.is_active && m.next_run_at && new Date(m.next_run_at) > now) return true;
+        if (m.next_run_at && new Date(m.next_run_at) > now) return true;
       }
       const inRange = isWithinRange(m.next_run_at) || isWithinRange(m.last_run_at) || isWithinRange(m.scheduled_at);
       if (!inRange) return false;
-      // For future ranges, only show active messages
-      if (isFutureRange && !m.is_active) return false;
       return true;
     });
 
@@ -2386,7 +2370,6 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         campaign,
         hasTimer,
         isPast: !!isPast,
-        isActive: m.is_active,
         updatedAt: m.updated_at,
         effectiveRunAt,
       });
@@ -2405,7 +2388,7 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
         id: m.id,
         schedule_type: m.schedule_type,
         message_type: m.message_type || "text",
-        is_active: m.is_active,
+        is_active: true,
         next_run_at: m.next_run_at,
         last_run_at: m.last_run_at,
         effective_run_at: effectiveRunAt,
