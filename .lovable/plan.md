@@ -1,121 +1,61 @@
 
-Objetivo: fazer a regra funcionar de forma confiável: ao receber a tag pela API externa, o sistema deve 1) salvar o contato, 2) identificar a campanha automática correta, 3) registrar a tentativa no banco, 4) enfileirar/enviar o material, e 5) deixar rastros claros para debug na VPS.
 
-O que encontrei no código:
-- O evento externo é `register_email` em `deploy/backend/src/routes/email.ts`.
-- Hoje ele já salva o contato em `email_contacts` e depois tenta localizar campanhas com:
-  - `auto_send = true`
-  - `status = "draft"`
-  - `tag_filter` preenchida
-- Se a tag bater, ele só enfileira em `email_queue`.
-- O envio real acontece depois, em outro fluxo: `/api/email/process-queue`.
-- Se o auto-envio falhar, o código só faz `console.error(...)` e ainda retorna `ok: true`. Ou seja: pode parecer sucesso mesmo sem ter enfileirado ou enviado.
-- Além disso, o histórico visível de envio (`email_sends`) só nasce no processamento da fila. Então hoje existe um “buraco”: o webhook pode receber a tag, mas você não vê imediatamente um registro claro de tentativa/envio.
+# Plano: Corrigir jobs "processing" travados no Follow Up
 
-Plano de correção:
-1. Ajustar `deploy/backend/src/routes/email.ts` no bloco `register_email`
-- Normalizar as tags recebidas antes da comparação:
-  - trim
-  - lowercase
-  - remover duplicadas
-- Comparar a tag da campanha com a tag recebida de forma previsível.
-- Parar de “engolir” falhas silenciosas:
-  - se houver campanha compatível e a fila falhar, retornar erro no webhook em vez de `ok: true`.
-- Incluir logs detalhados no backend:
-  - tag recebida
-  - campanhas avaliadas
-  - campanha que casou
-  - item criado na fila
-  - erro exato, se houver
+## Problema
+Os 9 jobs marcados como `processing` ficaram travados infinitamente. O código de recuperação de jobs "stale" (linha 721-733) só roda quando `/process` é chamado novamente. O endpoint `/status` (que o frontend consulta a cada 10s) apenas lê os dados — nunca limpa jobs travados. Resultado: o banner "Em progresso" fica infinito.
 
-2. Tornar o salvamento no banco explícito e imediato
-- Manter o `email_contacts`.
-- Registrar a tentativa da campanha automática já no momento do webhook, sem depender só do cron da fila.
-- Deixar claro no banco se foi:
-  - contato salvo
-  - campanha encontrada
-  - item enfileirado
-  - envio processado ou falhou
-- Se necessário, usar o fluxo atual com `email_queue` + `email_sends`, mas garantindo que a tentativa já fique rastreável imediatamente.
+## Causa raiz
+O dispatch usa fire-and-forget (`queue.enqueue`). Se o servidor reiniciar ou a fila perder o job, o status fica preso em `processing` para sempre. A limpeza automática de 15 minutos só é invocada dentro de `processQueueForWorkspace`, que só roda no próximo `/process`.
 
-3. Revisar a regra de campanha automática
-- Confirmar no backend que a regra válida é exatamente:
-  “recebeu a tag X” -> “dispara a campanha com `auto_send=true` e `tag_filter = X`”.
-- Garantir que campanhas desativadas ou fora da regra não disparem.
-- Validar que follow-ups só sejam criados quando o envio principal realmente entrou no fluxo.
+## Correção
 
-4. Melhorar a observabilidade da fila
-- Em `deploy/backend/src/routes/email.ts` no `/process-queue`, reforçar logs para:
-  - template ausente
-  - SMTP ausente/inválido
-  - falha de envio
-  - item marcado como sent/failed
-- Assim a VPS mostra exatamente onde o fluxo quebrou.
+### 1. Adicionar recuperação de jobs stale no `/status`
+**Arquivo:** `deploy/backend/src/routes/followup-daily.ts` — endpoint `GET /status` (~linha 1026)
 
-5. Ajustar a resposta do webhook externo
-- Em vez de responder só:
-  `ok/contactId/corrected/email`
-- responder também com diagnóstico útil, por exemplo:
-  - `matchedCampaigns`
-  - `queued`
-  - `sentLaterViaQueue`
-  - `errors`
-Isso evita falso positivo.
+Antes de contar os jobs, executar a mesma lógica de recuperação:
 
-Como vou validar depois da implementação:
-- Disparar novamente o `register_email` com a tag da campanha.
-- Confirmar 4 pontos:
-  1. entrou em `email_contacts`
-  2. encontrou a campanha automática correta
-  3. criou registro na fila/log
-  4. gerou envio ou falha rastreável
-
-Comandos que vou te deixar para validar na VPS depois:
-```bash
-docker logs deploy-backend-1 --since=20m 2>&1 | grep -Ei "email/webhook|email/auto-send|email/queue|process-queue"
+```typescript
+// Reset stale processing jobs (>15 min without update)
+const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+await sb
+  .from(FOLLOWUP_QUEUE_TABLE)
+  .update({
+    status: "failed",
+    last_error: "Job travado — tempo limite de processamento excedido",
+    completed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  })
+  .eq("workspace_id", workspaceId)
+  .eq("dispatch_date", today)
+  .eq("status", "processing")
+  .lte("updated_at", staleCutoff);
 ```
 
+Diferença do existente: em vez de recolocar como `pending` (que pode criar loop), marca como `failed` com mensagem clara. Assim o usuário vê "2 falhas" e pode retentar manualmente.
+
+### 2. Ajustar o banner do frontend para mostrar estado mais claro
+**Arquivo:** `src/components/followup/FollowUpDashboard.tsx`
+
+No banner de status (~linha 256), quando `processing > 0` mas `pending === 0`, verificar se todos os jobs de processing são antigos (>5 min). Se sim, mostrar "Verificando jobs travados..." em vez de "Em progresso".
+
+Na prática, como o backend já vai limpar os stale no `/status`, o frontend vai receber `processing: 0` e `failed: N` naturalmente após a primeira chamada. Então o ajuste principal é no backend.
+
+## Deploy na VPS
+```bash
+cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
+```
+
+## Para liberar os 9 jobs travados imediatamente (antes do deploy)
 ```bash
 docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-select id, email, name, tags, source, status, created_at
-from email_contacts
-where lower(email) = 'genezio.pereira.silva@gmail.com'
-order by created_at desc
-limit 20;
+UPDATE followup_dispatch_queue 
+SET status = 'failed', 
+    last_error = 'Job travado manualmente liberado', 
+    completed_at = now(), 
+    updated_at = now() 
+WHERE status = 'processing' 
+  AND updated_at < now() - interval '5 minutes';
 "
 ```
 
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-select id, name, tag_filter, auto_send, status, sent_count, failed_count, created_at
-from email_campaigns
-where auto_send = true
-order by created_at desc;
-"
-```
-
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-select id, campaign_id, recipient_email, status, error_message, created_at, processed_at
-from email_queue
-where lower(recipient_email) = 'genezio.pereira.silva@gmail.com'
-order by created_at desc
-limit 20;
-"
-```
-
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-select id, campaign_id, recipient_email, status, error_message, created_at
-from email_sends
-where lower(recipient_email) = 'genezio.pereira.silva@gmail.com'
-order by created_at desc
-limit 20;
-"
-```
-
-Resultado esperado após a correção:
-- Ao chegar a tag correta, a campanha automática dispara de verdade.
-- O contato fica salvo.
-- A tentativa/envio fica salvo e rastreável no banco.
-- Se algo falhar, o webhook não responde falso positivo e a VPS mostra o motivo exato.
