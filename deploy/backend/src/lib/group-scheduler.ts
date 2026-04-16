@@ -240,10 +240,41 @@ export class GroupSchedulerManager {
     const activeSet = new Set(activeCampaigns?.map(c => c.id) || []);
 
     let fixed = 0;
+    let healed = 0;
     const now = new Date();
 
     for (const msg of allMsgs) {
       if (!activeSet.has(msg.campaign_id)) continue; // Campaign inactive
+
+      // ─── Auto-healing: detect skipped occurrences (e.g. saved=23/04 but today 16/04 still fits) ───
+      // Only for recurring types where "today" can be a valid occurrence.
+      if (["weekly", "daily", "custom"].includes(msg.schedule_type)) {
+        try {
+          const idealNext = calculateFirstRunAt({
+            schedule_type: msg.schedule_type,
+            content: msg.content,
+          });
+          const savedNext = new Date(msg.next_run_at);
+          if (idealNext) {
+            const idealDate = new Date(idealNext);
+            // If the ideal next run is in the future AND closer than the saved one, heal it.
+            if (idealDate > now && idealDate < savedNext) {
+              const oldIso = savedNext.toISOString();
+              await sb.from("group_scheduled_messages")
+                .update({ next_run_at: idealNext })
+                .eq("id", msg.id);
+              this.cancelMessage(msg.id);
+              this.createTimer(msg.id, msg.schedule_type, msg.content, msg.campaign_id, idealDate);
+              console.log(`[scheduler] 🔧 Auto-healed msg ${msg.id.slice(0, 8)}: next_run_at ${oldIso} → ${idealNext} (skipped occurrence detected)`);
+              healed++;
+              continue;
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[scheduler] auto-heal check failed for ${msg.id}:`, err.message);
+        }
+      }
+
       if (this.timers.has(msg.id)) continue; // Already has a timer
 
       const nextRun = new Date(msg.next_run_at);
