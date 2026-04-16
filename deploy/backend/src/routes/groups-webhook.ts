@@ -36,7 +36,7 @@ async function fetchRealMemberCount(workspaceId: string, instanceName: string, g
       body: JSON.stringify({ groupJid }),
     });
     if (resp.ok) {
-      const info = await resp.json();
+      const info = await resp.json() as { participants?: unknown[]; size?: number };
       // Evolution API v2 returns participants array or size
       const count = info.participants?.length || info.size || 0;
       return count > 0 ? count : null;
