@@ -1,76 +1,165 @@
 
 
-# Plano: Corrigir cálculo de dias — usar data BRT sem horário
+# Plano: Corrigir inconsistências no monitoramento de grupos
 
-## Bug
+## 3 problemas encontrados
 
-Linha 221-222 de `followup-daily.ts`:
-- `boleto.created_at` é UTC (`2026-04-14T23:30:00Z`)
-- `daysBetween` faz `slice(0, 10)` → extrai `2026-04-14` ou `2026-04-15` dependendo do horário UTC
-- Mas em BRT, `23:30 UTC` = `20:30 BRT` do dia anterior
-- Resultado: boletos criados à noite ficam com 1 dia a menos na contagem
+### 1. `participant_jid` está salvando objeto JSON inteiro em vez de só o número
+A Evolution API v2 envia `participants` como array de **objetos** `{id, phoneNumber, admin}`, não strings. O webhook trata como string (`p: string`) e grava o JSON inteiro no banco.
 
-## Correção
+**Exemplo no banco:**
+```
+{"id":"48108381708350@lid","phoneNumber":"557199656380@s.whatsapp.net","admin":null}
+```
 
-### Arquivo: `deploy/backend/src/routes/followup-daily.ts`
+**Deveria ser:** `557199656380` (número limpo)
 
-**1. Adicionar helper `toBrasiliaDate`** (converte qualquer timestamp para `YYYY-MM-DD` em BRT):
+### 2. Eventos duplicados (cada evento aparece 2x)
+A Evolution API provavelmente envia o mesmo webhook 2 vezes (uma para `group-participants.update` e outra variação), ou o webhook está registrado em duplicidade. Cada participante tem 2 linhas com milissegundos de diferença.
 
+### 3. Tabela `group_daily_stats` não existe na VPS
+O código do webhook tenta inserir nela mas falha silenciosamente (erro 500 interno que não impede a resposta). A tabela nunca foi criada no `init-db.sql`.
+
+## Impacto combinado
+
+- **Contadores inflados**: cada entrada conta 2x (duplicação) → 147 "adds" no banco quando são ~73 reais
+- **member_count errado**: `participants.length` conta corretamente (1 por objeto), mas a duplicação do webhook dobra o incremento. Ex: 1 pessoa entra → member_count sobe 2.
+- **Feed ilegível**: `participant_jid` mostra JSON em vez do número
+
+## Correções
+
+### Arquivo: `deploy/backend/src/routes/groups-webhook.ts`
+
+**A. Extrair número limpo do participant:**
 ```typescript
-function toBrasiliaDate(ts: string): string {
-  return new Date(ts).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+// Cada participant pode ser string OU objeto {id, phoneNumber}
+function extractPhone(p: any): string {
+  if (typeof p === "string") return p.replace(/@.*/, "").replace(/\D/g, "");
+  const raw = p.phoneNumber || p.id || "";
+  return raw.replace(/@.*/, "").replace(/\D/g, "");
 }
 ```
 
-**2. Linha 221-222 — converter `created_at` para data BRT antes do cálculo:**
+**B. Deduplicar por participant + group_jid:**
+Antes de inserir, verificar se já existe um evento idêntico nos últimos 60 segundos para evitar duplicação.
 
+**C. Usar números limpos nos rows:**
 ```typescript
-// ANTES (bug):
-const dueDate = new Date(new Date(boleto.created_at).getTime() + expirationDays * 24*60*60*1000).toISOString().slice(0, 10);
-const matchingRule = findMatchingRule(rules, boleto.created_at, dueDate, today);
-
-// DEPOIS (correto):
-const createdDateBRT = toBrasiliaDate(boleto.created_at);
-const dueDateObj = new Date(createdDateBRT + "T12:00:00");
-dueDateObj.setDate(dueDateObj.getDate() + expirationDays);
-const dueDate = dueDateObj.toISOString().slice(0, 10);
-const matchingRule = findMatchingRule(rules, createdDateBRT, dueDate, today);
+const cleanParticipants = participants.map(extractPhone).filter(Boolean);
+// Deduplica dentro do mesmo payload
+const uniqueParticipants = [...new Set(cleanParticipants)];
 ```
 
-Agora `findMatchingRule` recebe `createdDateBRT` (ex: `2026-04-14`) e `today` (já em BRT via `getTodayBrasilia`). O `daysBetween` compara duas datas puras sem influência de timezone.
+**D. Deduplicação temporal no banco** (evitar webhook duplicado):
+```typescript
+// Para cada participante, checar se já existe evento nos últimos 60s
+const cutoff = new Date(Date.now() - 60_000).toISOString();
+const { data: recent } = await sb
+  .from("group_participant_events")
+  .select("participant_jid")
+  .eq("workspace_id", inst.workspace_id)
+  .eq("group_jid", groupJid)
+  .eq("action", action)
+  .gte("created_at", cutoff);
 
-**3. Também reverter a mudança anterior no frontend** — o `useBoletoRecovery.ts` não deveria ter sido alterado para filtrar só por dispatchMap. O frontend estava correto mostrando os 9 itens. O problema era o backend não gerando os jobs.
+const recentSet = new Set((recent || []).map(r => r.participant_jid));
+const newParticipants = uniqueParticipants.filter(p => !recentSet.has(p));
+```
 
-Preciso reverter `src/hooks/useBoletoRecovery.ts` e `src/components/followup/FollowUpDashboard.tsx` ao estado anterior (antes da mudança de "Pendentes fantasma"), pois o frontend precisa continuar mostrando boletos que deveriam estar na queue mas ainda não estão (para debug e visibilidade).
+Usar `newParticipants.length` para o incremento de `member_count` em vez de `participants.length`.
+
+### Arquivo: `deploy/init-db.sql` — criar tabela `group_daily_stats`
+
+```sql
+CREATE TABLE IF NOT EXISTS public.group_daily_stats (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  date date NOT NULL,
+  additions integer NOT NULL DEFAULT 0,
+  removals integer NOT NULL DEFAULT 0,
+  total_members integer NOT NULL DEFAULT 0,
+  UNIQUE(workspace_id, group_jid, date)
+);
+GRANT ALL ON public.group_daily_stats TO anon, authenticated, service_role;
+```
+
+### Arquivo: `deploy/migrate-workspace.sql` — registrar nova tabela
+
+Adicionar `'group_daily_stats'` nos arrays de tabelas.
+
+### Limpeza de dados existentes (SQL para rodar na VPS)
+
+```sql
+-- Limpar participant_jid que são JSON (extrair phoneNumber)
+UPDATE group_participant_events
+SET participant_jid = regexp_replace(
+  (participant_jid::jsonb->>'phoneNumber'), '@.*', ''
+)
+WHERE participant_jid LIKE '{%';
+
+-- Remover duplicatas (manter apenas o mais antigo)
+DELETE FROM group_participant_events a
+USING group_participant_events b
+WHERE a.id > b.id
+  AND a.workspace_id = b.workspace_id
+  AND a.group_jid = b.group_jid
+  AND a.participant_jid = b.participant_jid
+  AND a.action = b.action
+  AND a.created_at BETWEEN b.created_at - interval '2 minutes' AND b.created_at + interval '2 minutes';
+```
 
 ## Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `deploy/backend/src/routes/followup-daily.ts` | Adicionar `toBrasiliaDate`, converter `created_at` para BRT antes de calcular dias |
-| `src/hooks/useBoletoRecovery.ts` | Reverter: voltar a calcular regras localmente e usar `applicableRule` para "Hoje" |
-| `src/components/followup/FollowUpDashboard.tsx` | Reverter: restaurar badges e contadores originais |
+| `deploy/backend/src/routes/groups-webhook.ts` | Extrair phone, deduplicar, usar contagem correta |
+| `deploy/init-db.sql` | Criar tabela `group_daily_stats` |
+| `deploy/migrate-workspace.sql` | Registrar `group_daily_stats` |
 
-## Verificação na VPS
+## Deploy + Limpeza
 
 ```bash
-# Rebuild e rodar prepare
-cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
+cd ~/simplificandoconversas && git pull && cd deploy
 
-# Rodar prepare manualmente
-curl -s -X POST http://localhost:3001/api/followup-daily/prepare | jq
-
-# Ver se Maria Lucia agora aparece na queue
+# 1. Criar tabela que falta
 docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT customer_name, status, normalized_phone
-FROM followup_dispatch_queue
-WHERE dispatch_date = CURRENT_DATE
-ORDER BY customer_name;
+CREATE TABLE IF NOT EXISTS public.group_daily_stats (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  date date NOT NULL,
+  additions integer NOT NULL DEFAULT 0,
+  removals integer NOT NULL DEFAULT 0,
+  total_members integer NOT NULL DEFAULT 0,
+  UNIQUE(workspace_id, group_jid, date)
+);
+GRANT ALL ON public.group_daily_stats TO anon, authenticated, service_role;
+NOTIFY pgrst, 'reload schema';
 "
+
+# 2. Limpar dados corrompidos
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+UPDATE group_participant_events
+SET participant_jid = regexp_replace((participant_jid::jsonb->>'phoneNumber'), '@.*', '')
+WHERE participant_jid LIKE '{%';
+"
+
+# 3. Remover duplicatas
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+DELETE FROM group_participant_events a
+USING group_participant_events b
+WHERE a.id > b.id
+  AND a.workspace_id = b.workspace_id
+  AND a.group_jid = b.group_jid
+  AND a.participant_jid = b.participant_jid
+  AND a.action = b.action
+  AND a.created_at BETWEEN b.created_at - interval '2 minutes' AND b.created_at + interval '2 minutes';
+"
+
+# 4. Rebuild backend
+docker compose up -d --build backend
 ```
-
-## Resultado esperado
-
-- Todos os 9 boletos que o frontend mostra como "Hoje" agora também aparecem na dispatch queue
-- `daysBetween` compara datas puras em BRT, sem influência de horário UTC
 
