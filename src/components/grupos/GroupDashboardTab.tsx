@@ -33,7 +33,7 @@ function getBrazilNow(): Date {
 }
 
 export default function GroupDashboardTab() {
-  const { selectedGroups, refetch: refetchGroups } = useGroupSelected();
+  const { selectedGroups } = useGroupSelected();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
   const { workspaceId } = useWorkspace();
