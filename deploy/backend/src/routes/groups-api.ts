@@ -2556,6 +2556,48 @@ router.post("/sync-stats", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── GET /events — retorna eventos de participantes filtrados por período ─── */
+router.get("/events", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, groupJids, start, end } = req.query as Record<string, string>;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+
+    let query = sb
+      .from("group_participant_events")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false });
+
+    if (groupJids) {
+      const jids = groupJids.split(",").filter(Boolean);
+      if (jids.length > 0) query = query.in("group_jid", jids);
+    }
+    if (start) query = query.gte("created_at", start);
+    if (end) query = query.lte("created_at", end);
+
+    // Paginate to get ALL rows (no 1000 limit)
+    const PAGE = 1000;
+    const allRows: any[] = [];
+    let from = 0;
+
+    while (true) {
+      const { data, error } = await query.range(from, from + PAGE - 1);
+      if (error) throw error;
+      const batch = data || [];
+      allRows.push(...batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+
+    res.json(allRows);
+  } catch (err: any) {
+    console.error("[groups-api] GET /events error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { getEvolutionConfig };
 

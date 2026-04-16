@@ -4,6 +4,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useState } from "react";
 import { startOfDay, endOfDay, subDays } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
+import { apiUrl } from "@/lib/api";
 
 export type EventPeriod = "today" | "yesterday" | "custom";
 
@@ -12,6 +13,8 @@ type GroupActionCounts = { add: number; remove: number; promote: number; demote:
 const BRAZIL_TIMEZONE = "America/Sao_Paulo";
 const emptyCounts: GroupActionCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
 const EVENTS_PAGE_SIZE = 1000;
+
+const isLovablePreview = (import.meta.env.VITE_SUPABASE_URL || "").includes(".supabase.co");
 
 function getBrazilNow(): Date {
   return toZonedTime(new Date(), BRAZIL_TIMEZONE);
@@ -41,36 +44,30 @@ function getDateRange(period: EventPeriod, customRange?: { from: Date; to: Date 
 
 function buildEventCounts(rows: Array<{ action: string | null }>) {
   const counts: GroupActionCounts = { ...emptyCounts };
-
   for (const row of rows) {
     const action = row.action as keyof GroupActionCounts;
     if (action in counts) counts[action]++;
   }
-
   return counts;
 }
 
 function buildGroupCounts(rows: Array<{ group_jid: string | null; action: string | null }>) {
   return rows.reduce<Record<string, GroupActionCounts>>((acc, row) => {
     if (!row.group_jid) return acc;
-
     if (!acc[row.group_jid]) {
       acc[row.group_jid] = { ...emptyCounts };
     }
-
     const action = row.action as keyof GroupActionCounts;
     if (action in acc[row.group_jid]) {
       acc[row.group_jid][action]++;
     }
-
     return acc;
   }, {});
 }
 
-async function fetchAllGroupEvents(workspaceId: string, monitoredJids: string[], start: string, end: string) {
+async function fetchAllGroupEventsSupabase(workspaceId: string, monitoredJids: string[], start: string, end: string) {
   const allRows: any[] = [];
   let from = 0;
-
   while (true) {
     const to = from + EVENTS_PAGE_SIZE - 1;
     const { data, error } = await supabase
@@ -82,20 +79,28 @@ async function fetchAllGroupEvents(workspaceId: string, monitoredJids: string[],
       .lte("created_at", end)
       .order("created_at", { ascending: false })
       .range(from, to);
-
     if (error) throw error;
-
     const batch = data || [];
     allRows.push(...batch);
-
-    if (batch.length < EVENTS_PAGE_SIZE) {
-      break;
-    }
-
+    if (batch.length < EVENTS_PAGE_SIZE) break;
     from += EVENTS_PAGE_SIZE;
   }
-
   return allRows;
+}
+
+async function fetchAllGroupEventsVPS(workspaceId: string, monitoredJids: string[], start: string, end: string) {
+  const params = new URLSearchParams({
+    workspaceId,
+    groupJids: monitoredJids.join(","),
+    start,
+    end,
+  });
+  const resp = await fetch(`${apiUrl("groups/events")}?${params}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || "Erro ao carregar eventos de grupo");
+  }
+  return resp.json();
 }
 
 export function useGroupEvents(monitoredJids: string[] = []) {
@@ -104,16 +109,16 @@ export function useGroupEvents(monitoredJids: string[] = []) {
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | undefined>();
 
   const { start, end } = getDateRange(period, customRange);
-
   const hasJids = monitoredJids.length > 0;
 
-  // Feed: eventos filtrados por data e grupos monitorados
   const { data: metrics = { events: [], eventCounts: emptyCounts, groupCounts: {} as Record<string, GroupActionCounts> }, isLoading } = useQuery({
     queryKey: ["group-events", workspaceId, start, end, monitoredJids],
     enabled: !!workspaceId && hasJids,
     refetchInterval: 15000,
     queryFn: async () => {
-      const data = await fetchAllGroupEvents(workspaceId!, monitoredJids, start, end);
+      const data = isLovablePreview
+        ? await fetchAllGroupEventsSupabase(workspaceId!, monitoredJids, start, end)
+        : await fetchAllGroupEventsVPS(workspaceId!, monitoredJids, start, end);
 
       return {
         events: data,
