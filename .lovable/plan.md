@@ -1,48 +1,32 @@
 
 
-# Plano: Corrigir fonte de dados dos eventos de grupo
+## Plano: substituir input de URL por upload direto
 
-## Problema raiz
+### Mudança
+No `GroupScheduledMessageForm.tsx`, no bloco do tipo de mensagem `image|video|document|audio|sticker` (linhas 282-306), trocar o `Input` que pede "URL da mídia" pelo componente `MediaUpload` já existente.
 
-O `useGroupEvents.ts` consulta os eventos via **Supabase client** (`supabase.from("group_participant_events")`), que aponta para o banco do **Lovable Cloud**. Mas os dados reais estão no banco da **VPS** (`deploy-postgres-1`). Por isso os números nunca batem — o frontend está lendo de um banco vazio/diferente.
+### Detalhes
+- Importar `MediaUpload` de `@/components/chatbot/MediaUpload`
+- Mapear o `accept` por tipo:
+  - image → `image/*`
+  - video → `video/*`
+  - audio → `audio/*`
+  - sticker → `image/webp,image/png`
+  - document → `.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip`
+- Passar `value={mediaUrl}` e `onChange={setMediaUrl}`
+- O componente envia via `whatsapp-proxy` (action `media-upload`) → salva em `/media-files/{userId}/` na VPS (permanente, mesmo storage da importação de backup) e devolve URL pública servida pelo Nginx em `/media/...`
 
-Outros hooks como `useGroupSelected` já resolvem isso corretamente: detectam se estão na VPS e usam `apiUrl()` + `fetch` para consultar o backend da VPS.
+### Compatibilidade
+- O campo `mediaUrl` no `content` continua igual — nenhuma mudança no backend, no scheduler ou na fila
+- Edição de mensagens existentes continua funcionando: se já houver uma URL salva, o `MediaUpload` exibe o preview com botão para remover/trocar
 
-## Solução
-
-### 1. Criar endpoint no backend VPS: `GET /api/groups/events`
-
-Em `deploy/backend/src/routes/groups-api.ts`, adicionar uma rota que aceita:
-- `workspaceId` (obrigatório)
-- `groupJids` (lista separada por vírgula)
-- `start` e `end` (ISO strings para filtrar período)
-
-A rota consulta `group_participant_events` no banco local e retorna todos os eventos do período, sem limite artificial.
-
-### 2. Refatorar `src/hooks/useGroupEvents.ts`
-
-Substituir a consulta direta ao Supabase por uma chamada via `apiUrl("groups/events")` + `fetch`, similar ao padrão do `useGroupSelected`. Manter fallback para Supabase client quando em preview do Lovable.
-
-A lógica de `buildEventCounts` e `buildGroupCounts` continua no frontend (são apenas contadores simples sobre o array retornado).
-
-### 3. Nenhuma mudança no dashboard
-
-O `GroupDashboardTab.tsx` já consome `eventCounts` e `groupCounts` do hook — não precisa mudar.
-
-## Arquivos alterados
-
+### Arquivos
 | Arquivo | Mudança |
-|---------|---------|
-| `deploy/backend/src/routes/groups-api.ts` | Nova rota `GET /events` |
-| `src/hooks/useGroupEvents.ts` | Usar `apiUrl` + `fetch` em vez de `supabase.from()` |
+|---|---|
+| `src/components/grupos/GroupScheduledMessageForm.tsx` | Trocar `Input` de URL pelo `MediaUpload` no bloco de mídias |
 
-## Comando VPS após deploy
-
-```bash
-cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
-```
-
-## Resultado esperado
-
-Os números no dashboard vão bater exatamente com a query SQL do banco da VPS.
+### Resultado
+- Upload direto do arquivo no modal "Nova Mensagem Agendada"
+- Arquivo armazenado de forma permanente no volume `chatbot_media` da VPS
+- URL pública pronta para uso pela Evolution API
 
