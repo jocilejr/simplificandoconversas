@@ -20,27 +20,29 @@ function getDateRange(period: EventPeriod, customRange?: { from: Date; to: Date 
   if (period === "custom" && customRange) {
     return { start: startOfDay(customRange.from).toISOString(), end: endOfDay(customRange.to).toISOString() };
   }
-  // today
   return { start: startOfDay(now).toISOString(), end: endOfDay(now).toISOString() };
 }
 
-export function useGroupEvents() {
+export function useGroupEvents(monitoredJids: string[] = []) {
   const { workspaceId } = useWorkspace();
   const [period, setPeriod] = useState<EventPeriod>("today");
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | undefined>();
 
   const { start, end } = getDateRange(period, customRange);
 
-  // Feed: eventos filtrados por data
+  const hasJids = monitoredJids.length > 0;
+
+  // Feed: eventos filtrados por data e grupos monitorados
   const { data: events = [], isLoading } = useQuery({
-    queryKey: ["group-events", workspaceId, start, end],
-    enabled: !!workspaceId,
+    queryKey: ["group-events", workspaceId, start, end, monitoredJids],
+    enabled: !!workspaceId && hasJids,
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("group_participant_events")
         .select("*")
         .eq("workspace_id", workspaceId!)
+        .in("group_jid", monitoredJids)
         .gte("created_at", start)
         .lte("created_at", end)
         .order("created_at", { ascending: false })
@@ -50,16 +52,17 @@ export function useGroupEvents() {
     },
   });
 
-  // Contadores filtrados por data
+  // Contadores filtrados por data e grupos monitorados
   const { data: eventCounts = { add: 0, remove: 0, promote: 0, demote: 0 } } = useQuery({
-    queryKey: ["group-event-counts", workspaceId, start, end],
-    enabled: !!workspaceId,
+    queryKey: ["group-event-counts", workspaceId, start, end, monitoredJids],
+    enabled: !!workspaceId && hasJids,
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("group_participant_events")
         .select("action")
         .eq("workspace_id", workspaceId!)
+        .in("group_jid", monitoredJids)
         .gte("created_at", start)
         .lte("created_at", end);
       if (error) throw error;
