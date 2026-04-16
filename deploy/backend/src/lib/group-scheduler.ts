@@ -506,10 +506,9 @@ export class GroupSchedulerManager {
       const updateData: any = { last_run_at: now };
 
       if (scheduleType === "once") {
-        updateData.is_active = false;
         updateData.next_run_at = null;
         await sb.from("group_scheduled_messages").update(updateData).eq("id", msgId);
-        console.log(`[scheduler] ⏹ Once msg ${msgId.slice(0, 8)} completed and deactivated`);
+        console.log(`[scheduler] ⏹ Once msg ${msgId.slice(0, 8)} completed`);
         return;
       }
 
@@ -521,7 +520,6 @@ export class GroupSchedulerManager {
         // Schedule next timer
         this.createTimer(msgId, scheduleType, msg.content, campaignId, new Date(nextRun), { preserveDiagnostic: true });
       } else {
-        updateData.is_active = false;
         updateData.next_run_at = null;
         await sb.from("group_scheduled_messages").update(updateData).eq("id", msgId);
         this.setDiagnostic(msgId, {
@@ -529,10 +527,10 @@ export class GroupSchedulerManager {
           status_label: "Falhou",
           reason_code: "next_run_unavailable",
           reason_label: "Não foi possível calcular o próximo disparo",
-          reason_details: "A publicação executou a etapa atual, mas o próximo horário não pôde ser calculado e ela foi desativada.",
+          reason_details: "A publicação executou a etapa atual, mas o próximo horário não pôde ser calculado.",
           diagnostics: { campaign_id: campaignId },
         });
-        console.warn(`[scheduler] ⚠️ Could not compute next run for msg ${msgId}, deactivated`);
+        console.warn(`[scheduler] ⚠️ Could not compute next run for msg ${msgId}`);
       }
     } else {
       console.log(`[scheduler] ⚠️ 0 items enqueued for msg ${msgId.slice(0, 8)} (all deduped). NOT advancing schedule.`);
