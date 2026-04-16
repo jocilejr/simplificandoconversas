@@ -864,8 +864,28 @@ async function processQueueForWorkspace(
     }
 
     // Fire-and-forget: enqueue without blocking the HTTP request
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY_MS = 10_000;
+
     queue.enqueue(async () => {
-      await dispatchJob({ ...job, normalized_phone: normalizedPhone }, context.delayMs);
+      let lastError = "";
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          await dispatchJob({ ...job, normalized_phone: normalizedPhone }, context.delayMs);
+          return; // success
+        } catch (err: any) {
+          lastError = err?.message?.slice(0, 500) || "Falha desconhecida";
+          console.warn(`[followup-daily] ⚠️ Attempt ${attempt}/${MAX_RETRIES} failed for ${job.transaction_id}: ${lastError}`);
+          if (attempt < MAX_RETRIES) {
+            await markQueueJob(sb, job.id, {
+              attempts: attempt,
+              last_error: `Tentativa ${attempt}/${MAX_RETRIES}: ${lastError}`,
+            });
+            await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+          }
+        }
+      }
+      throw new Error(lastError);
     }, `followup:${job.transaction_id}:${job.rule_id}`)
       .then(async () => {
         await markQueueJob(sb, job.id, {
@@ -887,7 +907,7 @@ async function processQueueForWorkspace(
         const message = err?.message?.slice(0, 500) || "Falha desconhecida";
         await markQueueJob(sb, job.id, {
           status: "failed",
-          last_error: message,
+          last_error: `${MAX_RETRIES} tentativas esgotadas: ${message}`,
           completed_at: new Date().toISOString(),
           normalized_phone: normalizedPhone,
         });
@@ -896,9 +916,9 @@ async function processQueueForWorkspace(
           userId: setting.user_id,
           transactionId: job.transaction_id,
           ruleId: job.rule_id,
-          notes: `failed_api|${message}`,
+          notes: `failed_api|${MAX_RETRIES} tentativas: ${message}`,
         });
-        console.error(`[followup-daily] ❌ Failed follow-up for boleto ${job.transaction_id}: ${message}`);
+        console.error(`[followup-daily] ❌ Failed follow-up for boleto ${job.transaction_id} after ${MAX_RETRIES} retries: ${message}`);
       });
 
     // Count immediately as enqueued (the queue will process in background)
