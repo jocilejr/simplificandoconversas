@@ -31,7 +31,8 @@ export default function GroupDashboardTab() {
   const { selectedGroups } = useGroupSelected();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
-  const { events, eventCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
+  const monitoredJids = selectedGroups.map(g => g.group_jid);
+  const { events, eventCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents(monitoredJids);
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
