@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Image, Mic, File, Video,
   Send, UsersRound, CalendarClock, Megaphone, Search,
 } from "lucide-react";
-import { useSchedulerDebug, type ScheduledMessageDebug } from "@/hooks/useSchedulerDebug";
+import { useSchedulerDebug, type ScheduledMessageDebug, type SchedulerRange } from "@/hooks/useSchedulerDebug";
 import WhatsAppPreview from "@/components/grupos/WhatsAppPreview";
 
 function formatTimeBrt(utcStr: string | null): string {
