@@ -58,7 +58,7 @@ export interface BoletoWithRecovery extends Transaction {
   applicableRule: RecoveryRule | null;
   formattedMessage: string | null;
   contactedToday: boolean;
-  sendStatus: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate";
+  sendStatus: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate" | null;
 }
 
 export function useBoletoRecovery() {
@@ -165,7 +165,7 @@ export function useBoletoRecovery() {
 
       // Get send status from dispatch queue (single source of truth)
       const dispatchInfo = dispatchMap.get(boleto.id);
-      let sendStatus: BoletoWithRecovery["sendStatus"] = "pending";
+      let sendStatus: BoletoWithRecovery["sendStatus"] = null;
       let contactedToday = false;
 
       if (dispatchInfo) {
@@ -183,7 +183,8 @@ export function useBoletoRecovery() {
   }, [unpaidBoletos, settings, rules, dispatchMap]);
 
   // Derived lists
-  const todayBoletos = useMemo(() => processedBoletos.filter((b) => b.applicableRule !== null), [processedBoletos]);
+  // todayBoletos: ONLY items present in the dispatch queue (single source of truth)
+  const todayBoletos = useMemo(() => processedBoletos.filter((b) => dispatchMap.has(b.id)), [processedBoletos, dispatchMap]);
   const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "pending" || b.sendStatus === "processing"), [todayBoletos]);
   const sentTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "sent"), [todayBoletos]);
   const pendingBoletos = useMemo(() => processedBoletos.filter((b) => !b.isOverdue), [processedBoletos]);
