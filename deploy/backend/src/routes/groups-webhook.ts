@@ -55,6 +55,7 @@ router.post("/events", async (req: Request, res: Response) => {
     await sb.from("group_participant_events").insert(rows);
 
     // Update member count if group is selected
+    let updatedMemberCount = 0;
     if (sg) {
       const increment = action === "add" ? participants.length : action === "remove" ? -participants.length : 0;
       if (increment !== 0) {
@@ -66,13 +67,54 @@ router.post("/events", async (req: Request, res: Response) => {
           .maybeSingle();
         if (current) {
           const newCount = Math.max(0, (current.member_count || 0) + increment);
+          updatedMemberCount = newCount;
           await sb
             .from("group_selected")
             .update({ member_count: newCount })
             .eq("workspace_id", inst.workspace_id)
             .eq("group_jid", groupJid);
         }
+      } else {
+        const { data: current } = await sb
+          .from("group_selected")
+          .select("member_count")
+          .eq("workspace_id", inst.workspace_id)
+          .eq("group_jid", groupJid)
+          .maybeSingle();
+        updatedMemberCount = current?.member_count || 0;
       }
+    }
+
+    // ── Upsert group_daily_stats ──
+    const todayBrt = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const additions = action === "add" ? participants.length : 0;
+    const removals = action === "remove" ? participants.length : 0;
+
+    // Try upsert via raw SQL through RPC or simple logic
+    const { data: existingStat } = await sb
+      .from("group_daily_stats")
+      .select("id, additions, removals")
+      .eq("workspace_id", inst.workspace_id)
+      .eq("date", todayBrt)
+      .eq("group_jid", groupJid)
+      .maybeSingle();
+
+    if (existingStat) {
+      await sb.from("group_daily_stats").update({
+        additions: (existingStat.additions || 0) + additions,
+        removals: (existingStat.removals || 0) + removals,
+        total_members: updatedMemberCount,
+      }).eq("id", existingStat.id);
+    } else {
+      await sb.from("group_daily_stats").insert({
+        workspace_id: inst.workspace_id,
+        date: todayBrt,
+        group_jid: groupJid,
+        group_name: sg?.group_name || "",
+        additions,
+        removals,
+        total_members: updatedMemberCount,
+      });
     }
 
     // ── Update member_count inside group_smart_links JSONB (real-time) ──
