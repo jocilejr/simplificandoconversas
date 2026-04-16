@@ -1,5 +1,5 @@
 import { getServiceClient } from "./supabase";
-import { calculateNextRunAt } from "../routes/groups-api";
+import { calculateNextRunAt, calculateFirstRunAt } from "../routes/groups-api";
 
 export type SchedulerStatusCode = "waiting" | "processing" | "sent" | "failed" | "missed" | "skipped";
 
