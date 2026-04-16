@@ -80,6 +80,19 @@ export function FollowUpDashboard() {
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const queueCounts = dispatchStatus?.counts;
+  const processingJobs = useMemo(
+    () => (dispatchStatus?.jobs || []).filter((job) => job.status === "processing"),
+    [dispatchStatus?.jobs],
+  );
+  const hasOnlyStaleProcessing = useMemo(() => {
+    if (!queueCounts || queueCounts.processing === 0 || queueCounts.pending > 0 || processingJobs.length === 0) return false;
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    return processingJobs.every((job) => {
+      const reference = job.started_at || job.created_at;
+      const time = reference ? new Date(reference).getTime() : 0;
+      return Number.isFinite(time) && time > 0 && time <= fiveMinutesAgo;
+    });
+  }, [processingJobs, queueCounts]);
   const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.failed : stats.pendingToday;
   const effectiveSent = queueCounts ? queueCounts.sent : stats.sentToday;
   const effectiveResolved = queueCounts ? queueCounts.sent + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
@@ -261,7 +274,7 @@ export function FollowUpDashboard() {
         if (isProcessing) return (
           <div className="flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary/5 animate-pulse">
             <RefreshCw className="h-4 w-4 text-primary animate-spin" />
-            <span className="text-sm font-medium text-primary">Em progresso — {queueCounts!.processing} processando, {queueCounts!.pending} pendentes</span>
+            <span className="text-sm font-medium text-primary">{hasOnlyStaleProcessing ? `Verificando jobs travados... ${queueCounts!.processing} em análise` : `Em progresso — ${queueCounts!.processing} processando, ${queueCounts!.pending} pendentes`}</span>
           </div>
         );
         if (hasFailed && !isComplete) return (
