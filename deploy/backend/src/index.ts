@@ -86,43 +86,53 @@ cron.schedule("*/30 * * * * *", async () => {
 // Light sync disabled — use manual "Sincronizar" button per instance instead.
 
 
-// Follow-up daily cron — checks every minute if it's time to send
+// Follow-up PREPARE cron — runs at 00:01 BRT daily
+const prepareTriggered = new Set<string>();
+cron.schedule("* * * * *", async () => {
+  try {
+    const now = new Date();
+    const brasiliaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const hh = brasiliaTime.getHours().toString().padStart(2, "0");
+    const mm = brasiliaTime.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${hh}:${mm}`;
+    const todayKey = now.toISOString().slice(0, 10);
+
+    if (currentTime === "00:00") prepareTriggered.clear();
+
+    if (currentTime === "00:01" && !prepareTriggered.has(todayKey)) {
+      prepareTriggered.add(todayKey);
+      console.log(`[cron] 🔄 Running follow-up PREPARE at ${currentTime} BRT`);
+      await prepareFollowUpDaily();
+    }
+  } catch (err: any) {
+    console.error("[cron] followup-prepare error:", err.message);
+  }
+});
+
+// Follow-up SEND cron — checks every minute if it's time to send
 const followupTriggeredToday = new Set<string>();
 cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
     const brasiliaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const currentHour = brasiliaTime.getHours().toString().padStart(2, "0");
-    const currentMinute = brasiliaTime.getMinutes().toString().padStart(2, "0");
-    const currentTime = `${currentHour}:${currentMinute}`;
+    const hh = brasiliaTime.getHours().toString().padStart(2, "0");
+    const mm = brasiliaTime.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${hh}:${mm}`;
     const todayKey = now.toISOString().slice(0, 10);
 
-    // Reset tracking at midnight
-    if (currentTime === "00:00") {
-      followupTriggeredToday.clear();
-    }
+    if (currentTime === "00:00") followupTriggeredToday.clear();
 
-    // Check if any workspace needs processing right now
     const { createClient } = await import("@supabase/supabase-js");
-    const sb = createClient(
-      process.env.SUPABASE_URL || "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-    );
-
-    const { data: settings } = await sb
-      .from("followup_settings")
-      .select("workspace_id, send_at_hour")
-      .eq("enabled", true)
-      .eq("send_at_hour", currentTime);
+    const sb = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+    const { data: settings } = await sb.from("followup_settings").select("workspace_id, send_at_hour").eq("enabled", true).eq("send_at_hour", currentTime);
 
     if (settings && settings.length > 0) {
       for (const s of settings) {
         const triggerKey = `${todayKey}:${s.workspace_id}`;
         if (followupTriggeredToday.has(triggerKey)) continue;
         followupTriggeredToday.add(triggerKey);
-        console.log(`[cron] ⏰ Triggering follow-up daily for workspace ${s.workspace_id} at ${currentTime}`);
+        console.log(`[cron] ⏰ Triggering follow-up SEND for workspace ${s.workspace_id} at ${currentTime}`);
       }
-      // Process all enabled workspaces that match
       await processFollowUpDaily();
     }
   } catch (err: any) {

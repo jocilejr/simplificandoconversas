@@ -93,11 +93,12 @@ export function FollowUpDashboard() {
       return Number.isFinite(time) && time > 0 && time <= fiveMinutesAgo;
     });
   }, [processingJobs, queueCounts]);
-  const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.failed : stats.pendingToday;
+  const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing : stats.pendingToday;
   const effectiveSent = queueCounts ? queueCounts.sent : stats.sentToday;
-  const effectiveResolved = queueCounts ? queueCounts.sent + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
-  const progressBase = effectiveSent + effectivePending + (queueCounts ? queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : 0);
-  const progressPercent = progressBase > 0 ? Math.round((effectiveResolved / progressBase) * 100) : 0;
+  const effectiveFailed = queueCounts ? queueCounts.failed : 0;
+  const totalJobs = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.sent + queueCounts.failed + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.totalToday;
+  const processedJobs = queueCounts ? queueCounts.sent + queueCounts.failed + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
+  const progressPercent = totalJobs > 0 ? Math.round((processedJobs / totalJobs) * 100) : 0;
 
   const handleRunNow = async () => {
     try {
