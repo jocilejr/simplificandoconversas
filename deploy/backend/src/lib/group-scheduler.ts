@@ -479,37 +479,7 @@ export class GroupSchedulerManager {
           reason_details: `${queueItems.length} grupo(s) foram adicionados à fila para processamento.`,
           diagnostics: { batch, queued_groups: queueItems.length, deduped_groups: dedupedGroups },
         });
-        try {
-          const port = process.env.PORT || "3001";
-          const processResp = await fetch(`http://localhost:${port}/api/groups/queue/process`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspaceId: campaign.workspace_id }),
-          });
-
-          if (!processResp.ok) {
-            const processError = await processResp.text();
-            console.error(`[scheduler] queue/process error for ws ${campaign.workspace_id}:`, processError);
-            this.setDiagnostic(msgId, {
-              status_code: "failed",
-              status_label: "Falhou",
-              reason_code: "queue_process_http_error",
-              reason_label: "Falha ao disparar o processador da fila",
-              reason_details: processError,
-              diagnostics: { batch, workspace_id: campaign.workspace_id },
-            });
-          }
-        } catch (processErr: any) {
-          console.error(`[scheduler] queue/process fetch error for ws ${campaign.workspace_id}:`, processErr.message);
-          this.setDiagnostic(msgId, {
-            status_code: "failed",
-            status_label: "Falhou",
-            reason_code: "queue_process_fetch_error",
-            reason_label: "Erro ao chamar o processador da fila",
-            reason_details: processErr.message,
-            diagnostics: { batch, workspace_id: campaign.workspace_id },
-          });
-        }
+        this.triggerQueueProcess(campaign.workspace_id, msgId, batch);
       }
 
       // Update last_run_at
