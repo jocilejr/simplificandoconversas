@@ -332,22 +332,22 @@ export class GroupSchedulerManager {
       diagnostics: { fired_at: now, campaign_id: campaignId },
     });
 
-    // Re-check message is still active
+    // Re-check message still exists
     const { data: msg, error: msgErr } = await sb
       .from("group_scheduled_messages")
-      .select("is_active, schedule_type, content, campaign_id, message_type")
+      .select("schedule_type, content, campaign_id, message_type")
       .eq("id", msgId)
       .single();
 
-    if (msgErr || !msg || !msg.is_active) {
-      console.log(`[scheduler] ⏹ Msg ${msgId} no longer active, skipping`);
+    if (msgErr || !msg) {
+      console.log(`[scheduler] ⏹ Msg ${msgId} not found, skipping`);
       this.setDiagnostic(msgId, {
         status_code: "skipped",
         status_label: "Ignorada",
-        reason_code: "message_inactive_at_dispatch",
-        reason_label: "A publicação ficou inativa antes do disparo",
-        reason_details: "No momento da execução, a publicação já não estava mais ativa e por isso foi ignorada.",
-        diagnostics: { message_found: !!msg, query_error: msgErr?.message || null },
+        reason_code: "message_not_found_at_dispatch",
+        reason_label: "A publicação não foi encontrada no momento do disparo",
+        reason_details: "A publicação pode ter sido excluída antes da execução.",
+        diagnostics: { query_error: msgErr?.message || null },
       });
       return;
     }
