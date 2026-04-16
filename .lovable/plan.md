@@ -1,69 +1,76 @@
 
 
-# Plano: Eliminar "Pendentes fantasma" — frontend deve confiar 100% na dispatch queue
+# Plano: Corrigir cálculo de dias — usar data BRT sem horário
 
-## Causa raiz
+## Bug
 
-O frontend faz rule-matching LOCAL (recalcula quais boletos deveriam receber cobrança hoje) e cruza com o `dispatchMap` por `transaction_id`. Quando um boleto:
-1. Tem regra match no frontend mas **não existe** na dispatch queue → aparece como "Pendente"
-2. Existe na queue com regra diferente da calculada localmente → não encontra no map → "Pendente"
+Linha 221-222 de `followup-daily.ts`:
+- `boleto.created_at` é UTC (`2026-04-14T23:30:00Z`)
+- `daysBetween` faz `slice(0, 10)` → extrai `2026-04-14` ou `2026-04-15` dependendo do horário UTC
+- Mas em BRT, `23:30 UTC` = `20:30 BRT` do dia anterior
+- Resultado: boletos criados à noite ficam com 1 dia a menos na contagem
 
-O backend (prepare) é quem faz o matching real. O frontend NÃO deveria refazer esse cálculo.
+## Correção
 
-## Solução
+### Arquivo: `deploy/backend/src/routes/followup-daily.ts`
 
-### Princípio: O frontend deve mostrar EXATAMENTE o que a dispatch queue diz
+**1. Adicionar helper `toBrasiliaDate`** (converte qualquer timestamp para `YYYY-MM-DD` em BRT):
 
-A aba "Hoje" deve listar APENAS os boletos que existem na `followup_dispatch_queue` do dia, não todos os boletos que "poderiam" ter regra. A queue é a fonte de verdade.
-
-### 1. `src/hooks/useBoletoRecovery.ts` — parar de recalcular regras para "Hoje"
-
-- `todayBoletos`: em vez de filtrar por `applicableRule !== null`, filtrar por **presença no `dispatchMap`**
-- O `sendStatus` de boletos SEM entrada no dispatchMap deve ser `null`/`undefined`, NÃO `"pending"`
-- `pendingTodayBoletos`: boletos que estão no dispatch com status `pending` ou `processing`
-- `applicableRule` pode continuar sendo calculado para exibição, mas não para filtro de "Hoje"
-- Adicionar o status da queue como campo derivado (não default "pending")
-
-Mudanças:
 ```typescript
-// Default: sem status (não está na queue de hoje)
-let sendStatus: BoletoWithRecovery["sendStatus"] | null = null;
-if (dispatchInfo) {
-  sendStatus = dispatchInfo.status as BoletoWithRecovery["sendStatus"];
+function toBrasiliaDate(ts: string): string {
+  return new Date(ts).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
-
-// todayBoletos: APENAS os que existem na dispatch queue
-const todayBoletos = processedBoletos.filter(b => dispatchMap.has(b.id));
-const pendingTodayBoletos = todayBoletos.filter(b => b.sendStatus === "pending" || b.sendStatus === "processing");
 ```
 
-### 2. `src/hooks/useBoletoRecovery.ts` — tipo `BoletoWithRecovery`
+**2. Linha 221-222 — converter `created_at` para data BRT antes do cálculo:**
 
-- Mudar `sendStatus` para aceitar `null` (sem entry na queue)
-- Ajustar interface e badge no dashboard
+```typescript
+// ANTES (bug):
+const dueDate = new Date(new Date(boleto.created_at).getTime() + expirationDays * 24*60*60*1000).toISOString().slice(0, 10);
+const matchingRule = findMatchingRule(rules, boleto.created_at, dueDate, today);
 
-### 3. `src/components/followup/FollowUpDashboard.tsx` — badge "Pendente"
+// DEPOIS (correto):
+const createdDateBRT = toBrasiliaDate(boleto.created_at);
+const dueDateObj = new Date(createdDateBRT + "T12:00:00");
+dueDateObj.setDate(dueDateObj.getDate() + expirationDays);
+const dueDate = dueDateObj.toISOString().slice(0, 10);
+const matchingRule = findMatchingRule(rules, createdDateBRT, dueDate, today);
+```
 
-- `sendStatus === null` → sem badge (ou "Sem regra hoje")
-- `sendStatus === "pending"` → badge amarelo "Pendente"
-- Nenhuma mudança nos contadores (já usam `queueCounts`)
+Agora `findMatchingRule` recebe `createdDateBRT` (ex: `2026-04-14`) e `today` (já em BRT via `getTodayBrasilia`). O `daysBetween` compara duas datas puras sem influência de timezone.
 
-### 4. Backend: `/api/followup-daily/status` — incluir mais dados
+**3. Também reverter a mudança anterior no frontend** — o `useBoletoRecovery.ts` não deveria ter sido alterado para filtrar só por dispatchMap. O frontend estava correto mostrando os 9 itens. O problema era o backend não gerando os jobs.
 
-- Aumentar limit de 200 para cobrir todos os jobs do dia (ou usar count separado)
-- O limit de 200 pode estar cortando jobs — se tem 37 hoje está ok, mas para segurança
+Preciso reverter `src/hooks/useBoletoRecovery.ts` e `src/components/followup/FollowUpDashboard.tsx` ao estado anterior (antes da mudança de "Pendentes fantasma"), pois o frontend precisa continuar mostrando boletos que deveriam estar na queue mas ainda não estão (para debug e visibilidade).
 
 ## Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `src/hooks/useBoletoRecovery.ts` | `sendStatus` default `null`, `todayBoletos` filtrado pelo dispatchMap |
-| `src/components/followup/FollowUpDashboard.tsx` | Badge para `sendStatus === null` |
+| `deploy/backend/src/routes/followup-daily.ts` | Adicionar `toBrasiliaDate`, converter `created_at` para BRT antes de calcular dias |
+| `src/hooks/useBoletoRecovery.ts` | Reverter: voltar a calcular regras localmente e usar `applicableRule` para "Hoje" |
+| `src/components/followup/FollowUpDashboard.tsx` | Reverter: restaurar badges e contadores originais |
+
+## Verificação na VPS
+
+```bash
+# Rebuild e rodar prepare
+cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
+
+# Rodar prepare manualmente
+curl -s -X POST http://localhost:3001/api/followup-daily/prepare | jq
+
+# Ver se Maria Lucia agora aparece na queue
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
+SELECT customer_name, status, normalized_phone
+FROM followup_dispatch_queue
+WHERE dispatch_date = CURRENT_DATE
+ORDER BY customer_name;
+"
+```
 
 ## Resultado esperado
 
-- "Hoje (37)" em vez de "Hoje (39)" — mostra só o que está na queue
-- "Pendentes: 0" — correto, não há pendentes reais
-- Nenhum boleto fantasma aparece como "Pendente"
-- O botão "Executar" só tenta processar o que realmente está na queue
+- Todos os 9 boletos que o frontend mostra como "Hoje" agora também aparecem na dispatch queue
+- `daysBetween` compara datas puras em BRT, sem influência de horário UTC
 
