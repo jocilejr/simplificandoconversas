@@ -1,69 +1,76 @@
 
 
-# Plano: Eliminar `is_active` das mensagens — campanha é a única fonte de verdade
+# Plano: Anti-duplicação simples — marcar e travar
 
-## Contexto
-Mensagens (`group_scheduled_messages`) ainda possuem `is_active` em vários pontos do código. Isso causa o bug onde todas as 185 mensagens estão com `is_active=false` e mesmo ativando a campanha nada funciona. A coluna continuará existindo na tabela (para não quebrar o schema), mas será completamente ignorada no código.
+## Problema
+O `fireMessage` insere itens na fila e chama `queue/process`. Quando múltiplas publicações disparam ao mesmo tempo, cada uma chama `queue/process` em paralelo. Sem lock, duas chamadas pegam os mesmos itens `pending` e enviam duas vezes.
 
-## Alterações
+## Solução (2 mudanças cirúrgicas)
 
-### 1. `deploy/backend/src/routes/groups-api.ts`
+### 1. `queue/process` — Marcar tudo como `processing` em batch ANTES do loop
 
-**Inserção de mensagem (linha 1040):** Remover `is_active: true` do insert (ou manter como default, tanto faz — será ignorado).
+**Arquivo:** `deploy/backend/src/routes/groups-api.ts` (linhas 1154-1164)
 
-**Import de backup (linha 1993):** Trocar `is_active: msg.is_active ?? true` por `is_active: true` (hardcode, nunca false).
+Após buscar os itens `pending`, imediatamente marcar todos como `processing` com um único UPDATE antes de iniciar o loop de envio. Assim, uma segunda chamada paralela ao `queue/process` não vê esses itens.
 
-**scheduler-debug endpoint (linhas 2300-2319):**
-- Remover `is_active` do select (linha 2300)
-- Remover filtro `m.is_active` (linhas 2312, 2317) — usar apenas filtro de campanha ativa (linhas 2336-2342)
-- Remover `is_active: m.is_active` do response (linha 2408)
-- Passar `isActive: true` hardcoded para `resolveSchedulerStatus` (linha 2389)
-
-**`resolveSchedulerStatus` (linhas 396-541):**
-- Remover parâmetro `isActive` da interface
-- Remover bloco que checa `!isActive` (linhas 532-541) — "publicação desativada"
-- Remover referências a `isActive` nos stale diagnostic checks (linhas 471-473, 511)
-- Remover `"message_inactive"` e `"message_inactive_at_dispatch"` dos stale codes (linha 470)
-
-**enqueue endpoint (linha 964-966):** Já está correto (sem filtro de is_active na mensagem).
-
-### 2. `deploy/backend/src/lib/group-scheduler.ts`
-
-Já foi limpo na rodada anterior. Verificar que não resta nenhuma referência a `msg.is_active` (confirmado: não há).
-
-### 3. `src/hooks/useSchedulerDebug.ts`
-
-- Remover `is_active: boolean` do type `ScheduledMessageDebug` (linha 34)
-
-### 4. `src/hooks/useGroupScheduledMessages.ts`
-
-- Já limpo (toggleMessage removido na rodada anterior). Sem alteração.
-
-### 5. SQL — Corrigir dados legados
-
-Executar na VPS para corrigir as 185 mensagens com `is_active=false`:
-```sql
-UPDATE group_scheduled_messages SET is_active = true WHERE is_active = false;
+```typescript
+// Após buscar pending (linha 1164):
+const pendingIds = pending.map(p => p.id);
+await sb.from("group_message_queue")
+  .update({ status: "processing", started_at: new Date().toISOString() })
+  .in("id", pendingIds);
 ```
 
+Remover a linha 1250 que marca `processing` individual dentro do loop (já foi feito em batch).
+
+### 2. `fireMessage` — Debounce de 2s no `queue/process`
+
+**Arquivo:** `deploy/backend/src/lib/group-scheduler.ts`
+
+Adicionar um `Map<string, NodeJS.Timeout>` no `GroupSchedulerManager`. Em vez de cada `fireMessage` chamar `queue/process` imediatamente (linha 484), usar debounce: se já existe um timer pendente para aquele workspace, resetar. Após 2s sem novo disparo, aí sim chama `queue/process` uma única vez.
+
+```typescript
+private processDebounce = new Map<string, NodeJS.Timeout>();
+
+private triggerQueueProcess(workspaceId: string): void {
+  const existing = this.processDebounce.get(workspaceId);
+  if (existing) clearTimeout(existing);
+  
+  const timer = setTimeout(async () => {
+    this.processDebounce.delete(workspaceId);
+    const port = process.env.PORT || "3001";
+    await fetch(`http://localhost:${port}/api/groups/queue/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceId }),
+    });
+  }, 2000);
+  this.processDebounce.set(workspaceId, timer);
+}
+```
+
+Substituir o bloco `fetch queue/process` (linhas 482-512) por uma chamada a `this.triggerQueueProcess(campaign.workspace_id)`.
+
+### 3. Remover dedup redundante do `queue/process`
+
+**Arquivo:** `deploy/backend/src/routes/groups-api.ts` (linhas 1176-1212)
+
+Remover o bloco inteiro de deduplicação dentro do loop do `queue/process`. Ele já não é necessário porque:
+- O batch mark `processing` impede processamento paralelo
+- O debounce impede chamadas paralelas
+- O item foi inserido apenas 1 vez pelo `fireMessage`
+
+O loop fica limpo: busca pending → marca processing em batch → envia 1 a 1 com delay → marca sent/failed.
+
 ## Resultado
-- `is_active` nas mensagens é completamente ignorado em todo o código
-- Ativar campanha = scheduler busca TODAS as mensagens e cria timers
-- Visão geral mostra TODAS as publicações de campanhas ativas
-- Dados legados corrigidos com UPDATE simples
+- Cada publicação entra na fila 1 vez por grupo
+- `queue/process` marca tudo como `processing` atomicamente antes de enviar
+- Respeita o delay entre envios
+- Marca `sent` ou `failed` — item travado, nunca reenviado
 
 ## Validação
 ```bash
 cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
-```
-
-Corrigir dados:
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "UPDATE group_scheduled_messages SET is_active = true WHERE is_active = false;"
-```
-
-Verificar:
-```bash
-docker logs deploy-backend-1 --since=2m 2>&1 | grep -i "\[groups-api\]\|\[scheduler\]" | tail -30
+docker logs deploy-backend-1 --since=5m 2>&1 | grep -i "\[scheduler\]\|\[groups-queue\]" | tail -40
 ```
 
