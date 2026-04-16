@@ -320,8 +320,8 @@ export class GroupSchedulerManager {
       }
     }
 
-    if (fixed > 0) {
-      console.log(`[scheduler] 🔧 Safety sweep: recreated ${fixed} timer(s). Total active: ${this.timers.size}`);
+    if (fixed > 0 || healed > 0) {
+      console.log(`[scheduler] 🔧 Safety sweep: ${fixed} timer(s) recreated, ${healed} auto-healed. Total active: ${this.timers.size}`);
     }
   }
 
