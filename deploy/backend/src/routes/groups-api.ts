@@ -828,7 +828,7 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
 
     const wasActive = oldCampaign?.is_active ?? false;
 
-    const update: any = {};
+    const update: any = { updated_at: new Date().toISOString() };
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
     if (instanceName !== undefined) update.instance_name = instanceName;
