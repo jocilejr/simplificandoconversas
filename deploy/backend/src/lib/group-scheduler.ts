@@ -30,8 +30,7 @@ export class GroupSchedulerManager {
     const sb = getServiceClient();
     const { data: allMessages, error } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, content, next_run_at, is_active, campaign_id")
-      .eq("is_active", true);
+      .select("id, schedule_type, content, next_run_at, campaign_id");
 
     if (error) {
       console.error("[scheduler] loadAll query error:", error.message);
@@ -76,9 +75,9 @@ export class GroupSchedulerManager {
       // If next_run_at is null or in the past, recalculate (DON'T enqueue)
       if (!nextRun || nextRun <= now) {
         if (msg.schedule_type === "once") {
-          // Once messages in the past — deactivate, don't fire
+          // Once messages in the past — clear next_run, don't fire
           await sb.from("group_scheduled_messages")
-            .update({ is_active: false, next_run_at: null })
+            .update({ next_run_at: null })
             .eq("id", msg.id);
           this.setDiagnostic(msg.id, {
             status_code: "missed",
@@ -122,26 +121,12 @@ export class GroupSchedulerManager {
   }
 
   /** Schedule (or reschedule) a single message. Called from API routes. */
-  scheduleMessage(msg: { id: string; schedule_type: string; content: any; campaign_id: string; next_run_at: string | null; is_active: boolean }): void {
+  scheduleMessage(msg: { id: string; schedule_type: string; content: any; campaign_id: string; next_run_at: string | null }): void {
     // Cancel existing timer first
     this.cancelMessage(msg.id);
 
-    // Clear ALL stale diagnostics when reactivating — prevents old "inactive"/"missed"/"campaign_inactive" from contaminating the panel
-    if (msg.is_active) {
-      this.diagnostics.delete(msg.id);
-    }
-
-    if (!msg.is_active) {
-      this.setDiagnostic(msg.id, {
-        status_code: "skipped",
-        status_label: "Inativa",
-        reason_code: "message_inactive",
-        reason_label: "A publicação está desativada",
-        reason_details: "O timer foi removido porque a publicação foi marcada como inativa.",
-        diagnostics: { source: "scheduleMessage" },
-      });
-      return;
-    }
+    // Clear stale diagnostics when scheduling
+    this.diagnostics.delete(msg.id);
 
     if (!msg.next_run_at) {
       this.setDiagnostic(msg.id, {
@@ -209,21 +194,30 @@ export class GroupSchedulerManager {
     });
   }
 
-  /** Safety sweep: find active messages without timers and recreate them. */
+  /** Safety sweep: find messages without timers and recreate them (only for active campaigns). */
   async safetySweep(): Promise<void> {
     const sb = getServiceClient();
-    const { data: active, error } = await sb
+    const { data: allMsgs, error } = await sb
       .from("group_scheduled_messages")
-      .select("id, schedule_type, content, next_run_at, campaign_id, is_active")
-      .eq("is_active", true)
+      .select("id, schedule_type, content, next_run_at, campaign_id")
       .not("next_run_at", "is", null);
 
-    if (error || !active) return;
+    if (error || !allMsgs) return;
+
+    // Filter by active campaigns
+    const campaignIds = [...new Set(allMsgs.map(m => m.campaign_id))];
+    const { data: activeCampaigns } = await sb
+      .from("group_campaigns")
+      .select("id")
+      .in("id", campaignIds)
+      .eq("is_active", true);
+    const activeSet = new Set(activeCampaigns?.map(c => c.id) || []);
 
     let fixed = 0;
     const now = new Date();
 
-    for (const msg of active) {
+    for (const msg of allMsgs) {
+      if (!activeSet.has(msg.campaign_id)) continue; // Campaign inactive
       if (this.timers.has(msg.id)) continue; // Already has a timer
 
       const nextRun = new Date(msg.next_run_at);
@@ -231,7 +225,7 @@ export class GroupSchedulerManager {
         // Past — recalculate without enqueuing
         if (msg.schedule_type === "once") {
           await sb.from("group_scheduled_messages")
-            .update({ is_active: false, next_run_at: null })
+            .update({ next_run_at: null })
             .eq("id", msg.id);
           this.setDiagnostic(msg.id, {
             status_code: "missed",
@@ -348,22 +342,22 @@ export class GroupSchedulerManager {
       diagnostics: { fired_at: now, campaign_id: campaignId },
     });
 
-    // Re-check message is still active
+    // Re-check message still exists
     const { data: msg, error: msgErr } = await sb
       .from("group_scheduled_messages")
-      .select("is_active, schedule_type, content, campaign_id, message_type")
+      .select("schedule_type, content, campaign_id, message_type")
       .eq("id", msgId)
       .single();
 
-    if (msgErr || !msg || !msg.is_active) {
-      console.log(`[scheduler] ⏹ Msg ${msgId} no longer active, skipping`);
+    if (msgErr || !msg) {
+      console.log(`[scheduler] ⏹ Msg ${msgId} not found, skipping`);
       this.setDiagnostic(msgId, {
         status_code: "skipped",
         status_label: "Ignorada",
-        reason_code: "message_inactive_at_dispatch",
-        reason_label: "A publicação ficou inativa antes do disparo",
-        reason_details: "No momento da execução, a publicação já não estava mais ativa e por isso foi ignorada.",
-        diagnostics: { message_found: !!msg, query_error: msgErr?.message || null },
+        reason_code: "message_not_found_at_dispatch",
+        reason_label: "A publicação não foi encontrada no momento do disparo",
+        reason_details: "A publicação pode ter sido excluída antes da execução.",
+        diagnostics: { query_error: msgErr?.message || null },
       });
       return;
     }
@@ -522,10 +516,9 @@ export class GroupSchedulerManager {
       const updateData: any = { last_run_at: now };
 
       if (scheduleType === "once") {
-        updateData.is_active = false;
         updateData.next_run_at = null;
         await sb.from("group_scheduled_messages").update(updateData).eq("id", msgId);
-        console.log(`[scheduler] ⏹ Once msg ${msgId.slice(0, 8)} completed and deactivated`);
+        console.log(`[scheduler] ⏹ Once msg ${msgId.slice(0, 8)} completed`);
         return;
       }
 
@@ -537,7 +530,6 @@ export class GroupSchedulerManager {
         // Schedule next timer
         this.createTimer(msgId, scheduleType, msg.content, campaignId, new Date(nextRun), { preserveDiagnostic: true });
       } else {
-        updateData.is_active = false;
         updateData.next_run_at = null;
         await sb.from("group_scheduled_messages").update(updateData).eq("id", msgId);
         this.setDiagnostic(msgId, {
@@ -545,10 +537,10 @@ export class GroupSchedulerManager {
           status_label: "Falhou",
           reason_code: "next_run_unavailable",
           reason_label: "Não foi possível calcular o próximo disparo",
-          reason_details: "A publicação executou a etapa atual, mas o próximo horário não pôde ser calculado e ela foi desativada.",
+          reason_details: "A publicação executou a etapa atual, mas o próximo horário não pôde ser calculado.",
           diagnostics: { campaign_id: campaignId },
         });
-        console.warn(`[scheduler] ⚠️ Could not compute next run for msg ${msgId}, deactivated`);
+        console.warn(`[scheduler] ⚠️ Could not compute next run for msg ${msgId}`);
       }
     } else {
       console.log(`[scheduler] ⚠️ 0 items enqueued for msg ${msgId.slice(0, 8)} (all deduped). NOT advancing schedule.`);

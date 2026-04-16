@@ -76,16 +76,5 @@ export function useGroupScheduledMessages(campaignId: string | null) {
     },
   });
 
-  const toggleMessage = useMutation({
-    mutationFn: async (msgId: string) => {
-      const resp = await fetch(apiUrl(`groups/campaigns/${campaignId}/messages/${msgId}/toggle`), { method: "PATCH" });
-      if (!resp.ok) throw new Error(await resp.text());
-      return resp.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["group-scheduled-messages", campaignId] });
-    },
-  });
-
-  return { messages, isLoading, createMessage, updateMessage, deleteMessage, toggleMessage };
+  return { messages, isLoading, createMessage, updateMessage, deleteMessage };
 }

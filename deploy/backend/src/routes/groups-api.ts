@@ -848,23 +848,29 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
     console.log(`[groups-api] PUT /campaigns/${req.params.id} isActive=${isActive} wasActive=${wasActive} nowActive=${nowActive}`);
 
     if (isActive !== undefined) {
+      // Fetch ALL messages for this campaign (is_active on messages is ignored — only campaign matters)
       const { data: msgs } = await sb
         .from("group_scheduled_messages")
-        .select("id, schedule_type, content, campaign_id, next_run_at, is_active")
-        .eq("campaign_id", req.params.id)
-        .eq("is_active", true);
+        .select("id, schedule_type, content, campaign_id, next_run_at")
+        .eq("campaign_id", req.params.id);
+
+      const totalMsgs = msgs?.length || 0;
+      console.log(`[groups-api] Campaign ${req.params.id} toggle → ${totalMsgs} messages found`);
 
       if (msgs && msgs.length > 0) {
         if (nowActive) {
-          // Campaign active → ensure all active message timers exist (idempotent)
+          // Campaign active → schedule ALL messages
           let synced = 0;
+          let skipped = 0;
           for (const m of msgs) {
             let nextRun = m.next_run_at;
             if (!nextRun || new Date(nextRun) <= new Date()) {
               if (m.schedule_type === "once") {
+                // Once already past → just clear next_run, skip
                 await sb.from("group_scheduled_messages")
-                  .update({ is_active: false, next_run_at: null, updated_at: new Date().toISOString() })
+                  .update({ next_run_at: null, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
+                skipped++;
                 continue;
               }
               nextRun = calculateNextRunAt({ schedule_type: m.schedule_type, content: m.content });
@@ -873,12 +879,9 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
                   .update({ next_run_at: nextRun, updated_at: new Date().toISOString() })
                   .eq("id", m.id);
               } else {
+                skipped++;
                 continue;
               }
-            } else {
-              await sb.from("group_scheduled_messages")
-                .update({ updated_at: new Date().toISOString() })
-                .eq("id", m.id);
             }
             groupScheduler.scheduleMessage({
               id: m.id,
@@ -886,11 +889,10 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
               content: m.content,
               campaign_id: m.campaign_id,
               next_run_at: nextRun,
-              is_active: true,
             });
             synced++;
           }
-          console.log(`[groups-api] Campaign ${req.params.id} activated → synced ${synced} timer(s)`);
+          console.log(`[groups-api] Campaign ${req.params.id} activated → synced ${synced} timer(s), skipped ${skipped}`);
         } else {
           // Campaign deactivated → cancel all message timers
           for (const m of msgs) {
@@ -898,8 +900,6 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
           }
           console.log(`[groups-api] Campaign ${req.params.id} deactivated → cancelled ${msgs.length} timer(s)`);
         }
-      } else {
-        console.log(`[groups-api] Campaign ${req.params.id} toggle → 0 active messages found`);
       }
     }
 
@@ -963,7 +963,6 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
 
     const messages = (campaign as any).group_scheduled_messages || [];
     for (const msg of messages) {
-      if (!msg.is_active) continue;
       for (const jid of campaign.group_jids) {
         const { data: sg } = await sb
           .from("group_selected")
@@ -1046,7 +1045,11 @@ router.post("/campaigns/:id/messages", async (req: Request, res: Response) => {
     if (error) throw error;
     console.log(`[groups-api] Created message ${data.id}: type=${st}, next_run=${nextRunAt}`);
     // Register with in-memory scheduler
-    groupScheduler.scheduleMessage({ id: data.id, schedule_type: st, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: true });
+    // Only register timer if parent campaign is active
+    const { data: parentCamp } = await sb.from("group_campaigns").select("is_active").eq("id", req.params.id).single();
+    if (parentCamp?.is_active) {
+      groupScheduler.scheduleMessage({ id: data.id, schedule_type: st, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at });
+    }
     res.json(data);
   } catch (err: any) {
     console.error("[groups-api] create message error:", err?.message || err?.details || JSON.stringify(err));
@@ -1091,7 +1094,13 @@ router.put("/campaigns/:id/messages/:msgId", async (req: Request, res: Response)
       .single();
     if (error) throw error;
     // Update in-memory scheduler
-    groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: data.is_active });
+    // Only register timer if parent campaign is active
+    const { data: parentCamp } = await sb.from("group_campaigns").select("is_active").eq("id", req.params.id).single();
+    if (parentCamp?.is_active) {
+      groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at });
+    } else {
+      groupScheduler.cancelMessage(data.id);
+    }
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1114,42 +1123,7 @@ router.delete("/campaigns/:id/messages/:msgId", async (req: Request, res: Respon
     res.status(500).json({ error: err.message });
   }
 });
-router.patch("/campaigns/:id/messages/:msgId/toggle", async (req: Request, res: Response) => {
-  try {
-    const sb = getServiceClient();
-    const { data: msg, error: fErr } = await sb
-      .from("group_scheduled_messages")
-      .select("is_active, schedule_type, scheduled_at, content")
-      .eq("id", req.params.msgId)
-      .single();
-    if (fErr || !msg) return res.status(404).json({ error: "Message not found" });
-
-    const newActive = !msg.is_active;
-    const updateData: any = { is_active: newActive };
-
-    // Recalculate next_run_at when activating
-    if (newActive) {
-      updateData.next_run_at = calculateFirstRunAt({ schedule_type: msg.schedule_type, scheduled_at: msg.scheduled_at, content: msg.content });
-    }
-
-    const { data, error } = await sb
-      .from("group_scheduled_messages")
-      .update(updateData)
-      .eq("id", req.params.msgId)
-      .select()
-      .single();
-    if (error) throw error;
-    // Update in-memory scheduler
-    if (newActive) {
-      groupScheduler.scheduleMessage({ id: data.id, schedule_type: data.schedule_type, content: data.content, campaign_id: req.params.id, next_run_at: data.next_run_at, is_active: true });
-    } else {
-      groupScheduler.cancelMessage(req.params.msgId);
-    }
-    res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Toggle endpoint removed — activation is controlled exclusively by the campaign
 
 /* ─── GET /queue-status ─── */
 router.get("/queue-status", async (req: Request, res: Response) => {
