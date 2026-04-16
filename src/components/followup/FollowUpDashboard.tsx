@@ -95,7 +95,7 @@ export function FollowUpDashboard() {
   }, [processingJobs, queueCounts]);
   const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing : stats.pendingToday;
   const effectiveSent = queueCounts ? queueCounts.sent : stats.sentToday;
-  const effectiveFailed = queueCounts ? queueCounts.failed : 0;
+  
   const totalJobs = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.sent + queueCounts.failed + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.totalToday;
   const processedJobs = queueCounts ? queueCounts.sent + queueCounts.failed + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
   const progressPercent = totalJobs > 0 ? Math.round((processedJobs / totalJobs) * 100) : 0;
