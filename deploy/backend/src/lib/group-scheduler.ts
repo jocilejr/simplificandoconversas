@@ -24,6 +24,32 @@ export interface SchedulerDiagnostic {
 export class GroupSchedulerManager {
   private timers = new Map<string, NodeJS.Timeout>();
   private diagnostics = new Map<string, SchedulerDiagnostic>();
+  private processDebounce = new Map<string, NodeJS.Timeout>();
+
+  /** Debounced queue/process trigger — groups multiple fires into one call */
+  private triggerQueueProcess(workspaceId: string, msgId: string, batch: string): void {
+    const existing = this.processDebounce.get(workspaceId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(async () => {
+      this.processDebounce.delete(workspaceId);
+      try {
+        const port = process.env.PORT || "3001";
+        const processResp = await fetch(`http://localhost:${port}/api/groups/queue/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId }),
+        });
+        if (!processResp.ok) {
+          const processError = await processResp.text();
+          console.error(`[scheduler] queue/process error for ws ${workspaceId}:`, processError);
+        }
+      } catch (processErr: any) {
+        console.error(`[scheduler] queue/process fetch error for ws ${workspaceId}:`, processErr.message);
+      }
+    }, 2000);
+    this.processDebounce.set(workspaceId, timer);
+  }
 
   /** Load all active messages and create timers. Called once on startup. */
   async loadAll(): Promise<void> {
