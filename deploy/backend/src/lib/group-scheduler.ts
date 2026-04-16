@@ -28,7 +28,7 @@ export class GroupSchedulerManager {
   /** Load all active messages and create timers. Called once on startup. */
   async loadAll(): Promise<void> {
     const sb = getServiceClient();
-    const { data: messages, error } = await sb
+    const { data: allMessages, error } = await sb
       .from("group_scheduled_messages")
       .select("id, schedule_type, content, next_run_at, is_active, campaign_id")
       .eq("is_active", true);
@@ -38,8 +38,29 @@ export class GroupSchedulerManager {
       return;
     }
 
-    if (!messages || messages.length === 0) {
+    if (!allMessages || allMessages.length === 0) {
       console.log("[scheduler] No active messages to schedule.");
+      return;
+    }
+
+    // Filter: only load messages whose parent campaign is also active
+    const campaignIds = [...new Set(allMessages.map(m => m.campaign_id))];
+    const { data: activeCampaigns } = await sb
+      .from("group_campaigns")
+      .select("id")
+      .in("id", campaignIds)
+      .eq("is_active", true);
+
+    const activeSet = new Set(activeCampaigns?.map(c => c.id) || []);
+    const messages = allMessages.filter(m => activeSet.has(m.campaign_id));
+    const skippedInactive = allMessages.length - messages.length;
+
+    if (skippedInactive > 0) {
+      console.log(`[scheduler] Skipped ${skippedInactive} message(s) from inactive campaigns`);
+    }
+
+    if (messages.length === 0) {
+      console.log("[scheduler] No messages from active campaigns to schedule.");
       return;
     }
 
