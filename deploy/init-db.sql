@@ -1018,5 +1018,12 @@ CREATE OR REPLACE FUNCTION public.increment_offer_click(offer_id uuid)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public
 AS $$ UPDATE member_area_offers SET total_clicks = total_clicks + 1 WHERE id = offer_id; $$;
 
+-- ── Smart Link sync columns ──
+ALTER TABLE IF EXISTS group_smart_links
+  ADD COLUMN IF NOT EXISTS sync_progress jsonb DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS last_sync_error text DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS last_sync_error_at timestamptz DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS last_successful_sync_at timestamptz DEFAULT NULL;
+
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
