@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const [boletoTemplateOpen, setBoletoTemplateOpen] = useState(false);
   const [quickRecoveryTx, setQuickRecoveryTx] = useState<Transaction | null>(null);
   const queryClient = useQueryClient();
-  const { hasUnseen, markSeen, markTabSeen, markAllSeen } = useUnseenTransactions();
+  const { hasUnseen, markSeen, markTabSeen } = useUnseenTransactions();
   // Recovery hooks
   const { profile } = useProfile();
   const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
@@ -231,27 +231,15 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
     ),
   }), [transactions, dateStart, dateEnd]);
 
-  // Mark transactions as seen when tab is active
-  const prevTab = useRef<TabKey | null>(null);
-
-  // On tab change — always mark
+  // Mark transactions as seen when tab changes or on mount
   useEffect(() => {
-    if (prevTab.current === activeTab) return;
-    prevTab.current = activeTab;
     markTabSeen(activeTab);
   }, [activeTab, markTabSeen]);
 
-  // On initial load — mark ALL as seen (clears orphans that no tab covers)
-  useEffect(() => {
-    if (isLoading) return;
-    markAllSeen();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading]);
-
-  // Auto-mark while viewing: if new unseen arrive while user is on tab, mark after 2s
+  // Auto-mark while viewing: if new unseen arrive while user is on tab, mark after 1s
   useEffect(() => {
     if (!hasUnseen(activeTab)) return;
-    const timer = setTimeout(() => markTabSeen(activeTab), 2000);
+    const timer = setTimeout(() => markTabSeen(activeTab), 1000);
     return () => clearTimeout(timer);
   }, [hasUnseen, activeTab, markTabSeen]);
 
@@ -422,19 +410,19 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
       <div className="flex items-center gap-2 mb-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1">
           <TabsList className="grid grid-cols-4 gap-1 h-auto p-1">
-            <TabsTrigger value="aprovados" onClick={() => markTabSeen("aprovados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="aprovados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Aprovados ({tabTransactions.aprovados.length})
               {hasUnseen("aprovados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="boletos-gerados" onClick={() => markTabSeen("boletos-gerados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="boletos-gerados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Boletos ({tabTransactions["boletos-gerados"].length})
               {hasUnseen("boletos-gerados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="pix-cartao-pendentes" onClick={() => markTabSeen("pix-cartao-pendentes")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="pix-cartao-pendentes" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               PIX/Cartão ({tabTransactions["pix-cartao-pendentes"].length})
               {hasUnseen("pix-cartao-pendentes") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>
-            <TabsTrigger value="rejeitados" onClick={() => markTabSeen("rejeitados")} className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
+            <TabsTrigger value="rejeitados" className="text-[10px] sm:text-xs py-2 px-1 sm:px-2 relative">
               Rejeitados ({tabTransactions.rejeitados.length})
               {hasUnseen("rejeitados") && <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
             </TabsTrigger>

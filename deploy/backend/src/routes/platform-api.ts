@@ -1346,7 +1346,6 @@ router.post("/mark-tab-seen", async (req: Request, res: Response) => {
     const now = new Date().toISOString();
 
     if (tab === "rejeitados") {
-      // OR condition: status=rejeitado OR (type=yampi_cart AND status=abandonado)
       const [r1, r2] = await Promise.all([
         sb.from("transactions")
           .update({ viewed_at: now })
@@ -1363,7 +1362,8 @@ router.post("/mark-tab-seen", async (req: Request, res: Response) => {
           .select("id"),
       ]);
       const total = (r1.data?.length || 0) + (r2.data?.length || 0);
-      return res.json({ updated: total });
+      console.log(`[mark-tab-seen] workspace=${workspaceId} tab=${tab} updated=${total}`);
+      return res.json({ updated: total, tab });
     }
 
     let query = sb
@@ -1391,7 +1391,8 @@ router.post("/mark-tab-seen", async (req: Request, res: Response) => {
       console.error("[mark-tab-seen] error:", error.message);
       return res.status(500).json({ error: error.message });
     }
-    res.json({ updated: data?.length || 0 });
+    console.log(`[mark-tab-seen] workspace=${workspaceId} tab=${tab} updated=${data?.length || 0}`);
+    res.json({ updated: data?.length || 0, tab });
   } catch (err: any) {
     console.error("[mark-tab-seen] error:", err.message);
     res.status(500).json({ error: err.message });

@@ -99,6 +99,13 @@ export function useUnseenTransactions() {
   const markTabSeen = useCallback(
     async (tab: TabKey) => {
       if (!workspaceId) return;
+
+      // Optimistic: immediately zero out this tab's count locally
+      queryClient.setQueryData<UnseenCounts>(["unseen-transactions", workspaceId], (old) => {
+        if (!old) return old;
+        return { ...old, [tab]: 0 };
+      });
+
       try {
         const resp = await fetch(apiUrl("platform/mark-tab-seen"), {
           method: "POST",
@@ -108,13 +115,13 @@ export function useUnseenTransactions() {
         const result = await resp.json();
         if (result.error) {
           console.error("[markTabSeen] backend error:", result.error);
-          return;
         }
-        console.log("[markTabSeen] updated:", result.updated, "tab:", tab);
         queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
         queryClient.invalidateQueries({ queryKey: ["transactions"] });
       } catch (err) {
         console.error("[markTabSeen] fetch error:", err);
+        // Revert optimistic on failure
+        queryClient.invalidateQueries({ queryKey: ["unseen-transactions"] });
       }
     },
     [workspaceId, queryClient]
