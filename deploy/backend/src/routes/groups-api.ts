@@ -876,6 +876,10 @@ router.put("/campaigns/:id", async (req: Request, res: Response) => {
                 continue;
               }
             }
+            // Mark message as freshly reactivated
+            await sb.from("group_scheduled_messages")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", m.id);
             groupScheduler.scheduleMessage({
               id: m.id,
               schedule_type: m.schedule_type,
