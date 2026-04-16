@@ -2,31 +2,38 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useState } from "react";
+import { startOfDay, endOfDay, subDays } from "date-fns";
 
-export type EventPeriod = "today" | "7d" | "30d";
+export type EventPeriod = "today" | "yesterday" | "custom";
 
-function getPeriodStart(period: EventPeriod): string {
-  const now = new Date();
-  if (period === "today") {
-    // Start of today BRT (UTC-3)
-    const brt = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    const startBrt = new Date(Date.UTC(brt.getUTCFullYear(), brt.getUTCMonth(), brt.getUTCDate(), 3, 0, 0));
-    if (startBrt > now) startBrt.setDate(startBrt.getDate() - 1);
-    return startBrt.toISOString();
+function getBrazilNow(): Date {
+  const brazilDateStr = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
+  return new Date(brazilDateStr);
+}
+
+function getDateRange(period: EventPeriod, customRange?: { from: Date; to: Date }) {
+  const now = getBrazilNow();
+  if (period === "yesterday") {
+    const y = subDays(now, 1);
+    return { start: startOfDay(y).toISOString(), end: endOfDay(y).toISOString() };
   }
-  if (period === "7d") {
-    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  if (period === "custom" && customRange) {
+    return { start: startOfDay(customRange.from).toISOString(), end: endOfDay(customRange.to).toISOString() };
   }
-  return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // today
+  return { start: startOfDay(now).toISOString(), end: endOfDay(now).toISOString() };
 }
 
 export function useGroupEvents() {
   const { workspaceId } = useWorkspace();
   const [period, setPeriod] = useState<EventPeriod>("today");
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | undefined>();
 
-  // Feed: últimos 50 eventos para exibição
+  const { start, end } = getDateRange(period, customRange);
+
+  // Feed: eventos filtrados por data
   const { data: events = [], isLoading } = useQuery({
-    queryKey: ["group-events", workspaceId],
+    queryKey: ["group-events", workspaceId, start, end],
     enabled: !!workspaceId,
     refetchInterval: 15000,
     queryFn: async () => {
@@ -34,25 +41,27 @@ export function useGroupEvents() {
         .from("group_participant_events")
         .select("*")
         .eq("workspace_id", workspaceId!)
+        .gte("created_at", start)
+        .lte("created_at", end)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(100);
       if (error) throw error;
       return data;
     },
   });
 
-  // Contadores estáveis via agregação no banco
+  // Contadores filtrados por data
   const { data: eventCounts = { add: 0, remove: 0, promote: 0, demote: 0 } } = useQuery({
-    queryKey: ["group-event-counts", workspaceId, period],
+    queryKey: ["group-event-counts", workspaceId, start, end],
     enabled: !!workspaceId,
     refetchInterval: 15000,
     queryFn: async () => {
-      const periodStart = getPeriodStart(period);
       const { data, error } = await supabase
         .from("group_participant_events")
         .select("action")
         .eq("workspace_id", workspaceId!)
-        .gte("created_at", periodStart);
+        .gte("created_at", start)
+        .lte("created_at", end);
       if (error) throw error;
 
       const counts = { add: 0, remove: 0, promote: 0, demote: 0 };
@@ -64,5 +73,5 @@ export function useGroupEvents() {
     },
   });
 
-  return { events, eventCounts, period, setPeriod, isLoading };
+  return { events, eventCounts, period, setPeriod, customRange, setCustomRange, isLoading };
 }
