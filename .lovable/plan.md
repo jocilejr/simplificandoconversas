@@ -1,78 +1,75 @@
 
 
-## Escopo
+## Reorganização da Visão Geral de Grupos
 
-Reconstruir o sistema de eventos (add/remove) com nova tabela dedicada `group_events`, e reorganizar a aba "Visão Geral" para mostrar o **visualizador de postagens (eventos por grupo)** como primeiro item ao abrir.
+### Nova ordem da aba (cima → baixo)
+1. **SchedulerDebugPanel** (programação do dia) — já existe, fica no topo
+2. **Card de Informações Gerais** (stats + filtro de período) — Grupos Monitorados, Total Membros, Campanhas Ativas, Enviadas Hoje, Entraram, Saíram + filtro Hoje/Ontem/Personalizado + botão "Ver eventos em tempo real"
+3. **Card "Grupos Monitorados"** — lista com nome do grupo, total de membros, +entraram/−saíram do período selecionado
 
-## Pipeline novo
+Remove a versão atual onde o botão de eventos vive dentro do card de grupos. Substitui por um botão único no card de stats.
 
-**Gravação:** Webhook Evolution → resolve `workspace → instance → group_selected` → INSERT cru em `group_events`. Descarta com log se a tripla não bate.
+### Modal de eventos em tempo real
+Novo modal acionado pelo botão "Ver eventos em tempo real":
+- Lista cronológica reversa (mais recente primeiro): "há X min · {participant} entrou em {grupo}" / "saiu de"
+- Tempo relativo via `formatDistanceToNow` do `date-fns/locale/ptBR`
+- Filtra pelo mesmo período selecionado no card de stats (Hoje/Ontem/custom em BRT)
+- Refetch a cada 15s (real-time leve)
+- Sem agregação — eventos crus
 
-**Leitura:** 1 endpoint `GET /api/groups/events` → SQL bruto via `pg.Pool` (sem PostgREST/limit) → retorna `{ totals, groups[] }`.
+### Estratégia de fetch (resolve o pedido de "fetch a cada 1h")
 
-## Tabela nova
+**Dados pesados (membros, contagens):** `useGroupSelected` + `syncStats` → `staleTime: 1h`, `refetchInterval: 1h`. Sem polling agressivo.
 
-```sql
-DROP TABLE IF EXISTS group_participant_events CASCADE;
+**Eventos add/remove (dinâmico):** `useGroupEvents` (agregado por grupo) → `refetchInterval: 30s`. Mantém o "+entraram/−saíram do dia" sempre fresco.
 
-CREATE TABLE group_events (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id    uuid NOT NULL,
-  instance_name   text NOT NULL,
-  group_jid       text NOT NULL,
-  group_name      text,
-  participant_jid text NOT NULL,
-  action          text NOT NULL CHECK (action IN ('add','remove')),
-  occurred_at     timestamptz NOT NULL DEFAULT now(),
-  raw_payload     jsonb
-);
-CREATE INDEX ON group_events (workspace_id, occurred_at DESC);
-CREATE INDEX ON group_events (workspace_id, instance_name, group_jid, action);
-NOTIFY pgrst, 'reload schema';
+**Membros dinâmicos:** Frontend calcula `totalMembros = base_member_count + adds_hoje − removes_hoje` no card "Total de Membros", para refletir variação em tempo real entre os fetchs horários. A cada 1h o `syncStats` re-baseia o número real do Evolution.
+
+**Modal real-time:** Hook novo `useGroupEventsLive(period)` → busca eventos crus com `refetchInterval: 15s` enquanto o modal está aberto.
+
+### Backend — endpoint adicional
+
+Adicionar em `groups-api.ts`:
 ```
-
-## Backend
-
-- **Reescrever** `deploy/backend/src/routes/groups-webhook.ts`: pipeline workspace→instance→group_selected, INSERT cru em `group_events`, logs estruturados de descarte.
-- **Em** `deploy/backend/src/routes/groups-api.ts`: remover `/events` e `/events-summary` antigos. Criar `GET /events` novo com SQL único:
-
+GET /api/groups/events-live?workspaceId&period&from&to&limit=200
+```
+SQL bruto via `pg.Pool`:
 ```sql
-SELECT e.group_jid, s.group_name,
-  COUNT(*) FILTER (WHERE e.action='add')    AS adds,
-  COUNT(*) FILTER (WHERE e.action='remove') AS removes
+SELECT e.id, e.group_jid, e.group_name, e.participant_jid,
+       e.action, e.occurred_at
 FROM group_events e
 JOIN group_selected s
   ON s.workspace_id=e.workspace_id
  AND s.instance_name=e.instance_name
  AND s.group_jid=e.group_jid
-WHERE e.workspace_id=$1 AND e.occurred_at>=$2 AND e.occurred_at<$3
-GROUP BY e.group_jid, s.group_name
-ORDER BY s.group_name;
+WHERE e.workspace_id=$1
+  AND e.occurred_at >= $2 AND e.occurred_at < $3
+ORDER BY e.occurred_at DESC
+LIMIT $4;
 ```
+Retorna `{ events: [{ id, group_jid, group_name, participant_jid, action, occurred_at }] }`.
 
-Retorno: `{ window, totals: {adds,removes}, groups: [{group_jid,group_name,adds,removes}] }`.
+O endpoint `/events` (agregado) continua existindo e alimenta os cards + lista de grupos.
 
-## Frontend
+### Frontend — arquivos alterados
 
-- **Reescrever** `src/hooks/useGroupEvents.ts`: 1 chamada, retorna `totals` + `groups`. Sem normalização/dedup no front.
-- **Atualizar** `src/components/grupos/GroupDashboardTab.tsx`, nova ordem de cima pra baixo:
-  1. **Visualizador de postagens (eventos por grupo)** — lista `groups[]` com nome + `+adds` / `−removes` por grupo selecionado. **Primeiro item.**
-  2. Filtro de período (Hoje/Ontem/Personalizado) + botão Sincronizar
-  3. Cards de estatísticas (Grupos Monitorados, Total Membros, Campanhas Ativas, Enviadas Hoje, Entraram=`totals.adds`, Saíram=`totals.removes`)
-  4. SchedulerDebugPanel
-  5. Card "Grupos Monitorados" (lista crua de selecionados)
-  
-  **Remover** a seção "Eventos — Hoje" (feed cronológico) — substituída pelo visualizador agregado por grupo.
+- **`src/components/grupos/GroupDashboardTab.tsx`** — reordenar: SchedulerDebugPanel → Card Info+Filtro → Card Grupos. Remover botão de eventos do card de grupos. Adicionar botão "Ver eventos em tempo real" no card de stats. Adicionar cálculo dinâmico `member_count + adds − removes`.
+- **`src/hooks/useGroupSelected.ts`** — trocar `refetchInterval: 15000` por `staleTime: 3600000, refetchInterval: 3600000`.
+- **`src/hooks/useGroupEvents.ts`** — manter (já agrega), apenas confirmar `refetchInterval: 30000`.
+- **`src/hooks/useGroupEventsLive.ts`** — novo. 1 fetch para `/events-live`, retorna lista crua. `refetchInterval: 15000`, `enabled: open`.
+- **Modal novo** dentro de `GroupDashboardTab.tsx` — lista vertical com `formatDistanceToNow(occurred_at, { locale: ptBR, addSuffix: true })` + ícone +/− por linha.
 
-## Execução
+### Backend — arquivos alterados
+- **`deploy/backend/src/routes/groups-api.ts`** — adicionar handler `GET /events-live` com a SQL acima.
 
-1. Lovable aplica: migração + reescrita backend + reescrita hook + reorganização da Visão Geral.
-2. Você roda na VPS (envio comandos prontos no próximo turno):
-   - `cd ~/simplificandoconversas && git pull && bash deploy/update.sh`
-   - SQL DROP+CREATE da nova tabela
-   - Validação: comparar `SELECT action,COUNT(*) FROM group_events WHERE workspace_id=...` com o JSON do endpoint.
+### Banco
+Nenhuma migração. A tabela `group_events` já tem tudo (`participant_jid`, `occurred_at`, `action`, `group_name`).
 
-## Risco
-
-DROP de `group_participant_events` apaga histórico atual. Confirmado implicitamente nas iterações anteriores. Se quiser preservar, troco DROP por RENAME — me avisa antes de aprovar.
+### Execução
+1. Lovable aplica as mudanças (frontend + backend).
+2. Você roda na VPS:
+   ```
+   cd ~/simplificandoconversas && git pull && bash deploy/update.sh
+   ```
+3. Validar: abrir `/grupos`, ver nova ordem; abrir modal e ver eventos em tempo real com timestamps relativos.
 
