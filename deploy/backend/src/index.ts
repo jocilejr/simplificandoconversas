@@ -287,4 +287,11 @@ app.listen(PORT, async () => {
   } catch (err: any) {
     console.error("[scheduler] Initialization error:", err.message);
   }
+
+  // ─── Group stats sync: every 1h, first run 1h after deploy ───
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  console.log(`[sync-all] ⏱️  scheduled every 1h, first run in 1h from deploy (${new Date(Date.now() + ONE_HOUR_MS).toISOString()})`);
+  setInterval(() => {
+    syncAllWorkspacesStats().catch((e) => console.error("[sync-all] interval error:", e.message));
+  }, ONE_HOUR_MS);
 });
