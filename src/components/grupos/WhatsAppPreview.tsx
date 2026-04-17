@@ -78,9 +78,10 @@ function EmptyState() {
   );
 }
 
-const WAVEFORM_HEIGHTS = Array.from({ length: 30 }, (_, i) =>
-  Math.sin(i * 0.6) * 10 + Math.cos(i * 1.2) * 5 + 8
-);
+const WAVEFORM_HEIGHTS = [
+  35, 60, 45, 80, 55, 70, 40, 90, 65, 50, 75, 30, 85, 60, 45,
+  70, 55, 80, 40, 65, 50, 75, 35, 90, 60, 45, 70, 55, 80, 30,
+];
 
 function formatWhatsAppText(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];

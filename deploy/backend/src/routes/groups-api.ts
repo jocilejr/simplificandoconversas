@@ -1237,6 +1237,10 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         const encoded = encodeURIComponent(item.instance_name);
         const content = item.content as any;
         const mentionsEveryOne = content.mentionsEveryOne || content.mentionAll || false;
+        // Resolve mídia aceitando ambas convenções (mediaUrl OU chave por tipo: audio/image/video/document/sticker)
+        const mediaUrl: string =
+          content.mediaUrl || content.audio || content.sticker ||
+          content.image || content.video || content.document || "";
 
         if (item.message_type === "text") {
           const r = await fetch(`${baseUrl}/message/sendText/${encoded}`, {
@@ -1245,14 +1249,27 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
           });
           if (!r.ok) throw new Error(await r.text());
+        } else if (item.message_type === "audio") {
+          if (!mediaUrl || typeof mediaUrl !== "string") {
+            throw new Error(`invalid_audio_url: ${JSON.stringify(content)}`);
+          }
+          const r = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${encoded}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: apiKey },
+            body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
+          });
+          if (!r.ok) throw new Error(await r.text());
         } else {
+          if (!mediaUrl || typeof mediaUrl !== "string") {
+            throw new Error(`invalid_media_url: ${JSON.stringify(content)}`);
+          }
           const r = await fetch(`${baseUrl}/message/sendMedia/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({
               number: item.group_jid,
               mediatype: item.message_type,
-              media: content.mediaUrl || "",
+              media: mediaUrl,
               caption: content.caption || "",
               fileName: content.fileName || "",
               mentionsEveryOne,
