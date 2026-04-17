@@ -1,115 +1,44 @@
 
 
-## Diagnóstico revisado
+## Diagnóstico
 
-Você está certo — o problema é mais grave que dedup. O webhook **não filtra por instância selecionada**. Hoje em `groups-webhook.ts:46-52`:
+`date_trunc('minute', ts)` e `EXTRACT(MINUTE FROM ts)` em coluna `timestamptz` dependem do `TimeZone` da sessão → Postgres considera **não-imutável** e bloqueia `GENERATED STORED`.
 
-```ts
-const { data: inst } = await sb
-  .from("whatsapp_instances")
-  .select("workspace_id, user_id")
-  .eq("instance_name", instanceName)
-  .maybeSingle();
-if (!inst) return res.json({ ignored: true, reason: "instance not found" });
-```
+Solução: forçar UTC explicitamente com `AT TIME ZONE 'UTC'` (vira `timestamp` sem TZ → operações ficam imutáveis), depois voltar para `timestamptz`.
 
-Só valida se a instância **existe no workspace** — não checa se ela está em `group_selected` para aquele grupo. Resultado: se "Número Backup dos Grupos" e "Número das Entregas 02" estão ambas no mesmo grupo, mas só uma foi selecionada para monitorar, **as duas inserem eventos** → duplica e polui.
-
-A regra correta: **só processar evento se existir row em `group_selected` com `(workspace_id, instance_name, group_jid)` exato**. Toda instância não-selecionada para aquele grupo é descartada na origem.
-
-## Correção
-
-### Fix único em `deploy/backend/src/routes/groups-webhook.ts`
-Após resolver a instância, antes de qualquer insert, validar:
-
-```ts
-const { data: monitored } = await sb
-  .from("group_selected")
-  .select("id")
-  .eq("workspace_id", inst.workspace_id)
-  .eq("instance_name", instanceName)
-  .eq("group_jid", groupJid)
-  .maybeSingle();
-
-if (!monitored) {
-  return res.json({ ignored: true, reason: "instance not selected for this group" });
-}
-```
-
-Isso elimina:
-- Duplicação por múltiplas instâncias no mesmo grupo (só a selecionada conta)
-- Poluição de eventos de grupos não monitorados
-- Race condition entre instâncias (só 1 instância insere por grupo)
-
-### Complementos (mantidos do plano anterior, mas agora secundários)
-1. **`extractPhone` blindado** — ainda necessário para limpar rows com JSON cru (`@lid`).
-2. **UNIQUE INDEX no DB** — defesa extra contra retries da própria Evolution na mesma instância.
-3. **Limpeza retroativa** — apagar rows existentes que vieram de instâncias não-selecionadas + duplicados.
-
-### Regra de negócio: e se 2 instâncias forem selecionadas para o mesmo grupo?
-Decisão: **a primeira a inserir no bucket de 5min ganha** (via UNIQUE INDEX). Não duplica contagem. Caso queira que o usuário escolha "instância oficial" por grupo, é feature futura.
-
-## Arquivos modificados
-
-| Arquivo | Mudança |
-|---------|---------|
-| `deploy/backend/src/routes/groups-webhook.ts` | Validar `group_selected` antes de inserir + `extractPhone` blindado + `upsert(ignoreDuplicates)` |
-| Migração SQL (VPS) | `dedup_bucket` + UNIQUE INDEX + DELETE retroativo de duplicados, JSON cru, e eventos de instâncias não-selecionadas |
-
-## Comandos VPS pós-deploy
+## Fix — substituir o bloco do passo 1
 
 ```bash
-cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
-
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres <<'SQL'
--- 1) Bucket de 5min para dedup defensivo
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
 ALTER TABLE group_participant_events
   ADD COLUMN IF NOT EXISTS dedup_bucket timestamptz
-  GENERATED ALWAYS AS (date_trunc('minute', created_at) - 
-    (EXTRACT(MINUTE FROM created_at)::int % 5) * interval '1 minute') STORED;
-
--- 2) Apagar eventos de instâncias NÃO selecionadas para o grupo
-DELETE FROM group_participant_events e
-WHERE NOT EXISTS (
-  SELECT 1 FROM group_selected s
-  WHERE s.workspace_id = e.workspace_id
-    AND s.instance_name = e.instance_name
-    AND s.group_jid = e.group_jid
-);
-
--- 3) Apagar duplicados restantes (mesma instância, mesmo evento, <5min)
-WITH ranked AS (
-  SELECT id, ROW_NUMBER() OVER (
-    PARTITION BY workspace_id, group_jid, action, participant_jid, dedup_bucket
-    ORDER BY created_at
-  ) AS rn FROM group_participant_events
-)
-DELETE FROM group_participant_events WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
-
--- 4) Apagar rows com participant_jid inválido
-DELETE FROM group_participant_events
-WHERE participant_jid LIKE '{%' OR participant_jid LIKE '%@lid%' 
-   OR length(regexp_replace(participant_jid, '\D', '', 'g')) NOT BETWEEN 10 AND 13;
-
--- 5) UNIQUE para barrar futuros duplicados na origem
-CREATE UNIQUE INDEX IF NOT EXISTS group_participant_events_dedup_idx
-  ON group_participant_events (workspace_id, group_jid, action, participant_jid, dedup_bucket);
-
-NOTIFY pgrst, 'reload schema';
-SQL
+  GENERATED ALWAYS AS (
+    (date_trunc('minute', (created_at AT TIME ZONE 'UTC'))
+     - make_interval(mins => (EXTRACT(MINUTE FROM (created_at AT TIME ZONE 'UTC'))::int % 5))
+    ) AT TIME ZONE 'UTC'
+  ) STORED;
+"
 ```
 
-## Validação pós-fix
+Por que funciona:
+- `created_at AT TIME ZONE 'UTC'` retorna `timestamp` (sem TZ) → operações temporais viram imutáveis.
+- `make_interval(mins => N)` é imutável (diferente de `N * interval '1 minute'` que o planner às vezes rejeita em coluna gerada).
+- `... AT TIME ZONE 'UTC'` no final converte de volta para `timestamptz` (tipo da coluna).
+
+## Próximos passos (sem mudança)
+Após o ALTER funcionar, executar normalmente os passos 2, 3, 4 e 5 do plano anterior (deletes, UNIQUE INDEX, recálculo de `group_daily_stats`, validação).
+
+## Validação imediata pós-ALTER
+
 ```bash
-# Deve retornar 0
 docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT COUNT(*) AS eventos_de_instancia_nao_monitorada
-FROM group_participant_events e
-WHERE NOT EXISTS (
-  SELECT 1 FROM group_selected s
-  WHERE s.workspace_id=e.workspace_id 
-    AND s.instance_name=e.instance_name 
-    AND s.group_jid=e.group_jid
-);"
+SELECT column_name, data_type, is_generated
+FROM information_schema.columns
+WHERE table_name='group_participant_events' AND column_name='dedup_bucket';
+SELECT id, created_at, dedup_bucket 
+FROM group_participant_events 
+ORDER BY created_at DESC LIMIT 5;"
 ```
+
+Esperado: `is_generated = ALWAYS` e `dedup_bucket` arredondado para múltiplo de 5 min do `created_at` em UTC.
 
