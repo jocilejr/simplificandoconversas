@@ -1,75 +1,48 @@
 
 
-## Diagnóstico
+## Objetivo
+Adicionar opção "Usar número da instância de envio" no card de contato do `GroupScheduledMessageForm`. Quando ativa, o número manual fica desabilitado e o backend resolve dinamicamente o telefone da instância no momento do envio.
 
-Card "contact" (5 grupos, 5 falhas) tem o mesmo bug raiz que áudio: `groups-api.ts` no dispatch trata `contact` como mídia genérica e cai em `/message/sendMedia`, mas Evolution exige endpoint específico `/message/sendContact` com payload diferente (`{ number, contact: [{ fullName, wuid, phoneNumber }] }`).
+## Investigação rápida necessária
 
-Preciso confirmar na VPS:
+1. Ver o bloco de "contact" no `GroupScheduledMessageForm.tsx` (campos `contactName`, `contactPhone`).
+2. Ver onde a `instance` da campanha está disponível no form (passada via prop ou do `selectedCampaign`).
+3. Ver como `groups-api.ts` (branch contact) lê hoje o `content` para incluir o novo flag.
+4. Ver se já existe util backend `whatsapp-proxy` ou Evolution `/instance/fetchInstances` que retorne o número conectado da instância.
 
-```bash
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-SELECT id, group_jid, error_message, content
-FROM group_message_queue
-WHERE message_type='contact' AND status='failed'
-  AND created_at > now() - interval '24 hours'
-ORDER BY created_at DESC LIMIT 5;" | cat
-```
+## Mudanças
 
-E olhar o trecho atual:
-```bash
-sed -n '1230,1290p' ~/simplificandoconversas/deploy/backend/src/routes/groups-api.ts
-```
+### Frontend — `src/components/grupos/GroupScheduledMessageForm.tsx`
+- Adicionar estado `useInstanceNumber: boolean` (default `false`).
+- No bloco de contato, adicionar Switch "Usar número da instância de envio" acima dos inputs.
+- Quando `useInstanceNumber=true`:
+  - Input `contactPhone` fica `disabled` e mostra placeholder "Número da instância (resolvido no envio)".
+  - Input `contactName` permanece editável (default: nome amigável da instância) — opcionalmente também pode ter toggle, mas mantém manual por padrão.
+  - Validação do submit ignora exigência de `contactPhone`.
+- Salvar no `content`: `{ contactName, contactPhone, useInstanceNumber: true }`.
 
-## Fix proposto
+### Backend — `deploy/backend/src/routes/groups-api.ts` (branch `contact`)
+- Se `content.useInstanceNumber === true`:
+  - Buscar número da instância via Evolution: `GET ${baseUrl}/instance/fetchInstances?instanceName=${instanceName}` → extrair `instance.owner` (ou `instance.profileName`/`number` dependendo da resposta v2).
+  - Strip `@s.whatsapp.net`, garantir só dígitos.
+  - Usar como `phoneNumber` e `wuid`.
+  - Se `contactName` vazio, usar `instance.profileName` como fallback.
+- Caso contrário, mantém fluxo atual (manual).
 
-`deploy/backend/src/routes/groups-api.ts` — adicionar branch para `contact` antes do `else` genérico:
-
-```typescript
-} else if (item.message_type === "contact") {
-  // content esperado: { fullName, phoneNumber, organization?, email? }
-  // ou array { contacts: [{...}] }
-  const contacts = Array.isArray(content.contacts) 
-    ? content.contacts 
-    : [{
-        fullName: content.fullName || content.name || "",
-        wuid: (content.phoneNumber || content.phone || "").replace(/\D/g, ""),
-        phoneNumber: content.phoneNumber || content.phone || "",
-        organization: content.organization || "",
-        email: content.email || "",
-      }];
-  
-  if (!contacts[0]?.fullName || !contacts[0]?.phoneNumber) {
-    throw new Error(`invalid_contact_data: ${JSON.stringify(content)}`);
-  }
-  
-  const r = await fetch(`${baseUrl}/message/sendContact/${encoded}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: apiKey },
-    body: JSON.stringify({ number: item.group_jid, contact: contacts, mentionsEveryOne }),
-  });
-  if (!r.ok) throw new Error(await r.text());
-}
-```
-
-## Investigação extra (form de criação)
-
-Verificar como `GroupScheduledMessageForm.tsx` salva contact — qual shape de `content`? Para garantir que o backend leia as chaves certas. Vou ler o form na hora de implementar.
-
-## Comandos VPS pós-fix
-
-```bash
-cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
-
-docker exec deploy-postgres-1 psql -U postgres -d postgres -c "
-UPDATE group_message_queue
-SET status='pending', error_message=NULL, started_at=NULL, completed_at=NULL
-WHERE message_type='contact' AND status='failed'
-  AND created_at > now() - interval '24 hours';"
-```
+### Cache opcional (refinamento, não bloqueante)
+Buscar a cada envio é OK (poucas chamadas). Sem cache adicional nesta primeira versão.
 
 ## Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `deploy/backend/src/routes/groups-api.ts` | Branch dedicado para `contact` usando `/message/sendContact` |
+| `src/components/grupos/GroupScheduledMessageForm.tsx` | Switch + campo desabilitado + persistência do flag `useInstanceNumber` |
+| `deploy/backend/src/routes/groups-api.ts` | Branch contact resolve telefone via `/instance/fetchInstances` quando `useInstanceNumber=true` |
+
+## Comandos VPS pós-deploy
+```bash
+cd ~/simplificandoconversas && git pull && cd deploy && docker compose up -d --build backend
+```
+
+Sem necessidade de reprocessar nada — é feature nova.
 
