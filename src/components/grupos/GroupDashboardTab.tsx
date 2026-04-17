@@ -93,58 +93,12 @@ export default function GroupDashboardTab() {
           ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}`
           : "Personalizado";
 
+  // Mapeia eventos por group_jid para mostrar +adds/−removes no card de Grupos Monitorados
+  const eventsByJid = new Map(groups.map((g) => [g.group_jid, g]));
+
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      {/* 1) Visualizador de postagens — eventos por grupo (PRIMEIRO ITEM) */}
-      <Card className="border-border/50 min-w-0 overflow-hidden">
-        <CardContent className="p-0">
-          <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Postagens por Grupo — {periodLabel}
-            </p>
-            <span className="text-xs text-muted-foreground">
-              <span className="text-green-500 font-medium">+{totals.adds}</span>
-              {" / "}
-              <span className="text-red-500 font-medium">−{totals.removes}</span>
-            </span>
-          </div>
-          {!hasSelectedGroups ? (
-            <div className="px-6 py-8 text-center space-y-1.5">
-              <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
-              <p className="text-sm text-muted-foreground">
-                Use a aba <span className="font-medium text-foreground">Selecionar</span> para escolher grupos e começar a registrar entradas e saídas.
-              </p>
-            </div>
-          ) : groups.length === 0 ? (
-            <div className="px-6 py-8 text-center space-y-1.5">
-              <p className="text-sm font-medium">Sem dados neste período.</p>
-              <p className="text-sm text-muted-foreground">
-                Confirme na VPS que o webhook <code className="text-xs">/api/groups/webhook/events</code> está ativo na Evolution.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/30 max-h-[420px] overflow-y-auto">
-              {groups.map((g) => (
-                <div key={g.group_jid} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{g.group_name}</p>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="flex items-center gap-1 text-xs font-medium text-green-500">
-                      <UserPlus className="h-3 w-3" />+{g.adds}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs font-medium text-red-500">
-                      <UserMinus className="h-3 w-3" />−{g.removes}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 2) Filtro de período + sincronizar */}
+      {/* 1) Filtro de período + sincronizar */}
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
