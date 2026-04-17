@@ -3,10 +3,10 @@ import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
 
-/** Ações válidas que contabilizamos. Qualquer outro valor é descartado. */
-const VALID_ACTIONS = new Set(["add", "remove", "promote", "demote"]);
+/** Apenas add/remove são contabilizados nesta versão. */
+const VALID_ACTIONS = new Set(["add", "remove"]);
 
-/** Extract clean phone number (12-13 digits). Returns "" if invalid (e.g., @lid without phoneNumber). */
+/** Extract clean phone number (10–13 digits). Returns "" if invalid (e.g., @lid without phoneNumber). */
 function extractPhone(p: any): string {
   const clean = (s: string) => s.replace(/@.*/, "").replace(/\D/g, "");
 
@@ -16,7 +16,6 @@ function extractPhone(p: any): string {
   }
   if (typeof p !== "object" || !p) return "";
 
-  // Always prefer phoneNumber over id (id may be temporary @lid)
   const pn = typeof p.phoneNumber === "string" ? p.phoneNumber : "";
   if (pn && !pn.includes("@lid")) {
     const v = clean(pn);
@@ -30,96 +29,91 @@ function extractPhone(p: any): string {
   return "";
 }
 
-/** Normaliza action: só aceita add/remove/promote/demote (rejeita "group-participants.update" etc). */
-function normalizeAction(raw: any): string | null {
+function normalizeAction(raw: any): "add" | "remove" | null {
   if (typeof raw !== "string") return null;
   const a = raw.toLowerCase().trim();
-  return VALID_ACTIONS.has(a) ? a : null;
+  return VALID_ACTIONS.has(a) ? (a as "add" | "remove") : null;
 }
 
 /* POST /api/groups/webhook/events
-   Recebe group-participants.update da Evolution API.
-
-   ── REGRAS ──
-   1. action DEVE ser add/remove/promote/demote. Qualquer outro valor é descartado.
-   2. Só registra se a tupla (workspace_id, instance_name, group_jid) existir em group_selected.
-   3. INSERT simples (sem upsert/dedup) — espelha comportamento do whats-grupos de referência. */
+   Pipeline:
+     workspace (via instance_name) → group_selected (instance + group_jid) → INSERT em group_events
+   Descarta + log se a tripla não bate. Sem upsert/dedup: gravamos tudo cru. */
 router.post("/events", async (req: Request, res: Response) => {
   try {
-    const body = req.body;
-    const event = body.event || "";
+    const body = req.body || {};
+    const event = String(body.event || "");
 
     if (!event.includes("group") && !event.includes("participant")) {
-      return res.json({ ignored: true });
+      return res.json({ ignored: true, reason: "unrelated_event" });
     }
 
     const data = body.data || body;
-    const instanceName = body.instance || body.instanceName || "";
-    const groupJid = data.groupJid || data.id || "";
-    const participants = data.participants || [];
+    const instanceName = String(body.instance || body.instanceName || "");
+    const groupJid = String(data.groupJid || data.id || "");
+    const participants = Array.isArray(data.participants) ? data.participants : [];
 
-    // ── action deve vir do payload `data.action`. Nunca derivar de `event`. ──
     const action = normalizeAction(data.action);
     if (!action) {
-      return res.json({
-        ignored: true,
-        reason: `invalid or missing action (received: ${data.action ?? "null"})`,
-      });
+      console.log(`[groups-webhook] discard reason=invalid_action received=${data.action ?? "null"}`);
+      return res.json({ ignored: true, reason: "invalid_action", received: data.action ?? null });
     }
 
-    if (!groupJid || participants.length === 0) {
-      return res.json({ ignored: true, reason: "no group or participants" });
+    if (!instanceName || !groupJid || participants.length === 0) {
+      console.log(`[groups-webhook] discard reason=missing_payload instance=${instanceName} group=${groupJid} participants=${participants.length}`);
+      return res.json({ ignored: true, reason: "missing_payload" });
     }
 
-    // Extract clean phone numbers (rejects invalid/@lid) and deduplicate per request
     const cleanParticipants = participants.map(extractPhone).filter(Boolean);
     const uniqueParticipants = [...new Set(cleanParticipants)];
-
     if (uniqueParticipants.length === 0) {
-      return res.json({ ignored: true, reason: "no valid participants" });
+      console.log(`[groups-webhook] discard reason=no_valid_participants instance=${instanceName} group=${groupJid}`);
+      return res.json({ ignored: true, reason: "no_valid_participants" });
     }
 
-    // Resolve workspace from instance
     const sb = getServiceClient();
+
+    // 1) workspace via instance
     const { data: inst } = await sb
       .from("whatsapp_instances")
-      .select("workspace_id, user_id")
+      .select("workspace_id")
       .eq("instance_name", instanceName)
       .maybeSingle();
 
-    if (!inst) return res.json({ ignored: true, reason: "instance not found" });
+    if (!inst) {
+      console.log(`[groups-webhook] discard reason=instance_not_found instance=${instanceName}`);
+      return res.json({ ignored: true, reason: "instance_not_found" });
+    }
 
-    // ── FILTRO ESTRITO: (workspace_id, instance_name, group_jid) em group_selected ──
+    // 2) group_selected (workspace + instance + group_jid)
     const { data: monitored } = await sb
       .from("group_selected")
-      .select("id, group_name")
+      .select("group_name")
       .eq("workspace_id", inst.workspace_id)
       .eq("instance_name", instanceName)
       .eq("group_jid", groupJid)
       .maybeSingle();
 
     if (!monitored) {
-      return res.json({
-        ignored: true,
-        reason: "this (instance, group) tuple is not monitored",
-      });
+      console.log(`[groups-webhook] discard reason=group_not_selected ws=${inst.workspace_id} instance=${instanceName} group=${groupJid}`);
+      return res.json({ ignored: true, reason: "group_not_selected" });
     }
 
-    const groupName = monitored.group_name || data.subject || data.groupName || "";
+    const groupName = monitored.group_name || data.subject || data.groupName || null;
 
-    const rows = uniqueParticipants.map((phone: string) => ({
+    // 3) INSERT cru em group_events (1 linha por participante, sem dedup)
+    const rows = uniqueParticipants.map((phone) => ({
       workspace_id: inst.workspace_id,
-      user_id: inst.user_id,
       instance_name: instanceName,
       group_jid: groupJid,
       group_name: groupName,
       participant_jid: phone,
       action,
+      raw_payload: body,
     }));
 
-    // ── INSERT simples (sem dedup_bucket) — modelo do whats-grupos ──
     const { data: inserted, error: insertErr } = await sb
-      .from("group_participant_events")
+      .from("group_events")
       .insert(rows)
       .select("id");
 
@@ -128,7 +122,8 @@ router.post("/events", async (req: Request, res: Response) => {
       return res.status(500).json({ error: insertErr.message });
     }
 
-    res.json({ ok: true, events: inserted?.length ?? 0, action });
+    console.log(`[groups-webhook] ok action=${action} ws=${inst.workspace_id} group=${groupJid} inserted=${inserted?.length ?? 0}`);
+    res.json({ ok: true, action, inserted: inserted?.length ?? 0 });
   } catch (err: any) {
     console.error("[groups-webhook] error:", err.message);
     res.status(500).json({ error: err.message });

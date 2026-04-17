@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, ShieldCheck, ShieldMinus, CalendarIcon, RefreshCw } from "lucide-react";
+import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, CalendarIcon, RefreshCw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
-const actionConfig: Record<string, { icon: typeof UserPlus; color: string; label: string }> = {
-  add: { icon: UserPlus, color: "text-green-500 bg-green-500/10", label: "entrou em" },
-  remove: { icon: UserMinus, color: "text-red-500 bg-red-500/10", label: "saiu de" },
-  promote: { icon: ShieldCheck, color: "text-primary bg-primary/10", label: "promovido em" },
-  demote: { icon: ShieldMinus, color: "text-orange-500 bg-orange-500/10", label: "rebaixado em" },
-};
-
 function getBrazilNow(): Date {
   const brazilDateStr = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
   return new Date(brazilDateStr);
@@ -38,7 +31,7 @@ export default function GroupDashboardTab() {
   const { stats } = useGroupQueue();
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { events, eventCounts, groupCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
+  const { totals, groups, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
@@ -50,7 +43,6 @@ export default function GroupDashboardTab() {
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
 
-  // Sync member counts from Evolution API
   const syncStats = async (silent = false) => {
     if (!workspaceId || syncing) return;
     setSyncing(true);
@@ -69,14 +61,13 @@ export default function GroupDashboardTab() {
       } else if (!silent) {
         toast.error("Falha ao sincronizar contagens");
       }
-    } catch (e) {
+    } catch {
       if (!silent) toast.error("Erro ao conectar com o servidor");
     } finally {
       setSyncing(false);
     }
   };
 
-  // Auto-sync on mount (once)
   useEffect(() => {
     if (workspaceId && hasSelectedGroups && !syncedRef.current) {
       syncedRef.current = true;
@@ -93,11 +84,67 @@ export default function GroupDashboardTab() {
     }
   };
 
-  const periodLabel = period === "today" ? "Hoje" : period === "yesterday" ? "Ontem" : 
-    customRange ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}` : "Personalizado";
+  const periodLabel =
+    period === "today"
+      ? "Hoje"
+      : period === "yesterday"
+        ? "Ontem"
+        : customRange
+          ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}`
+          : "Personalizado";
 
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
+      {/* 1) Visualizador de postagens — eventos por grupo (PRIMEIRO ITEM) */}
+      <Card className="border-border/50 min-w-0 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Postagens por Grupo — {periodLabel}
+            </p>
+            <span className="text-xs text-muted-foreground">
+              <span className="text-green-500 font-medium">+{totals.adds}</span>
+              {" / "}
+              <span className="text-red-500 font-medium">−{totals.removes}</span>
+            </span>
+          </div>
+          {!hasSelectedGroups ? (
+            <div className="px-6 py-8 text-center space-y-1.5">
+              <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
+              <p className="text-sm text-muted-foreground">
+                Use a aba <span className="font-medium text-foreground">Selecionar</span> para escolher grupos e começar a registrar entradas e saídas.
+              </p>
+            </div>
+          ) : groups.length === 0 ? (
+            <div className="px-6 py-8 text-center space-y-1.5">
+              <p className="text-sm font-medium">Sem dados neste período.</p>
+              <p className="text-sm text-muted-foreground">
+                Confirme na VPS que o webhook <code className="text-xs">/api/groups/webhook/events</code> está ativo na Evolution.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/30 max-h-[420px] overflow-y-auto">
+              {groups.map((g) => (
+                <div key={g.group_jid} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{g.group_name}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="flex items-center gap-1 text-xs font-medium text-green-500">
+                      <UserPlus className="h-3 w-3" />+{g.adds}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs font-medium text-red-500">
+                      <UserMinus className="h-3 w-3" />−{g.removes}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 2) Filtro de período + sincronizar */}
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
@@ -136,7 +183,9 @@ export default function GroupDashboardTab() {
               >
                 <CalendarIcon className="h-3.5 w-3.5" />
                 {period === "custom" && customRange ? (
-                  <span>{format(customRange.from, "dd/MM", { locale: ptBR })} - {format(customRange.to, "dd/MM", { locale: ptBR })}</span>
+                  <span>
+                    {format(customRange.from, "dd/MM", { locale: ptBR })} - {format(customRange.to, "dd/MM", { locale: ptBR })}
+                  </span>
                 ) : (
                   <span>Personalizado</span>
                 )}
@@ -159,110 +208,49 @@ export default function GroupDashboardTab() {
         </div>
       </div>
 
+      {/* 3) Cards de estatísticas */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
-        <StatCard title="Entraram" value={String(eventCounts.add)} icon={UserPlus} iconColor="text-green-500" />
-        <StatCard title="Saíram" value={String(eventCounts.remove)} icon={UserMinus} iconColor="text-red-500" />
+        <StatCard title="Entraram" value={String(totals.adds)} icon={UserPlus} iconColor="text-green-500" />
+        <StatCard title="Saíram" value={String(totals.removes)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
-      {!hasSelectedGroups && (
-        <Card className="border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-card">
-          <CardContent className="space-y-1.5 p-4">
-            <p className="text-sm font-semibold">Nenhum grupo monitorado ainda</p>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Abra a aba <span className="font-medium text-foreground">Selecionar</span> para buscar os grupos da sua instância e preencher esta visão geral.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
+      {/* 4) Scheduler debug */}
       <div className="min-w-0 w-full overflow-hidden">
         <SchedulerDebugPanel />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="border-border/50 min-w-0 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="px-4 py-3 border-b border-border/50">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos Monitorados</p>
+      {/* 5) Lista de grupos monitorados (cru) */}
+      <Card className="border-border/50 min-w-0 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="px-4 py-3 border-b border-border/50">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos Monitorados</p>
+          </div>
+          {!hasSelectedGroups ? (
+            <div className="px-6 py-8 text-center space-y-1.5">
+              <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
+              <p className="text-sm text-muted-foreground">
+                Use a aba Selecionar para adicionar grupos e preencher a contagem de membros.
+              </p>
             </div>
-            {!hasSelectedGroups ? (
-              <div className="px-6 py-8 text-center space-y-1.5">
-                <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
-                <p className="text-sm text-muted-foreground">
-                  Use a aba Selecionar para adicionar grupos e preencher a contagem de membros.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
-                {selectedGroups.map((g) => {
-                  const ge = groupCounts[g.group_jid] || { add: 0, remove: 0, promote: 0, demote: 0 };
-                  return (
-                  <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{g.group_name}</p>
-                      <p className="text-xs text-muted-foreground">{g.instance_name}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {ge.add > 0 && <span className="text-xs font-medium text-green-500">+{ge.add}</span>}
-                      {ge.remove > 0 && <span className="text-xs font-medium text-red-500">-{ge.remove}</span>}
-                      <Badge variant="outline" className="text-xs border-border/50">{g.member_count}</Badge>
-                    </div>
+          ) : (
+            <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
+              {selectedGroups.map((g) => (
+                <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{g.group_name}</p>
+                    <p className="text-xs text-muted-foreground">{g.instance_name}</p>
                   </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 min-w-0 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Eventos — {periodLabel}</p>
+                  <Badge variant="outline" className="text-xs border-border/50 shrink-0">{g.member_count}</Badge>
+                </div>
+              ))}
             </div>
-            {events.length === 0 ? (
-              <div className="px-6 py-8 text-center space-y-1.5">
-                <p className="text-sm font-medium">
-                  {hasSelectedGroups ? "Nenhum evento neste período." : "Selecione grupos para começar o monitoramento."}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {hasSelectedGroups
-                    ? "Depois, confirme na VPS se o webhook /api/groups/webhook/events está ativo para registrar entradas e saídas."
-                    : "Depois que você salvar os grupos, esta lista começará a receber as movimentações monitoradas."}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
-                {events.slice(0, 50).map((e: any) => {
-                  const cfg = actionConfig[e.action] || actionConfig.add;
-                  const Icon = cfg.icon;
-                  return (
-                    <div key={e.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                      <div className={`p-1.5 rounded-md shrink-0 ${cfg.color}`}>
-                        <Icon className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm truncate">
-                          <span className="font-medium">{e.participant_jid.split("@")[0]}</span>
-                          {" "}{cfg.label}{" "}
-                          <span className="text-muted-foreground">{e.group_name || e.group_jid}</span>
-                        </p>
-                      </div>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {format(new Date(e.created_at), "dd/MM HH:mm")}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
