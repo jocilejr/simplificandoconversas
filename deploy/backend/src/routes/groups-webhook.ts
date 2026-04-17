@@ -28,7 +28,13 @@ function extractPhone(p: any): string {
 }
 
 /* POST /api/groups/webhook/events
-   Receives group-participants.update from Evolution API */
+   Receives group-participants.update from Evolution API.
+
+   ── REGRA CRÍTICA ──
+   Um evento só é registrado quando a tupla (workspace_id, instance_name, group_jid)
+   existe em group_selected. Se a instância Y também é membro do grupo 1 mas só a
+   instância X selecionou esse grupo para monitorar, eventos vindos da Y são
+   silenciosamente descartados. */
 router.post("/events", async (req: Request, res: Response) => {
   try {
     const body = req.body;
@@ -66,7 +72,8 @@ router.post("/events", async (req: Request, res: Response) => {
 
     if (!inst) return res.json({ ignored: true, reason: "instance not found" });
 
-    // ── CRITICAL: only process if THIS instance was explicitly selected to monitor THIS group ──
+    // ── FILTRO ESTRITO: (workspace_id, instance_name, group_jid) deve existir em group_selected ──
+    // Eventos de outras instâncias (mesmo que estejam no grupo) são descartados.
     const { data: monitored } = await sb
       .from("group_selected")
       .select("id, group_name")
@@ -76,7 +83,10 @@ router.post("/events", async (req: Request, res: Response) => {
       .maybeSingle();
 
     if (!monitored) {
-      return res.json({ ignored: true, reason: "instance not selected for this group" });
+      return res.json({
+        ignored: true,
+        reason: "this (instance, group) tuple is not monitored",
+      });
     }
 
     // Resolve group name with fallback from webhook payload

@@ -2516,7 +2516,10 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /sync-stats — Sincronizar member_count real da Evolution API ─── */
+/* ─── POST /sync-stats — Sincronização real-time por (instância, grupo) ───
+   Para cada row de group_selected, chama Evolution findGroupInfos
+   (mais confiável que fetchAllGroups para grupos onde o bot não é admin)
+   e atualiza member_count + member_count_updated_at apenas daquela tupla. */
 router.post("/sync-stats", async (req: Request, res: Response) => {
   try {
     const { workspaceId } = req.body;
@@ -2524,92 +2527,103 @@ router.post("/sync-stats", async (req: Request, res: Response) => {
 
     const sb = getServiceClient();
 
-    // Get all instances for this workspace
-    const { data: instances } = await sb
-      .from("whatsapp_instances")
-      .select("instance_name")
-      .eq("workspace_id", workspaceId);
-
-    if (!instances || instances.length === 0) {
-      return res.json({ synced: 0, message: "No instances found" });
-    }
-
-    // Get monitored groups
     const { data: monitored } = await sb
       .from("group_selected")
       .select("id, group_jid, group_name, member_count, instance_name")
       .eq("workspace_id", workspaceId);
 
     if (!monitored || monitored.length === 0) {
-      return res.json({ synced: 0, message: "No monitored groups" });
+      return res.json({ synced: 0, failed: 0, message: "No monitored groups" });
     }
 
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
-    const monitoredMap = new Map(monitored.map((group) => [`${group.instance_name}::${group.group_jid}`, group]));
     const syncedCounts = new Map<string, number>();
     const syncedNames = new Map<string, string>();
-    let synced = 0;
     const results: any[] = [];
+    const errors: any[] = [];
+    let synced = 0;
+    let failed = 0;
 
+    // Process each (instance, group) tuple individually via findGroupInfos
+    for (const entry of monitored) {
+      const encoded = encodeURIComponent(entry.instance_name);
+      try {
+        const resp = await fetch(
+          `${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(entry.group_jid)}`,
+          { method: "GET", headers: { apikey: apiKey } }
+        );
+
+        if (!resp.ok) {
+          failed++;
+          errors.push({
+            instance_name: entry.instance_name,
+            group_jid: entry.group_jid,
+            error: `HTTP ${resp.status}`,
+          });
+          continue;
+        }
+
+        const payload = await resp.json();
+        const info = Array.isArray(payload) ? payload[0] : payload;
+        const realCount =
+          typeof info?.size === "number"
+            ? info.size
+            : Array.isArray(info?.participants)
+              ? info.participants.length
+              : null;
+        const realName = info?.subject || entry.group_name;
+
+        if (realCount === null) {
+          failed++;
+          errors.push({
+            instance_name: entry.instance_name,
+            group_jid: entry.group_jid,
+            error: "no member count in response",
+          });
+          continue;
+        }
+
+        await sb
+          .from("group_selected")
+          .update({
+            member_count: realCount,
+            group_name: realName,
+            member_count_updated_at: new Date().toISOString(),
+          })
+          .eq("id", entry.id);
+
+        syncedCounts.set(entry.group_jid, realCount);
+        syncedNames.set(entry.group_jid, realName);
+
+        results.push({
+          group_jid: entry.group_jid,
+          group_name: realName,
+          old_count: entry.member_count,
+          new_count: realCount,
+          instance_name: entry.instance_name,
+        });
+        synced++;
+      } catch (e: any) {
+        failed++;
+        errors.push({
+          instance_name: entry.instance_name,
+          group_jid: entry.group_jid,
+          error: e.message,
+        });
+      }
+    }
+
+    // Propagate updated counts to smart links
     const { data: smartLinks } = await sb
       .from("group_smart_links")
       .select("id, group_links")
       .eq("workspace_id", workspaceId)
       .eq("is_active", true);
 
-    // Fetch groups from each instance
-    for (const inst of instances) {
-      const encoded = encodeURIComponent(inst.instance_name);
-      try {
-        const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}`, {
-          method: "GET",
-          headers: { apikey: apiKey },
-        });
-        if (!resp.ok) {
-          console.warn(`[sync-stats] fetchAllGroups failed for ${inst.instance_name}: ${resp.status}`);
-          continue;
-        }
-        const payload = await resp.json();
-        const groups = normalizeEvolutionGroupsPayload(payload);
-
-        for (const g of groups) {
-          const entry = monitoredMap.get(`${inst.instance_name}::${g.jid}`);
-          if (!entry) continue;
-
-          const realCount = g.memberCount;
-
-          await sb
-            .from("group_selected")
-            .update({
-              member_count: realCount,
-              group_name: g.name || entry.group_name,
-            })
-            .eq("id", entry.id);
-
-          syncedCounts.set(entry.group_jid, realCount);
-          syncedNames.set(entry.group_jid, g.name || entry.group_name);
-
-          results.push({
-            group_jid: entry.group_jid,
-            group_name: g.name || entry.group_name,
-            old_count: entry.member_count,
-            new_count: realCount,
-            instance_name: inst.instance_name,
-          });
-
-          entry.member_count = realCount;
-          synced++;
-        }
-      } catch (e: any) {
-        console.warn(`[sync-stats] Error fetching groups for ${inst.instance_name}:`, e.message);
-      }
-    }
-
     if (smartLinks?.length) {
       for (const smartLink of smartLinks) {
         const groupLinks = Array.isArray(smartLink.group_links) ? [...smartLink.group_links] : [];
         let changed = false;
-
         for (const groupLink of groupLinks) {
           if (!groupLink?.group_jid || !syncedCounts.has(groupLink.group_jid)) continue;
           groupLink.member_count = syncedCounts.get(groupLink.group_jid) || 0;
@@ -2618,39 +2632,50 @@ router.post("/sync-stats", async (req: Request, res: Response) => {
           }
           changed = true;
         }
-
         if (changed) {
           await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLink.id);
         }
       }
     }
 
-    console.log(`[sync-stats] Synced ${synced} groups for workspace ${workspaceId}`);
-    res.json({ synced, groups: results });
+    console.log(`[sync-stats] workspace ${workspaceId}: synced=${synced} failed=${failed}`);
+    res.json({ synced, failed, groups: results, errors });
   } catch (err: any) {
     console.error("[sync-stats] error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-/* ─── GET /events — retorna eventos de participantes filtrados por período ─── */
+/* ─── GET /events — eventos de (instância, grupo) atualmente monitorados ───
+   Faz JOIN implícito com group_selected via (workspace_id, instance_name, group_jid):
+   eventos órfãos (instância foi removida do grupo, ou grupo não está mais selecionado
+   por aquela instância) NÃO são retornados. */
 router.get("/events", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, groupJids, start, end } = req.query as Record<string, string>;
+    const { workspaceId, start, end } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const sb = getServiceClient();
+
+    // Fetch monitored tuples (instance_name, group_jid) for this workspace
+    const { data: monitored, error: monErr } = await sb
+      .from("group_selected")
+      .select("instance_name, group_jid")
+      .eq("workspace_id", workspaceId);
+
+    if (monErr) throw monErr;
+    if (!monitored || monitored.length === 0) return res.json([]);
+
+    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
+    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
 
     let query = sb
       .from("group_participant_events")
       .select("*")
       .eq("workspace_id", workspaceId)
+      .in("group_jid", groupJids)
       .order("created_at", { ascending: false });
 
-    if (groupJids) {
-      const jids = groupJids.split(",").filter(Boolean);
-      if (jids.length > 0) query = query.in("group_jid", jids);
-    }
     if (start) query = query.gte("created_at", start);
     if (end) query = query.lte("created_at", end);
 
@@ -2658,7 +2683,6 @@ router.get("/events", async (req: Request, res: Response) => {
     const PAGE = 1000;
     const allRows: any[] = [];
     let from = 0;
-
     while (true) {
       const { data, error } = await query.range(from, from + PAGE - 1);
       if (error) throw error;
@@ -2668,7 +2692,10 @@ router.get("/events", async (req: Request, res: Response) => {
       from += PAGE;
     }
 
-    res.json(allRows);
+    // Final filter: only events whose (instance_name, group_jid) is monitored
+    const filtered = allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
+
+    res.json(filtered);
   } catch (err: any) {
     console.error("[groups-api] GET /events error:", err.message);
     res.status(500).json({ error: err.message });
