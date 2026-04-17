@@ -131,8 +131,8 @@ export default function GroupDashboardTab() {
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
-        <StatCard title="Entraram" value={String(eventCounts.add)} icon={UserPlus} iconColor="text-green-500" />
-        <StatCard title="Saíram" value={String(eventCounts.remove)} icon={UserMinus} iconColor="text-red-500" />
+        <StatCard title="Entraram" value={String(summary.add)} icon={UserPlus} iconColor="text-green-500" />
+        <StatCard title="Saíram" value={String(summary.remove)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
       {!hasSelectedGroups && (
@@ -166,7 +166,7 @@ export default function GroupDashboardTab() {
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {selectedGroups.map((g) => {
-                  const ge = groupCounts[g.group_jid] || { add: 0, remove: 0, promote: 0, demote: 0 };
+                  const ge = summary.perGroup[g.group_jid] || { add: 0, remove: 0, promote: 0, demote: 0 };
                   return (
                   <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">
