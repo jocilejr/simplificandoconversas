@@ -3,6 +3,7 @@ import {
   MessageSquare, Image, Video, Mic, FileText, Sticker, MapPin, Contact, BarChart3, List,
   Clock, Save, Plus, Trash2, AtSign, Link2, CalendarClock
 } from "lucide-react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,6 +170,11 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
   };
 
   const handleSubmit = () => {
+    if (scheduleType === "once" && !scheduledAt) {
+      toast.error("Data obrigatória", { description: "Selecione a data do envio para programação única." });
+      return;
+    }
+
     const finalContent = buildContent();
     let scheduled_at: string | null = null;
     let cron_expression: string | null = null;
@@ -431,8 +437,8 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
               {scheduleType === "once" && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Data</Label>
-                    <Input type="date" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="bg-background/50 border-border/50" />
+                    <Label className="text-xs text-muted-foreground">Data <span className="text-destructive">*</span></Label>
+                    <Input type="date" required value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="bg-background/50 border-border/50" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Horário</Label>
