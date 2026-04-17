@@ -1,71 +1,78 @@
 
 
-## Diagnóstico definitivo
+## Escopo
 
-Cruzando as 3 fontes:
+Reconstruir o sistema de eventos (add/remove) com nova tabela dedicada `group_events`, e reorganizar a aba "Visão Geral" para mostrar o **visualizador de postagens (eventos por grupo)** como primeiro item ao abrir.
 
-| Fonte | add | remove |
-|---|---|---|
-| Banco bruto (A) | 88 | 74 |
-| Banco com JOIN estrito (B) | 88 | 74 |
-| Banco com dedup por minuto (D) | 88 | 74 |
-| **Backend `/events-summary`** | **69** | **35** |
+## Pipeline novo
 
-`totalRows: 104` e `rawRows: 104` no JSON do backend confirma: **o backend só recebeu 104 linhas do banco**, mas o banco tem **88+74=162** linhas hoje. Faltam **58 linhas** entre o banco e o backend.
+**Gravação:** Webhook Evolution → resolve `workspace → instance → group_selected` → INSERT cru em `group_events`. Descarta com log se a tripla não bate.
 
-E ainda: das 104 que o backend recebeu, depois da dedup sobram 69+35=104 (não há colapso). Logo, o problema **não é dedup**. O problema é a **query do Supabase JS** no `/events-summary` está limitando a 1000 e/ou paginando errado e/ou aplicando algum filtro extra que descarta 58 eventos.
+**Leitura:** 1 endpoint `GET /api/groups/events` → SQL bruto via `pg.Pool` (sem PostgREST/limit) → retorna `{ totals, groups[] }`.
 
-Olhando `groupCounts` no JSON: a soma dos `remove` por grupo dá 35 (bate com `eventCounts.remove=35`). Os grupos com mais `remove` no banco (que somam 74) estão aparecendo com contagem reduzida. Ex: vários grupos com 0 remove no JSON podem ter remove no banco.
+## Tabela nova
 
-## Hipótese forte
+```sql
+DROP TABLE IF EXISTS group_participant_events CASCADE;
 
-O `groups-api.ts /events-summary` faz a query do Supabase JS com filtro `.in("group_jid", groupJids)`. Se houver **mais de ~100 group_jids selecionados**, o `.in()` pode estar quebrando silenciosamente (URL muito longa → PostgREST trunca / retorna parcial). Isso explicaria por que vem 104 de 162 sem erro.
-
-Alternativa: a query usa `.range()` ou `.limit(1000)` mas há algum filtro `.eq("action", ...)` que está cortando.
-
-## Plano (1 leitura + 1 patch)
-
-### Passo 1 — Ler o código atual de `/events-summary` no backend
-
-Preciso confirmar exatamente:
-- Quantos `group_jids` ele passa no `.in()`
-- Se tem `.limit()` ou `.range()`
-- Quais filtros aplica
-- Como faz a paginação
-
-### Passo 2 — Aplicar SQL diagnóstico complementar (paralelo)
-
-Pra confirmar a hipótese das 58 linhas perdidas:
-
-```bash
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres <<'SQL'
-\set ws '65698ec3-731a-436e-84cf-8997e4ed9b41'
-
-\echo '--- E) Quantos grupos selecionados ---'
-SELECT COUNT(DISTINCT group_jid) FROM group_selected WHERE workspace_id=:'ws';
-
-\echo '--- F) Tamanho da lista de group_jids (caracteres) ---'
-SELECT length(string_agg(DISTINCT group_jid, ',')) AS chars_da_url
-FROM group_selected WHERE workspace_id=:'ws';
-
-\echo '--- G) Comparar contagem por grupo: banco vs backend ---'
-SELECT e.group_jid, e.action, COUNT(*) AS banco
-FROM group_participant_events e
-WHERE e.workspace_id = :'ws'
-  AND e.created_at >= ((now() AT TIME ZONE 'America/Sao_Paulo')::date) AT TIME ZONE 'America/Sao_Paulo'
-  AND e.created_at <  (((now() AT TIME ZONE 'America/Sao_Paulo')::date)+INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo'
-GROUP BY e.group_jid, e.action
-ORDER BY e.group_jid, e.action;
-SQL
+CREATE TABLE group_events (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id    uuid NOT NULL,
+  instance_name   text NOT NULL,
+  group_jid       text NOT NULL,
+  group_name      text,
+  participant_jid text NOT NULL,
+  action          text NOT NULL CHECK (action IN ('add','remove')),
+  occurred_at     timestamptz NOT NULL DEFAULT now(),
+  raw_payload     jsonb
+);
+CREATE INDEX ON group_events (workspace_id, occurred_at DESC);
+CREATE INDEX ON group_events (workspace_id, instance_name, group_jid, action);
+NOTIFY pgrst, 'reload schema';
 ```
 
-Comparando G com o `groupCounts` do JSON do backend, identifico exatamente quais grupos perderam eventos.
+## Backend
 
-### Passo 3 — Patch (após ver o código)
+- **Reescrever** `deploy/backend/src/routes/groups-webhook.ts`: pipeline workspace→instance→group_selected, INSERT cru em `group_events`, logs estruturados de descarte.
+- **Em** `deploy/backend/src/routes/groups-api.ts`: remover `/events` e `/events-summary` antigos. Criar `GET /events` novo com SQL único:
 
-Substituir a query do Supabase JS por **SQL bruto via `pg`** ou por uma RPC, fazendo o JOIN+dedup+count tudo no banco numa única query. Front continua dumb client. Backend para de tentar carregar linhas pra fazer agregação no JS — delega tudo pro Postgres, que já provou (D) ter os números certos.
+```sql
+SELECT e.group_jid, s.group_name,
+  COUNT(*) FILTER (WHERE e.action='add')    AS adds,
+  COUNT(*) FILTER (WHERE e.action='remove') AS removes
+FROM group_events e
+JOIN group_selected s
+  ON s.workspace_id=e.workspace_id
+ AND s.instance_name=e.instance_name
+ AND s.group_jid=e.group_jid
+WHERE e.workspace_id=$1 AND e.occurred_at>=$2 AND e.occurred_at<$3
+GROUP BY e.group_jid, s.group_name
+ORDER BY s.group_name;
+```
 
-## Comandos pra você rodar agora
+Retorno: `{ window, totals: {adds,removes}, groups: [{group_jid,group_name,adds,removes}] }`.
 
-Rode o bloco SQL acima (E/F/G) e me cola a saída. Em paralelo eu leio `deploy/backend/src/routes/groups-api.ts` pra ver a implementação atual e mando o patch único na próxima iteração.
+## Frontend
+
+- **Reescrever** `src/hooks/useGroupEvents.ts`: 1 chamada, retorna `totals` + `groups`. Sem normalização/dedup no front.
+- **Atualizar** `src/components/grupos/GroupDashboardTab.tsx`, nova ordem de cima pra baixo:
+  1. **Visualizador de postagens (eventos por grupo)** — lista `groups[]` com nome + `+adds` / `−removes` por grupo selecionado. **Primeiro item.**
+  2. Filtro de período (Hoje/Ontem/Personalizado) + botão Sincronizar
+  3. Cards de estatísticas (Grupos Monitorados, Total Membros, Campanhas Ativas, Enviadas Hoje, Entraram=`totals.adds`, Saíram=`totals.removes`)
+  4. SchedulerDebugPanel
+  5. Card "Grupos Monitorados" (lista crua de selecionados)
+  
+  **Remover** a seção "Eventos — Hoje" (feed cronológico) — substituída pelo visualizador agregado por grupo.
+
+## Execução
+
+1. Lovable aplica: migração + reescrita backend + reescrita hook + reorganização da Visão Geral.
+2. Você roda na VPS (envio comandos prontos no próximo turno):
+   - `cd ~/simplificandoconversas && git pull && bash deploy/update.sh`
+   - SQL DROP+CREATE da nova tabela
+   - Validação: comparar `SELECT action,COUNT(*) FROM group_events WHERE workspace_id=...` com o JSON do endpoint.
+
+## Risco
+
+DROP de `group_participant_events` apaga histórico atual. Confirmado implicitamente nas iterações anteriores. Se quiser preservar, troco DROP por RENAME — me avisa antes de aprovar.
 
