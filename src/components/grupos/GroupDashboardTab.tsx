@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, CalendarIcon, RefreshCw } from "lucide-react";
+import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, CalendarIcon, RefreshCw, Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/transactions/StatCard";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
@@ -36,6 +39,7 @@ export default function GroupDashboardTab() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
   const [syncing, setSyncing] = useState(false);
+  const [eventsOpen, setEventsOpen] = useState(false);
   const syncedRef = useRef(false);
 
   const hasSelectedGroups = selectedGroups.length > 0;
@@ -93,59 +97,58 @@ export default function GroupDashboardTab() {
           ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}`
           : "Personalizado";
 
-  // Mapeia eventos por group_jid para mostrar +adds/−removes na lista de Grupos Monitorados
+  // Mapeia eventos por group_jid para o popup
   const eventsByJid = new Map(groups.map((g) => [g.group_jid, g]));
 
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      {/* 1) Grupos Monitorados (com eventos do período embutidos) — PRIMEIRO ITEM */}
+      {/* 1) Postagens de Hoje (SchedulerDebugPanel) — PRIMEIRO ITEM */}
+      <div className="min-w-0 w-full overflow-hidden">
+        <SchedulerDebugPanel />
+      </div>
+
+      {/* 2) Grupos Monitorados — SEGUNDO ITEM, com botão de eventos */}
       <Card className="border-border/50 min-w-0 overflow-hidden">
         <CardContent className="p-0">
-          <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between gap-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Grupos Monitorados — {periodLabel}
+              Grupos Monitorados
             </p>
-            <span className="text-xs text-muted-foreground">
-              <span className="text-green-500 font-medium">+{totals.adds}</span>
-              {" / "}
-              <span className="text-red-500 font-medium">−{totals.removes}</span>
-            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEventsOpen(true)}
+              disabled={!hasSelectedGroups}
+              className="gap-1.5 h-7 text-xs"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              Ver eventos ({periodLabel})
+            </Button>
           </div>
           {!hasSelectedGroups ? (
             <div className="px-6 py-8 text-center space-y-1.5">
               <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
               <p className="text-sm text-muted-foreground">
-                Use a aba <span className="font-medium text-foreground">Selecionar</span> para escolher grupos e começar a registrar entradas e saídas.
+                Use a aba <span className="font-medium text-foreground">Selecionar</span> para escolher grupos.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-border/30 max-h-[420px] overflow-y-auto">
-              {selectedGroups.map((g) => {
-                const ev = eventsByJid.get(g.group_jid);
-                return (
-                  <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{g.group_name}</p>
-                      <p className="text-xs text-muted-foreground">{g.instance_name}</p>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="flex items-center gap-1 text-xs font-medium text-green-500">
-                        <UserPlus className="h-3 w-3" />+{ev?.adds ?? 0}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs font-medium text-red-500">
-                        <UserMinus className="h-3 w-3" />−{ev?.removes ?? 0}
-                      </span>
-                      <Badge variant="outline" className="text-xs border-border/50">{g.member_count}</Badge>
-                    </div>
+              {selectedGroups.map((g) => (
+                <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{g.group_name}</p>
+                    <p className="text-xs text-muted-foreground">{g.instance_name}</p>
                   </div>
-                );
-              })}
+                  <Badge variant="outline" className="text-xs border-border/50 shrink-0">{g.member_count}</Badge>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* 2) Filtro de período + sincronizar */}
+      {/* 3) Filtro de período + sincronizar (afeta o popup de eventos e os cards) */}
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
@@ -209,7 +212,7 @@ export default function GroupDashboardTab() {
         </div>
       </div>
 
-      {/* 3) Cards de estatísticas */}
+      {/* 4) Cards de estatísticas */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
@@ -219,10 +222,48 @@ export default function GroupDashboardTab() {
         <StatCard title="Saíram" value={String(totals.removes)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
-      {/* 4) Scheduler debug */}
-      <div className="min-w-0 w-full overflow-hidden">
-        <SchedulerDebugPanel />
-      </div>
+      {/* Popup: eventos de entrada/saída por grupo */}
+      <Dialog open={eventsOpen} onOpenChange={setEventsOpen}>
+        <DialogContent className="w-full max-w-lg min-w-0 overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>Eventos por grupo — {periodLabel}</DialogTitle>
+            <DialogDescription className="flex items-center gap-2 text-xs">
+              <span className="flex items-center gap-1 text-green-500 font-medium">
+                <UserPlus className="h-3 w-3" />+{totals.adds} entraram
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <span className="flex items-center gap-1 text-red-500 font-medium">
+                <UserMinus className="h-3 w-3" />−{totals.removes} saíram
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          {!hasSelectedGroups ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Nenhum grupo monitorado.</p>
+          ) : (
+            <div className="divide-y divide-border/30 max-h-[60vh] overflow-y-auto -mx-6">
+              {selectedGroups.map((g) => {
+                const ev = eventsByJid.get(g.group_jid);
+                return (
+                  <div key={g.id} className="flex items-center justify-between px-6 py-2.5 gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{g.group_name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{g.instance_name}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-medium text-green-500">
+                        <UserPlus className="h-3 w-3" />+{ev?.adds ?? 0}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs font-medium text-red-500">
+                        <UserMinus className="h-3 w-3" />−{ev?.removes ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
