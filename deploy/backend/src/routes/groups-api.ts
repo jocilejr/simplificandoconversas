@@ -2680,45 +2680,93 @@ export async function syncAllWorkspacesStats(): Promise<void> {
   }
 }
 
-/* ─── GET /events — eventos de (instância, grupo) atualmente monitorados ───
-   Faz JOIN implícito com group_selected via (workspace_id, instance_name, group_jid):
-   eventos órfãos (instância foi removida do grupo, ou grupo não está mais selecionado
-   por aquela instância) NÃO são retornados. */
+/* ─── Helper: resolve janela [startUtc, endUtc) a partir de period BRT ───
+   period=today|yesterday|custom. Para custom, from/to são datas YYYY-MM-DD em BRT.
+   Equivalente ao SQL:
+     ((data BRT)::date) AT TIME ZONE 'America/Sao_Paulo' .. + 1 day */
+function brtDateBoundsToUtc(brtDateStr: string): Date {
+  const [y, m, d] = brtDateStr.split("-").map((n) => parseInt(n, 10));
+  // BRT meia-noite (UTC-3) → UTC 03:00 do mesmo dia
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 3, 0, 0, 0));
+}
+
+function brtTodayString(): string {
+  const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const y = brt.getUTCFullYear();
+  const m = String(brt.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(brt.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function addDaysBrt(brtDateStr: string, days: number): string {
+  const [y, m, d] = brtDateStr.split("-").map((n) => parseInt(n, 10));
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + days));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function resolveEventWindow(query: Record<string, string>): { startUtc: string; endUtc: string } {
+  const period = (query.period || "today").toLowerCase();
+  const today = brtTodayString();
+  let fromBrt: string;
+  let toBrt: string; // exclusivo
+
+  if (period === "yesterday") {
+    fromBrt = addDaysBrt(today, -1);
+    toBrt = today;
+  } else if (period === "custom") {
+    const f = (query.from || "").slice(0, 10);
+    const t = (query.to || "").slice(0, 10);
+    fromBrt = /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : today;
+    toBrt = /^\d{4}-\d{2}-\d{2}$/.test(t) ? addDaysBrt(t, 1) : addDaysBrt(fromBrt, 1);
+  } else {
+    fromBrt = today;
+    toBrt = addDaysBrt(today, 1);
+  }
+
+  return {
+    startUtc: brtDateBoundsToUtc(fromBrt).toISOString(),
+    endUtc: brtDateBoundsToUtc(toBrt).toISOString(),
+  };
+}
+
+/* ─── GET /events — eventos brutos no período (filtrados, deduplicados, ordenados) ───
+   Front é dumb client: apenas exibe o array retornado.
+   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] */
 router.get("/events", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, start, end } = req.query as Record<string, string>;
+    const { workspaceId } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
+    const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
     const sb = getServiceClient();
 
-    // Fetch monitored tuples (instance_name, group_jid) for this workspace
     const { data: monitored, error: monErr } = await sb
       .from("group_selected")
       .select("instance_name, group_jid")
       .eq("workspace_id", workspaceId);
-
     if (monErr) throw monErr;
     if (!monitored || monitored.length === 0) return res.json([]);
 
-    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
-    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
+    const allowed = new Set((monitored as any[]).map((m) => `${m.instance_name}::${m.group_jid}`));
+    const groupJids = [...new Set((monitored as any[]).map((m) => m.group_jid))];
 
-    let query = sb
-      .from("group_participant_events")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .in("group_jid", groupJids)
-      .order("created_at", { ascending: false });
-
-    if (start) query = query.gte("created_at", start);
-    if (end) query = query.lte("created_at", end);
-
-    // Paginate to get ALL rows (no 1000 limit)
     const PAGE = 1000;
     const allRows: any[] = [];
     let from = 0;
     while (true) {
-      const { data, error } = await query.range(from, from + PAGE - 1);
+      const { data, error } = await sb
+        .from("group_participant_events")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .in("group_jid", groupJids)
+        .in("action", ["add", "remove", "promote", "demote"])
+        .gte("created_at", startUtc)
+        .lt("created_at", endUtc)
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE - 1);
       if (error) throw error;
       const batch = data || [];
       allRows.push(...batch);
@@ -2726,15 +2774,11 @@ router.get("/events", async (req: Request, res: Response) => {
       from += PAGE;
     }
 
-    // Final filter: only events whose (instance_name, group_jid) is monitored
     const filtered = allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
-
-    // ── Deduplicação por (participant_jid, group_jid, action, minuto) ──
-    // Evolution pode reenviar o mesmo evento (retry). Mantemos o mais recente.
     const seen = new Set<string>();
     const deduped: any[] = [];
     for (const e of filtered) {
-      const minute = new Date(e.created_at).toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+      const minute = new Date(e.created_at).toISOString().slice(0, 16);
       const key = `${e.participant_jid}::${e.group_jid}::${e.action}::${minute}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -2749,45 +2793,50 @@ router.get("/events", async (req: Request, res: Response) => {
 });
 
 /* ─── GET /events-summary — contagem agregada server-side ───
-   Retorna { eventCounts: { add, remove, promote, demote }, groupCounts: {...} }
-   calculada via uma única query filtrada estritamente por tuplas (instance, group)
-   monitoradas no workspace. Nunca conta action fora de add/remove/promote/demote. */
+   Front é dumb client: usa eventCounts e groupCounts diretos.
+   groupCounts inclui TODOS os group_jid de group_selected (zerados quando sem eventos).
+   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] */
 router.get("/events-summary", async (req: Request, res: Response) => {
   try {
-    const { workspaceId, start, end } = req.query as Record<string, string>;
+    const { workspaceId } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
+    const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
     const sb = getServiceClient();
 
     const { data: monitored, error: monErr } = await sb
       .from("group_selected")
       .select("instance_name, group_jid")
       .eq("workspace_id", workspaceId);
-
     if (monErr) throw monErr;
 
     const emptyCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
+    const groupCounts: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
+
     if (!monitored || monitored.length === 0) {
-      return res.json({ eventCounts: emptyCounts, groupCounts: {} });
+      return res.json({ eventCounts: { ...emptyCounts }, groupCounts: {}, window: { startUtc, endUtc } });
     }
 
-    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
-    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
+    for (const m of monitored as any[]) {
+      if (!groupCounts[m.group_jid]) groupCounts[m.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
+    }
 
-    // Page through ALL matching events (no 1000 cap)
+    const allowed = new Set((monitored as any[]).map((m) => `${m.instance_name}::${m.group_jid}`));
+    const groupJids = [...new Set((monitored as any[]).map((m) => m.group_jid))];
+
     const PAGE = 1000;
     const allRows: any[] = [];
     let from = 0;
     while (true) {
-      let q = sb
+      const { data, error } = await sb
         .from("group_participant_events")
         .select("instance_name, group_jid, action, participant_jid, created_at")
         .eq("workspace_id", workspaceId)
         .in("group_jid", groupJids)
-        .in("action", ["add", "remove", "promote", "demote"]);
-      if (start) q = q.gte("created_at", start);
-      if (end) q = q.lte("created_at", end);
-      const { data, error } = await q.range(from, from + PAGE - 1);
+        .in("action", ["add", "remove", "promote", "demote"])
+        .gte("created_at", startUtc)
+        .lt("created_at", endUtc)
+        .range(from, from + PAGE - 1);
       if (error) throw error;
       const batch = data || [];
       allRows.push(...batch);
@@ -2796,14 +2845,10 @@ router.get("/events-summary", async (req: Request, res: Response) => {
     }
 
     const eventCounts = { ...emptyCounts };
-    const groupCounts: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
-
-    // ── Deduplicação por (participant_jid, group_jid, action, minuto) ──
     const seen = new Set<string>();
     let dedupedCount = 0;
 
     for (const r of allRows) {
-      // Strict filter: (instance_name, group_jid) must be monitored
       if (!allowed.has(`${r.instance_name}::${r.group_jid}`)) continue;
       const action = r.action as keyof typeof emptyCounts;
       if (!(action in eventCounts)) continue;
@@ -2819,7 +2864,13 @@ router.get("/events-summary", async (req: Request, res: Response) => {
       groupCounts[r.group_jid][action]++;
     }
 
-    res.json({ eventCounts, groupCounts, totalRows: dedupedCount, rawRows: allRows.length });
+    res.json({
+      eventCounts,
+      groupCounts,
+      totalRows: dedupedCount,
+      rawRows: allRows.length,
+      window: { startUtc, endUtc },
+    });
   } catch (err: any) {
     console.error("[groups-api] GET /events-summary error:", err.message);
     res.status(500).json({ error: err.message });
