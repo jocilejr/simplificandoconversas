@@ -118,8 +118,13 @@ router.post("/events", async (req: Request, res: Response) => {
       .select("id");
 
     if (insertErr) {
-      console.error("[groups-webhook] insert error:", insertErr.message);
-      return res.status(500).json({ error: insertErr.message });
+      console.error("[groups-webhook] insert error:", {
+        code: (insertErr as any).code,
+        message: insertErr.message,
+        details: (insertErr as any).details,
+        hint: (insertErr as any).hint,
+      });
+      return res.status(500).json({ error: insertErr.message || "insert_failed" });
     }
 
     console.log(`[groups-webhook] ok action=${action} ws=${inst.workspace_id} group=${groupJid} inserted=${inserted?.length ?? 0}`);
