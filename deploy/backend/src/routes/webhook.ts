@@ -183,22 +183,94 @@ router.post("/*", async (req, res) => {
       messageTimestamp: data?.messageTimestamp,
     }));
 
-    // ── Forward group events to dedicated handler ──
+    // ── Intercept group participant events ──
     if (event && (event.includes("group") || event.includes("participant"))) {
-      const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
       try {
-        const fwd = await fetch(`${baseUrl}/api/groups/webhook/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(req.body),
-        });
-        const result = await fwd.json();
-        console.log(`[webhook] forwarded group event: ${event}`, result);
-        return res.json(result);
+        const gData = body.data || body;
+        const gInstanceName = body.instance || body.instanceName || "";
+        const groupJid = gData.groupJid || gData.id || "";
+        const participants: string[] = gData.participants || [];
+        const action = gData.action || event;
+
+        if (groupJid && participants.length > 0) {
+          const sb = getServiceClient();
+          const { data: gInst } = await sb
+            .from("whatsapp_instances")
+            .select("workspace_id, user_id")
+            .eq("instance_name", gInstanceName)
+            .maybeSingle();
+
+          if (gInst) {
+            const { data: sg } = await sb
+              .from("group_selected")
+              .select("group_name, member_count")
+              .eq("workspace_id", gInst.workspace_id)
+              .eq("group_jid", groupJid)
+              .maybeSingle();
+
+            const rows = participants.map((p: string) => ({
+              workspace_id: gInst.workspace_id,
+              user_id: gInst.user_id,
+              instance_name: gInstanceName,
+              group_jid: groupJid,
+              group_name: sg?.group_name || "",
+              participant_jid: p,
+              action,
+            }));
+
+            await sb.from("group_participant_events").insert(rows);
+
+            // Update member_count in group_selected
+            if (sg) {
+              const increment = action === "add" ? participants.length
+                : action === "remove" ? -participants.length : 0;
+              if (increment !== 0) {
+                const newCount = Math.max(0, (sg.member_count || 0) + increment);
+                await sb.from("group_selected")
+                  .update({ member_count: newCount })
+                  .eq("workspace_id", gInst.workspace_id)
+                  .eq("group_jid", groupJid);
+              }
+            }
+
+            // Update smart links JSONB member_count
+            const slIncrement = action === "add" ? participants.length
+              : action === "remove" ? -participants.length : 0;
+            if (slIncrement !== 0) {
+              try {
+                const { data: affectedLinks } = await sb
+                  .from("group_smart_links")
+                  .select("id, group_links")
+                  .eq("workspace_id", gInst.workspace_id)
+                  .eq("is_active", true);
+
+                if (affectedLinks && affectedLinks.length > 0) {
+                  for (const sl of affectedLinks) {
+                    const groupLinks = (sl.group_links as any[]) || [];
+                    let changed = false;
+                    for (const gl of groupLinks) {
+                      if (gl.group_jid === groupJid) {
+                        gl.member_count = Math.max(0, (gl.member_count || 0) + slIncrement);
+                        changed = true;
+                      }
+                    }
+                    if (changed) {
+                      await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", sl.id);
+                    }
+                  }
+                }
+              } catch (slErr: any) {
+                console.warn("[webhook] smart link member_count update error:", slErr.message);
+              }
+            }
+
+            console.log(`[webhook] group event: ${action} ${participants.length} in ${groupJid}`);
+          }
+        }
       } catch (e: any) {
-        console.error("[webhook] failed to forward group event:", e.message);
-        return res.status(500).json({ error: "forward failed" });
+        console.error("[webhook] group event error:", e.message);
       }
+      return res.json({ ok: true, groupEvent: true });
     }
 
     if (event === "messages.update" && data) {

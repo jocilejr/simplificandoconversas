@@ -90,6 +90,7 @@ export function useRunFollowUpNow() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["followup-dispatch-status", workspaceId] }),
         queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] }),
+        queryClient.invalidateQueries({ queryKey: ["boleto-recovery-contacts-today"] }),
       ]);
     },
   });

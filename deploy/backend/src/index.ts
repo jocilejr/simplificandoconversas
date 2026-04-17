@@ -23,7 +23,7 @@ import yampiWebhookRouter from "./routes/yampi-webhook";
 import manualPaymentRouter from "./routes/manual-payment-webhook";
 
 import followupDailyRouter from "./routes/followup-daily";
-import { processFollowUpDaily, prepareFollowUpDaily } from "./routes/followup-daily";
+import { processFollowUpDaily } from "./routes/followup-daily";
 import groupsApiRouter from "./routes/groups-api";
 import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
@@ -31,7 +31,6 @@ import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 import mediaManagerRouter from "./routes/media-manager";
 import { groupScheduler } from "./lib/group-scheduler";
-import { syncAllWorkspacesStats } from "./routes/groups-api";
 
 const app = express();
 app.use(cors());
@@ -87,53 +86,43 @@ cron.schedule("*/30 * * * * *", async () => {
 // Light sync disabled — use manual "Sincronizar" button per instance instead.
 
 
-// Follow-up PREPARE cron — runs at 00:01 BRT daily
-const prepareTriggered = new Set<string>();
-cron.schedule("* * * * *", async () => {
-  try {
-    const now = new Date();
-    const brasiliaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const hh = brasiliaTime.getHours().toString().padStart(2, "0");
-    const mm = brasiliaTime.getMinutes().toString().padStart(2, "0");
-    const currentTime = `${hh}:${mm}`;
-    const todayKey = now.toISOString().slice(0, 10);
-
-    if (currentTime === "00:00") prepareTriggered.clear();
-
-    if (currentTime === "00:01" && !prepareTriggered.has(todayKey)) {
-      prepareTriggered.add(todayKey);
-      console.log(`[cron] 🔄 Running follow-up PREPARE at ${currentTime} BRT`);
-      await prepareFollowUpDaily();
-    }
-  } catch (err: any) {
-    console.error("[cron] followup-prepare error:", err.message);
-  }
-});
-
-// Follow-up SEND cron — checks every minute if it's time to send
+// Follow-up daily cron — checks every minute if it's time to send
 const followupTriggeredToday = new Set<string>();
 cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
     const brasiliaTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const hh = brasiliaTime.getHours().toString().padStart(2, "0");
-    const mm = brasiliaTime.getMinutes().toString().padStart(2, "0");
-    const currentTime = `${hh}:${mm}`;
+    const currentHour = brasiliaTime.getHours().toString().padStart(2, "0");
+    const currentMinute = brasiliaTime.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${currentHour}:${currentMinute}`;
     const todayKey = now.toISOString().slice(0, 10);
 
-    if (currentTime === "00:00") followupTriggeredToday.clear();
+    // Reset tracking at midnight
+    if (currentTime === "00:00") {
+      followupTriggeredToday.clear();
+    }
 
+    // Check if any workspace needs processing right now
     const { createClient } = await import("@supabase/supabase-js");
-    const sb = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_ROLE_KEY || "");
-    const { data: settings } = await sb.from("followup_settings").select("workspace_id, send_at_hour").eq("enabled", true).eq("send_at_hour", currentTime);
+    const sb = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    );
+
+    const { data: settings } = await sb
+      .from("followup_settings")
+      .select("workspace_id, send_at_hour")
+      .eq("enabled", true)
+      .eq("send_at_hour", currentTime);
 
     if (settings && settings.length > 0) {
       for (const s of settings) {
         const triggerKey = `${todayKey}:${s.workspace_id}`;
         if (followupTriggeredToday.has(triggerKey)) continue;
         followupTriggeredToday.add(triggerKey);
-        console.log(`[cron] ⏰ Triggering follow-up SEND for workspace ${s.workspace_id} at ${currentTime}`);
+        console.log(`[cron] ⏰ Triggering follow-up daily for workspace ${s.workspace_id} at ${currentTime}`);
       }
+      // Process all enabled workspaces that match
       await processFollowUpDaily();
     }
   } catch (err: any) {
@@ -287,11 +276,4 @@ app.listen(PORT, async () => {
   } catch (err: any) {
     console.error("[scheduler] Initialization error:", err.message);
   }
-
-  // ─── Group stats sync: every 1h, first run 1h after deploy ───
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  console.log(`[sync-all] ⏱️  scheduled every 1h, first run in 1h from deploy (${new Date(Date.now() + ONE_HOUR_MS).toISOString()})`);
-  setInterval(() => {
-    syncAllWorkspacesStats().catch((e) => console.error("[sync-all] interval error:", e.message));
-  }, ONE_HOUR_MS);
 });

@@ -3,7 +3,6 @@ import {
   MessageSquare, Image, Video, Mic, FileText, Sticker, MapPin, Contact, BarChart3, List,
   Clock, Save, Plus, Trash2, AtSign, Link2, CalendarClock
 } from "lucide-react";
-import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,15 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import WhatsAppPreview from "./WhatsAppPreview";
-import { MediaUpload } from "@/components/chatbot/MediaUpload";
-
-const ACCEPT_BY_TYPE: Record<string, string> = {
-  image: "image/*",
-  video: "video/*",
-  audio: "audio/*",
-  sticker: "image/webp,image/png",
-  document: ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip",
-};
 
 const MESSAGE_TYPES = [
   { value: "text", label: "Texto", icon: FileText },
@@ -72,7 +62,6 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
   // Contact
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [useInstanceNumber, setUseInstanceNumber] = useState(false);
   // Poll
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
@@ -101,7 +90,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
       setCaption(c.caption || "");
       setLocName(c.name || ""); setLocAddress(c.address || "");
       setLocLat(c.latitude?.toString() || ""); setLocLng(c.longitude?.toString() || "");
-      setContactName(c.contactName || ""); setContactPhone(c.contactPhone || ""); setUseInstanceNumber(c.useInstanceNumber === true);
+      setContactName(c.contactName || ""); setContactPhone(c.contactPhone || "");
       setPollQuestion(c.question || c.pollName || "");
       setPollOptions(c.options || c.pollOptions || ["", ""]);
       setPollSelectable(c.selectableCount || c.pollSelectable || 1);
@@ -144,7 +133,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
       setMessageType("text"); setTextContent(""); setMentionAll(false); setForceLinkPreview(true);
       setMediaUrl(""); setCaption("");
       setLocName(""); setLocAddress(""); setLocLat(""); setLocLng("");
-      setContactName(""); setContactPhone(""); setUseInstanceNumber(false);
+      setContactName(""); setContactPhone("");
       setPollQuestion(""); setPollOptions(["", ""]); setPollSelectable(1);
       setListTitle(""); setListDescription(""); setListButtonText("Ver opções"); setListFooter("");
       setScheduledAt(""); setTimeValue("09:00");
@@ -163,7 +152,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
       case "image": case "video": case "document": case "sticker": case "audio":
         return { ...base, mediaUrl, caption };
       case "location": return { ...base, latitude: locLat, longitude: locLng, name: locName, address: locAddress };
-      case "contact": return { ...base, contactName, contactPhone: useInstanceNumber ? "" : contactPhone, useInstanceNumber };
+      case "contact": return { ...base, contactName, contactPhone };
       case "poll": return { ...base, question: pollQuestion, options: pollOptions, selectableCount: pollSelectable };
       case "list": return { ...base, title: listTitle, description: listDescription, buttonText: listButtonText, footer: listFooter };
       default: return base;
@@ -171,11 +160,6 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
   };
 
   const handleSubmit = () => {
-    if (scheduleType === "once" && !scheduledAt) {
-      toast.error("Data obrigatória", { description: "Selecione a data do envio para programação única." });
-      return;
-    }
-
     const finalContent = buildContent();
     let scheduled_at: string | null = null;
     let cron_expression: string | null = null;
@@ -249,7 +233,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
                       setMessageType(t.value);
                       setTextContent(""); setMediaUrl(""); setCaption("");
                       setLocName(""); setLocAddress(""); setLocLat(""); setLocLng("");
-                      setContactName(""); setContactPhone(""); setUseInstanceNumber(false);
+                      setContactName(""); setContactPhone("");
                       setPollQuestion(""); setPollOptions(["", ""]); setPollSelectable(1);
                       setListTitle(""); setListDescription(""); setListButtonText("Ver opções"); setListFooter("");
                       setMentionAll(false);
@@ -299,11 +283,11 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Arquivo</Label>
-                  <MediaUpload
-                    label=""
+                  <Input
                     value={mediaUrl}
-                    accept={ACCEPT_BY_TYPE[messageType] || "*/*"}
-                    onChange={setMediaUrl}
+                    onChange={(e) => setMediaUrl(e.target.value)}
+                    placeholder="URL da mídia"
+                    className="bg-background/50 border-border/50"
                   />
                 </div>
                 {messageType !== "sticker" && messageType !== "audio" && (
@@ -346,26 +330,13 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
 
             {messageType === "contact" && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between rounded-md border border-border/50 bg-background/50 px-3 py-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-xs font-medium">Usar número da instância de envio</Label>
-                    <p className="text-[11px] text-muted-foreground">O telefone será resolvido automaticamente no momento do envio.</p>
-                  </div>
-                  <Switch checked={useInstanceNumber} onCheckedChange={setUseInstanceNumber} />
-                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Nome do contato *</Label>
                   <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="João Silva" className="bg-background/50 border-border/50" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Telefone {useInstanceNumber ? "(automático)" : "*"}</Label>
-                  <Input
-                    value={useInstanceNumber ? "" : contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    disabled={useInstanceNumber}
-                    placeholder={useInstanceNumber ? "Número da instância (resolvido no envio)" : "5511999998888"}
-                    className="bg-background/50 border-border/50"
-                  />
+                  <Label className="text-xs text-muted-foreground">Telefone *</Label>
+                  <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="5511999998888" className="bg-background/50 border-border/50" />
                 </div>
               </div>
             )}
@@ -451,8 +422,8 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
               {scheduleType === "once" && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Data <span className="text-destructive">*</span></Label>
-                    <Input type="date" required value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="bg-background/50 border-border/50" />
+                    <Label className="text-xs text-muted-foreground">Data</Label>
+                    <Input type="date" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="bg-background/50 border-border/50" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Horário</Label>

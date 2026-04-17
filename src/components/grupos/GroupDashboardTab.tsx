@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, ShieldCheck, ShieldMinus, CalendarIcon, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, ShieldCheck, ShieldMinus, CalendarIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/transactions/StatCard";
@@ -9,8 +9,7 @@ import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents, EventPeriod } from "@/hooks/useGroupEvents";
-import { useGroupStatsSummary } from "@/hooks/useGroupStatsSummary";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
@@ -32,27 +31,23 @@ export default function GroupDashboardTab() {
   const { selectedGroups } = useGroupSelected();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
-  const { events, period, setPeriod, customRange, setCustomRange, start, end } = useGroupEvents();
-  const { summary } = useGroupStatsSummary({ start, end });
+  const { events, eventCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
-  const [now, setNow] = useState(() => Date.now());
-
-  // tick a cada 30s para atualizar "Sincronizado há X min"
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(t);
-  }, []);
 
   const hasSelectedGroups = selectedGroups.length > 0;
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
 
-  const lastSyncLabel = summary.lastSyncedAt
-    ? `Sincronizado ${formatDistanceToNow(new Date(summary.lastSyncedAt), { locale: ptBR, addSuffix: true })}`
-    : "Aguardando primeira sincronização automática";
+  const eventsByGroup = events.reduce<Record<string, { add: number; remove: number }>>((acc, e: any) => {
+    const jid = e.group_jid;
+    if (!acc[jid]) acc[jid] = { add: 0, remove: 0 };
+    if (e.action === "add") acc[jid].add++;
+    if (e.action === "remove") acc[jid].remove++;
+    return acc;
+  }, {});
 
   const handleCalendarSelect = (range: DateRange | undefined) => {
     setCalendarRange(range);
@@ -63,19 +58,13 @@ export default function GroupDashboardTab() {
     }
   };
 
-  const periodLabel = period === "today" ? "Hoje" : period === "yesterday" ? "Ontem" :
+  const periodLabel = period === "today" ? "Hoje" : period === "yesterday" ? "Ontem" : 
     customRange ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}` : "Personalizado";
-
-  // referencia `now` para forçar re-render do label
-  void now;
 
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <RefreshCw className="h-3.5 w-3.5" />
-          <span>{lastSyncLabel}</span>
-        </div>
+      <div className="flex items-center justify-between">
+        <div />
         <div className="flex flex-wrap items-center gap-1 p-1 bg-secondary/30 rounded-lg border border-border/30">
           {(["today", "yesterday"] as EventPeriod[]).map((p) => (
             <button
@@ -131,8 +120,8 @@ export default function GroupDashboardTab() {
         <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
         <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
         <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
-        <StatCard title="Entraram" value={String(summary.add)} icon={UserPlus} iconColor="text-green-500" />
-        <StatCard title="Saíram" value={String(summary.remove)} icon={UserMinus} iconColor="text-red-500" />
+        <StatCard title="Entraram" value={String(eventCounts.add)} icon={UserPlus} iconColor="text-green-500" />
+        <StatCard title="Saíram" value={String(eventCounts.remove)} icon={UserMinus} iconColor="text-red-500" />
       </div>
 
       {!hasSelectedGroups && (
@@ -166,7 +155,7 @@ export default function GroupDashboardTab() {
             ) : (
               <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
                 {selectedGroups.map((g) => {
-                  const ge = summary.perGroup[g.group_jid] || { add: 0, remove: 0, promote: 0, demote: 0 };
+                  const ge = eventsByGroup[g.group_jid] || { add: 0, remove: 0 };
                   return (
                   <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
                     <div className="min-w-0 flex-1">

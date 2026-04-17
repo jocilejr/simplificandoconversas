@@ -80,25 +80,11 @@ export function FollowUpDashboard() {
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const queueCounts = dispatchStatus?.counts;
-  const processingJobs = useMemo(
-    () => (dispatchStatus?.jobs || []).filter((job) => job.status === "processing"),
-    [dispatchStatus?.jobs],
-  );
-  const hasOnlyStaleProcessing = useMemo(() => {
-    if (!queueCounts || queueCounts.processing === 0 || queueCounts.pending > 0 || processingJobs.length === 0) return false;
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    return processingJobs.every((job) => {
-      const reference = job.started_at || job.created_at;
-      const time = reference ? new Date(reference).getTime() : 0;
-      return Number.isFinite(time) && time > 0 && time <= fiveMinutesAgo;
-    });
-  }, [processingJobs, queueCounts]);
-  const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing : stats.pendingToday;
+  const effectivePending = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.failed : stats.pendingToday;
   const effectiveSent = queueCounts ? queueCounts.sent : stats.sentToday;
-  
-  const totalJobs = queueCounts ? queueCounts.pending + queueCounts.processing + queueCounts.sent + queueCounts.failed + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.totalToday;
-  const processedJobs = queueCounts ? queueCounts.sent + queueCounts.failed + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
-  const progressPercent = totalJobs > 0 ? Math.round((processedJobs / totalJobs) * 100) : 0;
+  const effectiveResolved = queueCounts ? queueCounts.sent + queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : stats.sentToday;
+  const progressBase = effectiveSent + effectivePending + (queueCounts ? queueCounts.skipped_phone_limit + queueCounts.skipped_invalid_phone + queueCounts.skipped_duplicate : 0);
+  const progressPercent = progressBase > 0 ? Math.round((effectiveResolved / progressBase) * 100) : 0;
 
   const handleRunNow = async () => {
     try {
@@ -186,10 +172,8 @@ export function FollowUpDashboard() {
                       <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10px] gap-1 font-medium"><RefreshCw className="h-3 w-3" />Limite/dia</Badge>
                     ) : boleto.sendStatus === "skipped_invalid_phone" ? (
                       <Badge variant="outline" className="bg-destructive/15 text-destructive border-destructive/25 text-[10px] gap-1 font-medium"><Phone className="h-3 w-3" />Tel. inválido</Badge>
-                    ) : boleto.sendStatus === "pending" ? (
-                      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] gap-1 font-medium"><Timer className="h-3 w-3" />Pendente</Badge>
                     ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
+                      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-500 border-yellow-500/25 text-[10px] gap-1 font-medium"><Timer className="h-3 w-3" />Pendente</Badge>
                     )}
                   </td>
                   <td className="py-3 px-4">
@@ -277,7 +261,7 @@ export function FollowUpDashboard() {
         if (isProcessing) return (
           <div className="flex items-center gap-2 p-3 rounded-lg border border-primary/30 bg-primary/5 animate-pulse">
             <RefreshCw className="h-4 w-4 text-primary animate-spin" />
-            <span className="text-sm font-medium text-primary">{hasOnlyStaleProcessing ? `Verificando jobs travados... ${queueCounts!.processing} em análise` : `Em progresso — ${queueCounts!.processing} processando, ${queueCounts!.pending} pendentes`}</span>
+            <span className="text-sm font-medium text-primary">Em progresso — {queueCounts!.processing} processando, {queueCounts!.pending} pendentes</span>
           </div>
         );
         if (hasFailed && !isComplete) return (
@@ -321,7 +305,7 @@ export function FollowUpDashboard() {
               <Send className="h-4 w-4 text-green-500" />
             </div>
             <div>
-              <p className="text-lg font-bold"><span className="text-green-500">{effectiveSent}</span><span className="text-muted-foreground text-sm font-normal">/{totalJobs || stats.totalToday}</span></p>
+              <p className="text-lg font-bold"><span className="text-green-500">{effectiveSent}</span><span className="text-muted-foreground text-sm font-normal">/{progressBase || stats.totalToday}</span></p>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Enviados</p>
             </div>
           </div>
@@ -345,7 +329,7 @@ export function FollowUpDashboard() {
           </div>
         </div>
 
-        {(totalJobs > 0 || stats.totalToday > 0) && (
+        {(progressBase > 0 || stats.totalToday > 0) && (
           <div className="mt-4 pt-3 border-t border-border/20 space-y-3">
             <div className="flex items-center gap-3">
               <Progress value={progressPercent} className="h-2 flex-1" />

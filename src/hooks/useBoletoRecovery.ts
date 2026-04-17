@@ -6,7 +6,6 @@ import { useMemo, useEffect } from "react";
 import { addDays, differenceInDays, isBefore, startOfDay, format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { getGreeting } from "@/lib/greeting";
-import { useFollowUpDispatchStatus } from "@/hooks/useFollowUpDispatch";
 
 const BRAZIL_TIMEZONE = "America/Sao_Paulo";
 
@@ -58,27 +57,30 @@ export interface BoletoWithRecovery extends Transaction {
   applicableRule: RecoveryRule | null;
   formattedMessage: string | null;
   contactedToday: boolean;
-  sendStatus: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate" | null;
+  sendStatus: "pending" | "processing" | "sent" | "failed" | "skipped_phone_limit" | "skipped_invalid_phone" | "skipped_duplicate";
 }
 
 export function useBoletoRecovery() {
   const { workspaceId } = useWorkspace();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { data: dispatchStatus } = useFollowUpDispatchStatus();
 
   // Realtime: auto-refresh when transactions change status
   useEffect(() => {
     const channel = supabase
       .channel("followup-transactions")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transactions" }, () => {
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "transactions",
+      }, () => {
         queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
-  // Query 1: unpaid boletos
+  // Query 1: unpaid boletos — same source as "Boletos Gerados" tab
   const { data: unpaidBoletos, isLoading } = useQuery({
     queryKey: ["unpaid-boletos", workspaceId],
     staleTime: 60000,
@@ -113,7 +115,24 @@ export function useBoletoRecovery() {
     },
   });
 
-  // Query 3: boleto settings
+  // Query 3: today's contacts
+  const todayStr = format(getTodayBrazil(), "yyyy-MM-dd");
+  const { data: todayContacts } = useQuery({
+    queryKey: ["boleto-recovery-contacts-today", workspaceId, todayStr],
+    enabled: !!workspaceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("boleto_recovery_contacts" as any)
+        .select("transaction_id, rule_id, notes")
+        .eq("workspace_id", workspaceId!)
+        .gte("created_at", `${todayStr}T00:00:00-03:00`)
+        .lt("created_at", `${todayStr}T23:59:59-03:00`);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Query 4: boleto settings
   const { data: settings } = useQuery({
     queryKey: ["boleto-settings", workspaceId],
     enabled: !!workspaceId,
@@ -128,16 +147,19 @@ export function useBoletoRecovery() {
     },
   });
 
-  // Build dispatch status map from followup_dispatch_queue (single source of truth)
-  const dispatchMap = useMemo(() => {
-    const map = new Map<string, { status: string; ruleId: string }>();
-    if (dispatchStatus?.jobs) {
-      for (const job of dispatchStatus.jobs) {
-        map.set(job.transaction_id, { status: job.status, ruleId: job.rule_id });
+  // Build contacted set and notes map
+  const { contactedKeys, contactNotesMap } = useMemo(() => {
+    const set = new Set<string>();
+    const notesMap = new Map<string, string>();
+    todayContacts?.forEach((c: any) => {
+      if (c.transaction_id && c.rule_id) {
+        const key = `${c.transaction_id}:${c.rule_id}`;
+        set.add(key);
+        if (c.notes) notesMap.set(key, c.notes);
       }
-    }
-    return map;
-  }, [dispatchStatus?.jobs]);
+    });
+    return { contactedKeys: set, contactNotesMap: notesMap };
+  }, [todayContacts]);
 
   // Process boletos
   const processedBoletos = useMemo(() => {
@@ -163,14 +185,17 @@ export function useBoletoRecovery() {
         }
       }
 
-      // Get send status from dispatch queue (single source of truth)
-      const dispatchInfo = dispatchMap.get(boleto.id);
-      let sendStatus: BoletoWithRecovery["sendStatus"] = null;
-      let contactedToday = false;
+      const key = applicableRule ? `${boleto.id}:${applicableRule.id}` : null;
+      const notes = key ? contactNotesMap.get(key) || "" : "";
+      const contactedToday = key ? contactedKeys.has(key) && !notes.startsWith("failed") : false;
 
-      if (dispatchInfo) {
-        sendStatus = dispatchInfo.status as BoletoWithRecovery["sendStatus"];
-        contactedToday = sendStatus === "sent";
+      let sendStatus: BoletoWithRecovery["sendStatus"] = "pending";
+      if (contactedToday) {
+        if (notes.startsWith("skipped_duplicate")) sendStatus = "skipped_duplicate";
+        else if (notes.startsWith("skipped_phone_limit")) sendStatus = "skipped_phone_limit";
+        else if (notes.startsWith("skipped_invalid_phone")) sendStatus = "skipped_invalid_phone";
+        else if (notes.startsWith("failed")) sendStatus = "failed";
+        else sendStatus = "sent";
       }
 
       let formattedMessage: string | null = null;
@@ -180,12 +205,11 @@ export function useBoletoRecovery() {
 
       return { ...boleto, dueDate, daysUntilDue, daysSinceGeneration, isOverdue, applicableRule, formattedMessage, contactedToday, sendStatus };
     });
-  }, [unpaidBoletos, settings, rules, dispatchMap]);
+  }, [unpaidBoletos, settings, rules, contactedKeys, contactNotesMap]);
 
   // Derived lists
-  // todayBoletos: boletos that have a matching rule for today (frontend rule-matching for visibility)
   const todayBoletos = useMemo(() => processedBoletos.filter((b) => b.applicableRule !== null), [processedBoletos]);
-  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => !b.contactedToday && (b.sendStatus === null || b.sendStatus === "pending" || b.sendStatus === "processing")), [todayBoletos]);
+  const pendingTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "pending" || b.sendStatus === "processing" || b.sendStatus === "failed"), [todayBoletos]);
   const sentTodayBoletos = useMemo(() => todayBoletos.filter((b) => b.sendStatus === "sent"), [todayBoletos]);
   const pendingBoletos = useMemo(() => processedBoletos.filter((b) => !b.isOverdue), [processedBoletos]);
   const overdueBoletos = useMemo(() => processedBoletos.filter((b) => b.isOverdue), [processedBoletos]);
@@ -202,7 +226,7 @@ export function useBoletoRecovery() {
     totalCount: processedBoletos.length,
   }), [todayBoletos, sentTodayBoletos, pendingTodayBoletos, pendingBoletos, overdueBoletos, processedBoletos]);
 
-  // Manual contact mutation (legacy — kept for manual marking from UI)
+  // Manual contact mutation
   const addContact = useMutation({
     mutationFn: async ({ transactionId, ruleId, notes }: { transactionId: string; ruleId?: string; notes?: string }) => {
       if (!user?.id || !workspaceId) throw new Error("Not authenticated");
@@ -216,8 +240,7 @@ export function useBoletoRecovery() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["followup-dispatch-status", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["unpaid-boletos"] });
+      queryClient.invalidateQueries({ queryKey: ["boleto-recovery-contacts-today", workspaceId] });
     },
   });
 

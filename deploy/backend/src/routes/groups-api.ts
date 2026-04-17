@@ -33,39 +33,6 @@ async function validateInstanceOwnership(instanceName: string, workspaceId: stri
   return !!data;
 }
 
-type EvolutionGroupPayload = {
-  id?: string;
-  jid?: string;
-  groupJid?: string;
-  subject?: string;
-  name?: string;
-  size?: number;
-  participants?: unknown[];
-};
-
-function normalizeEvolutionGroupsPayload(payload: unknown) {
-  const rawGroups = Array.isArray(payload)
-    ? payload
-    : Array.isArray((payload as { groups?: unknown[] } | null)?.groups)
-      ? (payload as { groups: unknown[] }).groups
-      : [];
-
-  return rawGroups
-    .map((raw) => {
-      const group = raw as EvolutionGroupPayload;
-      const jid = group.id || group.jid || group.groupJid || "";
-      const participantCount = Array.isArray(group.participants) ? group.participants.length : 0;
-      const memberCount = typeof group.size === "number" ? group.size : participantCount;
-
-      return {
-        jid,
-        name: group.subject || group.name || "Sem nome",
-        memberCount,
-      };
-    })
-    .filter((group) => group.jid.endsWith("@g.us"));
-}
-
 /* ─── helpers: normalização de JID ─── */
 const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
 
@@ -250,7 +217,7 @@ export function calculateNextRunAt(msg: { schedule_type: string; content: any })
 }
 
 /* ─── calculateFirstRunAt — para criação de mensagem ─── */
-export function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?: string | null; content: any }): string | null {
+function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?: string | null; content: any }): string | null {
   if (msg.schedule_type === "once") {
     if (!msg.scheduled_at) return null;
     const dt = new Date(msg.scheduled_at);
@@ -705,10 +672,24 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
       return res.status(resp.status).json({ error: txt });
     }
 
-    const raw = await resp.json();
-    const groups = normalizeEvolutionGroupsPayload(raw);
+    const raw: any = await resp.json();
+    const list = Array.isArray(raw) ? raw : (raw?.groups || []);
 
-    console.log(`[groups-api] Total groups returned: ${groups.length}`);
+    const gusOnly = list.filter((g: any) => {
+      const jid = g.id || g.jid || g.groupJid || "";
+      return jid.endsWith("@g.us");
+    });
+
+    console.log(`[groups-api] Total raw: ${list.length}, @g.us candidates: ${gusOnly.length}`);
+
+    const groups = gusOnly.map((g: any) => {
+      const jid = g.id || g.jid || g.groupJid || "";
+      const name = g.subject || g.name || "Sem nome";
+      const memberCount = g.size || g.participants?.length || 0;
+      return { jid, name, memberCount };
+    });
+
+    console.log(`[groups-api] Total groups returned: ${groups.length} (from ${list.length} raw)`);
     res.json(groups);
   } catch (err: any) {
     console.error("[groups-api] fetch-groups error:", err?.message || err?.details || JSON.stringify(err));
@@ -1237,10 +1218,6 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         const encoded = encodeURIComponent(item.instance_name);
         const content = item.content as any;
         const mentionsEveryOne = content.mentionsEveryOne || content.mentionAll || false;
-        // Resolve mídia aceitando ambas convenções (mediaUrl OU chave por tipo: audio/image/video/document/sticker)
-        const mediaUrl: string =
-          content.mediaUrl || content.audio || content.sticker ||
-          content.image || content.video || content.document || "";
 
         if (item.message_type === "text") {
           const r = await fetch(`${baseUrl}/message/sendText/${encoded}`, {
@@ -1249,87 +1226,14 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
           });
           if (!r.ok) throw new Error(await r.text());
-        } else if (item.message_type === "audio") {
-          if (!mediaUrl || typeof mediaUrl !== "string") {
-            throw new Error(`invalid_audio_url: ${JSON.stringify(content)}`);
-          }
-          const r = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${encoded}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
-          });
-          if (!r.ok) throw new Error(await r.text());
-        } else if (item.message_type === "contact") {
-          // Form salva como { contactName, contactPhone, useInstanceNumber? }. Aceitar também { fullName, phoneNumber } e array { contacts: [...] }.
-          const useInstanceNumber = content.useInstanceNumber === true;
-
-          // Resolver número/nome da instância quando flag estiver ativa
-          let instanceOwnerPhone = "";
-          let instanceProfileName = "";
-          if (useInstanceNumber) {
-            try {
-              const fr = await fetch(`${baseUrl}/instance/fetchInstances?instanceName=${encoded}`, {
-                headers: { apikey: apiKey },
-              });
-              if (fr.ok) {
-                const arr = (await fr.json()) as any[];
-                const inst = Array.isArray(arr)
-                  ? arr.find((i: any) => (i?.instance?.instanceName || i?.name) === item.instance_name) || arr[0]
-                  : null;
-                const ownerRaw = inst?.instance?.owner || inst?.owner || inst?.ownerJid || inst?.number || "";
-                instanceOwnerPhone = String(ownerRaw).split("@")[0].replace(/\D/g, "");
-                instanceProfileName = inst?.instance?.profileName || inst?.profileName || "";
-              }
-            } catch (e) {
-              console.error("[groups-queue] fetchInstances error:", e);
-            }
-            if (!instanceOwnerPhone) {
-              throw new Error(`instance_phone_not_resolved: ${item.instance_name}`);
-            }
-          }
-
-          const rawList = Array.isArray(content.contacts) && content.contacts.length
-            ? content.contacts
-            : [{
-                fullName: content.contactName || content.fullName || content.name || "",
-                phoneNumber: useInstanceNumber
-                  ? instanceOwnerPhone
-                  : (content.contactPhone || content.phoneNumber || content.phone || ""),
-                organization: content.organization || "",
-                email: content.email || "",
-              }];
-          const contacts = rawList.map((c: any) => {
-            const phoneDigits = useInstanceNumber
-              ? instanceOwnerPhone
-              : String(c.phoneNumber || c.contactPhone || c.phone || "").replace(/\D/g, "");
-            return {
-              fullName: c.fullName || c.contactName || c.name || instanceProfileName || "",
-              wuid: phoneDigits,
-              phoneNumber: phoneDigits,
-              organization: c.organization || "",
-              email: c.email || "",
-            };
-          });
-          if (!contacts[0]?.fullName || !contacts[0]?.phoneNumber) {
-            throw new Error(`invalid_contact_data: ${JSON.stringify(content)}`);
-          }
-          const r = await fetch(`${baseUrl}/message/sendContact/${encoded}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: item.group_jid, contact: contacts, mentionsEveryOne }),
-          });
-          if (!r.ok) throw new Error(await r.text());
         } else {
-          if (!mediaUrl || typeof mediaUrl !== "string") {
-            throw new Error(`invalid_media_url: ${JSON.stringify(content)}`);
-          }
           const r = await fetch(`${baseUrl}/message/sendMedia/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({
               number: item.group_jid,
               mediatype: item.message_type,
-              media: mediaUrl,
+              media: content.mediaUrl || "",
               caption: content.caption || "",
               fileName: content.fileName || "",
               mentionsEveryOne,
@@ -1703,17 +1607,6 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     res.json({ synced, groupLinks });
   } catch (err: any) {
     console.error("[smart-link] sync-invite error:", err?.message);
-    // Clear sync_progress on error to prevent infinite "Sincronizando..."
-    try {
-      const smartLinkId = req.body?.smartLinkId;
-      if (smartLinkId) {
-        await getServiceClient().from("group_smart_links").update({
-          sync_progress: null,
-          last_sync_error: err?.message || "Unknown error",
-          last_sync_error_at: new Date().toISOString(),
-        }).eq("id", smartLinkId);
-      }
-    } catch {}
     res.status(500).json({ error: err?.message || "Unknown error" });
   }
 });
@@ -1819,13 +1712,6 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
     const { data: smartLinks, error } = await sb.from("group_smart_links").select("*").eq("is_active", true);
     if (error) throw error;
     if (!smartLinks || smartLinks.length === 0) return res.json({ synced: 0, message: "No active smart links" });
-
-    // Recover stale syncs (stuck >10 min)
-    const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    await sb.from("group_smart_links")
-      .update({ sync_progress: null, last_sync_error: "Sync travou — resetado automaticamente", last_sync_error_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .not("sync_progress", "is", null)
-      .lt("updated_at", staleCutoff);
 
     const results: any[] = [];
 
@@ -1965,7 +1851,6 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
       } catch (e: any) {
         console.error(`[sync-all] Error syncing smart link ${sl.id}:`, e.message);
         await sb.from("group_smart_links").update({
-          sync_progress: null,
           last_sync_error: e.message || "Unknown error",
           last_sync_error_at: new Date().toISOString(),
         }).eq("id", sl.id);
@@ -2513,290 +2398,6 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("[scheduler-debug] error:", err?.message);
     res.status(500).json({ error: err?.message || "Unknown error" });
-  }
-});
-
-/* ─── Helper: sincroniza member_count real-time de um workspace ───
-   Para cada row de group_selected, chama Evolution findGroupInfos
-   (mais confiável que fetchAllGroups para grupos onde o bot não é admin)
-   e atualiza member_count + member_count_updated_at apenas daquela tupla. */
-export async function syncWorkspaceStats(workspaceId: string): Promise<{
-  synced: number;
-  failed: number;
-  groups: any[];
-  errors: any[];
-  message?: string;
-}> {
-  const sb = getServiceClient();
-
-  const { data: monitored } = await sb
-    .from("group_selected")
-    .select("id, group_jid, group_name, member_count, instance_name")
-    .eq("workspace_id", workspaceId);
-
-  if (!monitored || monitored.length === 0) {
-    return { synced: 0, failed: 0, groups: [], errors: [], message: "No monitored groups" };
-  }
-
-  const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
-  const syncedCounts = new Map<string, number>();
-  const syncedNames = new Map<string, string>();
-  const results: any[] = [];
-  const errors: any[] = [];
-  let synced = 0;
-  let failed = 0;
-
-  // Process each (instance, group) tuple individually via findGroupInfos
-  for (const entry of monitored) {
-    const encoded = encodeURIComponent(entry.instance_name);
-    try {
-      const resp = await fetch(
-        `${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(entry.group_jid)}`,
-        { method: "GET", headers: { apikey: apiKey } }
-      );
-
-      if (!resp.ok) {
-        failed++;
-        errors.push({
-          instance_name: entry.instance_name,
-          group_jid: entry.group_jid,
-          error: `HTTP ${resp.status}`,
-        });
-        continue;
-      }
-
-      const payload = await resp.json();
-      const info = Array.isArray(payload) ? payload[0] : payload;
-      const realCount =
-        typeof info?.size === "number"
-          ? info.size
-          : Array.isArray(info?.participants)
-            ? info.participants.length
-            : null;
-      const realName = info?.subject || entry.group_name;
-
-      if (realCount === null) {
-        failed++;
-        errors.push({
-          instance_name: entry.instance_name,
-          group_jid: entry.group_jid,
-          error: "no member count in response",
-        });
-        continue;
-      }
-
-      await sb
-        .from("group_selected")
-        .update({
-          member_count: realCount,
-          group_name: realName,
-          member_count_updated_at: new Date().toISOString(),
-        })
-        .eq("id", entry.id);
-
-      syncedCounts.set(entry.group_jid, realCount);
-      syncedNames.set(entry.group_jid, realName);
-
-      results.push({
-        group_jid: entry.group_jid,
-        group_name: realName,
-        old_count: entry.member_count,
-        new_count: realCount,
-        instance_name: entry.instance_name,
-      });
-      synced++;
-    } catch (e: any) {
-      failed++;
-      errors.push({
-        instance_name: entry.instance_name,
-        group_jid: entry.group_jid,
-        error: e.message,
-      });
-    }
-  }
-
-  // Propagate updated counts to smart links
-  const { data: smartLinks } = await sb
-    .from("group_smart_links")
-    .select("id, group_links")
-    .eq("workspace_id", workspaceId)
-    .eq("is_active", true);
-
-  if (smartLinks?.length) {
-    for (const smartLink of smartLinks) {
-      const groupLinks = Array.isArray(smartLink.group_links) ? [...smartLink.group_links] : [];
-      let changed = false;
-      for (const groupLink of groupLinks) {
-        if (!groupLink?.group_jid || !syncedCounts.has(groupLink.group_jid)) continue;
-        groupLink.member_count = syncedCounts.get(groupLink.group_jid) || 0;
-        if (syncedNames.has(groupLink.group_jid)) {
-          groupLink.group_name = syncedNames.get(groupLink.group_jid);
-        }
-        changed = true;
-      }
-      if (changed) {
-        await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLink.id);
-      }
-    }
-  }
-
-  console.log(`[sync-stats] workspace ${workspaceId}: synced=${synced} failed=${failed}`);
-  return { synced, failed, groups: results, errors };
-}
-
-/* ─── POST /sync-stats — debug manual via curl (frontend não usa mais) ─── */
-router.post("/sync-stats", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId } = req.body;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-    const result = await syncWorkspaceStats(workspaceId);
-    res.json(result);
-  } catch (err: any) {
-    console.error("[sync-stats] error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─── Helper: sincroniza todos os workspaces que têm grupos monitorados ─── */
-export async function syncAllWorkspacesStats(): Promise<void> {
-  try {
-    const sb = getServiceClient();
-    const { data: rows } = await sb
-      .from("group_selected")
-      .select("workspace_id");
-    if (!rows || rows.length === 0) return;
-    const workspaceIds = [...new Set(rows.map((r: any) => r.workspace_id))];
-    console.log(`[sync-all] starting for ${workspaceIds.length} workspace(s)`);
-    for (const wsId of workspaceIds) {
-      try {
-        await syncWorkspaceStats(wsId);
-      } catch (e: any) {
-        console.error(`[sync-all] workspace ${wsId} failed:`, e.message);
-      }
-    }
-    console.log(`[sync-all] complete`);
-  } catch (err: any) {
-    console.error("[sync-all] fatal error:", err.message);
-  }
-}
-
-/* ─── GET /events — eventos de (instância, grupo) atualmente monitorados ───
-   Faz JOIN implícito com group_selected via (workspace_id, instance_name, group_jid):
-   eventos órfãos (instância foi removida do grupo, ou grupo não está mais selecionado
-   por aquela instância) NÃO são retornados. */
-router.get("/events", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId, start, end } = req.query as Record<string, string>;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-
-    const sb = getServiceClient();
-
-    // Fetch monitored tuples (instance_name, group_jid) for this workspace
-    const { data: monitored, error: monErr } = await sb
-      .from("group_selected")
-      .select("instance_name, group_jid")
-      .eq("workspace_id", workspaceId);
-
-    if (monErr) throw monErr;
-    if (!monitored || monitored.length === 0) return res.json([]);
-
-    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
-    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
-
-    let query = sb
-      .from("group_participant_events")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .in("group_jid", groupJids)
-      .order("created_at", { ascending: false });
-
-    if (start) query = query.gte("created_at", start);
-    if (end) query = query.lte("created_at", end);
-
-    // Paginate to get ALL rows (no 1000 limit)
-    const PAGE = 1000;
-    const allRows: any[] = [];
-    let from = 0;
-    while (true) {
-      const { data, error } = await query.range(from, from + PAGE - 1);
-      if (error) throw error;
-      const batch = data || [];
-      allRows.push(...batch);
-      if (batch.length < PAGE) break;
-      from += PAGE;
-    }
-
-    // Final filter: only events whose (instance_name, group_jid) is monitored
-    const filtered = allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
-
-    res.json(filtered);
-  } catch (err: any) {
-    console.error("[groups-api] GET /events error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─── GET /stats-summary — TOTAIS OFICIAIS via COUNT direto no banco ───
-   Esta é a fonte de verdade dos cards "Entraram/Saíram".
-   Filtra estritamente por (workspace_id, instance_name, group_jid) presente em group_selected.
-   Faz COUNT por ação somente sobre eventos cuja tupla está monitorada. */
-router.get("/stats-summary", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId, start, end } = req.query as Record<string, string>;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-
-    const sb = getServiceClient();
-
-    const { data: monitored, error: monErr } = await sb
-      .from("group_selected")
-      .select("instance_name, group_jid, member_count_updated_at")
-      .eq("workspace_id", workspaceId);
-    if (monErr) throw monErr;
-    if (!monitored || monitored.length === 0) {
-      return res.json({ add: 0, remove: 0, promote: 0, demote: 0, perGroup: {}, lastSyncedAt: null });
-    }
-
-    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
-    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
-
-    // last sync timestamp (max member_count_updated_at)
-    const lastSyncedAt = monitored.reduce<string | null>((acc, m: any) => {
-      if (!m.member_count_updated_at) return acc;
-      if (!acc || m.member_count_updated_at > acc) return m.member_count_updated_at;
-      return acc;
-    }, null);
-
-    // Page through events and aggregate in JS — strict tuple filter.
-    const PAGE = 1000;
-    const totals = { add: 0, remove: 0, promote: 0, demote: 0 } as Record<string, number>;
-    const perGroup: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
-    let from = 0;
-    while (true) {
-      let query = sb
-        .from("group_participant_events")
-        .select("instance_name, group_jid, action")
-        .eq("workspace_id", workspaceId)
-        .in("group_jid", groupJids);
-      if (start) query = query.gte("created_at", start);
-      if (end) query = query.lte("created_at", end);
-      const { data, error } = await query.range(from, from + PAGE - 1);
-      if (error) throw error;
-      const batch = data || [];
-      for (const r of batch as any[]) {
-        if (!allowed.has(`${r.instance_name}::${r.group_jid}`)) continue;
-        const a = r.action as string;
-        if (a in totals) totals[a]++;
-        if (!perGroup[r.group_jid]) perGroup[r.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
-        if (a in perGroup[r.group_jid]) (perGroup[r.group_jid] as any)[a]++;
-      }
-      if (batch.length < PAGE) break;
-      from += PAGE;
-    }
-
-    res.json({ ...totals, perGroup, lastSyncedAt });
-  } catch (err: any) {
-    console.error("[groups-api] GET /stats-summary error:", err.message);
-    res.status(500).json({ error: err.message });
   }
 });
 

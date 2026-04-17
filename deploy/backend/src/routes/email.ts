@@ -889,12 +889,6 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
           console.log(`[email/webhook] E-mail corrigido: ${normalized.original} → ${normalized.email}`);
         }
 
-        // Normalize tags: trim, lowercase, deduplicate
-        const rawTags: string[] = Array.isArray(regTags) ? regTags : [];
-        const contactTags: string[] = [...new Set(rawTags.map((t: string) => String(t).trim().toLowerCase()).filter(Boolean))];
-
-        console.log(`[email/register] Email: ${normalized.email} | Tags recebidas: [${contactTags.join(", ")}]`);
-
         const { data: contact, error: upsertErr } = await supabase
           .from("email_contacts")
           .upsert(
@@ -903,7 +897,7 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
               workspace_id: workspaceId,
               email: normalized.email,
               name: regName || null,
-              tags: contactTags,
+              tags: regTags || [],
               source: "webhook",
               status: "active",
             },
@@ -915,92 +909,57 @@ router.post("/webhook/inbound", async (req: Request, res: Response) => {
         if (upsertErr) return res.status(500).json({ error: upsertErr.message });
 
         // Auto-send: check for campaigns with auto_send=true matching contact tags
-        const matchedCampaigns: { name: string; id: string; queued: boolean; error?: string }[] = [];
-
+        const contactTags: string[] = regTags || [];
         if (contactTags.length > 0) {
           try {
             const { data: autoCampaigns } = await supabase
               .from("email_campaigns")
               .select("*, email_templates(*)")
               .eq("user_id", userId)
-              .eq("workspace_id", workspaceId)
               .eq("auto_send", true)
               .eq("status", "draft")
               .not("tag_filter", "is", null);
 
-            console.log(`[email/register] Campanhas auto_send encontradas: ${autoCampaigns?.length || 0}`);
-
             if (autoCampaigns && autoCampaigns.length > 0) {
               for (const camp of autoCampaigns) {
-                const campTag = (camp.tag_filter || "").trim().toLowerCase();
-                console.log(`[email/register] Avaliando campanha "${camp.name}" (tag_filter: "${campTag}") vs tags do contato: [${contactTags.join(", ")}]`);
-
-                if (!contactTags.includes(campTag)) continue;
-                if (!camp.email_templates) {
-                  console.warn(`[email/register] Campanha "${camp.name}" sem template — ignorando`);
-                  matchedCampaigns.push({ name: camp.name, id: camp.id, queued: false, error: "template ausente" });
-                  continue;
-                }
+                if (!contactTags.includes(camp.tag_filter)) continue;
+                if (!camp.email_templates) continue;
 
                 const template = camp.email_templates as any;
 
+                // Allow re-sending on every webhook event (no dedup check)
+
                 // Check suppression
-                if (await isSuppressed(userId, normalized.email)) {
-                  console.log(`[email/register] Email ${normalized.email} suprimido — ignorando campanha "${camp.name}"`);
-                  matchedCampaigns.push({ name: camp.name, id: camp.id, queued: false, error: "email suprimido" });
-                  continue;
-                }
+                if (await isSuppressed(userId, normalized.email)) continue;
 
-                // Enqueue
-                const { error: queueErr } = await supabase.from("email_queue").insert({
-                  user_id: userId,
-                  workspace_id: workspaceId,
-                  campaign_id: camp.id,
-                  template_id: template.id,
-                  smtp_config_id: camp.smtp_config_id || null,
-                  recipient_email: normalized.email,
-                  recipient_name: regName || null,
-                  personalization: { nome: regName || null, email: normalized.email, telefone: null },
-                  status: "pending",
-                });
+                // Enqueue instead of sending inline
+                try {
+                  await supabase.from("email_queue").insert({
+                    user_id: userId,
+                    workspace_id: workspaceId,
+                    campaign_id: camp.id,
+                    template_id: template.id,
+                    smtp_config_id: camp.smtp_config_id || null,
+                    recipient_email: normalized.email,
+                    recipient_name: regName || null,
+                    personalization: { nome: regName || null, email: normalized.email, telefone: null },
+                    status: "pending",
+                  });
 
-                if (queueErr) {
-                  console.error(`[email/register] FALHA ao enfileirar campanha "${camp.name}" para ${normalized.email}: ${queueErr.message}`);
-                  matchedCampaigns.push({ name: camp.name, id: camp.id, queued: false, error: queueErr.message });
-                } else {
-                  console.log(`[email/register] ✅ Campanha "${camp.name}" enfileirada para ${normalized.email}`);
-                  matchedCampaigns.push({ name: camp.name, id: camp.id, queued: true });
+                  // (follow-ups are now handled inside the queue block above)
+
+                  console.log(`[email/auto-send] Campanha "${camp.name}" enfileirada para ${normalized.email}`);
+                } catch (queueErr: any) {
+                  console.error(`[email/auto-send] Falha ao enfileirar campanha "${camp.name}" para ${normalized.email}:`, queueErr.message);
                 }
               }
             }
           } catch (autoErr: any) {
-            console.error("[email/register] Erro ao processar auto-send:", autoErr.message);
+            console.error("[email/auto-send] Erro ao processar auto-send:", autoErr.message);
           }
         }
 
-        // Check if any matched campaign failed to queue
-        const queueErrors = matchedCampaigns.filter(c => !c.queued && c.error);
-        const hasQueueFailure = queueErrors.length > 0 && matchedCampaigns.every(c => !c.queued);
-
-        if (hasQueueFailure) {
-          return res.status(500).json({
-            ok: false,
-            contactId: contact?.id,
-            corrected: normalized.corrected,
-            email: normalized.email,
-            matchedCampaigns,
-            error: "Todas as campanhas falharam ao enfileirar",
-          });
-        }
-
-        return res.json({
-          ok: true,
-          contactId: contact?.id,
-          corrected: normalized.corrected,
-          email: normalized.email,
-          matchedCampaigns,
-          queued: matchedCampaigns.filter(c => c.queued).length,
-        });
+        return res.json({ ok: true, contactId: contact?.id, corrected: normalized.corrected, email: normalized.email });
       }
 
       default:
@@ -1168,7 +1127,6 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
           .single();
 
         if (!template) {
-          console.error(`[email/queue] Template ${item.template_id} não encontrado para item ${item.id} (${item.recipient_email})`);
           await supabase.from("email_queue").update({
             status: "failed",
             error_message: "Template não encontrado",
@@ -1243,16 +1201,15 @@ router.post("/process-queue", async (_req: Request, res: Response) => {
         }
 
         processed++;
-        console.log(`[email/queue] ✅ Enviado para ${item.recipient_email} (campanha: ${item.campaign_id || "n/a"}) (${processed}/${items.length})`);
+        console.log(`[email/queue] Enviado para ${item.recipient_email} (${processed}/${items.length})`);
       } catch (sendErr: any) {
         failed++;
-        const errMsg = sendErr?.message || String(sendErr);
         await supabase.from("email_queue").update({
           status: "failed",
-          error_message: errMsg,
+          error_message: sendErr.message,
           processed_at: new Date().toISOString(),
         }).eq("id", item.id);
-        console.error(`[email/queue] ❌ Falha para ${item.recipient_email} (campanha: ${item.campaign_id || "n/a"}): ${errMsg}`);
+        console.error(`[email/queue] Falha para ${item.recipient_email}:`, sendErr.message);
       }
 
       // Delay between sends to prevent SMTP blocking
