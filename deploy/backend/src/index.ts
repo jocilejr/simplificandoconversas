@@ -288,9 +288,13 @@ app.listen(PORT, async () => {
     console.error("[scheduler] Initialization error:", err.message);
   }
 
-  // ─── Group stats sync: every 1h, first run 1h after deploy ───
+  // ─── Group stats sync: initial run 30s after boot, then every 1h ───
   const ONE_HOUR_MS = 60 * 60 * 1000;
-  console.log(`[sync-all] ⏱️  scheduled every 1h, first run in 1h from deploy (${new Date(Date.now() + ONE_HOUR_MS).toISOString()})`);
+  console.log(`[sync-all] ⏱️  first run in 30s, then every 1h`);
+  setTimeout(() => {
+    console.log(`[sync-all] 🚀 Running initial sync (30s after boot)`);
+    syncAllWorkspacesStats().catch((e) => console.error("[sync-all] initial run error:", e.message));
+  }, 30 * 1000);
   setInterval(() => {
     syncAllWorkspacesStats().catch((e) => console.error("[sync-all] interval error:", e.message));
   }, ONE_HOUR_MS);
