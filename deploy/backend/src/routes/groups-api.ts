@@ -2516,135 +2516,169 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /sync-stats — Sincronização real-time por (instância, grupo) ───
+/* ─── Helper: sincroniza member_count real-time de um workspace ───
    Para cada row de group_selected, chama Evolution findGroupInfos
    (mais confiável que fetchAllGroups para grupos onde o bot não é admin)
    e atualiza member_count + member_count_updated_at apenas daquela tupla. */
-router.post("/sync-stats", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId } = req.body;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+export async function syncWorkspaceStats(workspaceId: string): Promise<{
+  synced: number;
+  failed: number;
+  groups: any[];
+  errors: any[];
+  message?: string;
+}> {
+  const sb = getServiceClient();
 
-    const sb = getServiceClient();
+  const { data: monitored } = await sb
+    .from("group_selected")
+    .select("id, group_jid, group_name, member_count, instance_name")
+    .eq("workspace_id", workspaceId);
 
-    const { data: monitored } = await sb
-      .from("group_selected")
-      .select("id, group_jid, group_name, member_count, instance_name")
-      .eq("workspace_id", workspaceId);
+  if (!monitored || monitored.length === 0) {
+    return { synced: 0, failed: 0, groups: [], errors: [], message: "No monitored groups" };
+  }
 
-    if (!monitored || monitored.length === 0) {
-      return res.json({ synced: 0, failed: 0, message: "No monitored groups" });
-    }
+  const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+  const syncedCounts = new Map<string, number>();
+  const syncedNames = new Map<string, string>();
+  const results: any[] = [];
+  const errors: any[] = [];
+  let synced = 0;
+  let failed = 0;
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
-    const syncedCounts = new Map<string, number>();
-    const syncedNames = new Map<string, string>();
-    const results: any[] = [];
-    const errors: any[] = [];
-    let synced = 0;
-    let failed = 0;
+  // Process each (instance, group) tuple individually via findGroupInfos
+  for (const entry of monitored) {
+    const encoded = encodeURIComponent(entry.instance_name);
+    try {
+      const resp = await fetch(
+        `${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(entry.group_jid)}`,
+        { method: "GET", headers: { apikey: apiKey } }
+      );
 
-    // Process each (instance, group) tuple individually via findGroupInfos
-    for (const entry of monitored) {
-      const encoded = encodeURIComponent(entry.instance_name);
-      try {
-        const resp = await fetch(
-          `${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(entry.group_jid)}`,
-          { method: "GET", headers: { apikey: apiKey } }
-        );
-
-        if (!resp.ok) {
-          failed++;
-          errors.push({
-            instance_name: entry.instance_name,
-            group_jid: entry.group_jid,
-            error: `HTTP ${resp.status}`,
-          });
-          continue;
-        }
-
-        const payload = await resp.json();
-        const info = Array.isArray(payload) ? payload[0] : payload;
-        const realCount =
-          typeof info?.size === "number"
-            ? info.size
-            : Array.isArray(info?.participants)
-              ? info.participants.length
-              : null;
-        const realName = info?.subject || entry.group_name;
-
-        if (realCount === null) {
-          failed++;
-          errors.push({
-            instance_name: entry.instance_name,
-            group_jid: entry.group_jid,
-            error: "no member count in response",
-          });
-          continue;
-        }
-
-        await sb
-          .from("group_selected")
-          .update({
-            member_count: realCount,
-            group_name: realName,
-            member_count_updated_at: new Date().toISOString(),
-          })
-          .eq("id", entry.id);
-
-        syncedCounts.set(entry.group_jid, realCount);
-        syncedNames.set(entry.group_jid, realName);
-
-        results.push({
-          group_jid: entry.group_jid,
-          group_name: realName,
-          old_count: entry.member_count,
-          new_count: realCount,
-          instance_name: entry.instance_name,
-        });
-        synced++;
-      } catch (e: any) {
+      if (!resp.ok) {
         failed++;
         errors.push({
           instance_name: entry.instance_name,
           group_jid: entry.group_jid,
-          error: e.message,
+          error: `HTTP ${resp.status}`,
         });
+        continue;
+      }
+
+      const payload = await resp.json();
+      const info = Array.isArray(payload) ? payload[0] : payload;
+      const realCount =
+        typeof info?.size === "number"
+          ? info.size
+          : Array.isArray(info?.participants)
+            ? info.participants.length
+            : null;
+      const realName = info?.subject || entry.group_name;
+
+      if (realCount === null) {
+        failed++;
+        errors.push({
+          instance_name: entry.instance_name,
+          group_jid: entry.group_jid,
+          error: "no member count in response",
+        });
+        continue;
+      }
+
+      await sb
+        .from("group_selected")
+        .update({
+          member_count: realCount,
+          group_name: realName,
+          member_count_updated_at: new Date().toISOString(),
+        })
+        .eq("id", entry.id);
+
+      syncedCounts.set(entry.group_jid, realCount);
+      syncedNames.set(entry.group_jid, realName);
+
+      results.push({
+        group_jid: entry.group_jid,
+        group_name: realName,
+        old_count: entry.member_count,
+        new_count: realCount,
+        instance_name: entry.instance_name,
+      });
+      synced++;
+    } catch (e: any) {
+      failed++;
+      errors.push({
+        instance_name: entry.instance_name,
+        group_jid: entry.group_jid,
+        error: e.message,
+      });
+    }
+  }
+
+  // Propagate updated counts to smart links
+  const { data: smartLinks } = await sb
+    .from("group_smart_links")
+    .select("id, group_links")
+    .eq("workspace_id", workspaceId)
+    .eq("is_active", true);
+
+  if (smartLinks?.length) {
+    for (const smartLink of smartLinks) {
+      const groupLinks = Array.isArray(smartLink.group_links) ? [...smartLink.group_links] : [];
+      let changed = false;
+      for (const groupLink of groupLinks) {
+        if (!groupLink?.group_jid || !syncedCounts.has(groupLink.group_jid)) continue;
+        groupLink.member_count = syncedCounts.get(groupLink.group_jid) || 0;
+        if (syncedNames.has(groupLink.group_jid)) {
+          groupLink.group_name = syncedNames.get(groupLink.group_jid);
+        }
+        changed = true;
+      }
+      if (changed) {
+        await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLink.id);
       }
     }
+  }
 
-    // Propagate updated counts to smart links
-    const { data: smartLinks } = await sb
-      .from("group_smart_links")
-      .select("id, group_links")
-      .eq("workspace_id", workspaceId)
-      .eq("is_active", true);
+  console.log(`[sync-stats] workspace ${workspaceId}: synced=${synced} failed=${failed}`);
+  return { synced, failed, groups: results, errors };
+}
 
-    if (smartLinks?.length) {
-      for (const smartLink of smartLinks) {
-        const groupLinks = Array.isArray(smartLink.group_links) ? [...smartLink.group_links] : [];
-        let changed = false;
-        for (const groupLink of groupLinks) {
-          if (!groupLink?.group_jid || !syncedCounts.has(groupLink.group_jid)) continue;
-          groupLink.member_count = syncedCounts.get(groupLink.group_jid) || 0;
-          if (syncedNames.has(groupLink.group_jid)) {
-            groupLink.group_name = syncedNames.get(groupLink.group_jid);
-          }
-          changed = true;
-        }
-        if (changed) {
-          await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLink.id);
-        }
-      }
-    }
-
-    console.log(`[sync-stats] workspace ${workspaceId}: synced=${synced} failed=${failed}`);
-    res.json({ synced, failed, groups: results, errors });
+/* ─── POST /sync-stats — debug manual via curl (frontend não usa mais) ─── */
+router.post("/sync-stats", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.body;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+    const result = await syncWorkspaceStats(workspaceId);
+    res.json(result);
   } catch (err: any) {
     console.error("[sync-stats] error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
+/* ─── Helper: sincroniza todos os workspaces que têm grupos monitorados ─── */
+export async function syncAllWorkspacesStats(): Promise<void> {
+  try {
+    const sb = getServiceClient();
+    const { data: rows } = await sb
+      .from("group_selected")
+      .select("workspace_id");
+    if (!rows || rows.length === 0) return;
+    const workspaceIds = [...new Set(rows.map((r: any) => r.workspace_id))];
+    console.log(`[sync-all] starting for ${workspaceIds.length} workspace(s)`);
+    for (const wsId of workspaceIds) {
+      try {
+        await syncWorkspaceStats(wsId);
+      } catch (e: any) {
+        console.error(`[sync-all] workspace ${wsId} failed:`, e.message);
+      }
+    }
+    console.log(`[sync-all] complete`);
+  } catch (err: any) {
+    console.error("[sync-all] fatal error:", err.message);
+  }
+}
 
 /* ─── GET /events — eventos de (instância, grupo) atualmente monitorados ───
    Faz JOIN implícito com group_selected via (workspace_id, instance_name, group_jid):
