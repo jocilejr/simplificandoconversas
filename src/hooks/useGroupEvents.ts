@@ -65,7 +65,19 @@ function buildGroupCounts(rows: Array<{ group_jid: string | null; action: string
   }, {});
 }
 
-async function fetchAllGroupEventsSupabase(workspaceId: string, monitoredJids: string[], start: string, end: string) {
+/** Lovable preview: query Supabase directly with strict (instance_name, group_jid) filter. */
+async function fetchAllGroupEventsSupabase(workspaceId: string, start: string, end: string) {
+  // 1) Get monitored tuples
+  const { data: monitored, error: monErr } = await supabase
+    .from("group_selected")
+    .select("instance_name, group_jid")
+    .eq("workspace_id", workspaceId);
+  if (monErr) throw monErr;
+  if (!monitored || monitored.length === 0) return [];
+
+  const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
+  const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
+
   const allRows: any[] = [];
   let from = 0;
   while (true) {
@@ -74,7 +86,7 @@ async function fetchAllGroupEventsSupabase(workspaceId: string, monitoredJids: s
       .from("group_participant_events")
       .select("*")
       .eq("workspace_id", workspaceId)
-      .in("group_jid", monitoredJids)
+      .in("group_jid", groupJids)
       .gte("created_at", start)
       .lte("created_at", end)
       .order("created_at", { ascending: false })
@@ -85,16 +97,13 @@ async function fetchAllGroupEventsSupabase(workspaceId: string, monitoredJids: s
     if (batch.length < EVENTS_PAGE_SIZE) break;
     from += EVENTS_PAGE_SIZE;
   }
-  return allRows;
+
+  // Final strict filter by (instance_name, group_jid)
+  return allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
 }
 
-async function fetchAllGroupEventsVPS(workspaceId: string, monitoredJids: string[], start: string, end: string) {
-  const params = new URLSearchParams({
-    workspaceId,
-    groupJids: monitoredJids.join(","),
-    start,
-    end,
-  });
+async function fetchAllGroupEventsVPS(workspaceId: string, start: string, end: string) {
+  const params = new URLSearchParams({ workspaceId, start, end });
   const resp = await fetch(`${apiUrl("groups/events")}?${params}`);
   if (!resp.ok) {
     const text = await resp.text();
@@ -103,22 +112,21 @@ async function fetchAllGroupEventsVPS(workspaceId: string, monitoredJids: string
   return resp.json();
 }
 
-export function useGroupEvents(monitoredJids: string[] = []) {
+export function useGroupEvents() {
   const { workspaceId } = useWorkspace();
   const [period, setPeriod] = useState<EventPeriod>("today");
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | undefined>();
 
   const { start, end } = getDateRange(period, customRange);
-  const hasJids = monitoredJids.length > 0;
 
   const { data: metrics = { events: [], eventCounts: emptyCounts, groupCounts: {} as Record<string, GroupActionCounts> }, isLoading } = useQuery({
-    queryKey: ["group-events", workspaceId, start, end, monitoredJids],
-    enabled: !!workspaceId && hasJids,
+    queryKey: ["group-events", workspaceId, start, end],
+    enabled: !!workspaceId,
     refetchInterval: 15000,
     queryFn: async () => {
       const data = isLovablePreview
-        ? await fetchAllGroupEventsSupabase(workspaceId!, monitoredJids, start, end)
-        : await fetchAllGroupEventsVPS(workspaceId!, monitoredJids, start, end);
+        ? await fetchAllGroupEventsSupabase(workspaceId!, start, end)
+        : await fetchAllGroupEventsVPS(workspaceId!, start, end);
 
       return {
         events: data,

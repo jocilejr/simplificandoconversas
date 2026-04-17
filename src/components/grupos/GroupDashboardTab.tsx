@@ -38,8 +38,7 @@ export default function GroupDashboardTab() {
   const { stats } = useGroupQueue();
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const monitoredJids = selectedGroups.map(g => g.group_jid);
-  const { events, eventCounts, groupCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents(monitoredJids);
+  const { events, eventCounts, groupCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
