@@ -2732,8 +2732,8 @@ function resolveEventWindow(query: Record<string, string>): { startUtc: string; 
   };
 }
 
-/* ─── GET /events — eventos brutos no período (filtrados, deduplicados, ordenados) ───
-   Front é dumb client: apenas exibe o array retornado.
+/* ─── GET /events — agregado por grupo (add/remove) via SQL bruto ───
+   Retorna { window, totals: {adds,removes}, groups: [{group_jid,group_name,adds,removes}] }
    ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] */
 router.get("/events", async (req: Request, res: Response) => {
   try {
@@ -2741,151 +2741,48 @@ router.get("/events", async (req: Request, res: Response) => {
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
-    const sb = getServiceClient();
 
-    const { data: monitored, error: monErr } = await sb
-      .from("group_selected")
-      .select("instance_name, group_jid")
-      .eq("workspace_id", workspaceId);
-    if (monErr) throw monErr;
-    if (!monitored || monitored.length === 0) return res.json([]);
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL });
 
-    const allowed = new Set((monitored as any[]).map((m) => `${m.instance_name}::${m.group_jid}`));
-    const groupJids = [...new Set((monitored as any[]).map((m) => m.group_jid))];
+    try {
+      const sql = `
+        SELECT
+          s.group_jid,
+          COALESCE(s.group_name, e.group_name) AS group_name,
+          COUNT(*) FILTER (WHERE e.action = 'add')    AS adds,
+          COUNT(*) FILTER (WHERE e.action = 'remove') AS removes
+        FROM public.group_selected s
+        LEFT JOIN public.group_events e
+          ON e.workspace_id  = s.workspace_id
+         AND e.instance_name = s.instance_name
+         AND e.group_jid     = s.group_jid
+         AND e.occurred_at  >= $2
+         AND e.occurred_at  <  $3
+        WHERE s.workspace_id = $1
+        GROUP BY s.group_jid, COALESCE(s.group_name, e.group_name)
+        ORDER BY group_name NULLS LAST, s.group_jid;
+      `;
+      const { rows } = await pool.query(sql, [workspaceId, startUtc, endUtc]);
 
-    // PostgREST self-hosted normalmente está com max-rows=100. Usamos páginas pequenas
-    // e checamos contagem total via header para garantir que não saímos cedo do loop.
-    const PAGE = 100;
-    const allRows: any[] = [];
-    let from = 0;
-    let totalExpected: number | null = null;
-    while (true) {
-      const resp = await sb
-        .from("group_participant_events")
-        .select("*", { count: "exact" })
-        .eq("workspace_id", workspaceId)
-        .in("group_jid", groupJids)
-        .in("action", ["add", "remove", "promote", "demote"])
-        .gte("created_at", startUtc)
-        .lt("created_at", endUtc)
-        .order("created_at", { ascending: false })
-        .range(from, from + PAGE - 1);
-      if (resp.error) throw resp.error;
-      const batch = resp.data || [];
-      allRows.push(...batch);
-      if (totalExpected === null && typeof resp.count === "number") totalExpected = resp.count;
-      if (batch.length === 0) break;
-      if (totalExpected !== null && allRows.length >= totalExpected) break;
-      if (batch.length < PAGE && totalExpected === null) break;
-      from += PAGE;
+      const groups = rows.map((r: any) => ({
+        group_jid: r.group_jid as string,
+        group_name: (r.group_name as string) || r.group_jid,
+        adds: Number(r.adds) || 0,
+        removes: Number(r.removes) || 0,
+      }));
+
+      const totals = groups.reduce(
+        (acc, g) => ({ adds: acc.adds + g.adds, removes: acc.removes + g.removes }),
+        { adds: 0, removes: 0 }
+      );
+
+      res.json({ window: { startUtc, endUtc }, totals, groups });
+    } finally {
+      await pool.end().catch(() => {});
     }
-
-    const filtered = allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
-    const seen = new Set<string>();
-    const deduped: any[] = [];
-    for (const e of filtered) {
-      const minute = new Date(e.created_at).toISOString().slice(0, 16);
-      const key = `${e.participant_jid}::${e.group_jid}::${e.action}::${minute}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      deduped.push(e);
-    }
-
-    res.json(deduped);
   } catch (err: any) {
     console.error("[groups-api] GET /events error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─── GET /events-summary — contagem agregada server-side ───
-   Front é dumb client: usa eventCounts e groupCounts diretos.
-   groupCounts inclui TODOS os group_jid de group_selected (zerados quando sem eventos).
-   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] */
-router.get("/events-summary", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId } = req.query as Record<string, string>;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-
-    const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
-    const sb = getServiceClient();
-
-    const { data: monitored, error: monErr } = await sb
-      .from("group_selected")
-      .select("instance_name, group_jid")
-      .eq("workspace_id", workspaceId);
-    if (monErr) throw monErr;
-
-    const emptyCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
-    const groupCounts: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
-
-    if (!monitored || monitored.length === 0) {
-      return res.json({ eventCounts: { ...emptyCounts }, groupCounts: {}, window: { startUtc, endUtc } });
-    }
-
-    for (const m of monitored as any[]) {
-      if (!groupCounts[m.group_jid]) groupCounts[m.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
-    }
-
-    const allowed = new Set((monitored as any[]).map((m) => `${m.instance_name}::${m.group_jid}`));
-    const groupJids = [...new Set((monitored as any[]).map((m) => m.group_jid))];
-
-    // PostgREST self-hosted normalmente está com max-rows=100. Usamos páginas pequenas
-    // e checamos contagem total via header para garantir que não saímos cedo do loop.
-    const PAGE = 100;
-    const allRows: any[] = [];
-    let from = 0;
-    let totalExpected: number | null = null;
-    while (true) {
-      const resp = await sb
-        .from("group_participant_events")
-        .select("instance_name, group_jid, action, participant_jid, created_at", { count: "exact" })
-        .eq("workspace_id", workspaceId)
-        .in("group_jid", groupJids)
-        .in("action", ["add", "remove", "promote", "demote"])
-        .gte("created_at", startUtc)
-        .lt("created_at", endUtc)
-        .order("created_at", { ascending: false })
-        .range(from, from + PAGE - 1);
-      if (resp.error) throw resp.error;
-      const batch = resp.data || [];
-      allRows.push(...batch);
-      if (totalExpected === null && typeof resp.count === "number") totalExpected = resp.count;
-      if (batch.length === 0) break;
-      if (totalExpected !== null && allRows.length >= totalExpected) break;
-      if (batch.length < PAGE && totalExpected === null) break;
-      from += PAGE;
-    }
-
-    const eventCounts = { ...emptyCounts };
-    const seen = new Set<string>();
-    let dedupedCount = 0;
-
-    for (const r of allRows) {
-      if (!allowed.has(`${r.instance_name}::${r.group_jid}`)) continue;
-      const action = r.action as keyof typeof emptyCounts;
-      if (!(action in eventCounts)) continue;
-
-      const minute = new Date(r.created_at).toISOString().slice(0, 16);
-      const key = `${r.participant_jid}::${r.group_jid}::${r.action}::${minute}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      dedupedCount++;
-
-      eventCounts[action]++;
-      if (!groupCounts[r.group_jid]) groupCounts[r.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
-      groupCounts[r.group_jid][action]++;
-    }
-
-    res.json({
-      eventCounts,
-      groupCounts,
-      totalRows: dedupedCount,
-      rawRows: allRows.length,
-      window: { startUtc, endUtc },
-    });
-  } catch (err: any) {
-    console.error("[groups-api] GET /events-summary error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

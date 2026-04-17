@@ -4,15 +4,32 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl } from "@/lib/api";
 
 export type EventPeriod = "today" | "yesterday" | "custom";
-type GroupActionCounts = { add: number; remove: number; promote: number; demote: number };
 
-const emptyCounts: GroupActionCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
+export type GroupEventRow = {
+  group_jid: string;
+  group_name: string;
+  adds: number;
+  removes: number;
+};
+
+type Totals = { adds: number; removes: number };
+type EventsResponse = {
+  window: { startUtc: string; endUtc: string };
+  totals: Totals;
+  groups: GroupEventRow[];
+};
+
+const emptyResponse: EventsResponse = {
+  window: { startUtc: "", endUtc: "" },
+  totals: { adds: 0, removes: 0 },
+  groups: [],
+};
 
 function buildParams(workspaceId: string, period: EventPeriod, customRange?: { from: Date; to: Date }) {
   const params = new URLSearchParams({ workspaceId, period });
   if (period === "custom" && customRange) {
     const fmt = (d: Date) => {
-      // Envia data civil em BRT (UTC-3); o backend interpreta como YYYY-MM-DD BRT.
+      // Envia data civil em BRT (UTC-3)
       const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
       return brt.toISOString().slice(0, 10);
     };
@@ -23,8 +40,8 @@ function buildParams(workspaceId: string, period: EventPeriod, customRange?: { f
 }
 
 /**
- * Dumb client: front apenas exibe o que o backend retorna.
- * Toda lógica de janela, filtragem, dedup e agregação vive em groups-api.ts.
+ * Dumb client: 1 chamada, retorna `totals` + `groups[]`.
+ * Toda lógica de janela e agregação vive no backend (SQL bruto via pg).
  */
 export function useGroupEvents() {
   const { workspaceId } = useWorkspace();
@@ -33,33 +50,26 @@ export function useGroupEvents() {
 
   const queryString = workspaceId ? buildParams(workspaceId, period, customRange) : "";
 
-  const { data: metrics = { events: [] as any[], eventCounts: emptyCounts, groupCounts: {} as Record<string, GroupActionCounts> }, isLoading } = useQuery({
+  const { data = emptyResponse, isLoading } = useQuery({
     queryKey: ["group-events", workspaceId, period, customRange?.from?.toISOString(), customRange?.to?.toISOString()],
     enabled: !!workspaceId,
     refetchInterval: 15000,
-    queryFn: async () => {
-      const [summaryResp, eventsResp] = await Promise.all([
-        fetch(`${apiUrl("groups/events-summary")}?${queryString}`),
-        fetch(`${apiUrl("groups/events")}?${queryString}`),
-      ]);
-      if (!summaryResp.ok) throw new Error(await summaryResp.text() || "Erro ao carregar resumo de eventos");
-      if (!eventsResp.ok) throw new Error(await eventsResp.text() || "Erro ao carregar eventos de grupo");
-
-      const summary = await summaryResp.json();
-      const events = await eventsResp.json();
-
+    queryFn: async (): Promise<EventsResponse> => {
+      const resp = await fetch(`${apiUrl("groups/events")}?${queryString}`);
+      if (!resp.ok) throw new Error((await resp.text()) || "Erro ao carregar eventos");
+      const json = await resp.json();
       return {
-        events: Array.isArray(events) ? events : [],
-        eventCounts: summary.eventCounts || emptyCounts,
-        groupCounts: summary.groupCounts || {},
+        window: json.window || { startUtc: "", endUtc: "" },
+        totals: json.totals || { adds: 0, removes: 0 },
+        groups: Array.isArray(json.groups) ? json.groups : [],
       };
     },
   });
 
   return {
-    events: metrics.events,
-    eventCounts: metrics.eventCounts,
-    groupCounts: metrics.groupCounts,
+    totals: data.totals,
+    groups: data.groups,
+    window: data.window,
     period,
     setPeriod,
     customRange,

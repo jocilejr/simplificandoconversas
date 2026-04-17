@@ -1826,6 +1826,42 @@ export type Database = {
           },
         ]
       }
+      group_events: {
+        Row: {
+          action: string
+          group_jid: string
+          group_name: string | null
+          id: string
+          instance_name: string
+          occurred_at: string
+          participant_jid: string
+          raw_payload: Json | null
+          workspace_id: string
+        }
+        Insert: {
+          action: string
+          group_jid: string
+          group_name?: string | null
+          id?: string
+          instance_name: string
+          occurred_at?: string
+          participant_jid: string
+          raw_payload?: Json | null
+          workspace_id: string
+        }
+        Update: {
+          action?: string
+          group_jid?: string
+          group_name?: string | null
+          id?: string
+          instance_name?: string
+          occurred_at?: string
+          participant_jid?: string
+          raw_payload?: Json | null
+          workspace_id?: string
+        }
+        Relationships: []
+      }
       group_message_queue: {
         Row: {
           campaign_id: string | null
@@ -1901,50 +1937,6 @@ export type Database = {
           },
           {
             foreignKeyName: "group_message_queue_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      group_participant_events: {
-        Row: {
-          action: string
-          created_at: string
-          group_jid: string
-          group_name: string
-          id: string
-          instance_name: string
-          participant_jid: string
-          user_id: string
-          workspace_id: string
-        }
-        Insert: {
-          action: string
-          created_at?: string
-          group_jid: string
-          group_name?: string
-          id?: string
-          instance_name: string
-          participant_jid: string
-          user_id: string
-          workspace_id: string
-        }
-        Update: {
-          action?: string
-          created_at?: string
-          group_jid?: string
-          group_name?: string
-          id?: string
-          instance_name?: string
-          participant_jid?: string
-          user_id?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "group_participant_events_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
