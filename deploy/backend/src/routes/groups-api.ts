@@ -54,8 +54,10 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
     .map((raw) => {
       const group = raw as EvolutionGroupPayload;
       const jid = group.id || group.jid || group.groupJid || "";
-      const participantCount = Array.isArray(group.participants) ? group.participants.length : 0;
-      const memberCount = typeof group.size === "number" ? group.size : participantCount;
+      const memberCount = Array.isArray(group.participants) ? group.participants.length : 0;
+      if (memberCount === 0) {
+        console.warn(`[fetch-groups] no participants returned for ${jid}`);
+      }
 
       return {
         jid,
@@ -696,7 +698,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
 
-    const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=false`, {
+    const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=true`, {
       headers: { apikey: apiKey },
     });
 
@@ -2567,20 +2569,16 @@ export async function syncWorkspaceStats(workspaceId: string): Promise<{
 
       const payload = await resp.json();
       const info = Array.isArray(payload) ? payload[0] : payload;
-      const realCount =
-        typeof info?.size === "number"
-          ? info.size
-          : Array.isArray(info?.participants)
-            ? info.participants.length
-            : null;
+      const realCount = Array.isArray(info?.participants) ? info.participants.length : 0;
       const realName = info?.subject || entry.group_name;
 
-      if (realCount === null) {
+      if (realCount === 0) {
+        console.warn(`[sync-stats] no participants returned for ${entry.group_jid} — skipping update`);
         failed++;
         errors.push({
           instance_name: entry.instance_name,
           group_jid: entry.group_jid,
-          error: "no member count in response",
+          error: "no participants in response",
         });
         continue;
       }
