@@ -3,11 +3,28 @@ import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
 
-/** Extract clean phone number from participant (string or object) */
+/** Extract clean phone number (12-13 digits). Returns "" if invalid (e.g., @lid without phoneNumber). */
 function extractPhone(p: any): string {
-  if (typeof p === "string") return p.replace(/@.*/, "").replace(/\D/g, "");
-  const raw = p.phoneNumber || p.id || "";
-  return raw.replace(/@.*/, "").replace(/\D/g, "");
+  const clean = (s: string) => s.replace(/@.*/, "").replace(/\D/g, "");
+
+  if (typeof p === "string") {
+    const v = clean(p);
+    return v.length >= 10 && v.length <= 13 ? v : "";
+  }
+  if (typeof p !== "object" || !p) return "";
+
+  // Always prefer phoneNumber over id (id may be temporary @lid)
+  const pn = typeof p.phoneNumber === "string" ? p.phoneNumber : "";
+  if (pn && !pn.includes("@lid")) {
+    const v = clean(pn);
+    if (v.length >= 10 && v.length <= 13) return v;
+  }
+  const id = typeof p.id === "string" ? p.id : "";
+  if (id && !id.includes("@lid")) {
+    const v = clean(id);
+    if (v.length >= 10 && v.length <= 13) return v;
+  }
+  return ""; // discard @lid-only or invalid
 }
 
 /* POST /api/groups/webhook/events
@@ -31,7 +48,7 @@ router.post("/events", async (req: Request, res: Response) => {
       return res.json({ ignored: true, reason: "no group or participants" });
     }
 
-    // Extract clean phone numbers and deduplicate within payload
+    // Extract clean phone numbers (rejects invalid/@lid) and deduplicate
     const cleanParticipants = participants.map(extractPhone).filter(Boolean);
     const uniqueParticipants = [...new Set(cleanParticipants)];
 
@@ -49,35 +66,23 @@ router.post("/events", async (req: Request, res: Response) => {
 
     if (!inst) return res.json({ ignored: true, reason: "instance not found" });
 
-    // Get group name from selected groups
-    const { data: sg } = await sb
+    // ── CRITICAL: only process if THIS instance was explicitly selected to monitor THIS group ──
+    const { data: monitored } = await sb
       .from("group_selected")
-      .select("group_name")
+      .select("id, group_name")
       .eq("workspace_id", inst.workspace_id)
+      .eq("instance_name", instanceName)
       .eq("group_jid", groupJid)
       .maybeSingle();
 
-    // Resolve group name with fallback from webhook payload
-    const groupName = sg?.group_name || data.subject || data.groupName || "";
-
-    // ── Temporal deduplication: skip participants already recorded in last 60s ──
-    const cutoff = new Date(Date.now() - 60_000).toISOString();
-    const { data: recent } = await sb
-      .from("group_participant_events")
-      .select("participant_jid")
-      .eq("workspace_id", inst.workspace_id)
-      .eq("group_jid", groupJid)
-      .eq("action", action)
-      .gte("created_at", cutoff);
-
-    const recentSet = new Set((recent || []).map((r: any) => r.participant_jid));
-    const newParticipants = uniqueParticipants.filter(p => !recentSet.has(p));
-
-    if (newParticipants.length === 0) {
-      return res.json({ ok: true, events: 0, reason: "all duplicates" });
+    if (!monitored) {
+      return res.json({ ignored: true, reason: "instance not selected for this group" });
     }
 
-    const rows = newParticipants.map((phone: string) => ({
+    // Resolve group name with fallback from webhook payload
+    const groupName = monitored.group_name || data.subject || data.groupName || "";
+
+    const rows = uniqueParticipants.map((phone: string) => ({
       workspace_id: inst.workspace_id,
       user_id: inst.user_id,
       instance_name: instanceName,
@@ -87,43 +92,58 @@ router.post("/events", async (req: Request, res: Response) => {
       action,
     }));
 
-    await sb.from("group_participant_events").insert(rows);
+    // Upsert with ignoreDuplicates relies on UNIQUE INDEX (workspace_id, group_jid, action, participant_jid, dedup_bucket)
+    const { data: inserted, error: upsertErr } = await sb
+      .from("group_participant_events")
+      .upsert(rows, {
+        onConflict: "workspace_id,group_jid,action,participant_jid,dedup_bucket",
+        ignoreDuplicates: true,
+      })
+      .select("id");
 
-    // ── Upsert group_daily_stats (member_count NOT touched — sync handles it) ──
-    try {
-      const todayBrt = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const additions = action === "add" ? newParticipants.length : 0;
-      const removals = action === "remove" ? newParticipants.length : 0;
-
-      const { data: existingStat } = await sb
-        .from("group_daily_stats")
-        .select("id, additions, removals")
-        .eq("workspace_id", inst.workspace_id)
-        .eq("date", todayBrt)
-        .eq("group_jid", groupJid)
-        .maybeSingle();
-
-      if (existingStat) {
-        await sb.from("group_daily_stats").update({
-          additions: (existingStat.additions || 0) + additions,
-          removals: (existingStat.removals || 0) + removals,
-        }).eq("id", existingStat.id);
-      } else {
-        await sb.from("group_daily_stats").insert({
-          workspace_id: inst.workspace_id,
-          date: todayBrt,
-          group_jid: groupJid,
-          group_name: groupName,
-          additions,
-          removals,
-          total_members: 0,
-        });
-      }
-    } catch (e: any) {
-      console.warn("[groups-webhook] Failed to upsert daily stats:", e.message);
+    if (upsertErr) {
+      console.warn("[groups-webhook] upsert error:", upsertErr.message);
     }
 
-    res.json({ ok: true, events: rows.length });
+    const insertedCount = inserted?.length ?? 0;
+
+    // ── Upsert group_daily_stats based on REAL inserted count ──
+    if (insertedCount > 0) {
+      try {
+        const todayBrt = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const additions = action === "add" ? insertedCount : 0;
+        const removals = action === "remove" ? insertedCount : 0;
+
+        const { data: existingStat } = await sb
+          .from("group_daily_stats")
+          .select("id, additions, removals")
+          .eq("workspace_id", inst.workspace_id)
+          .eq("date", todayBrt)
+          .eq("group_jid", groupJid)
+          .maybeSingle();
+
+        if (existingStat) {
+          await sb.from("group_daily_stats").update({
+            additions: (existingStat.additions || 0) + additions,
+            removals: (existingStat.removals || 0) + removals,
+          }).eq("id", existingStat.id);
+        } else {
+          await sb.from("group_daily_stats").insert({
+            workspace_id: inst.workspace_id,
+            date: todayBrt,
+            group_jid: groupJid,
+            group_name: groupName,
+            additions,
+            removals,
+            total_members: 0,
+          });
+        }
+      } catch (e: any) {
+        console.warn("[groups-webhook] Failed to upsert daily stats:", e.message);
+      }
+    }
+
+    res.json({ ok: true, events: insertedCount, attempted: rows.length });
   } catch (err: any) {
     console.error("[groups-webhook] error:", err.message);
     res.status(500).json({ error: err.message });
