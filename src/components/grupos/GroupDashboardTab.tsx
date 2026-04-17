@@ -93,14 +93,17 @@ export default function GroupDashboardTab() {
           ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}`
           : "Personalizado";
 
+  // Mapeia eventos por group_jid para mostrar +adds/−removes na lista de Grupos Monitorados
+  const eventsByJid = new Map(groups.map((g) => [g.group_jid, g]));
+
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      {/* 1) Visualizador de postagens — eventos por grupo (PRIMEIRO ITEM) */}
+      {/* 1) Grupos Monitorados (com eventos do período embutidos) — PRIMEIRO ITEM */}
       <Card className="border-border/50 min-w-0 overflow-hidden">
         <CardContent className="p-0">
           <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Postagens por Grupo — {periodLabel}
+              Grupos Monitorados — {periodLabel}
             </p>
             <span className="text-xs text-muted-foreground">
               <span className="text-green-500 font-medium">+{totals.adds}</span>
@@ -115,30 +118,28 @@ export default function GroupDashboardTab() {
                 Use a aba <span className="font-medium text-foreground">Selecionar</span> para escolher grupos e começar a registrar entradas e saídas.
               </p>
             </div>
-          ) : groups.length === 0 ? (
-            <div className="px-6 py-8 text-center space-y-1.5">
-              <p className="text-sm font-medium">Sem dados neste período.</p>
-              <p className="text-sm text-muted-foreground">
-                Confirme na VPS que o webhook <code className="text-xs">/api/groups/webhook/events</code> está ativo na Evolution.
-              </p>
-            </div>
           ) : (
             <div className="divide-y divide-border/30 max-h-[420px] overflow-y-auto">
-              {groups.map((g) => (
-                <div key={g.group_jid} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{g.group_name}</p>
+              {selectedGroups.map((g) => {
+                const ev = eventsByJid.get(g.group_jid);
+                return (
+                  <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{g.group_name}</p>
+                      <p className="text-xs text-muted-foreground">{g.instance_name}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-medium text-green-500">
+                        <UserPlus className="h-3 w-3" />+{ev?.adds ?? 0}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs font-medium text-red-500">
+                        <UserMinus className="h-3 w-3" />−{ev?.removes ?? 0}
+                      </span>
+                      <Badge variant="outline" className="text-xs border-border/50">{g.member_count}</Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="flex items-center gap-1 text-xs font-medium text-green-500">
-                      <UserPlus className="h-3 w-3" />+{g.adds}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs font-medium text-red-500">
-                      <UserMinus className="h-3 w-3" />−{g.removes}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -222,35 +223,6 @@ export default function GroupDashboardTab() {
       <div className="min-w-0 w-full overflow-hidden">
         <SchedulerDebugPanel />
       </div>
-
-      {/* 5) Lista de grupos monitorados (cru) */}
-      <Card className="border-border/50 min-w-0 overflow-hidden">
-        <CardContent className="p-0">
-          <div className="px-4 py-3 border-b border-border/50">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Grupos Monitorados</p>
-          </div>
-          {!hasSelectedGroups ? (
-            <div className="px-6 py-8 text-center space-y-1.5">
-              <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
-              <p className="text-sm text-muted-foreground">
-                Use a aba Selecionar para adicionar grupos e preencher a contagem de membros.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/30 max-h-[320px] overflow-y-auto">
-              {selectedGroups.map((g) => (
-                <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{g.group_name}</p>
-                    <p className="text-xs text-muted-foreground">{g.instance_name}</p>
-                  </div>
-                  <Badge variant="outline" className="text-xs border-border/50 shrink-0">{g.member_count}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
