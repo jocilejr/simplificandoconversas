@@ -54,8 +54,10 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
     .map((raw) => {
       const group = raw as EvolutionGroupPayload;
       const jid = group.id || group.jid || group.groupJid || "";
-      const participantCount = Array.isArray(group.participants) ? group.participants.length : 0;
-      const memberCount = typeof group.size === "number" ? group.size : participantCount;
+      const memberCount = Array.isArray(group.participants) ? group.participants.length : 0;
+      if (memberCount === 0) {
+        console.warn(`[fetch-groups] no participants returned for ${jid}`);
+      }
 
       return {
         jid,
