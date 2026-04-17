@@ -31,6 +31,7 @@ import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 import mediaManagerRouter from "./routes/media-manager";
 import { groupScheduler } from "./lib/group-scheduler";
+import { syncAllWorkspacesStats } from "./routes/groups-api";
 
 const app = express();
 app.use(cors());
