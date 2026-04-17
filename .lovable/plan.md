@@ -1,63 +1,81 @@
 
 
-## Investigação necessária
+## Diagnóstico do problema (com base nos dados que você já me mandou)
 
-Vou clonar e ler o projeto de referência `whats-grupos` no GitHub, comparar com o nosso webhook/contagem, e propor a cópia fiel da lógica de monitoramento.
+**O que vimos no SQL anterior:**
+- ✅ Workspace isolation: OK (0 grupos compartilhados entre workspaces)
+- ✅ Ações inválidas: 0 (webhook normalizando certo)
+- ⚠️ **15 eventos órfãos** em 6 tuplas `(workspace, instance, group)` que **não estão** em `group_selected`
 
-### Passo 1 — Ler o repositório externo
+**Por que ainda dá inconsistência (113 entraram / 57 saíram que você espera vs o que aparece):**
 
-Via `websearch--web_code_search` e `code--fetch_website` no GitHub raw:
-- `README.md` — entender arquitetura
-- Webhook handler (provavelmente `routes/webhook` ou similar)
-- Schema da tabela de eventos
-- Endpoint/query que calcula entrou/saiu
+Os 15 órfãos sozinhos não explicam a diferença. Logo, há outro fator. As 3 hipóteses restantes são:
 
-### Passo 2 — Comparar com nosso código atual
-- `deploy/backend/src/routes/groups-webhook.ts` — nosso handler
-- `deploy/backend/src/routes/groups-api.ts` — endpoint GET /events + sync-stats
-- `src/hooks/useGroupEvents.ts` — como o frontend consome
+1. **Janela de tempo BRT vs UTC** — `useGroupEvents` calcula "hoje" em BRT mas o backend pode estar comparando como string UTC. Se um evento chega às 23:30 BRT (= 02:30 UTC do dia seguinte), ele some do "hoje".
+2. **Duplicatas legítimas da Evolution** — a Evolution pode disparar o mesmo `group-participants.update` 2-3x (retry). Sem dedup, contamos 3 onde houve 1.
+3. **Endpoint `/events-summary` paginando errado** — se algum loop quebra no meio, o total fica menor.
 
-### Passo 3 — Diagnóstico dos 57/113 corretos vs o que está mostrando
-Rodar SQL na VPS pra ver:
-- Quantos eventos brutos de hoje existem (sem JOIN nenhum)
-- Quantos com JOIN estrito em `(workspace_id, instance_name, group_jid)`
-- Se há duplicatas por `(participant_jid, group_jid, action)` no mesmo minuto
-- Distribuição por `action` (add/remove vs event name cru como `group-participants.update`)
+## Plano de correção (3 passos cirúrgicos)
 
-### Hipóteses principais (antes de ler o repo)
+### Passo 1 — Limpeza dos órfãos (SQL na VPS, 1 comando)
+Remover os 15 eventos que não pertencem a nenhuma tupla monitorada. Isso já alinha parte da contagem.
 
-1. **`action` está sendo salvo errado** — se o payload não tem `data.action`, nosso código usa `event` (ex: `group-participants.update`), que não bate com `add`/`remove`. Isso explicaria valores bizarros.
-2. **Deduplicação por `dedup_bucket`** — o índice único pode estar descartando eventos legítimos ou não descartando retries.
-3. **Filtro por instância faltando em algum lugar** — eventos de instâncias não monitoradas ainda contabilizam.
-4. **Payload da Evolution tem array aninhado** diferente do que lemos.
+### Passo 2 — Adicionar deduplicação no backend
+Em `groups-api.ts`, dentro de `/events-summary` e `/events`, agrupar por `(participant_jid, group_jid, action, date_trunc('minute', created_at))` antes de contar. Eventos duplicados pelo retry da Evolution viram 1 só.
 
-### Plano de implementação (após leitura do repo de referência)
+### Passo 3 — Diagnóstico final dos números
+Rodar SQL que mostra **exatamente** o que o backend deveria retornar:
+- Total bruto hoje (BRT)
+- Total após dedup por minuto
+- Comparar com o que a tela mostra
 
-**A. Backend (`groups-webhook.ts`):**
-- Copiar fielmente o parser do payload Evolution do repo de referência
-- Garantir que `action` seja **sempre** `add` ou `remove` (normalização)
-- Remover lógica que atualiza `group_daily_stats` no webhook (webhook só popula `group_participant_events`)
+Se após dedup bater com 113/57, problema resolvido. Se não bater, te mando o próximo passo (provavelmente ajuste de timezone no `useGroupEvents`).
 
-**B. Backend (`groups-api.ts`):**
-- Substituir `GET /events` por **query agregada** que calcula entrou/saiu direto via SQL com JOIN estrito em `group_selected (workspace_id, instance_name, group_jid)` + filtro por `action IN ('add','remove')` + dedup por `(participant_jid, group_jid, action, date_trunc('minute', created_at))`
-- Retornar `{ eventCounts: { add, remove }, groupCounts: {...}, events: [...] }` pronto
+## Mudanças de código
 
-**C. Frontend (`useGroupEvents.ts`):**
-- Parar de contar no cliente. Apenas ler `eventCounts` do backend.
-- Remover `buildEventCounts` / `buildGroupCounts` (backend faz).
+- **`deploy/backend/src/routes/groups-api.ts`** — adicionar dedup por `(participant_jid, group_jid, action, minute)` em `/events-summary` e `/events`.
+- **Sem mudança de schema, sem migração SQL nova.**
+- **SQL de limpeza** rodado uma vez via terminal da VPS.
 
-**D. SQL cleanup na VPS (após deploy):**
-- Re-deletar eventos órfãos
-- Recalcular `group_daily_stats` via backend
-- Validar: `SELECT action, COUNT(*) FROM group_participant_events WHERE created_at >= hoje_brt GROUP BY action` deve bater com 113 entraram / 57 saíram
+## SQLs prontos pra copiar (após aprovar o plano)
 
-### Entregáveis desta task
+```bash
+# 1. Limpar órfãos
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres <<'SQL'
+DELETE FROM group_participant_events e
+WHERE NOT EXISTS (
+  SELECT 1 FROM group_selected s
+  WHERE s.workspace_id  = e.workspace_id
+    AND s.instance_name = e.instance_name
+    AND s.group_jid     = e.group_jid
+);
+SQL
 
-1. Leitura completa de `whats-grupos` (webhook, schema, query)
-2. Diff claro: "eles fazem X, nós fazemos Y, por isso divergência"
-3. Reescrita de `groups-webhook.ts` + `groups-api.ts` + `useGroupEvents.ts`
-4. SQL de limpeza final
-5. Curl de validação pós-deploy
+# 2. Diagnóstico bruto vs dedup (hoje BRT)
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres <<'SQL'
+WITH base AS (
+  SELECT e.*
+  FROM group_participant_events e
+  JOIN group_selected s
+    ON s.workspace_id  = e.workspace_id
+   AND s.instance_name = e.instance_name
+   AND s.group_jid     = e.group_jid
+  WHERE e.created_at >= ((now() AT TIME ZONE 'America/Sao_Paulo')::date) AT TIME ZONE 'America/Sao_Paulo'
+    AND e.created_at <  (((now() AT TIME ZONE 'America/Sao_Paulo')::date) + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo'
+)
+SELECT
+  'BRUTO' AS tipo, action, COUNT(*) AS total
+FROM base GROUP BY action
+UNION ALL
+SELECT
+  'DEDUP_MINUTO' AS tipo, action, COUNT(*) AS total
+FROM (
+  SELECT DISTINCT participant_jid, group_jid, action, date_trunc('minute', created_at)
+  FROM base
+) d GROUP BY action
+ORDER BY tipo, action;
+SQL
+```
 
-Sem mudança de schema (tabela `group_participant_events` continua a mesma; talvez adicionar índice de dedup se o repo externo tiver um melhor).
+Aprove o plano e eu já aplico o patch no backend + te entrego os comandos finais pra rodar na VPS.
 
