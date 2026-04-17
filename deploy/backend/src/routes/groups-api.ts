@@ -2729,7 +2729,19 @@ router.get("/events", async (req: Request, res: Response) => {
     // Final filter: only events whose (instance_name, group_jid) is monitored
     const filtered = allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
 
-    res.json(filtered);
+    // ── Deduplicação por (participant_jid, group_jid, action, minuto) ──
+    // Evolution pode reenviar o mesmo evento (retry). Mantemos o mais recente.
+    const seen = new Set<string>();
+    const deduped: any[] = [];
+    for (const e of filtered) {
+      const minute = new Date(e.created_at).toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+      const key = `${e.participant_jid}::${e.group_jid}::${e.action}::${minute}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(e);
+    }
+
+    res.json(deduped);
   } catch (err: any) {
     console.error("[groups-api] GET /events error:", err.message);
     res.status(500).json({ error: err.message });
