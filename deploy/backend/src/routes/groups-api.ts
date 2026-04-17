@@ -1259,6 +1259,35 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
           });
           if (!r.ok) throw new Error(await r.text());
+        } else if (item.message_type === "contact") {
+          // Form salva como { contactName, contactPhone }. Aceitar também { fullName, phoneNumber } e array { contacts: [...] }.
+          const rawList = Array.isArray(content.contacts) && content.contacts.length
+            ? content.contacts
+            : [{
+                fullName: content.contactName || content.fullName || content.name || "",
+                phoneNumber: content.contactPhone || content.phoneNumber || content.phone || "",
+                organization: content.organization || "",
+                email: content.email || "",
+              }];
+          const contacts = rawList.map((c: any) => {
+            const phoneDigits = String(c.phoneNumber || c.contactPhone || c.phone || "").replace(/\D/g, "");
+            return {
+              fullName: c.fullName || c.contactName || c.name || "",
+              wuid: phoneDigits,
+              phoneNumber: phoneDigits,
+              organization: c.organization || "",
+              email: c.email || "",
+            };
+          });
+          if (!contacts[0]?.fullName || !contacts[0]?.phoneNumber) {
+            throw new Error(`invalid_contact_data: ${JSON.stringify(content)}`);
+          }
+          const r = await fetch(`${baseUrl}/message/sendContact/${encoded}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: apiKey },
+            body: JSON.stringify({ number: item.group_jid, contact: contacts, mentionsEveryOne }),
+          });
+          if (!r.ok) throw new Error(await r.text());
         } else {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_media_url: ${JSON.stringify(content)}`);
