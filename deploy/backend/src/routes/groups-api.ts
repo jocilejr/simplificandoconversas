@@ -1260,19 +1260,50 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           });
           if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "contact") {
-          // Form salva como { contactName, contactPhone }. Aceitar também { fullName, phoneNumber } e array { contacts: [...] }.
+          // Form salva como { contactName, contactPhone, useInstanceNumber? }. Aceitar também { fullName, phoneNumber } e array { contacts: [...] }.
+          const useInstanceNumber = content.useInstanceNumber === true;
+
+          // Resolver número/nome da instância quando flag estiver ativa
+          let instanceOwnerPhone = "";
+          let instanceProfileName = "";
+          if (useInstanceNumber) {
+            try {
+              const fr = await fetch(`${baseUrl}/instance/fetchInstances?instanceName=${encoded}`, {
+                headers: { apikey: apiKey },
+              });
+              if (fr.ok) {
+                const arr = (await fr.json()) as any[];
+                const inst = Array.isArray(arr)
+                  ? arr.find((i: any) => (i?.instance?.instanceName || i?.name) === item.instance_name) || arr[0]
+                  : null;
+                const ownerRaw = inst?.instance?.owner || inst?.owner || inst?.ownerJid || inst?.number || "";
+                instanceOwnerPhone = String(ownerRaw).split("@")[0].replace(/\D/g, "");
+                instanceProfileName = inst?.instance?.profileName || inst?.profileName || "";
+              }
+            } catch (e) {
+              console.error("[groups-queue] fetchInstances error:", e);
+            }
+            if (!instanceOwnerPhone) {
+              throw new Error(`instance_phone_not_resolved: ${item.instance_name}`);
+            }
+          }
+
           const rawList = Array.isArray(content.contacts) && content.contacts.length
             ? content.contacts
             : [{
                 fullName: content.contactName || content.fullName || content.name || "",
-                phoneNumber: content.contactPhone || content.phoneNumber || content.phone || "",
+                phoneNumber: useInstanceNumber
+                  ? instanceOwnerPhone
+                  : (content.contactPhone || content.phoneNumber || content.phone || ""),
                 organization: content.organization || "",
                 email: content.email || "",
               }];
           const contacts = rawList.map((c: any) => {
-            const phoneDigits = String(c.phoneNumber || c.contactPhone || c.phone || "").replace(/\D/g, "");
+            const phoneDigits = useInstanceNumber
+              ? instanceOwnerPhone
+              : String(c.phoneNumber || c.contactPhone || c.phone || "").replace(/\D/g, "");
             return {
-              fullName: c.fullName || c.contactName || c.name || "",
+              fullName: c.fullName || c.contactName || c.name || instanceProfileName || "",
               wuid: phoneDigits,
               phoneNumber: phoneDigits,
               organization: c.organization || "",
