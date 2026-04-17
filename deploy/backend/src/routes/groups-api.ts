@@ -2781,7 +2781,7 @@ router.get("/events-summary", async (req: Request, res: Response) => {
     while (true) {
       let q = sb
         .from("group_participant_events")
-        .select("instance_name, group_jid, action")
+        .select("instance_name, group_jid, action, participant_jid, created_at")
         .eq("workspace_id", workspaceId)
         .in("group_jid", groupJids)
         .in("action", ["add", "remove", "promote", "demote"]);
@@ -2798,17 +2798,28 @@ router.get("/events-summary", async (req: Request, res: Response) => {
     const eventCounts = { ...emptyCounts };
     const groupCounts: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
 
+    // ── Deduplicação por (participant_jid, group_jid, action, minuto) ──
+    const seen = new Set<string>();
+    let dedupedCount = 0;
+
     for (const r of allRows) {
       // Strict filter: (instance_name, group_jid) must be monitored
       if (!allowed.has(`${r.instance_name}::${r.group_jid}`)) continue;
       const action = r.action as keyof typeof emptyCounts;
       if (!(action in eventCounts)) continue;
+
+      const minute = new Date(r.created_at).toISOString().slice(0, 16);
+      const key = `${r.participant_jid}::${r.group_jid}::${r.action}::${minute}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      dedupedCount++;
+
       eventCounts[action]++;
       if (!groupCounts[r.group_jid]) groupCounts[r.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
       groupCounts[r.group_jid][action]++;
     }
 
-    res.json({ eventCounts, groupCounts, totalRows: allRows.length });
+    res.json({ eventCounts, groupCounts, totalRows: dedupedCount, rawRows: allRows.length });
   } catch (err: any) {
     console.error("[groups-api] GET /events-summary error:", err.message);
     res.status(500).json({ error: err.message });
