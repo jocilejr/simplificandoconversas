@@ -27,7 +27,7 @@ export function useGroupSelected() {
   const { workspaceId } = useWorkspace();
   const isLovablePreview = (import.meta.env.VITE_SUPABASE_URL || "").includes(".supabase.co");
 
-  const { data: selectedGroups = [], isLoading } = useQuery({
+  const { data: selectedGroups = [], isLoading, dataUpdatedAt } = useQuery({
     queryKey: ["group-selected", workspaceId],
     enabled: !!workspaceId,
     staleTime: 60 * 60 * 1000, // 1h
@@ -111,5 +111,5 @@ export function useGroupSelected() {
     },
   });
 
-  return { selectedGroups, isLoading, fetchGroups, addGroups, removeGroup };
+  return { selectedGroups, isLoading, dataUpdatedAt, fetchGroups, addGroups, removeGroup };
 }

@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   UsersRound, Users, Megaphone, Send, UserPlus, UserMinus,
-  CalendarIcon, RefreshCw, Activity,
+  CalendarIcon, Activity, Clock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatCard } from "@/components/transactions/StatCard";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -23,8 +24,6 @@ import { ptBR } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
 function getBrazilNow(): Date {
@@ -38,20 +37,24 @@ function shortJid(jid: string): string {
 }
 
 export default function GroupDashboardTab() {
-  const { selectedGroups } = useGroupSelected();
+  const { selectedGroups, dataUpdatedAt } = useGroupSelected();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
   const { workspaceId } = useWorkspace();
-  const queryClient = useQueryClient();
   const { totals, groups, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
-  const [syncing, setSyncing] = useState(false);
   const [eventsOpen, setEventsOpen] = useState(false);
-  const syncedRef = useRef(false);
+  const [, setTick] = useState(0);
 
   const { events: liveEvents, isLoading: liveLoading } = useGroupEventsLive(period, customRange, eventsOpen);
+
+  // Re-renderiza a cada 30s para atualizar o label "Atualizado há X"
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   const hasSelectedGroups = selectedGroups.length > 0;
   const baseTotalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
@@ -65,37 +68,12 @@ export default function GroupDashboardTab() {
     [groups]
   );
 
-  const syncStats = async (silent = false) => {
-    if (!workspaceId || syncing) return;
-    setSyncing(true);
-    try {
-      const resp = await fetch(apiUrl("api/groups/sync-stats"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
-      });
-      if (resp.ok) {
-        const result = await resp.json();
-        queryClient.invalidateQueries({ queryKey: ["group-selected"] });
-        if (!silent && result.synced > 0) {
-          toast.success(`Sincronizado: ${result.synced} grupo(s) atualizado(s)`);
-        }
-      } else if (!silent) {
-        toast.error("Falha ao sincronizar contagens");
-      }
-    } catch {
-      if (!silent) toast.error("Erro ao conectar com o servidor");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    if (workspaceId && hasSelectedGroups && !syncedRef.current) {
-      syncedRef.current = true;
-      syncStats(true);
-    }
-  }, [workspaceId, hasSelectedGroups]);
+  const lastSyncLabel = dataUpdatedAt
+    ? `Atualizado ${formatDistanceToNow(new Date(dataUpdatedAt), { locale: ptBR, addSuffix: true })}`
+    : "Aguardando primeira atualização";
+  const lastSyncTooltip = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+    : "—";
 
   const handleCalendarSelect = (range: DateRange | undefined) => {
     setCalendarRange(range);
@@ -130,16 +108,17 @@ export default function GroupDashboardTab() {
               Informações Gerais — {periodLabel}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => syncStats(false)}
-                disabled={syncing || !hasSelectedGroups}
-                className="gap-1.5 h-7 text-xs"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-                Sincronizar
-              </Button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs text-muted-foreground border border-border/40 rounded-md bg-secondary/20">
+                      <Clock className="h-3.5 w-3.5" />
+                      {lastSyncLabel}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{lastSyncTooltip}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button
                 variant="outline"
                 size="sm"
