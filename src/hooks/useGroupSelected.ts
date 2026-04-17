@@ -30,7 +30,8 @@ export function useGroupSelected() {
   const { data: selectedGroups = [], isLoading } = useQuery({
     queryKey: ["group-selected", workspaceId],
     enabled: !!workspaceId,
-    refetchInterval: 15000,
+    staleTime: 60 * 60 * 1000, // 1h
+    refetchInterval: 60 * 60 * 1000, // 1h
     queryFn: async () => {
       if (isLovablePreview) {
         const { data, error } = await supabase
