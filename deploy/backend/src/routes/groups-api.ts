@@ -698,7 +698,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
 
-    const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=false`, {
+    const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=true`, {
       headers: { apikey: apiKey },
     });
 
