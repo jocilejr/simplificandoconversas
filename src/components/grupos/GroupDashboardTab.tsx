@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { UsersRound, Users, Megaphone, Send, UserPlus, UserMinus, ShieldCheck, ShieldMinus, CalendarIcon, RefreshCw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/transactions/StatCard";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -10,14 +9,11 @@ import { useGroupSelected } from "@/hooks/useGroupSelected";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents, EventPeriod } from "@/hooks/useGroupEvents";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { format } from "date-fns";
+import { useGroupStatsSummary } from "@/hooks/useGroupStatsSummary";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
-import { apiUrl } from "@/lib/api";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
 
 const actionConfig: Record<string, { icon: typeof UserPlus; color: string; label: string }> = {
@@ -36,53 +32,27 @@ export default function GroupDashboardTab() {
   const { selectedGroups } = useGroupSelected();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
-  const { workspaceId } = useWorkspace();
-  const queryClient = useQueryClient();
-  const { events, eventCounts, groupCounts, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
+  const { events, period, setPeriod, customRange, setCustomRange, start, end } = useGroupEvents();
+  const { summary } = useGroupStatsSummary({ start, end });
 
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
-  const [syncing, setSyncing] = useState(false);
-  const syncedRef = useRef(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // tick a cada 30s para atualizar "Sincronizado há X min"
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const hasSelectedGroups = selectedGroups.length > 0;
   const totalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsMonitored = selectedGroups.length;
 
-  // Sync member counts from Evolution API
-  const syncStats = async (silent = false) => {
-    if (!workspaceId || syncing) return;
-    setSyncing(true);
-    try {
-      const resp = await fetch(apiUrl("api/groups/sync-stats"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
-      });
-      if (resp.ok) {
-        const result = await resp.json();
-        queryClient.invalidateQueries({ queryKey: ["group-selected"] });
-        if (!silent && result.synced > 0) {
-          toast.success(`Sincronizado: ${result.synced} grupo(s) atualizado(s)`);
-        }
-      } else if (!silent) {
-        toast.error("Falha ao sincronizar contagens");
-      }
-    } catch (e) {
-      if (!silent) toast.error("Erro ao conectar com o servidor");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // Auto-sync on mount (once)
-  useEffect(() => {
-    if (workspaceId && hasSelectedGroups && !syncedRef.current) {
-      syncedRef.current = true;
-      syncStats(true);
-    }
-  }, [workspaceId, hasSelectedGroups]);
+  const lastSyncLabel = summary.lastSyncedAt
+    ? `Sincronizado ${formatDistanceToNow(new Date(summary.lastSyncedAt), { locale: ptBR, addSuffix: true })}`
+    : "Aguardando primeira sincronização automática";
 
   const handleCalendarSelect = (range: DateRange | undefined) => {
     setCalendarRange(range);
@@ -93,22 +63,19 @@ export default function GroupDashboardTab() {
     }
   };
 
-  const periodLabel = period === "today" ? "Hoje" : period === "yesterday" ? "Ontem" : 
+  const periodLabel = period === "today" ? "Hoje" : period === "yesterday" ? "Ontem" :
     customRange ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}` : "Personalizado";
+
+  // referencia `now` para forçar re-render do label
+  void now;
 
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
-      <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => syncStats(false)}
-          disabled={syncing || !hasSelectedGroups}
-          className="gap-1.5"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-          Sincronizar
-        </Button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span>{lastSyncLabel}</span>
+        </div>
         <div className="flex flex-wrap items-center gap-1 p-1 bg-secondary/30 rounded-lg border border-border/30">
           {(["today", "yesterday"] as EventPeriod[]).map((p) => (
             <button
