@@ -111,5 +111,5 @@ export function useGroupSelected() {
     },
   });
 
-  return { selectedGroups, isLoading, fetchGroups, addGroups, removeGroup };
+  return { selectedGroups, isLoading, dataUpdatedAt, fetchGroups, addGroups, removeGroup };
 }
