@@ -2736,6 +2736,70 @@ router.get("/events", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── GET /stats-summary — TOTAIS OFICIAIS via COUNT direto no banco ───
+   Esta é a fonte de verdade dos cards "Entraram/Saíram".
+   Filtra estritamente por (workspace_id, instance_name, group_jid) presente em group_selected.
+   Faz COUNT por ação somente sobre eventos cuja tupla está monitorada. */
+router.get("/stats-summary", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, start, end } = req.query as Record<string, string>;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+
+    const { data: monitored, error: monErr } = await sb
+      .from("group_selected")
+      .select("instance_name, group_jid, member_count_updated_at")
+      .eq("workspace_id", workspaceId);
+    if (monErr) throw monErr;
+    if (!monitored || monitored.length === 0) {
+      return res.json({ add: 0, remove: 0, promote: 0, demote: 0, perGroup: {}, lastSyncedAt: null });
+    }
+
+    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
+    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
+
+    // last sync timestamp (max member_count_updated_at)
+    const lastSyncedAt = monitored.reduce<string | null>((acc, m: any) => {
+      if (!m.member_count_updated_at) return acc;
+      if (!acc || m.member_count_updated_at > acc) return m.member_count_updated_at;
+      return acc;
+    }, null);
+
+    // Page through events and aggregate in JS — strict tuple filter.
+    const PAGE = 1000;
+    const totals = { add: 0, remove: 0, promote: 0, demote: 0 } as Record<string, number>;
+    const perGroup: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
+    let from = 0;
+    while (true) {
+      let query = sb
+        .from("group_participant_events")
+        .select("instance_name, group_jid, action")
+        .eq("workspace_id", workspaceId)
+        .in("group_jid", groupJids);
+      if (start) query = query.gte("created_at", start);
+      if (end) query = query.lte("created_at", end);
+      const { data, error } = await query.range(from, from + PAGE - 1);
+      if (error) throw error;
+      const batch = data || [];
+      for (const r of batch as any[]) {
+        if (!allowed.has(`${r.instance_name}::${r.group_jid}`)) continue;
+        const a = r.action as string;
+        if (a in totals) totals[a]++;
+        if (!perGroup[r.group_jid]) perGroup[r.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
+        if (a in perGroup[r.group_jid]) (perGroup[r.group_jid] as any)[a]++;
+      }
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+
+    res.json({ ...totals, perGroup, lastSyncedAt });
+  } catch (err: any) {
+    console.error("[groups-api] GET /stats-summary error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { getEvolutionConfig };
 

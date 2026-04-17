@@ -102,17 +102,15 @@ router.post("/events", async (req: Request, res: Response) => {
       action,
     }));
 
-    // Upsert with ignoreDuplicates relies on UNIQUE INDEX (workspace_id, group_jid, action, participant_jid, dedup_bucket)
-    const { data: inserted, error: upsertErr } = await sb
+    // PORT do whats-grupos: insert direto, sem dedup mágico (Baileys/Evolution já controlam o que enviam).
+    // O agregado oficial é calculado em GET /stats-summary fazendo COUNT(*) no banco.
+    const { data: inserted, error: insertErr } = await sb
       .from("group_participant_events")
-      .upsert(rows, {
-        onConflict: "workspace_id,group_jid,action,participant_jid,dedup_bucket",
-        ignoreDuplicates: true,
-      })
+      .insert(rows)
       .select("id");
 
-    if (upsertErr) {
-      console.warn("[groups-webhook] upsert error:", upsertErr.message);
+    if (insertErr) {
+      console.error("[groups-webhook] insert error:", insertErr.message);
     }
 
     const insertedCount = inserted?.length ?? 0;

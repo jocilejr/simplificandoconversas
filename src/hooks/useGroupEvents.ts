@@ -138,12 +138,16 @@ export function useGroupEvents() {
 
   return {
     events: metrics.events,
+    // eventCounts/groupCounts ficam disponíveis como fallback, mas o dashboard
+    // deve preferir useGroupStatsSummary (COUNT direto no banco).
     eventCounts: metrics.eventCounts,
     groupCounts: metrics.groupCounts,
     period,
     setPeriod,
     customRange,
     setCustomRange,
+    start,
+    end,
     isLoading,
   };
 }
