@@ -3,6 +3,9 @@ import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
 
+/** Ações válidas que contabilizamos. Qualquer outro valor é descartado. */
+const VALID_ACTIONS = new Set(["add", "remove", "promote", "demote"]);
+
 /** Extract clean phone number (12-13 digits). Returns "" if invalid (e.g., @lid without phoneNumber). */
 function extractPhone(p: any): string {
   const clean = (s: string) => s.replace(/@.*/, "").replace(/\D/g, "");
@@ -24,17 +27,23 @@ function extractPhone(p: any): string {
     const v = clean(id);
     if (v.length >= 10 && v.length <= 13) return v;
   }
-  return ""; // discard @lid-only or invalid
+  return "";
+}
+
+/** Normaliza action: só aceita add/remove/promote/demote (rejeita "group-participants.update" etc). */
+function normalizeAction(raw: any): string | null {
+  if (typeof raw !== "string") return null;
+  const a = raw.toLowerCase().trim();
+  return VALID_ACTIONS.has(a) ? a : null;
 }
 
 /* POST /api/groups/webhook/events
-   Receives group-participants.update from Evolution API.
+   Recebe group-participants.update da Evolution API.
 
-   ── REGRA CRÍTICA ──
-   Um evento só é registrado quando a tupla (workspace_id, instance_name, group_jid)
-   existe em group_selected. Se a instância Y também é membro do grupo 1 mas só a
-   instância X selecionou esse grupo para monitorar, eventos vindos da Y são
-   silenciosamente descartados. */
+   ── REGRAS ──
+   1. action DEVE ser add/remove/promote/demote. Qualquer outro valor é descartado.
+   2. Só registra se a tupla (workspace_id, instance_name, group_jid) existir em group_selected.
+   3. INSERT simples (sem upsert/dedup) — espelha comportamento do whats-grupos de referência. */
 router.post("/events", async (req: Request, res: Response) => {
   try {
     const body = req.body;
@@ -48,13 +57,21 @@ router.post("/events", async (req: Request, res: Response) => {
     const instanceName = body.instance || body.instanceName || "";
     const groupJid = data.groupJid || data.id || "";
     const participants = data.participants || [];
-    const action = data.action || event; // add, remove, promote, demote
+
+    // ── action deve vir do payload `data.action`. Nunca derivar de `event`. ──
+    const action = normalizeAction(data.action);
+    if (!action) {
+      return res.json({
+        ignored: true,
+        reason: `invalid or missing action (received: ${data.action ?? "null"})`,
+      });
+    }
 
     if (!groupJid || participants.length === 0) {
       return res.json({ ignored: true, reason: "no group or participants" });
     }
 
-    // Extract clean phone numbers (rejects invalid/@lid) and deduplicate
+    // Extract clean phone numbers (rejects invalid/@lid) and deduplicate per request
     const cleanParticipants = participants.map(extractPhone).filter(Boolean);
     const uniqueParticipants = [...new Set(cleanParticipants)];
 
@@ -72,8 +89,7 @@ router.post("/events", async (req: Request, res: Response) => {
 
     if (!inst) return res.json({ ignored: true, reason: "instance not found" });
 
-    // ── FILTRO ESTRITO: (workspace_id, instance_name, group_jid) deve existir em group_selected ──
-    // Eventos de outras instâncias (mesmo que estejam no grupo) são descartados.
+    // ── FILTRO ESTRITO: (workspace_id, instance_name, group_jid) em group_selected ──
     const { data: monitored } = await sb
       .from("group_selected")
       .select("id, group_name")
@@ -89,7 +105,6 @@ router.post("/events", async (req: Request, res: Response) => {
       });
     }
 
-    // Resolve group name with fallback from webhook payload
     const groupName = monitored.group_name || data.subject || data.groupName || "";
 
     const rows = uniqueParticipants.map((phone: string) => ({
@@ -102,58 +117,18 @@ router.post("/events", async (req: Request, res: Response) => {
       action,
     }));
 
-    // Upsert with ignoreDuplicates relies on UNIQUE INDEX (workspace_id, group_jid, action, participant_jid, dedup_bucket)
-    const { data: inserted, error: upsertErr } = await sb
+    // ── INSERT simples (sem dedup_bucket) — modelo do whats-grupos ──
+    const { data: inserted, error: insertErr } = await sb
       .from("group_participant_events")
-      .upsert(rows, {
-        onConflict: "workspace_id,group_jid,action,participant_jid,dedup_bucket",
-        ignoreDuplicates: true,
-      })
+      .insert(rows)
       .select("id");
 
-    if (upsertErr) {
-      console.warn("[groups-webhook] upsert error:", upsertErr.message);
+    if (insertErr) {
+      console.error("[groups-webhook] insert error:", insertErr.message);
+      return res.status(500).json({ error: insertErr.message });
     }
 
-    const insertedCount = inserted?.length ?? 0;
-
-    // ── Upsert group_daily_stats based on REAL inserted count ──
-    if (insertedCount > 0) {
-      try {
-        const todayBrt = new Date(new Date().getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const additions = action === "add" ? insertedCount : 0;
-        const removals = action === "remove" ? insertedCount : 0;
-
-        const { data: existingStat } = await sb
-          .from("group_daily_stats")
-          .select("id, additions, removals")
-          .eq("workspace_id", inst.workspace_id)
-          .eq("date", todayBrt)
-          .eq("group_jid", groupJid)
-          .maybeSingle();
-
-        if (existingStat) {
-          await sb.from("group_daily_stats").update({
-            additions: (existingStat.additions || 0) + additions,
-            removals: (existingStat.removals || 0) + removals,
-          }).eq("id", existingStat.id);
-        } else {
-          await sb.from("group_daily_stats").insert({
-            workspace_id: inst.workspace_id,
-            date: todayBrt,
-            group_jid: groupJid,
-            group_name: groupName,
-            additions,
-            removals,
-            total_members: 0,
-          });
-        }
-      } catch (e: any) {
-        console.warn("[groups-webhook] Failed to upsert daily stats:", e.message);
-      }
-    }
-
-    res.json({ ok: true, events: insertedCount, attempted: rows.length });
+    res.json({ ok: true, events: inserted?.length ?? 0, action });
   } catch (err: any) {
     console.error("[groups-webhook] error:", err.message);
     res.status(500).json({ error: err.message });

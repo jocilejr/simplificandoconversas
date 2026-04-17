@@ -13,6 +13,7 @@ type GroupActionCounts = { add: number; remove: number; promote: number; demote:
 const BRAZIL_TIMEZONE = "America/Sao_Paulo";
 const emptyCounts: GroupActionCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
 const EVENTS_PAGE_SIZE = 1000;
+const VALID_ACTIONS = new Set(["add", "remove", "promote", "demote"]);
 
 const isLovablePreview = (import.meta.env.VITE_SUPABASE_URL || "").includes(".supabase.co");
 
@@ -42,11 +43,12 @@ function getDateRange(period: EventPeriod, customRange?: { from: Date; to: Date 
   return toBrazilUtcRange(now);
 }
 
+/** Client-side aggregation — used ONLY as fallback in Lovable preview. */
 function buildEventCounts(rows: Array<{ action: string | null }>) {
   const counts: GroupActionCounts = { ...emptyCounts };
   for (const row of rows) {
     const action = row.action as keyof GroupActionCounts;
-    if (action in counts) counts[action]++;
+    if (VALID_ACTIONS.has(action)) counts[action]++;
   }
   return counts;
 }
@@ -54,26 +56,23 @@ function buildEventCounts(rows: Array<{ action: string | null }>) {
 function buildGroupCounts(rows: Array<{ group_jid: string | null; action: string | null }>) {
   return rows.reduce<Record<string, GroupActionCounts>>((acc, row) => {
     if (!row.group_jid) return acc;
-    if (!acc[row.group_jid]) {
-      acc[row.group_jid] = { ...emptyCounts };
-    }
+    if (!acc[row.group_jid]) acc[row.group_jid] = { ...emptyCounts };
     const action = row.action as keyof GroupActionCounts;
-    if (action in acc[row.group_jid]) {
-      acc[row.group_jid][action]++;
-    }
+    if (VALID_ACTIONS.has(action)) acc[row.group_jid][action]++;
     return acc;
   }, {});
 }
 
-/** Lovable preview: query Supabase directly with strict (instance_name, group_jid) filter. */
-async function fetchAllGroupEventsSupabase(workspaceId: string, start: string, end: string) {
-  // 1) Get monitored tuples
+/** Lovable preview: query Supabase directly (no backend available). */
+async function fetchSupabaseFallback(workspaceId: string, start: string, end: string) {
   const { data: monitored, error: monErr } = await supabase
     .from("group_selected")
     .select("instance_name, group_jid")
     .eq("workspace_id", workspaceId);
   if (monErr) throw monErr;
-  if (!monitored || monitored.length === 0) return [];
+  if (!monitored || monitored.length === 0) {
+    return { events: [], eventCounts: emptyCounts, groupCounts: {} };
+  }
 
   const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
   const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
@@ -87,6 +86,7 @@ async function fetchAllGroupEventsSupabase(workspaceId: string, start: string, e
       .select("*")
       .eq("workspace_id", workspaceId)
       .in("group_jid", groupJids)
+      .in("action", ["add", "remove", "promote", "demote"])
       .gte("created_at", start)
       .lte("created_at", end)
       .order("created_at", { ascending: false })
@@ -98,18 +98,39 @@ async function fetchAllGroupEventsSupabase(workspaceId: string, start: string, e
     from += EVENTS_PAGE_SIZE;
   }
 
-  // Final strict filter by (instance_name, group_jid)
-  return allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
+  const filtered = allRows.filter((e: any) => allowed.has(`${e.instance_name}::${e.group_jid}`));
+  return {
+    events: filtered,
+    eventCounts: buildEventCounts(filtered),
+    groupCounts: buildGroupCounts(filtered),
+  };
 }
 
-async function fetchAllGroupEventsVPS(workspaceId: string, start: string, end: string) {
+/** VPS: use backend endpoints. Summary + lista recente em paralelo. */
+async function fetchVPS(workspaceId: string, start: string, end: string) {
   const params = new URLSearchParams({ workspaceId, start, end });
-  const resp = await fetch(`${apiUrl("groups/events")}?${params}`);
-  if (!resp.ok) {
-    const text = await resp.text();
+  const [summaryResp, eventsResp] = await Promise.all([
+    fetch(`${apiUrl("groups/events-summary")}?${params}`),
+    fetch(`${apiUrl("groups/events")}?${params}`),
+  ]);
+
+  if (!summaryResp.ok) {
+    const text = await summaryResp.text();
+    throw new Error(text || "Erro ao carregar resumo de eventos");
+  }
+  if (!eventsResp.ok) {
+    const text = await eventsResp.text();
     throw new Error(text || "Erro ao carregar eventos de grupo");
   }
-  return resp.json();
+
+  const summary = await summaryResp.json();
+  const events = await eventsResp.json();
+
+  return {
+    events: Array.isArray(events) ? events : [],
+    eventCounts: summary.eventCounts || emptyCounts,
+    groupCounts: summary.groupCounts || {},
+  };
 }
 
 export function useGroupEvents() {
@@ -124,15 +145,10 @@ export function useGroupEvents() {
     enabled: !!workspaceId,
     refetchInterval: 15000,
     queryFn: async () => {
-      const data = isLovablePreview
-        ? await fetchAllGroupEventsSupabase(workspaceId!, start, end)
-        : await fetchAllGroupEventsVPS(workspaceId!, start, end);
-
-      return {
-        events: data,
-        eventCounts: buildEventCounts(data || []),
-        groupCounts: buildGroupCounts(data || []),
-      };
+      if (isLovablePreview) {
+        return await fetchSupabaseFallback(workspaceId!, start, end);
+      }
+      return await fetchVPS(workspaceId!, start, end);
     },
   });
 

@@ -2736,6 +2736,73 @@ router.get("/events", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── GET /events-summary — contagem agregada server-side ───
+   Retorna { eventCounts: { add, remove, promote, demote }, groupCounts: {...} }
+   calculada via uma única query filtrada estritamente por tuplas (instance, group)
+   monitoradas no workspace. Nunca conta action fora de add/remove/promote/demote. */
+router.get("/events-summary", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId, start, end } = req.query as Record<string, string>;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const sb = getServiceClient();
+
+    const { data: monitored, error: monErr } = await sb
+      .from("group_selected")
+      .select("instance_name, group_jid")
+      .eq("workspace_id", workspaceId);
+
+    if (monErr) throw monErr;
+
+    const emptyCounts = { add: 0, remove: 0, promote: 0, demote: 0 };
+    if (!monitored || monitored.length === 0) {
+      return res.json({ eventCounts: emptyCounts, groupCounts: {} });
+    }
+
+    const allowed = new Set(monitored.map((m: any) => `${m.instance_name}::${m.group_jid}`));
+    const groupJids = [...new Set(monitored.map((m: any) => m.group_jid))];
+
+    // Page through ALL matching events (no 1000 cap)
+    const PAGE = 1000;
+    const allRows: any[] = [];
+    let from = 0;
+    while (true) {
+      let q = sb
+        .from("group_participant_events")
+        .select("instance_name, group_jid, action")
+        .eq("workspace_id", workspaceId)
+        .in("group_jid", groupJids)
+        .in("action", ["add", "remove", "promote", "demote"]);
+      if (start) q = q.gte("created_at", start);
+      if (end) q = q.lte("created_at", end);
+      const { data, error } = await q.range(from, from + PAGE - 1);
+      if (error) throw error;
+      const batch = data || [];
+      allRows.push(...batch);
+      if (batch.length < PAGE) break;
+      from += PAGE;
+    }
+
+    const eventCounts = { ...emptyCounts };
+    const groupCounts: Record<string, { add: number; remove: number; promote: number; demote: number }> = {};
+
+    for (const r of allRows) {
+      // Strict filter: (instance_name, group_jid) must be monitored
+      if (!allowed.has(`${r.instance_name}::${r.group_jid}`)) continue;
+      const action = r.action as keyof typeof emptyCounts;
+      if (!(action in eventCounts)) continue;
+      eventCounts[action]++;
+      if (!groupCounts[r.group_jid]) groupCounts[r.group_jid] = { add: 0, remove: 0, promote: 0, demote: 0 };
+      groupCounts[r.group_jid][action]++;
+    }
+
+    res.json({ eventCounts, groupCounts, totalRows: allRows.length });
+  } catch (err: any) {
+    console.error("[groups-api] GET /events-summary error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { getEvolutionConfig };
 
