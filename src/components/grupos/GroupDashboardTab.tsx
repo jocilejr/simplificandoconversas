@@ -108,16 +108,17 @@ export default function GroupDashboardTab() {
               Informações Gerais — {periodLabel}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => syncStats(false)}
-                disabled={syncing || !hasSelectedGroups}
-                className="gap-1.5 h-7 text-xs"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-                Sincronizar
-              </Button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs text-muted-foreground border border-border/40 rounded-md bg-secondary/20">
+                      <Clock className="h-3.5 w-3.5" />
+                      {lastSyncLabel}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{lastSyncTooltip}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button
                 variant="outline"
                 size="sm"
