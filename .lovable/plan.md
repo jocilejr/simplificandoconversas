@@ -1,81 +1,41 @@
 
 
-## Diagnóstico do problema (com base nos dados que você já me mandou)
+## Princípio aceito
 
-**O que vimos no SQL anterior:**
-- ✅ Workspace isolation: OK (0 grupos compartilhados entre workspaces)
-- ✅ Ações inválidas: 0 (webhook normalizando certo)
-- ⚠️ **15 eventos órfãos** em 6 tuplas `(workspace, instance, group)` que **não estão** em `group_selected`
+Front é **dumb client**. Apenas exibe o que `/api/groups/events-summary` e `/api/groups/events` retornam. Zero lógica de filtragem, dedup, agregação ou normalização no front.
 
-**Por que ainda dá inconsistência (113 entraram / 57 saíram que você espera vs o que aparece):**
+## Estado atual (auditoria rápida)
 
-Os 15 órfãos sozinhos não explicam a diferença. Logo, há outro fator. As 3 hipóteses restantes são:
+**`useGroupEvents.ts`** já chama os endpoints VPS via `fetchVPS()` quando NÃO está em preview Lovable. Mas tem 3 violações desse princípio:
 
-1. **Janela de tempo BRT vs UTC** — `useGroupEvents` calcula "hoje" em BRT mas o backend pode estar comparando como string UTC. Se um evento chega às 23:30 BRT (= 02:30 UTC do dia seguinte), ele some do "hoje".
-2. **Duplicatas legítimas da Evolution** — a Evolution pode disparar o mesmo `group-participants.update` 2-3x (retry). Sem dedup, contamos 3 onde houve 1.
-3. **Endpoint `/events-summary` paginando errado** — se algum loop quebra no meio, o total fica menor.
+1. **Fallback Supabase direto** (`fetchSupabaseFallback`) — refaz toda a query no client, com filtro `allowed.has()`, paginação manual e `buildEventCounts`/`buildGroupCounts` rodando no JS. Vira fonte alternativa de números diferentes.
+2. **Cálculo de `start`/`end` em BRT no front** — o front decide a janela e manda pro backend. Se o front errar o fuso, o backend obedece. O backend deveria receber só `period=today|yesterday|custom&from=&to=` e calcular a janela.
+3. **`buildGroupCounts` ainda roda no front** se o backend não retornar `groupCounts` — fallback silencioso que pode mascarar bugs.
 
-## Plano de correção (3 passos cirúrgicos)
+## Plano (front vira dumb client)
 
-### Passo 1 — Limpeza dos órfãos (SQL na VPS, 1 comando)
-Remover os 15 eventos que não pertencem a nenhuma tupla monitorada. Isso já alinha parte da contagem.
+### 1. `useGroupEvents.ts` — remover toda lógica
+- **Remover** `fetchSupabaseFallback`, `buildEventCounts`, `buildGroupCounts`, `getDateRange`, `toBrazilUtcRange`, `VALID_ACTIONS`, `EVENTS_PAGE_SIZE`.
+- **Remover** o flag `isLovablePreview` — o app só roda na VPS, fallback Supabase é código morto que confunde.
+- Hook fica com **uma única chamada**: `GET /api/groups/events-summary?workspaceId=X&period=today` (sem cálculo de start/end no front).
+- Usar exatamente `eventCounts` e `groupCounts` retornados, sem nenhum recálculo.
 
-### Passo 2 — Adicionar deduplicação no backend
-Em `groups-api.ts`, dentro de `/events-summary` e `/events`, agrupar por `(participant_jid, group_jid, action, date_trunc('minute', created_at))` antes de contar. Eventos duplicados pelo retry da Evolution viram 1 só.
+### 2. `groups-api.ts` — backend assume responsabilidade total da janela
+- Endpoint passa a aceitar `period=today|yesterday|custom` + `from`/`to` opcionais (só usados se `period=custom`).
+- Cálculo de "hoje BRT" (`((now() AT TIME ZONE 'America/Sao_Paulo')::date) AT TIME ZONE 'America/Sao_Paulo'`) feito **no SQL**, igual ao diagnóstico que já validou 88/74.
+- Mesma lógica em `/events` (lista).
+- Manter dedup por minuto que já existe.
+- Garantir que `groupCounts` sempre venha preenchido pra todo `group_jid` em `group_selected` (mesmo zerado), pra UI não precisar inventar default.
 
-### Passo 3 — Diagnóstico final dos números
-Rodar SQL que mostra **exatamente** o que o backend deveria retornar:
-- Total bruto hoje (BRT)
-- Total após dedup por minuto
-- Comparar com o que a tela mostra
+### 3. Validação pós-deploy
+Após deploy, o front deve mostrar **exatamente 88/74** (= o que o banco tem hoje). Se mostrar, o problema #1 (front ≠ banco) está fechado.
 
-Se após dedup bater com 113/57, problema resolvido. Se não bater, te mando o próximo passo (provavelmente ajuste de timezone no `useGroupEvents`).
+Aí atacamos o #2 (banco 88/74 vs real 113/57) numa próxima iteração, com logging de descarte no `groups-webhook.ts`.
 
-## Mudanças de código
+## Arquivos a alterar
 
-- **`deploy/backend/src/routes/groups-api.ts`** — adicionar dedup por `(participant_jid, group_jid, action, minute)` em `/events-summary` e `/events`.
-- **Sem mudança de schema, sem migração SQL nova.**
-- **SQL de limpeza** rodado uma vez via terminal da VPS.
+- `src/hooks/useGroupEvents.ts` — reescrita completa (vira ~40 linhas)
+- `deploy/backend/src/routes/groups-api.ts` — `/events-summary` e `/events` passam a calcular janela via SQL com `period`
 
-## SQLs prontos pra copiar (após aprovar o plano)
-
-```bash
-# 1. Limpar órfãos
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres <<'SQL'
-DELETE FROM group_participant_events e
-WHERE NOT EXISTS (
-  SELECT 1 FROM group_selected s
-  WHERE s.workspace_id  = e.workspace_id
-    AND s.instance_name = e.instance_name
-    AND s.group_jid     = e.group_jid
-);
-SQL
-
-# 2. Diagnóstico bruto vs dedup (hoje BRT)
-docker exec -i deploy-postgres-1 psql -U postgres -d postgres <<'SQL'
-WITH base AS (
-  SELECT e.*
-  FROM group_participant_events e
-  JOIN group_selected s
-    ON s.workspace_id  = e.workspace_id
-   AND s.instance_name = e.instance_name
-   AND s.group_jid     = e.group_jid
-  WHERE e.created_at >= ((now() AT TIME ZONE 'America/Sao_Paulo')::date) AT TIME ZONE 'America/Sao_Paulo'
-    AND e.created_at <  (((now() AT TIME ZONE 'America/Sao_Paulo')::date) + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo'
-)
-SELECT
-  'BRUTO' AS tipo, action, COUNT(*) AS total
-FROM base GROUP BY action
-UNION ALL
-SELECT
-  'DEDUP_MINUTO' AS tipo, action, COUNT(*) AS total
-FROM (
-  SELECT DISTINCT participant_jid, group_jid, action, date_trunc('minute', created_at)
-  FROM base
-) d GROUP BY action
-ORDER BY tipo, action;
-SQL
-```
-
-Aprove o plano e eu já aplico o patch no backend + te entrego os comandos finais pra rodar na VPS.
+Sem schema. Sem migração. Sem mudança de UI (`GroupDashboardTab` continua consumindo `eventCounts`/`groupCounts` igual).
 
