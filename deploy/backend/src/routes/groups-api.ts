@@ -2787,6 +2787,62 @@ router.get("/events", async (req: Request, res: Response) => {
   }
 });
 
+/* ─── GET /events-live — eventos crus (add/remove) cronologicamente ───
+   Retorna { window, events: [{id,group_jid,group_name,participant_jid,action,occurred_at}] }
+   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD][&limit=200] */
+router.get("/events-live", async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.query as Record<string, string>;
+    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
+
+    const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
+    const limitRaw = parseInt((req.query.limit as string) || "200", 10);
+    const limit = Math.min(Math.max(isNaN(limitRaw) ? 200 : limitRaw, 1), 1000);
+
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL });
+
+    try {
+      const sql = `
+        SELECT
+          e.id,
+          e.group_jid,
+          COALESCE(s.group_name, e.group_name) AS group_name,
+          e.participant_jid,
+          e.action,
+          e.occurred_at
+        FROM public.group_events e
+        JOIN public.group_selected s
+          ON s.workspace_id  = e.workspace_id
+         AND s.instance_name = e.instance_name
+         AND s.group_jid     = e.group_jid
+        WHERE e.workspace_id = $1
+          AND e.occurred_at >= $2
+          AND e.occurred_at <  $3
+        ORDER BY e.occurred_at DESC
+        LIMIT $4;
+      `;
+      const { rows } = await pool.query(sql, [workspaceId, startUtc, endUtc, limit]);
+
+      const events = rows.map((r: any) => ({
+        id: r.id as string,
+        group_jid: r.group_jid as string,
+        group_name: (r.group_name as string) || r.group_jid,
+        participant_jid: r.participant_jid as string,
+        action: r.action as "add" | "remove",
+        occurred_at: r.occurred_at as string,
+      }));
+
+      res.json({ window: { startUtc, endUtc }, events });
+    } finally {
+      await pool.end().catch(() => {});
+    }
+  } catch (err: any) {
+    console.error("[groups-api] GET /events-live error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── Exportar helpers para uso no cron ─── */
 export { getEvolutionConfig };
 

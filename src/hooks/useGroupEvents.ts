@@ -53,7 +53,7 @@ export function useGroupEvents() {
   const { data = emptyResponse, isLoading } = useQuery({
     queryKey: ["group-events", workspaceId, period, customRange?.from?.toISOString(), customRange?.to?.toISOString()],
     enabled: !!workspaceId,
-    refetchInterval: 15000,
+    refetchInterval: 30000,
     queryFn: async (): Promise<EventsResponse> => {
       const resp = await fetch(`${apiUrl("groups/events")}?${queryString}`);
       if (!resp.ok) throw new Error((await resp.text()) || "Erro ao carregar eventos");
