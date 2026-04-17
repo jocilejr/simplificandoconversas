@@ -72,6 +72,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
   // Contact
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [useInstanceNumber, setUseInstanceNumber] = useState(false);
   // Poll
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
@@ -100,7 +101,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
       setCaption(c.caption || "");
       setLocName(c.name || ""); setLocAddress(c.address || "");
       setLocLat(c.latitude?.toString() || ""); setLocLng(c.longitude?.toString() || "");
-      setContactName(c.contactName || ""); setContactPhone(c.contactPhone || "");
+      setContactName(c.contactName || ""); setContactPhone(c.contactPhone || ""); setUseInstanceNumber(c.useInstanceNumber === true);
       setPollQuestion(c.question || c.pollName || "");
       setPollOptions(c.options || c.pollOptions || ["", ""]);
       setPollSelectable(c.selectableCount || c.pollSelectable || 1);
@@ -143,7 +144,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
       setMessageType("text"); setTextContent(""); setMentionAll(false); setForceLinkPreview(true);
       setMediaUrl(""); setCaption("");
       setLocName(""); setLocAddress(""); setLocLat(""); setLocLng("");
-      setContactName(""); setContactPhone("");
+      setContactName(""); setContactPhone(""); setUseInstanceNumber(false);
       setPollQuestion(""); setPollOptions(["", ""]); setPollSelectable(1);
       setListTitle(""); setListDescription(""); setListButtonText("Ver opções"); setListFooter("");
       setScheduledAt(""); setTimeValue("09:00");
@@ -162,7 +163,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
       case "image": case "video": case "document": case "sticker": case "audio":
         return { ...base, mediaUrl, caption };
       case "location": return { ...base, latitude: locLat, longitude: locLng, name: locName, address: locAddress };
-      case "contact": return { ...base, contactName, contactPhone };
+      case "contact": return { ...base, contactName, contactPhone: useInstanceNumber ? "" : contactPhone, useInstanceNumber };
       case "poll": return { ...base, question: pollQuestion, options: pollOptions, selectableCount: pollSelectable };
       case "list": return { ...base, title: listTitle, description: listDescription, buttonText: listButtonText, footer: listFooter };
       default: return base;
@@ -248,7 +249,7 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
                       setMessageType(t.value);
                       setTextContent(""); setMediaUrl(""); setCaption("");
                       setLocName(""); setLocAddress(""); setLocLat(""); setLocLng("");
-                      setContactName(""); setContactPhone("");
+                      setContactName(""); setContactPhone(""); setUseInstanceNumber(false);
                       setPollQuestion(""); setPollOptions(["", ""]); setPollSelectable(1);
                       setListTitle(""); setListDescription(""); setListButtonText("Ver opções"); setListFooter("");
                       setMentionAll(false);
@@ -345,13 +346,26 @@ export default function GroupScheduledMessageForm({ open, onOpenChange, schedule
 
             {messageType === "contact" && (
               <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-md border border-border/50 bg-background/50 px-3 py-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-medium">Usar número da instância de envio</Label>
+                    <p className="text-[11px] text-muted-foreground">O telefone será resolvido automaticamente no momento do envio.</p>
+                  </div>
+                  <Switch checked={useInstanceNumber} onCheckedChange={setUseInstanceNumber} />
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Nome do contato *</Label>
                   <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="João Silva" className="bg-background/50 border-border/50" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Telefone *</Label>
-                  <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="5511999998888" className="bg-background/50 border-border/50" />
+                  <Label className="text-xs text-muted-foreground">Telefone {useInstanceNumber ? "(automático)" : "*"}</Label>
+                  <Input
+                    value={useInstanceNumber ? "" : contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    disabled={useInstanceNumber}
+                    placeholder={useInstanceNumber ? "Número da instância (resolvido no envio)" : "5511999998888"}
+                    className="bg-background/50 border-border/50"
+                  />
                 </div>
               </div>
             )}
