@@ -2753,13 +2753,16 @@ router.get("/events", async (req: Request, res: Response) => {
     const allowed = new Set((monitored as any[]).map((m) => `${m.instance_name}::${m.group_jid}`));
     const groupJids = [...new Set((monitored as any[]).map((m) => m.group_jid))];
 
-    const PAGE = 1000;
+    // PostgREST self-hosted normalmente está com max-rows=100. Usamos páginas pequenas
+    // e checamos contagem total via header para garantir que não saímos cedo do loop.
+    const PAGE = 100;
     const allRows: any[] = [];
     let from = 0;
+    let totalExpected: number | null = null;
     while (true) {
-      const { data, error } = await sb
+      const resp = await sb
         .from("group_participant_events")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("workspace_id", workspaceId)
         .in("group_jid", groupJids)
         .in("action", ["add", "remove", "promote", "demote"])
@@ -2767,10 +2770,13 @@ router.get("/events", async (req: Request, res: Response) => {
         .lt("created_at", endUtc)
         .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
-      if (error) throw error;
-      const batch = data || [];
+      if (resp.error) throw resp.error;
+      const batch = resp.data || [];
       allRows.push(...batch);
-      if (batch.length < PAGE) break;
+      if (totalExpected === null && typeof resp.count === "number") totalExpected = resp.count;
+      if (batch.length === 0) break;
+      if (totalExpected !== null && allRows.length >= totalExpected) break;
+      if (batch.length < PAGE && totalExpected === null) break;
       from += PAGE;
     }
 
@@ -2824,23 +2830,30 @@ router.get("/events-summary", async (req: Request, res: Response) => {
     const allowed = new Set((monitored as any[]).map((m) => `${m.instance_name}::${m.group_jid}`));
     const groupJids = [...new Set((monitored as any[]).map((m) => m.group_jid))];
 
-    const PAGE = 1000;
+    // PostgREST self-hosted normalmente está com max-rows=100. Usamos páginas pequenas
+    // e checamos contagem total via header para garantir que não saímos cedo do loop.
+    const PAGE = 100;
     const allRows: any[] = [];
     let from = 0;
+    let totalExpected: number | null = null;
     while (true) {
-      const { data, error } = await sb
+      const resp = await sb
         .from("group_participant_events")
-        .select("instance_name, group_jid, action, participant_jid, created_at")
+        .select("instance_name, group_jid, action, participant_jid, created_at", { count: "exact" })
         .eq("workspace_id", workspaceId)
         .in("group_jid", groupJids)
         .in("action", ["add", "remove", "promote", "demote"])
         .gte("created_at", startUtc)
         .lt("created_at", endUtc)
+        .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
-      if (error) throw error;
-      const batch = data || [];
+      if (resp.error) throw resp.error;
+      const batch = resp.data || [];
       allRows.push(...batch);
-      if (batch.length < PAGE) break;
+      if (totalExpected === null && typeof resp.count === "number") totalExpected = resp.count;
+      if (batch.length === 0) break;
+      if (totalExpected !== null && allRows.length >= totalExpected) break;
+      if (batch.length < PAGE && totalExpected === null) break;
       from += PAGE;
     }
 
