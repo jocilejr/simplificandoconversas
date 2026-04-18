@@ -45,10 +45,7 @@ services:
     image: supabase/gotrue:v2.186.0
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      - postgres
       interval: 5s
       timeout: 5s
       retries: 20
@@ -79,10 +76,7 @@ services:
     image: postgrest/postgrest:v12.2.3
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      - postgres
       PGRST_DB_SCHEMAS: public,storage
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
@@ -93,10 +87,7 @@ services:
     image: supabase/storage-api:v1.11.13
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      ANON_KEY: ${ANON_KEY}
+      - postgres
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
       POSTGREST_URL: http://postgrest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
@@ -115,11 +106,10 @@ services:
 
   # ─── Baileys Gateway (WhatsApp) ───
   baileys-gateway:
-    build: ./baileys-gateway
+    image: simplificando-baileys-gateway:latest
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     environment:
       PORT: "8080"
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
@@ -130,13 +120,11 @@ services:
 
   # ─── Backend Express ───
   backend:
-    build: ./backend
+    image: simplificando-backend:latest
     restart: always
     depends_on:
-      postgres:
-        condition: service_healthy
-      gotrue:
-        condition: service_started
+      - postgres
+      - gotrue
     volumes:
       - chatbot_media:/media-files
     environment:
