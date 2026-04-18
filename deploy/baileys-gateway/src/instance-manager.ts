@@ -80,7 +80,7 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     auth: state,
     logger: logger as any,
     printQRInTerminal: false,
-    browser: Browsers.ubuntu("Chrome"),
+    browser: Browsers.macOS("Chrome"),
     syncFullHistory: false,
     markOnlineOnConnect: false,
     generateHighQualityLinkPreview: false,
@@ -130,11 +130,23 @@ async function startSocket(instanceName: string): Promise<WASocket> {
         `[baileys:${instanceName}] connection closed (statusCode=${statusCode}, loggedOut=${loggedOut})`
       );
 
+      const timedOut = statusCode === DisconnectReason.timedOut;
+
       if (loggedOut) {
         await deleteAllAuth(instanceName).catch(() => {});
         runtime.sock = null;
         runtime.qr = null;
         instances.delete(instanceName);
+      } else if (timedOut && runtime.reconnectAttempts >= 3) {
+        // After 3 timeouts, clear auth state so a fresh QR is generated
+        console.log(`[baileys:${instanceName}] clearing stale auth after repeated timeouts`);
+        await deleteAllAuth(instanceName).catch(() => {});
+        runtime.reconnectAttempts = 0;
+        setTimeout(() => {
+          startSocket(instanceName).catch((err) =>
+            console.error(`[baileys:${instanceName}] reconnect error:`, err?.message)
+          );
+        }, 3_000);
       } else {
         // Reconnect with exponential backoff (cap 60s)
         runtime.reconnectAttempts += 1;
