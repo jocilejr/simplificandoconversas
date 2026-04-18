@@ -8,7 +8,6 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceProvider, useWorkspace } from "@/hooks/useWorkspace";
 import { PermissionGate } from "@/components/PermissionGate";
 import Auth from "./pages/Auth";
-import SmartLinkRedirect from "./pages/SmartLinkRedirect";
 import Leads from "./pages/Leads";
 import ChatbotBuilder from "./pages/ChatbotBuilder";
 import SettingsPage from "./pages/SettingsPage";
@@ -21,7 +20,6 @@ import Transacoes from "./pages/Transacoes";
 import RelatorioFinanceiro from "./pages/RelatorioFinanceiro";
 
 import GerarBoleto from "./pages/GerarBoleto";
-import GruposPage from "./pages/GruposPage";
 import AreaMembros from "./pages/AreaMembros";
 import EntregaDigital from "./pages/EntregaDigital";
 import LinksUteis from "./pages/LinksUteis";
@@ -53,7 +51,6 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<Auth />} />
-            <Route path="/r/g/:slug" element={<SmartLinkRedirect />} />
             <Route path="/r/:code" element={<LinkRedirect />} />
              <Route path="/a/entrega/:phone" element={<MemberAccess />} />
              <Route path="/membros/:phone" element={<MemberAccess />} />
@@ -73,7 +70,6 @@ const App = () => (
                 <Route path="/relatorio" element={<PermissionGate permission="relatorio" redirect><RelatorioFinanceiro /></PermissionGate>} />
                 <Route path="/recuperacao" element={<Navigate to="/transacoes" replace />} />
                 <Route path="/gerar-boleto" element={<PermissionGate permission="gerar_boleto" redirect><GerarBoleto /></PermissionGate>} />
-                <Route path="/grupos" element={<PermissionGate permission="grupos" redirect><GruposPage /></PermissionGate>} />
                 <Route path="/area-membros" element={<PermissionGate permission="area_membros" redirect><AreaMembros /></PermissionGate>} />
                 <Route path="/entrega" element={<PermissionGate permission="entrega" redirect><EntregaDigital /></PermissionGate>} />
                 <Route path="/links-uteis" element={<PermissionGate permission="links_uteis" redirect><LinksUteis /></PermissionGate>} />

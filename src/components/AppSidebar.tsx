@@ -11,7 +11,6 @@ import {
   RefreshCw,
   FileText,
   BarChart3,
-  UsersRound,
   Crown,
   Package,
   LinkIcon,
@@ -66,7 +65,6 @@ const operationalItems: MenuItem[] = [
   { title: "Fluxos", url: "/chatbot", icon: Workflow, permKey: "chatbot" },
   { title: "E-mail", url: "/email", icon: Mail, permKey: "email" },
   { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
-  { title: "Grupos", url: "/grupos", icon: UsersRound, permKey: "grupos" },
   { title: "Links Úteis", url: "/links-uteis", icon: LinkIcon, permKey: "links_uteis" },
   { title: "Respostas Rápidas", url: "/respostas-rapidas", icon: MessageSquareText, permKey: "respostas_rapidas" },
 ];
