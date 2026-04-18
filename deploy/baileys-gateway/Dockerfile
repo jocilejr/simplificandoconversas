@@ -6,7 +6,9 @@ RUN apk add --no-cache python3 make g++ ffmpeg vips-dev curl git
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install --omit=dev
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
+RUN npm install --omit=dev --ignore-scripts \
+ && npm rebuild sharp --verbose || true
 
 COPY tsconfig.json ./
 COPY src ./src
