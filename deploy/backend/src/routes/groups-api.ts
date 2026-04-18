@@ -190,7 +190,7 @@ export function calculateNextRunAt(msg: { schedule_type: string; content: any })
     }
 
     case "monthly": {
-      const monthDay = parseInt(content.monthDay || content.customDays || "1", 10);
+      const monthDay = parseInt(String(content.monthDay ?? content.customDays ?? "1"), 10);
       // Next month on monthDay
       let nextMonth = brt.month + 1;
       let nextYear = brt.year;
@@ -205,7 +205,7 @@ export function calculateNextRunAt(msg: { schedule_type: string; content: any })
 
     case "custom": {
       // Custom days of month (e.g. "1,15" or "5")
-      const customDaysStr: string = content.customDays || content.monthDay || "";
+      const customDaysStr: string = String(content.customDays ?? content.monthDay ?? "");
       const weekDaysCustom: number[] = content.weekDays || content.weekdays || [];
 
       if (customDaysStr) {
@@ -297,7 +297,7 @@ export function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?:
     }
 
     case "monthly": {
-      const monthDay = parseInt(content.monthDay || content.customDays || "1", 10);
+      const monthDay = parseInt(String(content.monthDay ?? content.customDays ?? "1"), 10);
       const candidate = brtToUtc(brt.year, brt.month, monthDay, hh, mm);
       if (candidate > brt.date) return candidate.toISOString();
       let nextMonth = brt.month + 1;
@@ -307,7 +307,7 @@ export function calculateFirstRunAt(msg: { schedule_type: string; scheduled_at?:
     }
 
     case "custom": {
-      const customDaysStr: string = content.customDays || content.monthDay || "";
+      const customDaysStr: string = String(content.customDays ?? content.monthDay ?? "");
       const weekDaysCustom: number[] = content.weekDays || content.weekdays || [];
 
       if (customDaysStr) {
