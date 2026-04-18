@@ -7,7 +7,7 @@ REPO_ROOT="$(dirname "$DEPLOY_DIR")"
 echo "═══ Atualizando deploy ═══"
 
 # Load env
-source "$DEPLOY_DIR/.env"
+set -a; source "$DEPLOY_DIR/.env"; set +a
 
 # ============================================================
 # Detect orchestrator (Swarm vs Compose)
@@ -137,19 +137,23 @@ fi
 echo "[5/5] Restarting..."
 
 if [ "$SWARM_ACTIVE" = true ]; then
-  # Force recreate services with new images
+  echo "   → Aplicando stack (cria serviços novos + atualiza existentes)..."
+  docker stack deploy \
+    -c "$DEPLOY_DIR/portainer-stack.yml" \
+    --with-registry-auth \
+    --resolve-image=always \
+    "$STACK_NAME"
+  echo "✓ Stack aplicada"
+
+  # Força recriação dos serviços que usam imagens locais recém-buildadas
+  sleep 3
   for svc in backend baileys-gateway nginx; do
     if docker service inspect "${STACK_NAME}_${svc}" >/dev/null 2>&1; then
-      IMG=""
-      case "$svc" in
-        backend) IMG="--image simplificando-backend:latest" ;;
-        baileys-gateway) IMG="--image simplificando-baileys-gateway:latest" ;;
-      esac
-      docker service update --force $IMG "${STACK_NAME}_${svc}" >/dev/null \
-        && echo "✓ Serviço ${svc} atualizado" \
-        || echo "⚠ Falha atualizando ${svc}"
+      docker service update --force "${STACK_NAME}_${svc}" >/dev/null 2>&1 \
+        && echo "✓ Serviço ${svc} reiniciado" \
+        || echo "⚠ Falha reiniciando ${svc}"
     else
-      echo "⚠ Serviço ${STACK_NAME}_${svc} não existe — faça 'Pull and redeploy' no Portainer"
+      echo "⚠ Serviço ${STACK_NAME}_${svc} ainda não existe após deploy"
     fi
   done
 else
