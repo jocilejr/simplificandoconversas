@@ -174,7 +174,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <Button variant="ghost" size="sm" onClick={onBack}>
+      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
       </Button>
       <Card className="border-border/50">
@@ -195,7 +195,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" onClick={handleFetchGroups} disabled={!instanceName || fetching} className="border-border/50">
+                 <Button type="button" variant="outline" onClick={handleFetchGroups} disabled={!instanceName || fetching} className="border-border/50">
                   <Search className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} /> Buscar Grupos
                 </Button>
               </div>
@@ -216,7 +216,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
                     <TableBody>
                       {fetchedGroups.map(g => (
                         <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleGroup(g.jid)}>
-                          <TableCell><Checkbox checked={selectedJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} /></TableCell>
+                          <TableCell><Checkbox checked={selectedJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} onClick={(e) => e.stopPropagation()} /></TableCell>
                           <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
                           <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
                         </TableRow>
@@ -240,7 +240,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
                     <Input type="number" value={maxMembers} onChange={e => setMaxMembers(Number(e.target.value))} min={1} />
                   </div>
                 </div>
-                <Button onClick={handleCreate} disabled={createSmartLink.isPending} className="w-full">
+                <Button type="button" onClick={handleCreate} disabled={createSmartLink.isPending} className="w-full">
                   <Plus className="h-4 w-4 mr-1" /> Criar Smart Link
                 </Button>
               </>
