@@ -4,16 +4,6 @@ server {
     server_name ${APP_DOMAIN};
     client_max_body_size 50M;
 
-    # Smart link redirect — proxy to backend groups API
-    location /r/g/ {
-        rewrite ^/r/g/(.+)$ /api/groups/smart-link-redirect?slug=$1 break;
-        proxy_pass http://backend:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
     # Link redirect — proxy to backend so bots get OG tags without JS
     location /r/ {
         rewrite ^/r/(.+)$ /api/link-redirect?code=$1 break;
@@ -293,34 +283,6 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # Import media — higher body limit for file uploads
-    location /functions/v1/groups/import-media {
-        if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' $cors_origin always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'authorization, x-client-info, apikey, content-type, accept, accept-profile, content-profile, x-supabase-api-version, prefer, range' always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Max-Age' 86400;
-            add_header 'Content-Length' 0;
-            return 204;
-        }
-        client_max_body_size 100M;
-        proxy_hide_header 'Access-Control-Allow-Origin';
-        proxy_hide_header 'Access-Control-Allow-Methods';
-        proxy_hide_header 'Access-Control-Allow-Headers';
-        proxy_hide_header 'Access-Control-Allow-Credentials';
-        add_header 'Access-Control-Allow-Origin' $cors_origin always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        proxy_pass http://backend:3001/api/groups/import-media;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
     }
 
     # Edge Functions compatibility → Backend Express

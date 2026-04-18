@@ -13,7 +13,6 @@ export const ALL_PERMISSIONS = [
   { key: "relatorio", label: "Relatório" },
   { key: "recuperacao", label: "Recuperação" },
   { key: "gerar_boleto", label: "Gerar Boleto" },
-  { key: "grupos", label: "Grupos" },
   { key: "area_membros", label: "Área de Membros" },
   { key: "entrega", label: "Entrega Digital" },
   { key: "links_uteis", label: "Links Úteis" },
