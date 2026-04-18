@@ -2,124 +2,82 @@
 
 ## Diagnóstico
 
-Substituir Evolution por Baileys = reescrita massiva. Precisa: novo serviço `baileys-gateway` (container), gerenciador multi-instância, persistência de auth, tradução de eventos para o formato de webhook atual, refactor de ~10 rotas do backend, ajustes no compose/nginx, remoção de tudo Evolution (container, DB, Redis, env vars, volumes, código, memória).
+A stack roda via **Docker Swarm** (Portainer), nomes reais: `simplificando_postgres`, `simplificando_backend`, etc. O `update.sh` usa `docker compose exec` que não funciona com Swarm — por isso `service "postgres" is not running`.
 
-## Decisões assumidas (não pergunto de novo — ritmo direto)
+Também vejo:
+- `simplificando_evolution` ainda rodando (precisa derrubar no cutover).
+- `simplificando_redis` ainda rodando (idem).
+- `baileys-server` (container antigo standalone) rodando — não é o nosso `baileys-gateway`.
+- Não existe serviço `simplificando_baileys-gateway` ainda — Portainer não foi redeployado com o novo `portainer-stack.yml`.
 
-- **Cutover total**: derruba Evolution, todos reescaneiam QR. Sem paralelo.
-- **Serviço separado** `baileys-gateway` (Node + `@whiskeysockets/baileys`) expondo HTTP REST compatível com o contrato Evolution atual (mesmas rotas/payloads que o backend já consome) — minimiza refactor do backend.
-- **Auth state em Postgres** (tabela `baileys_auth_state` no `deploy-postgres-1`) — sobrevive a restart, multi-tenant.
-- **Webhooks**: gateway POST para `http://backend:3001/api/webhook` no mesmo formato que Evolution mandava (events: `messages.upsert`, `messages.update`, `connection.update`, `send.message`, `groups.upsert`, `group-participants.update`).
+## Plano
 
-## Arquitetura
+### 1. Tornar `update.sh` Swarm-aware
 
-```text
-┌─────────────┐    HTTP REST     ┌──────────────────┐    WebSocket    ┌──────────┐
-│  backend    │◄────────────────►│ baileys-gateway  │◄───────────────►│ WhatsApp │
-│  (Express)  │                  │  (Node+Baileys)  │                 └──────────┘
-└─────┬───────┘    webhook POST  └────────┬─────────┘
-      │ ◄─────────────────────────────────┘
-      ▼
-   Postgres (auth state + dados de negócio)
-```
-
-Gateway expõe rotas que **imitam Evolution**:
-- `POST /instance/create` `{instanceName}` → cria socket, persiste auth
-- `GET /instance/connect/{instanceName}` → retorna QR base64
-- `GET /instance/connectionState/{instanceName}`
-- `DELETE /instance/logout/{instanceName}` / `DELETE /instance/delete/{instanceName}`
-- `POST /message/sendText/{instanceName}`, `/sendMedia/`, `/sendWhatsAppAudio/`, `/sendButtons/`, `/sendList/`
-- `GET /group/fetchAllGroups/{instanceName}`, `/group/findGroupInfos/{instanceName}`
-- `POST /group/inviteCode/{instanceName}`, `/group/acceptInviteCode/{instanceName}`, `/group/updateParticipant/{instanceName}`
-- `POST /chat/whatsappNumbers/{instanceName}` (validar número existe)
-- `POST /chat/getBase64FromMediaMessage/{instanceName}` (download mídia)
-
-Header `apikey` igual ao Evolution. Webhook global sai do gateway com mesmo schema (`event`, `instance`, `data.key.remoteJid`, etc.).
-
-## Plano de execução
-
-### Fase 1 — Novo serviço `baileys-gateway`
-- `deploy/baileys-gateway/Dockerfile` (node:20-alpine + sharp + ffmpeg)
-- `deploy/baileys-gateway/package.json` (`@whiskeysockets/baileys`, `express`, `pg`, `pino`, `qrcode`, `node-cache`)
-- `deploy/baileys-gateway/src/index.ts` — bootstrap Express + carregar instâncias existentes do Postgres no startup
-- `deploy/baileys-gateway/src/instance-manager.ts` — `Map<string, WASocket>`, criar/destruir, reconnect handling (DisconnectReason.loggedOut → limpar; outros → retry exponencial)
-- `deploy/baileys-gateway/src/postgres-auth-state.ts` — implementação de `AuthenticationState` lendo/gravando em `baileys_auth_state` (creds + keys por instância)
-- `deploy/baileys-gateway/src/event-bridge.ts` — traduz eventos Baileys → POST webhook no formato Evolution
-- `deploy/baileys-gateway/src/routes/instance.ts`, `message.ts`, `group.ts`, `chat.ts` — rotas HTTP REST
-- `deploy/baileys-gateway/src/lib/media.ts` — download e re-upload em `/media-files`
-
-### Fase 2 — Banco
-- `deploy/init-db.sql`: nova tabela `baileys_auth_state (instance_name text, key text, value jsonb, primary key(instance_name, key))`
-- Remover bloco que cria DB `evolution` (não é mais necessário)
-
-### Fase 3 — Docker compose + Nginx
-- `deploy/docker-compose.yml` e `deploy/portainer-stack.yml`:
-  - **Remover** service `evolution`
-  - **Remover** service `redis` (Baileys não precisa — usa cache em memória + Postgres)
-  - **Remover** volumes `chatbot_evolution_instances`, `chatbot_evolution_store`, `chatbot_redis`
-  - **Adicionar** service `baileys-gateway` (porta interna 8080, mesmo nome de host esperado pelo backend)
-  - **Trocar** env do backend: `EVOLUTION_URL` → `BAILEYS_URL=http://baileys-gateway:8080`, `EVOLUTION_API_KEY` → `BAILEYS_API_KEY` (mantém valor da var existente p/ não quebrar `.env`)
-- `deploy/nginx/default.conf.template`: remover qualquer proxy direto pra `evolution:8080` (se houver)
-
-### Fase 4 — Backend Express (refactor mínimo, troca de URL)
-Como o gateway imita o contrato Evolution, **a maioria dos arquivos só precisa trocar a env var lida** (`EVOLUTION_URL` → `BAILEYS_URL`, `EVOLUTION_API_KEY` → `BAILEYS_API_KEY`):
-- `deploy/backend/src/routes/whatsapp-proxy.ts`
-- `deploy/backend/src/routes/groups-api.ts`
-- `deploy/backend/src/routes/groups-webhook.ts`
-- `deploy/backend/src/routes/webhook.ts`
-- `deploy/backend/src/routes/extension-api.ts`
-- `deploy/backend/src/routes/email.ts` (envio de boletos)
-- `deploy/backend/src/lib/message-queue.ts`
-- `deploy/backend/src/lib/recovery-dispatch.ts`
-- `deploy/backend/src/lib/group-scheduler.ts`
-- `deploy/backend/src/lib/resolve-phone-by-cpf.ts` (se usar Evolution)
-Pequenos ajustes de payload onde Baileys diverge inevitavelmente (ex: status enum `sent/delivered/read` em vez de `SENT/DELIVERED/READ`) — tratado dentro do gateway pra normalizar.
-
-### Fase 5 — Edge Function stub
-- `supabase/functions/whatsapp-proxy/index.ts`: trocar mensagem de erro removendo menção a "Evolution API" → "Baileys gateway".
-
-### Fase 6 — Frontend
-- Buscar/remover toda string "Evolution" / "evolution" visível ao usuário (labels, toasts, placeholders).
-- `src/hooks/useWhatsAppExtension.ts`, `useWhatsAppInstances.ts`, componentes de Settings/Connections — só renomear textos. Lógica não muda (chamam os mesmos endpoints do backend).
-
-### Fase 7 — Limpeza Evolution
-- `deploy/install.sh` / `deploy/update.sh`: remover passos referentes a Evolution (criação do DB `evolution`, healthcheck etc.).
-- Remover memória `mem://tech/evolution-v2-infrastructure` e atualizar `mem://project/overview` + `mem://index.md` (substituir Evolution por Baileys nas Core rules).
-- Criar memória `mem://tech/baileys-infrastructure` com nova arquitetura.
-- README.md: trocar referências.
-- `deploy/PORTAINER.md`: atualizar.
-
-### Fase 8 — Migração na VPS (script)
-Você roda na VPS depois do deploy:
-```bash
-cd ~/simplificandoconversas && git pull && bash deploy/update.sh
-# Derruba Evolution definitivamente
-docker compose stop evolution redis
-docker compose rm -f evolution redis
-docker volume rm deploy_chatbot_evolution_instances deploy_chatbot_evolution_store deploy_chatbot_redis
-# (opcional) drop do DB evolution
-docker exec deploy-postgres-1 psql -U postgres -c "DROP DATABASE IF EXISTS evolution;"
-# Sobe baileys-gateway
-docker compose up -d --build baileys-gateway backend nginx
-```
-Cada usuário entra em **Configurações → Conexões**, deleta a instância antiga e recria (escaneia QR novo do Baileys).
-
-## Validação
+Detectar container real via `docker ps --filter name=...` e usar `docker exec` direto (não `docker compose exec`).
 
 ```bash
-# Gateway de pé
-docker logs deploy-baileys-gateway-1 --tail 50
-curl -H "apikey: $BAILEYS_API_KEY" http://localhost:8080/instance/fetchInstances
-# Backend conversando com gateway
-docker logs deploy-backend-1 --tail 50 | grep -i baileys
-# Frontend: criar instância nova → QR aparece → escanear → conectado → enviar mensagem teste
+PG_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '_postgres\.|^postgres$' | grep -v supabase | head -n1)
 ```
+
+Mesma lógica para `postgrest` (restart via `docker service update --force` em Swarm).
+
+### 2. Adaptar fluxo de build/deploy para Swarm
+
+`docker compose build` e `docker compose up -d` não funcionam em Swarm. Em Swarm o fluxo correto é:
+- Build da imagem local: `docker build -t simplificando-backend:latest ./backend`
+- Build da imagem do gateway: `docker build -t simplificando-baileys-gateway:latest ./baileys-gateway`
+- Force update do serviço: `docker service update --force --image simplificando-backend:latest simplificando_backend`
+
+Vou reescrever `update.sh` com detecção automática (Swarm vs Compose) e usar o caminho certo.
+
+### 3. Atualizar `portainer-stack.yml` para incluir `baileys-gateway`
+
+Confirmar que o stack file já tem o serviço (foi adicionado na Fase 1) — se sim, basta o usuário dar **Update Stack** no Portainer apontando pro Git atualizado.
+
+### 4. Cutover Evolution → Baileys (comandos Swarm)
+
+```bash
+# Remover serviços antigos
+docker service rm simplificando_evolution simplificando_redis
+
+# Atualizar stack via Portainer (UI) OU via CLI:
+docker stack deploy -c /opt/simplificandoconversas/deploy/portainer-stack.yml simplificando
+
+# Drop DB evolution
+docker exec $(docker ps -qf name=simplificando_postgres) psql -U postgres -c "DROP DATABASE IF EXISTS evolution;"
+
+# Aplicar migrações SQL
+cat init-db.sql migrate-workspace.sql fix-member-tables.sql \
+  | docker exec -i $(docker ps -qf name=simplificando_postgres) psql -U postgres -d postgres -v ON_ERROR_STOP=1
+```
+
+### 5. Remover container standalone `baileys-server`
+
+```bash
+docker stop baileys-server && docker rm baileys-server
+```
+
+## Arquivos a alterar
+
+- `deploy/update.sh` — reescrita com detecção Swarm + uso de `docker exec` dinâmico + `docker service update --force` quando Swarm.
+
+## Memória a criar
+
+- `mem://tech/vps-swarm-deployment` — registrar que VPS usa Docker Swarm via Portainer, nomes `simplificando_*`, e fluxo de update correto.
+
+## Próximos passos após implementar
+
+1. Eu reescrevo `update.sh`.
+2. Você roda na VPS:
+   ```bash
+   cd /opt/simplificandoconversas && git pull && bash deploy/update.sh
+   ```
+3. Pelo Portainer: **Stacks → simplificando → Pull and redeploy** (puxa o `portainer-stack.yml` atualizado com `baileys-gateway`).
+4. Remove evolution/redis e o container órfão `baileys-server` (comandos acima).
+5. Cada usuário recria instância em **Configurações → Conexões**.
 
 ## Risco
 
-**Alto.** Sessões caem, todos reescaneiam. Recomendo avisar usuários antes do deploy (janela de manutenção).
-
-## Estimativa
-
-~10 arquivos novos no `baileys-gateway`, ~12 arquivos do backend tocados (troca de env + ajustes pontuais), ~5 arquivos de infra, ~6 do frontend (texto), 4 memórias atualizadas. Total ~37 arquivos.
+Baixo no script (defensivo). Médio no cutover (sessões caem, esperado).
 
