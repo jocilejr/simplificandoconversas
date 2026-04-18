@@ -70,7 +70,7 @@ export default function GroupSmartLinkTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setView("create")}>
+        <Button type="button" size="sm" onClick={() => setView("create")}>
           <Plus className="h-4 w-4 mr-1" /> Novo Smart Link
         </Button>
       </div>
@@ -80,7 +80,7 @@ export default function GroupSmartLinkTab() {
           <CardContent className="p-8 text-center">
             <Link2 className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Nenhum Smart Link criado ainda.</p>
-            <Button size="sm" className="mt-3" onClick={() => setView("create")}>
+            <Button type="button" size="sm" className="mt-3" onClick={() => setView("create")}>
               <Plus className="h-4 w-4 mr-1" /> Criar primeiro Smart Link
             </Button>
           </CardContent>
@@ -174,7 +174,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <Button variant="ghost" size="sm" onClick={onBack}>
+      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
       </Button>
       <Card className="border-border/50">
@@ -195,7 +195,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" onClick={handleFetchGroups} disabled={!instanceName || fetching} className="border-border/50">
+                 <Button type="button" variant="outline" onClick={handleFetchGroups} disabled={!instanceName || fetching} className="border-border/50">
                   <Search className={`h-4 w-4 mr-1 ${fetching ? "animate-spin" : ""}`} /> Buscar Grupos
                 </Button>
               </div>
@@ -216,7 +216,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
                     <TableBody>
                       {fetchedGroups.map(g => (
                         <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleGroup(g.jid)}>
-                          <TableCell><Checkbox checked={selectedJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} /></TableCell>
+                          <TableCell><Checkbox checked={selectedJids.has(g.jid)} onCheckedChange={() => toggleGroup(g.jid)} onClick={(e) => e.stopPropagation()} /></TableCell>
                           <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
                           <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
                         </TableRow>
@@ -240,7 +240,7 @@ function CreateForm({ onBack, onCreated, createSmartLink }: { onBack: () => void
                     <Input type="number" value={maxMembers} onChange={e => setMaxMembers(Number(e.target.value))} min={1} />
                   </div>
                 </div>
-                <Button onClick={handleCreate} disabled={createSmartLink.isPending} className="w-full">
+                <Button type="button" onClick={handleCreate} disabled={createSmartLink.isPending} className="w-full">
                   <Plus className="h-4 w-4 mr-1" /> Criar Smart Link
                 </Button>
               </>
@@ -355,7 +355,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" size="sm" onClick={onBack}>
+      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
       </Button>
 
@@ -368,7 +368,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
               <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL Pública (redirect)</p>
               <code className="text-sm truncate block">{publicUrl}</code>
             </div>
-            <Button size="sm" variant="outline" onClick={() => handleCopy(publicUrl, "URL")} className="shrink-0 border-border/50">
+            <Button type="button" size="sm" variant="outline" onClick={() => handleCopy(publicUrl, "URL")} className="shrink-0 border-border/50">
               <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
             </Button>
           </div>
@@ -378,7 +378,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
               <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL GET (retorna link como texto)</p>
               <code className="text-sm truncate block">{publicUrl}-get</code>
             </div>
-            <Button size="sm" variant="outline" onClick={() => handleCopy(`${publicUrl}-get`, "URL GET")} className="shrink-0 border-border/50">
+            <Button type="button" size="sm" variant="outline" onClick={() => handleCopy(`${publicUrl}-get`, "URL GET")} className="shrink-0 border-border/50">
               <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
             </Button>
           </div>
@@ -440,8 +440,8 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
               </div>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleSaveEdit} disabled={updateSmartLink.isPending}>Salvar</Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
+              <Button type="button" size="sm" onClick={handleSaveEdit} disabled={updateSmartLink.isPending}>Salvar</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
             </div>
           </CardContent>
         </Card>
@@ -456,10 +456,10 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant="outline" onClick={() => { setAddingGroups(true); handleFetchGroupsForAdd(); }} disabled={addingGroups || fetchingGroups} className="text-xs border-border/50 h-7">
+                  <Button type="button" size="sm" variant="outline" onClick={() => { setAddingGroups(true); handleFetchGroupsForAdd(); }} disabled={addingGroups || fetchingGroups} className="text-xs border-border/50 h-7">
                     <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7">
+                  <Button type="button" size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7">
                     <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
                   </Button>
                 </div>
@@ -517,7 +517,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                           <TableCell className="text-center">
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
+                                 <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </AlertDialogTrigger>
@@ -553,7 +553,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Grupos</p>
-              <Button size="sm" variant="ghost" onClick={() => { setAddingGroups(false); setFetchedGroups([]); setSelectedNewJids(new Set()); }} className="h-7 text-xs">
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setAddingGroups(false); setFetchedGroups([]); setSelectedNewJids(new Set()); }} className="h-7 text-xs">
                 Cancelar
               </Button>
             </div>
@@ -578,8 +578,8 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                       </TableHeader>
                       <TableBody>
                         {fetchedGroups.map(g => (
-                          <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleNewGroup(g.jid)}>
-                            <TableCell><Checkbox checked={selectedNewJids.has(g.jid)} onCheckedChange={() => toggleNewGroup(g.jid)} /></TableCell>
+                            <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleNewGroup(g.jid)}>
+                              <TableCell><Checkbox checked={selectedNewJids.has(g.jid)} onCheckedChange={() => toggleNewGroup(g.jid)} onClick={(e) => e.stopPropagation()} /></TableCell>
                             <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
                             <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
                           </TableRow>
@@ -587,7 +587,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                       </TableBody>
                     </Table>
                   </div>
-                  <Button size="sm" onClick={handleAddGroups} disabled={selectedNewJids.size === 0 || updateSmartLink.isPending}>
+                  <Button type="button" size="sm" onClick={handleAddGroups} disabled={selectedNewJids.size === 0 || updateSmartLink.isPending}>
                     <Plus className="h-4 w-4 mr-1" /> Adicionar {selectedNewJids.size} grupo(s)
                   </Button>
                 </>
