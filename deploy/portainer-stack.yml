@@ -139,11 +139,11 @@ services:
       - chatbot_media:/usr/share/nginx/media:ro
     networks:
       - default
-      - traefik_public
+      - traefik-public
     deploy:
       labels:
         - "traefik.enable=true"
-        - "traefik.docker.network=traefik_public"
+        - "traefik.docker.network=traefik-public"
         - "traefik.http.routers.chatbot-app.rule=Host(`${APP_DOMAIN}`)"
         - "traefik.http.routers.chatbot-app.entrypoints=websecure"
         - "traefik.http.routers.chatbot-app.tls.certresolver=letsencrypt"
@@ -157,7 +157,7 @@ services:
 
 networks:
   default:
-  traefik_public:
+  traefik-public:
     external: true
 
 volumes:
