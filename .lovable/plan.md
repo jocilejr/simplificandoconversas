@@ -1,69 +1,100 @@
 
 
-## Refatoração: monitoramento via Smart Links (sem botão manual)
+## Remoção total do módulo de Grupos
 
-### Conceito
+### Escopo
+Remover 100% do código, rotas, hooks, páginas, componentes, tabelas e arquivos relacionados ao módulo de Grupos do WhatsApp.
 
-Eliminar a aba **"Selecionar"** e a tabela `group_selected`. O monitoramento opera 100% sobre Smart Links existentes — escolhe um Smart Link no header e vê os grupos daquele link, com totais e eventos add/remove.
+### Frontend (deletar)
 
-Sem botão "Atualizar agora". Tudo depende do sync periódico do Smart Link que já roda (`/smart-links/sync-all`, comprovadamente correto).
+**Páginas:**
+- `src/pages/GruposPage.tsx`
+- `src/pages/SmartLinkRedirect.tsx`
 
-### Frontend
+**Componentes (`src/components/grupos/`):**
+- `GroupCampaignDialog.tsx`
+- `GroupCampaignsTab.tsx`
+- `GroupDashboardTab.tsx`
+- `GroupImportDialog.tsx`
+- `GroupMessagesDialog.tsx`
+- `GroupQueueTab.tsx`
+- `GroupScheduledMessageForm.tsx`
+- `GroupSmartLinkTab.tsx`
+- `SchedulerDebugPanel.tsx`
+- `WhatsAppPreview.tsx`
+- `src/components/chatbot/GroupNode.tsx`
 
-**`src/pages/GruposPage.tsx`**
-- Remove TabsTrigger/Content "Selecionar".
-- Tabs finais: Visão Geral · Campanhas · Fila · Smart Link.
+**Hooks (`src/hooks/`):**
+- `useGroupCampaigns.ts`
+- `useGroupEvents.ts`
+- `useGroupEventsLive.ts`
+- `useGroupQueue.ts`
+- `useGroupScheduledMessages.ts`
+- `useGroupSmartLinks.ts`
 
-**`src/components/grupos/GroupDashboardTab.tsx`** (reescrita)
-- Header com `<Select>` "Smart Link a monitorar" populado por `useGroupSmartLinks()`. Persiste em `localStorage` (`grupos:dashboard:smartLinkId`).
-- Estado vazio: "Crie um Smart Link na aba Smart Link para começar a monitorar."
-- KPIs do Smart Link selecionado:
-  - Total de grupos · Total de membros (soma de `group_links[*].member_count`)
-  - Entraram hoje · Saíram hoje (de `group_events` filtrado pelos `group_jid` do link)
-- Lista de grupos do Smart Link: nome, contagem real, status (`ok` / `banned` / `error`), `last_synced_at`.
-- Feed live de add/remove via `useGroupEventsLive`, filtrado pelos `group_jid` do Smart Link.
-- Sem botão de refresh. Dados se atualizam pelo `refetchInterval` do `useGroupSmartLinks` (15s) e pelo cron de sync do backend.
+**Edits em arquivos compartilhados:**
+- `src/App.tsx` — remover import + rota `/grupos` e `/r/g/:slug`
+- `src/components/AppSidebar.tsx` — remover item "Grupos" do menu
+- `src/components/chatbot/NodePalette.tsx` — remover entrada GroupNode (se houver)
+- `src/components/chatbot/FlowEditor.tsx` — remover registro do nodeType `group` (se houver)
+- `src/types/chatbot.ts` — remover tipos relacionados a group node
+- Tirar permissão `grupos` de `PermissionGate` se for específica
 
-**Arquivos a deletar:**
-- `src/components/grupos/GroupSelectorTab.tsx`
-- `src/hooks/useGroupSelected.ts`
+### Backend (deletar)
 
-### Backend
+- `deploy/backend/src/routes/groups-api.ts`
+- `deploy/backend/src/routes/groups-webhook.ts`
+- `deploy/backend/src/lib/group-scheduler.ts`
 
-**`deploy/backend/src/routes/groups-api.ts`**
-- Remover: `POST /select-groups`, `GET /selected-groups`, `DELETE /selected-groups/:id`, `POST /sync-stats`, função `syncWorkspaceStats`, cron `sync-all` antigo de `group_selected`.
-- Manter: `POST /fetch-groups` (usado pela criação de Smart Link), todo o módulo `/smart-links/*` intacto.
-- Adicionar: `GET /smart-link-events?smartLinkId=...` que retorna eventos de `group_events` filtrados pelos JIDs do Smart Link.
+**Edits:**
+- `deploy/backend/src/index.ts` — remover registro das rotas/webhooks/scheduler de grupos
+- `deploy/nginx/default.conf.template` — remover bloco `location /r/g/`
 
-### Banco
+### Banco de dados (migration DROP)
 
 ```sql
+DROP TABLE IF EXISTS public.group_message_queue CASCADE;
+DROP TABLE IF EXISTS public.group_scheduled_messages CASCADE;
+DROP TABLE IF EXISTS public.group_campaigns CASCADE;
+DROP TABLE IF EXISTS public.group_events CASCADE;
+DROP TABLE IF EXISTS public.group_smart_links CASCADE;
+DROP TABLE IF EXISTS public.group_smart_link_clicks CASCADE;
+DROP TABLE IF EXISTS public.group_links CASCADE;
 DROP TABLE IF EXISTS public.group_selected CASCADE;
+DROP TABLE IF EXISTS public.group_spam_config CASCADE;
+DROP TABLE IF EXISTS public.group_backups CASCADE;
 NOTIFY pgrst, 'reload schema';
 ```
+(Lista exata será confirmada lendo `init-db.sql` e `migrate-workspace.sql` antes de executar.)
 
-### Validação na VPS
+### Memórias a limpar (`mem://`)
+
+Remover do `index.md` e deletar arquivos:
+- `mem://features/whatsapp-groups/smart-link-system`
+- `mem://features/whatsapp-groups/campaign-media-hygiene`
+- `mem://features/whatsapp-groups/automation-anti-spam`
+- `mem://features/whatsapp-groups/scheduler-logic`
+- `mem://features/whatsapp-groups/backup-import-v2`
+- `mem://features/whatsapp-groups/queue-and-deduplication-v2`
+- `mem://tech/whatsapp-groups/real-time-validation`
+- `mem://tech/whatsapp-groups/data-mapping-compatibility-v2`
+
+### Validação na VPS após deploy
 
 ```bash
 cd ~/simplificandoconversas && git pull && bash deploy/update.sh
 
 source deploy/.env
 docker exec deploy-postgres-1 psql -U postgres -d postgres -c \
-  "SELECT slug, jsonb_array_length(group_links) AS grupos,
-          (SELECT SUM((g->>'member_count')::int) FROM jsonb_array_elements(group_links) g) AS total_membros
-   FROM group_smart_links WHERE workspace_id='65698ec3-731a-436e-84cf-8997e4ed9b41';"
+"SELECT table_name FROM information_schema.tables 
+ WHERE table_schema='public' AND table_name LIKE 'group_%';"
 ```
-
-### Arquivos alterados
-
-- `deploy/backend/src/routes/groups-api.ts` — remoções + nova rota `/smart-link-events`
-- `src/pages/GruposPage.tsx` — remove aba Selecionar
-- `src/components/grupos/GroupDashboardTab.tsx` — reescrita orientada a Smart Link
-- `src/components/grupos/GroupSelectorTab.tsx` — deletar
-- `src/hooks/useGroupSelected.ts` — deletar
-- Migration: `DROP TABLE group_selected`
+Resultado esperado: 0 linhas.
 
 ### Risco
+Baixo. Módulo isolado, sem dependências críticas em outras áreas. Ação irreversível — recomendado backup do banco antes (`pg_dump`).
 
-Médio — remove tabela e rotas. Mitigado: Smart Link já é a fonte oficial das contagens.
+### Pendências antes de executar
+1. Confirmar se quero também remover a coluna `permissions->grupos` dos workspaces existentes
+2. Confirmar se posso deletar definitivamente a tabela `group_backups` (pode ter mídias importadas)
 
