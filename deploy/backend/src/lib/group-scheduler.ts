@@ -490,12 +490,17 @@ export class GroupSchedulerManager {
         continue;
       }
 
-      const { data: sg } = await sb
-        .from("group_selected")
-        .select("group_name")
-        .eq("workspace_id", campaign.workspace_id)
-        .eq("group_jid", jid)
-        .maybeSingle();
+      // Lookup nome do grupo via smart links do workspace
+      const { data: wsLinks } = await sb
+        .from("group_smart_links")
+        .select("group_links")
+        .eq("workspace_id", campaign.workspace_id);
+      let groupName = "";
+      for (const sl of (wsLinks || [])) {
+        const arr = Array.isArray(sl.group_links) ? sl.group_links : [];
+        const found = arr.find((gl: any) => gl?.group_jid === jid);
+        if (found?.group_name) { groupName = found.group_name; break; }
+      }
 
       queueItems.push({
         workspace_id: campaign.workspace_id,
@@ -503,7 +508,7 @@ export class GroupSchedulerManager {
         campaign_id: campaignId,
         scheduled_message_id: msgId,
         group_jid: jid,
-        group_name: sg?.group_name || "",
+        group_name: groupName,
         instance_name: campaign.instance_name,
         message_type: msg.message_type || "text",
         content: msg.content,

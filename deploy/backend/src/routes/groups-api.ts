@@ -718,62 +718,9 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /select-groups ─── */
-router.post("/select-groups", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId, userId, instanceName, groups } = req.body;
-    if (!workspaceId || !userId || !instanceName || !Array.isArray(groups))
-      return res.status(400).json({ error: "Missing fields" });
+/* Rotas /select-groups, /selected-groups e /selected-groups/:id removidas.
+   Monitoramento agora opera exclusivamente sobre group_smart_links. */
 
-    const sb = getServiceClient();
-    const rows = groups.map((g: any) => ({
-      workspace_id: workspaceId,
-      user_id: userId,
-      instance_name: instanceName,
-      group_jid: g.jid,
-      group_name: g.name,
-      member_count: g.memberCount || 0,
-    }));
-
-    const { data, error } = await sb.from("group_selected").upsert(rows, { onConflict: "workspace_id,group_jid" }).select();
-    if (error) throw error;
-    res.json(data);
-  } catch (err: any) {
-    console.error("[groups-api] select-groups error:", err?.message || err?.details || JSON.stringify(err));
-    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
-  }
-});
-
-/* ─── GET /selected-groups ─── */
-router.get("/selected-groups", async (req: Request, res: Response) => {
-  try {
-    const workspaceId = req.query.workspaceId as string;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-
-    const sb = getServiceClient();
-    const { data, error } = await sb
-      .from("group_selected")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: true });
-    if (error) throw error;
-    res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─── DELETE /selected-groups/:id ─── */
-router.delete("/selected-groups/:id", async (req: Request, res: Response) => {
-  try {
-    const sb = getServiceClient();
-    const { error } = await sb.from("group_selected").delete().eq("id", req.params.id);
-    if (error) throw error;
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 /* ─── Campaigns CRUD ─── */
 router.get("/campaigns", async (req: Request, res: Response) => {
@@ -970,22 +917,26 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
     const queueItems: any[] = [];
 
     const messages = (campaign as any).group_scheduled_messages || [];
+    // Lookup de group_name a partir dos smart links do workspace
+    const { data: wsLinks } = await sb
+      .from("group_smart_links")
+      .select("group_links")
+      .eq("workspace_id", campaign.workspace_id);
+    const nameByJid = new Map<string, string>();
+    for (const sl of (wsLinks || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid && gl?.group_name) nameByJid.set(gl.group_jid, gl.group_name);
+      }
+    }
     for (const msg of messages) {
       for (const jid of campaign.group_jids) {
-        const { data: sg } = await sb
-          .from("group_selected")
-          .select("group_name")
-          .eq("workspace_id", campaign.workspace_id)
-          .eq("group_jid", jid)
-          .maybeSingle();
-
         queueItems.push({
           workspace_id: campaign.workspace_id,
           user_id: campaign.user_id,
           campaign_id: campaign.id,
           scheduled_message_id: msg.id,
           group_jid: jid,
-          group_name: sg?.group_name || "",
+          group_name: nameByJid.get(jid) || "",
           instance_name: campaign.instance_name,
           message_type: msg.message_type,
           content: msg.content,
@@ -1526,13 +1477,23 @@ router.post("/smart-links", async (req: Request, res: Response) => {
     if (groupLinks.length === 0 && campaignId) {
       const { data: campaign } = await sb.from("group_campaigns").select("group_jids, instance_name").eq("id", campaignId).single();
       if (campaign?.group_jids) {
+        // Lookup nome/contagem nos demais smart links do workspace
+        const { data: wsLinks } = await sb
+          .from("group_smart_links")
+          .select("group_links")
+          .eq("workspace_id", workspaceId);
+        const infoByJid = new Map<string, { name: string; count: number }>();
+        for (const sl of (wsLinks || [])) {
+          for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+            if (gl?.group_jid) infoByJid.set(gl.group_jid, { name: gl.group_name || "", count: gl.member_count || 0 });
+          }
+        }
         for (const jid of campaign.group_jids) {
-          const { data: gs } = await sb.from("group_selected").select("group_name, member_count")
-            .eq("workspace_id", workspaceId).eq("group_jid", jid).maybeSingle();
+          const info = infoByJid.get(jid);
           groupLinks.push({
             group_jid: jid,
-            group_name: gs?.group_name || "",
-            member_count: gs?.member_count || 0,
+            group_name: info?.name || "",
+            member_count: info?.count || 0,
             invite_url: "",
           });
         }
@@ -2518,165 +2479,11 @@ router.get("/scheduler-debug", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── Helper: sincroniza member_count real-time de um workspace ───
-   Para cada row de group_selected, chama Evolution findGroupInfos
-   (mais confiável que fetchAllGroups para grupos onde o bot não é admin)
-   e atualiza member_count + member_count_updated_at apenas daquela tupla. */
-export async function syncWorkspaceStats(workspaceId: string): Promise<{
-  synced: number;
-  failed: number;
-  groups: any[];
-  errors: any[];
-  message?: string;
-}> {
-  const sb = getServiceClient();
+/* Removido: syncWorkspaceStats / syncAllWorkspacesStats / POST /sync-stats.
+   O monitoramento de membros agora é responsabilidade exclusiva do sync de
+   Smart Links (POST /smart-links/sync-all), que já implementa retries e usa
+   findGroupInfos com participants.length como fonte única de verdade. */
 
-  const { data: monitored } = await sb
-    .from("group_selected")
-    .select("id, group_jid, group_name, member_count, instance_name")
-    .eq("workspace_id", workspaceId);
-
-  if (!monitored || monitored.length === 0) {
-    return { synced: 0, failed: 0, groups: [], errors: [], message: "No monitored groups" };
-  }
-
-  const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
-  const syncedCounts = new Map<string, number>();
-  const syncedNames = new Map<string, string>();
-  const results: any[] = [];
-  const errors: any[] = [];
-  let synced = 0;
-  let failed = 0;
-
-  // Process each (instance, group) tuple individually via findGroupInfos
-  for (const entry of monitored) {
-    const encoded = encodeURIComponent(entry.instance_name);
-    try {
-      const resp = await fetch(
-        `${baseUrl}/group/findGroupInfos/${encoded}?groupJid=${encodeURIComponent(entry.group_jid)}`,
-        { method: "GET", headers: { apikey: apiKey } }
-      );
-
-      if (!resp.ok) {
-        failed++;
-        errors.push({
-          instance_name: entry.instance_name,
-          group_jid: entry.group_jid,
-          error: `HTTP ${resp.status}`,
-        });
-        continue;
-      }
-
-      const payload = await resp.json();
-      const info = Array.isArray(payload) ? payload[0] : payload;
-      const realCount = Array.isArray(info?.participants) ? info.participants.length : 0;
-      const realName = info?.subject || entry.group_name;
-
-      if (realCount === 0) {
-        console.warn(`[sync-stats] no participants returned for ${entry.group_jid} — skipping update`);
-        failed++;
-        errors.push({
-          instance_name: entry.instance_name,
-          group_jid: entry.group_jid,
-          error: "no participants in response",
-        });
-        continue;
-      }
-
-      await sb
-        .from("group_selected")
-        .update({
-          member_count: realCount,
-          group_name: realName,
-          member_count_updated_at: new Date().toISOString(),
-        })
-        .eq("id", entry.id);
-
-      syncedCounts.set(entry.group_jid, realCount);
-      syncedNames.set(entry.group_jid, realName);
-
-      results.push({
-        group_jid: entry.group_jid,
-        group_name: realName,
-        old_count: entry.member_count,
-        new_count: realCount,
-        instance_name: entry.instance_name,
-      });
-      synced++;
-    } catch (e: any) {
-      failed++;
-      errors.push({
-        instance_name: entry.instance_name,
-        group_jid: entry.group_jid,
-        error: e.message,
-      });
-    }
-  }
-
-  // Propagate updated counts to smart links
-  const { data: smartLinks } = await sb
-    .from("group_smart_links")
-    .select("id, group_links")
-    .eq("workspace_id", workspaceId)
-    .eq("is_active", true);
-
-  if (smartLinks?.length) {
-    for (const smartLink of smartLinks) {
-      const groupLinks = Array.isArray(smartLink.group_links) ? [...smartLink.group_links] : [];
-      let changed = false;
-      for (const groupLink of groupLinks) {
-        if (!groupLink?.group_jid || !syncedCounts.has(groupLink.group_jid)) continue;
-        groupLink.member_count = syncedCounts.get(groupLink.group_jid) || 0;
-        if (syncedNames.has(groupLink.group_jid)) {
-          groupLink.group_name = syncedNames.get(groupLink.group_jid);
-        }
-        changed = true;
-      }
-      if (changed) {
-        await sb.from("group_smart_links").update({ group_links: groupLinks }).eq("id", smartLink.id);
-      }
-    }
-  }
-
-  console.log(`[sync-stats] workspace ${workspaceId}: synced=${synced} failed=${failed}`);
-  return { synced, failed, groups: results, errors };
-}
-
-/* ─── POST /sync-stats — debug manual via curl (frontend não usa mais) ─── */
-router.post("/sync-stats", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId } = req.body;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-    const result = await syncWorkspaceStats(workspaceId);
-    res.json(result);
-  } catch (err: any) {
-    console.error("[sync-stats] error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─── Helper: sincroniza todos os workspaces que têm grupos monitorados ─── */
-export async function syncAllWorkspacesStats(): Promise<void> {
-  try {
-    const sb = getServiceClient();
-    const { data: rows } = await sb
-      .from("group_selected")
-      .select("workspace_id");
-    if (!rows || rows.length === 0) return;
-    const workspaceIds = [...new Set(rows.map((r: any) => r.workspace_id))];
-    console.log(`[sync-all] starting for ${workspaceIds.length} workspace(s)`);
-    for (const wsId of workspaceIds) {
-      try {
-        await syncWorkspaceStats(wsId);
-      } catch (e: any) {
-        console.error(`[sync-all] workspace ${wsId} failed:`, e.message);
-      }
-    }
-    console.log(`[sync-all] complete`);
-  } catch (err: any) {
-    console.error("[sync-all] fatal error:", err.message);
-  }
-}
 
 /* ─── Helper: resolve janela [startUtc, endUtc) a partir de period BRT ───
    period=today|yesterday|custom. Para custom, from/to são datas YYYY-MM-DD em BRT.
@@ -2735,10 +2542,30 @@ function resolveEventWindow(query: Record<string, string>): { startUtc: string; 
    ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] */
 router.get("/events", async (req: Request, res: Response) => {
   try {
-    const { workspaceId } = req.query as Record<string, string>;
+    const { workspaceId, smartLinkId } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
+
+    // Resolve JIDs e nomes a partir dos smart links do workspace
+    const sb = getServiceClient();
+    let q = sb.from("group_smart_links").select("id, group_links").eq("workspace_id", workspaceId);
+    if (smartLinkId) q = q.eq("id", smartLinkId);
+    const { data: links } = await q;
+
+    const nameByJid = new Map<string, string>();
+    for (const sl of (links || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid && !nameByJid.has(gl.group_jid)) {
+          nameByJid.set(gl.group_jid, gl.group_name || "");
+        }
+      }
+    }
+    const jids = [...nameByJid.keys()];
+
+    if (jids.length === 0) {
+      return res.json({ window: { startUtc, endUtc }, totals: { adds: 0, removes: 0 }, groups: [] });
+    }
 
     const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL });
@@ -2746,29 +2573,38 @@ router.get("/events", async (req: Request, res: Response) => {
     try {
       const sql = `
         SELECT
-          s.group_jid,
-          COALESCE(s.group_name, e.group_name) AS group_name,
+          e.group_jid,
+          MAX(e.group_name) AS group_name,
           COUNT(*) FILTER (WHERE e.action = 'add')    AS adds,
           COUNT(*) FILTER (WHERE e.action = 'remove') AS removes
-        FROM public.group_selected s
-        LEFT JOIN public.group_events e
-          ON e.workspace_id  = s.workspace_id
-         AND e.instance_name = s.instance_name
-         AND e.group_jid     = s.group_jid
-         AND e.occurred_at  >= $2
-         AND e.occurred_at  <  $3
-        WHERE s.workspace_id = $1
-        GROUP BY s.group_jid, COALESCE(s.group_name, e.group_name)
-        ORDER BY group_name NULLS LAST, s.group_jid;
+        FROM public.group_events e
+        WHERE e.workspace_id = $1
+          AND e.group_jid    = ANY($2::text[])
+          AND e.occurred_at >= $3
+          AND e.occurred_at <  $4
+        GROUP BY e.group_jid;
       `;
-      const { rows } = await pool.query(sql, [workspaceId, startUtc, endUtc]);
+      const { rows } = await pool.query(sql, [workspaceId, jids, startUtc, endUtc]);
 
-      const groups = rows.map((r: any) => ({
-        group_jid: r.group_jid as string,
-        group_name: (r.group_name as string) || r.group_jid,
-        adds: Number(r.adds) || 0,
-        removes: Number(r.removes) || 0,
-      }));
+      const aggByJid = new Map<string, { adds: number; removes: number; group_name: string }>();
+      for (const r of rows) {
+        aggByJid.set(r.group_jid, {
+          adds: Number(r.adds) || 0,
+          removes: Number(r.removes) || 0,
+          group_name: (r.group_name as string) || "",
+        });
+      }
+
+      // Garante uma linha por JID conhecido (mesmo sem eventos)
+      const groups = jids.map((jid) => {
+        const a = aggByJid.get(jid);
+        return {
+          group_jid: jid,
+          group_name: nameByJid.get(jid) || a?.group_name || jid,
+          adds: a?.adds || 0,
+          removes: a?.removes || 0,
+        };
+      }).sort((x, y) => x.group_name.localeCompare(y.group_name));
 
       const totals = groups.reduce(
         (acc, g) => ({ adds: acc.adds + g.adds, removes: acc.removes + g.removes }),
@@ -2787,15 +2623,35 @@ router.get("/events", async (req: Request, res: Response) => {
 
 /* ─── GET /events-live — eventos crus (add/remove) cronologicamente ───
    Retorna { window, events: [{id,group_jid,group_name,participant_jid,action,occurred_at}] }
-   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD][&limit=200] */
+   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD][&limit=200][&smartLinkId=...] */
 router.get("/events-live", async (req: Request, res: Response) => {
   try {
-    const { workspaceId } = req.query as Record<string, string>;
+    const { workspaceId, smartLinkId } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
     const limitRaw = parseInt((req.query.limit as string) || "200", 10);
     const limit = Math.min(Math.max(isNaN(limitRaw) ? 200 : limitRaw, 1), 1000);
+
+    // Resolve JIDs do(s) smart link(s) para escopar a busca
+    const sb = getServiceClient();
+    let q = sb.from("group_smart_links").select("group_links").eq("workspace_id", workspaceId);
+    if (smartLinkId) q = q.eq("id", smartLinkId);
+    const { data: links } = await q;
+
+    const nameByJid = new Map<string, string>();
+    for (const sl of (links || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid && !nameByJid.has(gl.group_jid)) {
+          nameByJid.set(gl.group_jid, gl.group_name || "");
+        }
+      }
+    }
+    const jids = [...nameByJid.keys()];
+
+    if (jids.length === 0) {
+      return res.json({ window: { startUtc, endUtc }, events: [] });
+    }
 
     const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL });
@@ -2805,27 +2661,24 @@ router.get("/events-live", async (req: Request, res: Response) => {
         SELECT
           e.id,
           e.group_jid,
-          COALESCE(s.group_name, e.group_name) AS group_name,
+          e.group_name,
           e.participant_jid,
           e.action,
           e.occurred_at
         FROM public.group_events e
-        JOIN public.group_selected s
-          ON s.workspace_id  = e.workspace_id
-         AND s.instance_name = e.instance_name
-         AND s.group_jid     = e.group_jid
         WHERE e.workspace_id = $1
-          AND e.occurred_at >= $2
-          AND e.occurred_at <  $3
+          AND e.group_jid    = ANY($2::text[])
+          AND e.occurred_at >= $3
+          AND e.occurred_at <  $4
         ORDER BY e.occurred_at DESC
-        LIMIT $4;
+        LIMIT $5;
       `;
-      const { rows } = await pool.query(sql, [workspaceId, startUtc, endUtc, limit]);
+      const { rows } = await pool.query(sql, [workspaceId, jids, startUtc, endUtc, limit]);
 
       const events = rows.map((r: any) => ({
         id: r.id as string,
         group_jid: r.group_jid as string,
-        group_name: (r.group_name as string) || r.group_jid,
+        group_name: nameByJid.get(r.group_jid) || (r.group_name as string) || r.group_jid,
         participant_jid: r.participant_jid as string,
         action: r.action as "add" | "remove",
         occurred_at: r.occurred_at as string,

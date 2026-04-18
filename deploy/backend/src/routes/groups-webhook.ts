@@ -37,8 +37,8 @@ function normalizeAction(raw: any): "add" | "remove" | null {
 
 /* POST /api/groups/webhook/events
    Pipeline:
-     workspace (via instance_name) → group_selected (instance + group_jid) → INSERT em group_events
-   Descarta + log se a tripla não bate. Sem upsert/dedup: gravamos tudo cru. */
+     workspace (via instance_name) → group_smart_links (group_jid em group_links) → INSERT em group_events
+   Descarta + log se o grupo não pertence a nenhum smart link do workspace. */
 router.post("/events", async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
@@ -85,21 +85,31 @@ router.post("/events", async (req: Request, res: Response) => {
       return res.json({ ignored: true, reason: "instance_not_found" });
     }
 
-    // 2) group_selected (workspace + instance + group_jid)
-    const { data: monitored } = await sb
-      .from("group_selected")
-      .select("group_name")
-      .eq("workspace_id", inst.workspace_id)
-      .eq("instance_name", instanceName)
-      .eq("group_jid", groupJid)
-      .maybeSingle();
+    // 2) Verifica se o grupo está em algum smart link do workspace
+    const { data: wsLinks } = await sb
+      .from("group_smart_links")
+      .select("group_links")
+      .eq("workspace_id", inst.workspace_id);
 
-    if (!monitored) {
-      console.log(`[groups-webhook] discard reason=group_not_selected ws=${inst.workspace_id} instance=${instanceName} group=${groupJid}`);
-      return res.json({ ignored: true, reason: "group_not_selected" });
+    let monitoredName: string | null = null;
+    let monitored = false;
+    for (const sl of (wsLinks || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid === groupJid) {
+          monitored = true;
+          if (!monitoredName && gl.group_name) monitoredName = gl.group_name;
+          break;
+        }
+      }
+      if (monitored && monitoredName) break;
     }
 
-    const groupName = monitored.group_name || data.subject || data.groupName || null;
+    if (!monitored) {
+      console.log(`[groups-webhook] discard reason=group_not_in_smartlink ws=${inst.workspace_id} instance=${instanceName} group=${groupJid}`);
+      return res.json({ ignored: true, reason: "group_not_in_smartlink" });
+    }
+
+    const groupName = monitoredName || data.subject || data.groupName || null;
 
     // 3) INSERT cru em group_events (1 linha por participante, sem dedup)
     const rows = uniqueParticipants.map((phone) => ({
