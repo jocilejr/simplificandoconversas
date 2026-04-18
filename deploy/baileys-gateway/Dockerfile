@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Native deps for Baileys (sharp for sticker/image processing, ffmpeg for audio conversion)
-RUN apk add --no-cache python3 make g++ ffmpeg vips-dev curl
+RUN apk add --no-cache python3 make g++ ffmpeg vips-dev curl git
 
 WORKDIR /app
 
