@@ -608,8 +608,125 @@ CREATE INDEX IF NOT EXISTS idx_followup_dispatch_queue_instance_status ON public
 GRANT ALL ON public.followup_dispatch_queue TO anon, authenticated, service_role;
 
 -- ============================================================
--- GROUP MODULE: REMOVED (module deleted from app)
+-- GROUP MODULE TABLES
 -- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.group_selected (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  instance_name text NOT NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  member_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, group_jid)
+);
+GRANT ALL ON public.group_selected TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.group_campaigns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  name text NOT NULL,
+  description text DEFAULT '',
+  instance_name text NOT NULL,
+  group_jids text[] NOT NULL DEFAULT '{}',
+  is_active boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT ALL ON public.group_campaigns TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.group_scheduled_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  campaign_id uuid NOT NULL REFERENCES public.group_campaigns(id) ON DELETE CASCADE,
+  message_type text NOT NULL DEFAULT 'text',
+  content jsonb NOT NULL DEFAULT '{}',
+  schedule_type text NOT NULL DEFAULT 'once',
+  scheduled_at timestamptz,
+  cron_expression text,
+  interval_minutes integer,
+  next_run_at timestamptz,
+  last_run_at timestamptz,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT ALL ON public.group_scheduled_messages TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.group_message_queue (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  campaign_id uuid REFERENCES public.group_campaigns(id) ON DELETE SET NULL,
+  scheduled_message_id uuid REFERENCES public.group_scheduled_messages(id) ON DELETE SET NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  instance_name text NOT NULL,
+  message_type text NOT NULL DEFAULT 'text',
+  content jsonb NOT NULL DEFAULT '{}',
+  status text NOT NULL DEFAULT 'pending',
+  priority integer NOT NULL DEFAULT 0,
+  execution_batch text,
+  error_message text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT ALL ON public.group_message_queue TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.group_participant_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  instance_name text NOT NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  participant_jid text NOT NULL,
+  action text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT ALL ON public.group_participant_events TO anon, authenticated, service_role;
+
+-- group_events: raw add/remove stream consumed by /api/groups/events-live
+CREATE TABLE IF NOT EXISTS public.group_events (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id    uuid NOT NULL,
+  instance_name   text NOT NULL,
+  group_jid       text NOT NULL,
+  group_name      text,
+  participant_jid text NOT NULL,
+  action          text NOT NULL CHECK (action IN ('add','remove')),
+  raw_payload     jsonb,
+  occurred_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_group_events_ws_time
+  ON public.group_events (workspace_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_group_events_ws_group_time
+  ON public.group_events (workspace_id, group_jid, occurred_at DESC);
+ALTER TABLE public.group_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS ws_select ON public.group_events;
+CREATE POLICY ws_select ON public.group_events FOR SELECT TO authenticated
+  USING (is_workspace_member(auth.uid(), workspace_id));
+GRANT ALL ON public.group_events TO anon, authenticated, service_role;
+NOTIFY pgrst, 'reload schema';
+
+CREATE TABLE IF NOT EXISTS public.group_daily_stats (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  group_jid text NOT NULL,
+  group_name text NOT NULL DEFAULT '',
+  date date NOT NULL,
+  additions integer NOT NULL DEFAULT 0,
+  removals integer NOT NULL DEFAULT 0,
+  total_members integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, group_jid, date)
+);
+GRANT ALL ON public.group_daily_stats TO anon, authenticated, service_role;
 
 -- ============================================================
 -- DELIVERY DIGITAL + AREA DE MEMBROS

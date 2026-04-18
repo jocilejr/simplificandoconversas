@@ -24,10 +24,13 @@ import manualPaymentRouter from "./routes/manual-payment-webhook";
 
 import followupDailyRouter from "./routes/followup-daily";
 import { processFollowUpDaily, prepareFollowUpDaily } from "./routes/followup-daily";
+import groupsApiRouter from "./routes/groups-api";
+import groupsWebhookRouter from "./routes/groups-webhook";
 import memberAccessRouter from "./routes/member-access";
 import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 import mediaManagerRouter from "./routes/media-manager";
+import { groupScheduler } from "./lib/group-scheduler";
 
 
 const app = express();
@@ -51,6 +54,8 @@ app.use("/api/yampi-webhook", yampiWebhookRouter);
 app.use("/api/manual-payment", manualPaymentRouter);
 
 app.use("/api/followup-daily", followupDailyRouter);
+app.use("/api/groups", groupsApiRouter);
+app.use("/api/groups/webhook", groupsWebhookRouter);
 app.use("/api/member-access", memberAccessRouter);
 app.use("/api/member-purchase", memberPurchaseRouter);
 app.use("/api/media-manager", mediaManagerRouter);
@@ -197,7 +202,92 @@ cron.schedule("0 3 * * *", async () => {
   }
 });
 
+// ─── Group Scheduler: Safety sweep every 5 minutes (catches orphaned timers) ───
+cron.schedule("*/5 * * * *", async () => {
+  try {
+    await groupScheduler.safetySweep();
+  } catch (err: any) {
+    console.error("[cron] group-scheduler safety sweep error:", err.message);
+  }
+});
+
+// ─── Group Queue Processor Cron (30s): process pending with rate limiting ───
+cron.schedule("*/30 * * * * *", async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+    );
+
+    // Get all workspaces that have pending items
+    const { data: workspaces } = await sb
+      .from("group_message_queue")
+      .select("workspace_id")
+      .eq("status", "pending")
+      .limit(100);
+
+    if (!workspaces || workspaces.length === 0) return;
+
+    const uniqueWs = [...new Set(workspaces.map((w: any) => w.workspace_id))];
+
+    for (const wsId of uniqueWs) {
+      try {
+        const resp = await fetch(`http://localhost:${PORT}/api/groups/queue/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: wsId }),
+        });
+        if (!resp.ok) {
+          console.error(`[cron] group-queue-processor error for ws ${wsId}:`, await resp.text());
+        } else {
+          const result = await resp.json() as { sent?: number; failed?: number; skipped?: number };
+          if ((result.sent || 0) > 0 || (result.failed || 0) > 0) {
+            console.log(`[cron] 📨 Group queue processed ws ${wsId}: sent=${result.sent || 0}, failed=${result.failed || 0}, skipped=${result.skipped || 0}`);
+          }
+        }
+      } catch (e: any) {
+        console.error(`[cron] group-queue-processor fetch error:`, e.message);
+      }
+    }
+  } catch (err: any) {
+    console.error("[cron] group-queue-processor error:", err.message);
+  }
+});
+
+// ─── Smart Link Sync Cron (5min): sync member_count and invite_url ───
+cron.schedule("*/15 * * * *", async () => {
+  try {
+    const resp = await fetch(`http://localhost:${PORT}/api/groups/smart-links/sync-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!resp.ok) {
+      console.error("[cron] smart-link-sync error:", await resp.text());
+    } else {
+      const result = await resp.json() as any;
+      const count = result?.results?.length || 0;
+      if (count > 0) {
+        console.log(`[cron] 🔗 Smart link sync: ${count} link(s) processed`);
+      }
+    }
+  } catch (err: any) {
+    console.error("[cron] smart-link-sync error:", err.message);
+  }
+});
+
 const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, async () => {
   console.log(`Backend running on port ${PORT}`);
+
+  // ─── Initialize in-memory group scheduler (replaces old cron + self-heal) ───
+  try {
+    await groupScheduler.loadAll();
+    console.log(`[scheduler] 🚀 Scheduler initialized with ${groupScheduler.activeCount} active timer(s)`);
+  } catch (err: any) {
+    console.error("[scheduler] Initialization error:", err.message);
+  }
+
+  // Group monitoring agora depende exclusivamente do sync de Smart Links
+  // (rota POST /api/groups/smart-links/sync-all, agendada externamente).
 });
