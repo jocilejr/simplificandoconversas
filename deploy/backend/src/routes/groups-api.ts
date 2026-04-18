@@ -718,62 +718,9 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /select-groups ─── */
-router.post("/select-groups", async (req: Request, res: Response) => {
-  try {
-    const { workspaceId, userId, instanceName, groups } = req.body;
-    if (!workspaceId || !userId || !instanceName || !Array.isArray(groups))
-      return res.status(400).json({ error: "Missing fields" });
+/* Rotas /select-groups, /selected-groups e /selected-groups/:id removidas.
+   Monitoramento agora opera exclusivamente sobre group_smart_links. */
 
-    const sb = getServiceClient();
-    const rows = groups.map((g: any) => ({
-      workspace_id: workspaceId,
-      user_id: userId,
-      instance_name: instanceName,
-      group_jid: g.jid,
-      group_name: g.name,
-      member_count: g.memberCount || 0,
-    }));
-
-    const { data, error } = await sb.from("group_selected").upsert(rows, { onConflict: "workspace_id,group_jid" }).select();
-    if (error) throw error;
-    res.json(data);
-  } catch (err: any) {
-    console.error("[groups-api] select-groups error:", err?.message || err?.details || JSON.stringify(err));
-    res.status(500).json({ error: err?.message || err?.details || err?.hint || "Unknown error" });
-  }
-});
-
-/* ─── GET /selected-groups ─── */
-router.get("/selected-groups", async (req: Request, res: Response) => {
-  try {
-    const workspaceId = req.query.workspaceId as string;
-    if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
-
-    const sb = getServiceClient();
-    const { data, error } = await sb
-      .from("group_selected")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: true });
-    if (error) throw error;
-    res.json(data);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ─── DELETE /selected-groups/:id ─── */
-router.delete("/selected-groups/:id", async (req: Request, res: Response) => {
-  try {
-    const sb = getServiceClient();
-    const { error } = await sb.from("group_selected").delete().eq("id", req.params.id);
-    if (error) throw error;
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 /* ─── Campaigns CRUD ─── */
 router.get("/campaigns", async (req: Request, res: Response) => {
