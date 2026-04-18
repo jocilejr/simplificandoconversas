@@ -581,29 +581,37 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_email_contacts_user_email ON public.email_contacts(user_id, email);
 GRANT ALL ON public.email_contacts TO anon, authenticated, service_role;
 
--- Email Queue (async processing)
-CREATE TABLE IF NOT EXISTS public.email_queue (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  campaign_id uuid REFERENCES public.email_campaigns(id),
-  template_id uuid REFERENCES public.email_templates(id),
-  smtp_config_id uuid,
-  recipient_email text NOT NULL,
-  recipient_name text,
-  personalization jsonb DEFAULT '{}',
-  status text NOT NULL DEFAULT 'pending',
-  error_message text,
-  created_at timestamptz DEFAULT now(),
-  processed_at timestamptz
-);
-ALTER TABLE public.email_queue ENABLE ROW LEVEL SECURITY;
+-- Email Queue (async processing) — só cria se email_campaigns e email_templates existirem
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_queue' AND policyname = 'Users can manage own email queue') THEN
-    CREATE POLICY "Users can manage own email queue" ON public.email_queue FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  IF to_regclass('public.email_campaigns') IS NOT NULL
+     AND to_regclass('public.email_templates') IS NOT NULL
+     AND to_regclass('public.email_queue') IS NULL THEN
+    CREATE TABLE public.email_queue (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL,
+      campaign_id uuid REFERENCES public.email_campaigns(id),
+      template_id uuid REFERENCES public.email_templates(id),
+      smtp_config_id uuid,
+      recipient_email text NOT NULL,
+      recipient_name text,
+      personalization jsonb DEFAULT '{}',
+      status text NOT NULL DEFAULT 'pending',
+      error_message text,
+      created_at timestamptz DEFAULT now(),
+      processed_at timestamptz
+    );
   END IF;
 END $$;
-CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, created_at) WHERE status = 'pending';
-GRANT ALL ON public.email_queue TO anon, authenticated, service_role;
+DO $$ BEGIN
+  IF to_regclass('public.email_queue') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.email_queue ENABLE ROW LEVEL SECURITY';
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_queue' AND policyname = 'Users can manage own email queue') THEN
+      EXECUTE 'CREATE POLICY "Users can manage own email queue" ON public.email_queue FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid())';
+    END IF;
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, created_at) WHERE status = ''pending''';
+    EXECUTE 'GRANT ALL ON public.email_queue TO anon, authenticated, service_role';
+  END IF;
+END $$;
 
 -- message_queue_config (anti-ban global wait)
 CREATE TABLE IF NOT EXISTS public.message_queue_config (
