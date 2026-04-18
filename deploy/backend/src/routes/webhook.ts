@@ -254,7 +254,7 @@ router.post("/*", async (req, res) => {
     // Smart lookup: find existing conversation by lid or phone_number (NEVER change remote_jid)
     let existingConvId: string | null = null;
 
-    if (remoteJid.includes("@s.whatsapp.net") || remoteJid.includes("@lid")) {
+    if (remoteJid && (remoteJid.includes("@s.whatsapp.net") || remoteJid.includes("@lid"))) {
       const supabaseLookup = getServiceClient();
       const { data: instRec } = await supabaseLookup
         .from("whatsapp_instances")
