@@ -298,8 +298,14 @@ router.post("/*", async (req, res) => {
       }
     }
 
+    // Skip messages with no remoteJid (undecryptable/protocol messages with empty key)
+    if (!remoteJid) {
+      console.log(`[webhook] Skipping message with no remoteJid (instance=${instance}, hasStub=${hasStubType})`);
+      return res.json({ ok: true, skipped: "no_remote_jid" });
+    }
+
     // Skip group messages
-    if (remoteJid && remoteJid.includes("@g.us")) {
+    if (remoteJid.includes("@g.us")) {
       return res.json({ ok: true, skipped: "group" });
     }
 
@@ -553,13 +559,13 @@ async function checkAndTriggerFlows(
       const data = node.data || {};
       if (data.type === "trigger" && data.triggerKeyword) {
         const keyword = data.triggerKeyword.trim().toLowerCase();
-        if (keyword && contentLower === keyword) { matched = true; break; }
+        if (keyword && contentLower.includes(keyword)) { matched = true; break; }
       }
       if ((data.type === "group" || data.type === "groupBlock") && data.steps) {
         for (const step of data.steps) {
           if (step.data?.type === "trigger" && step.data?.triggerKeyword) {
             const keyword = step.data.triggerKeyword.trim().toLowerCase();
-            if (keyword && contentLower === keyword) { matched = true; break; }
+            if (keyword && contentLower.includes(keyword)) { matched = true; break; }
           }
         }
         if (matched) break;
