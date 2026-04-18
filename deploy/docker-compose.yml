@@ -148,7 +148,7 @@ services:
       GOTRUE_URL: http://gotrue:9999
       STORAGE_URL: http://storage:5000
       BAILEYS_URL: http://baileys-gateway:8080
-      BAILEYS_API_KEY: ${BAILEYS_API_KEY:-${EVOLUTION_API_KEY}}
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY}
       APP_URL: ${APP_URL}
       API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
