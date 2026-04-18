@@ -1,30 +1,30 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   UsersRound, Users, Megaphone, Send, UserPlus, UserMinus,
-  CalendarIcon, Activity, Clock,
+  CalendarIcon, Activity, Link2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatCard } from "@/components/transactions/StatCard";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { useGroupSelected } from "@/hooks/useGroupSelected";
+import { useGroupSmartLinks } from "@/hooks/useGroupSmartLinks";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { useGroupQueue } from "@/hooks/useGroupQueue";
 import { useGroupEvents, EventPeriod } from "@/hooks/useGroupEvents";
 import { useGroupEventsLive } from "@/hooks/useGroupEventsLive";
-import { useWorkspace } from "@/hooks/useWorkspace";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
-import { apiUrl } from "@/lib/api";
 import SchedulerDebugPanel from "./SchedulerDebugPanel";
+
+const STORAGE_KEY = "grupos:dashboard:smartLinkId";
 
 function getBrazilNow(): Date {
   const brazilDateStr = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
@@ -37,43 +37,77 @@ function shortJid(jid: string): string {
 }
 
 export default function GroupDashboardTab() {
-  const { selectedGroups, dataUpdatedAt } = useGroupSelected();
+  const { smartLinks, isLoading: loadingLinks } = useGroupSmartLinks();
   const { campaigns } = useGroupCampaigns();
   const { stats } = useGroupQueue();
-  const { workspaceId } = useWorkspace();
-  const { totals, groups, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
+  const { totals: allTotals, groups: allGroupEvents, period, setPeriod, customRange, setCustomRange } = useGroupEvents();
 
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(STORAGE_KEY) || "";
+  });
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>();
   const [eventsOpen, setEventsOpen] = useState(false);
   const [, setTick] = useState(0);
 
-  const { events: liveEvents, isLoading: liveLoading } = useGroupEventsLive(period, customRange, eventsOpen);
+  // Auto-seleciona o primeiro smart link se nenhum estiver salvo
+  useEffect(() => {
+    if (!selectedId && smartLinks.length > 0) {
+      setSelectedId(smartLinks[0].id);
+    }
+  }, [smartLinks, selectedId]);
 
-  // Re-renderiza a cada 30s para atualizar o label "Atualizado há X"
+  useEffect(() => {
+    if (selectedId) localStorage.setItem(STORAGE_KEY, selectedId);
+  }, [selectedId]);
+
+  const selectedLink = useMemo(
+    () => smartLinks.find((sl) => sl.id === selectedId) || null,
+    [smartLinks, selectedId]
+  );
+
+  const linkJids = useMemo(
+    () => new Set((selectedLink?.group_links || []).map((g) => g.group_jid)),
+    [selectedLink]
+  );
+
+  // Filtra eventos do período pelos JIDs do Smart Link selecionado
+  const filteredGroupEvents = useMemo(
+    () => allGroupEvents.filter((g) => linkJids.has(g.group_jid)),
+    [allGroupEvents, linkJids]
+  );
+
+  const filteredTotals = useMemo(
+    () => filteredGroupEvents.reduce(
+      (acc, g) => ({ adds: acc.adds + g.adds, removes: acc.removes + g.removes }),
+      { adds: 0, removes: 0 }
+    ),
+    [filteredGroupEvents]
+  );
+
+  const eventsByJid = useMemo(
+    () => new Map(filteredGroupEvents.map((g) => [g.group_jid, g])),
+    [filteredGroupEvents]
+  );
+
+  const { events: liveEventsAll, isLoading: liveLoading } = useGroupEventsLive(period, customRange, eventsOpen);
+  const liveEvents = useMemo(
+    () => liveEventsAll.filter((e) => linkJids.has(e.group_jid)),
+    [liveEventsAll, linkJids]
+  );
+
+  // Re-renderiza a cada 30s para atualizar labels relativos
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 30000);
     return () => clearInterval(id);
   }, []);
 
-  const hasSelectedGroups = selectedGroups.length > 0;
-  const baseTotalMembers = selectedGroups.reduce((sum, g) => sum + g.member_count, 0);
-  // Total dinâmico: base (re-baseado a cada 1h) + variação do período
-  const totalMembers = baseTotalMembers + totals.adds - totals.removes;
+  const groupLinks = selectedLink?.group_links || [];
+  const baseTotalMembers = groupLinks.reduce((sum, g) => sum + (g.member_count || 0), 0);
+  const totalMembers = baseTotalMembers + filteredTotals.adds - filteredTotals.removes;
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
-  const groupsMonitored = selectedGroups.length;
-
-  const eventsByJid = useMemo(
-    () => new Map(groups.map((g) => [g.group_jid, g])),
-    [groups]
-  );
-
-  const lastSyncLabel = dataUpdatedAt
-    ? `Atualizado ${formatDistanceToNow(new Date(dataUpdatedAt), { locale: ptBR, addSuffix: true })}`
-    : "Aguardando primeira atualização";
-  const lastSyncTooltip = dataUpdatedAt
-    ? new Date(dataUpdatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
-    : "—";
+  const groupsCount = groupLinks.length;
 
   const handleCalendarSelect = (range: DateRange | undefined) => {
     setCalendarRange(range);
@@ -93,6 +127,24 @@ export default function GroupDashboardTab() {
           ? `${format(customRange.from, "dd/MM", { locale: ptBR })} - ${format(customRange.to, "dd/MM", { locale: ptBR })}`
           : "Personalizado";
 
+  // Estado vazio: nenhum smart link criado
+  if (!loadingLinks && smartLinks.length === 0) {
+    return (
+      <div className="space-y-4">
+        <SchedulerDebugPanel />
+        <Card className="border-border/50">
+          <CardContent className="px-6 py-12 text-center space-y-2">
+            <Link2 className="h-8 w-8 text-muted-foreground mx-auto" />
+            <p className="text-sm font-medium">Nenhum Smart Link criado.</p>
+            <p className="text-sm text-muted-foreground">
+              Crie um Smart Link na aba <span className="font-medium text-foreground">Smart Link</span> para começar a monitorar.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-0 w-full space-y-4 overflow-hidden">
       {/* 1) Programação do dia */}
@@ -100,30 +152,37 @@ export default function GroupDashboardTab() {
         <SchedulerDebugPanel />
       </div>
 
-      {/* 2) Card de Informações Gerais (stats + filtro + ver eventos) */}
+      {/* 2) Card de Informações Gerais */}
       <Card className="border-border/50 min-w-0 overflow-hidden">
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Informações Gerais — {periodLabel}
-            </p>
+            <div className="flex items-center gap-2 min-w-0">
+              <Link2 className="h-3.5 w-3.5 text-primary shrink-0" />
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger className="h-8 w-[260px] text-xs bg-secondary/30 border-border/40">
+                  <SelectValue placeholder="Selecione um Smart Link" />
+                </SelectTrigger>
+                <SelectContent>
+                  {smartLinks.map((sl) => (
+                    <SelectItem key={sl.id} value={sl.id} className="text-xs">
+                      <span className="font-medium">/{sl.slug}</span>
+                      <span className="text-muted-foreground ml-2">
+                        · {(sl.group_links || []).length} grupos
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground hidden md:inline">
+                — {periodLabel}
+              </span>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs text-muted-foreground border border-border/40 rounded-md bg-secondary/20">
-                      <Clock className="h-3.5 w-3.5" />
-                      {lastSyncLabel}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{lastSyncTooltip}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setEventsOpen(true)}
-                disabled={!hasSelectedGroups}
+                disabled={!selectedLink || groupsCount === 0}
                 className="gap-1.5 h-7 text-xs"
               >
                 <Activity className="h-3.5 w-3.5" />
@@ -183,40 +242,58 @@ export default function GroupDashboardTab() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            <StatCard title="Grupos Monitorados" value={String(groupsMonitored)} icon={UsersRound} iconColor="text-primary" />
+            <StatCard title="Grupos do Smart Link" value={String(groupsCount)} icon={UsersRound} iconColor="text-primary" />
             <StatCard title="Total de Membros" value={totalMembers.toLocaleString()} icon={Users} iconColor="text-primary" />
             <StatCard title="Campanhas Ativas" value={String(activeCampaigns)} icon={Megaphone} iconColor="text-primary" />
             <StatCard title="Enviadas Hoje" value={String(stats.sent)} icon={Send} iconColor="text-primary" />
-            <StatCard title="Entraram" value={String(totals.adds)} icon={UserPlus} iconColor="text-green-500" />
-            <StatCard title="Saíram" value={String(totals.removes)} icon={UserMinus} iconColor="text-red-500" />
+            <StatCard title="Entraram" value={String(filteredTotals.adds)} icon={UserPlus} iconColor="text-green-500" />
+            <StatCard title="Saíram" value={String(filteredTotals.removes)} icon={UserMinus} iconColor="text-red-500" />
           </div>
         </CardContent>
       </Card>
 
-      {/* 3) Card de Grupos Monitorados (com adds/removes do período) */}
+      {/* 3) Card de Grupos do Smart Link */}
       <Card className="border-border/50 min-w-0 overflow-hidden">
         <CardContent className="p-0">
-          <div className="px-4 py-3 border-b border-border/50">
+          <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Grupos Monitorados
+              Grupos do Smart Link {selectedLink ? `· /${selectedLink.slug}` : ""}
             </p>
+            {selectedLink?.last_successful_sync_at && (
+              <p className="text-[11px] text-muted-foreground">
+                Sync {formatDistanceToNow(new Date(selectedLink.last_successful_sync_at), { locale: ptBR, addSuffix: true })}
+              </p>
+            )}
           </div>
-          {!hasSelectedGroups ? (
+          {groupsCount === 0 ? (
             <div className="px-6 py-8 text-center space-y-1.5">
-              <p className="text-sm font-medium">Nenhum grupo monitorado.</p>
+              <p className="text-sm font-medium">Nenhum grupo neste Smart Link.</p>
               <p className="text-sm text-muted-foreground">
-                Use a aba <span className="font-medium text-foreground">Selecionar</span> para escolher grupos.
+                Edite o Smart Link na aba <span className="font-medium text-foreground">Smart Link</span> para adicionar grupos.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-border/30 max-h-[420px] overflow-y-auto">
-              {selectedGroups.map((g) => {
+              {groupLinks.map((g) => {
                 const ev = eventsByJid.get(g.group_jid);
+                const status = g.last_sync_status;
                 return (
-                  <div key={g.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors gap-3">
+                  <div key={g.group_jid} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{g.group_name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{g.instance_name}</p>
+                      <p className="text-sm font-medium truncate">{g.group_name || shortJid(g.group_jid)}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {status === "banned" && (
+                          <span className="text-red-500 font-medium">banido</span>
+                        )}
+                        {status === "error" && (
+                          <span className="text-amber-500 font-medium">erro</span>
+                        )}
+                        {g.last_synced_at && (
+                          <span>
+                            sync {formatDistanceToNow(new Date(g.last_synced_at), { locale: ptBR, addSuffix: true })}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="flex items-center gap-1 text-xs font-medium text-green-500">
@@ -242,11 +319,11 @@ export default function GroupDashboardTab() {
             <DialogTitle>Eventos em tempo real — {periodLabel}</DialogTitle>
             <DialogDescription className="flex items-center gap-2 text-xs">
               <span className="flex items-center gap-1 text-green-500 font-medium">
-                <UserPlus className="h-3 w-3" />+{totals.adds} entraram
+                <UserPlus className="h-3 w-3" />+{filteredTotals.adds} entraram
               </span>
               <span className="text-muted-foreground">·</span>
               <span className="flex items-center gap-1 text-red-500 font-medium">
-                <UserMinus className="h-3 w-3" />−{totals.removes} saíram
+                <UserMinus className="h-3 w-3" />−{filteredTotals.removes} saíram
               </span>
               <span className="text-muted-foreground">·</span>
               <span className="text-muted-foreground">atualiza a cada 15s</span>
