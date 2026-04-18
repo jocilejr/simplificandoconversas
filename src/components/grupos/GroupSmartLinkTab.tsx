@@ -368,7 +368,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
               <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL Pública (redirect)</p>
               <code className="text-sm truncate block">{publicUrl}</code>
             </div>
-            <Button size="sm" variant="outline" onClick={() => handleCopy(publicUrl, "URL")} className="shrink-0 border-border/50">
+            <Button type="button" size="sm" variant="outline" onClick={() => handleCopy(publicUrl, "URL")} className="shrink-0 border-border/50">
               <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
             </Button>
           </div>
@@ -378,7 +378,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
               <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">URL GET (retorna link como texto)</p>
               <code className="text-sm truncate block">{publicUrl}-get</code>
             </div>
-            <Button size="sm" variant="outline" onClick={() => handleCopy(`${publicUrl}-get`, "URL GET")} className="shrink-0 border-border/50">
+            <Button type="button" size="sm" variant="outline" onClick={() => handleCopy(`${publicUrl}-get`, "URL GET")} className="shrink-0 border-border/50">
               <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
             </Button>
           </div>
@@ -440,8 +440,8 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
               </div>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleSaveEdit} disabled={updateSmartLink.isPending}>Salvar</Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
+              <Button type="button" size="sm" onClick={handleSaveEdit} disabled={updateSmartLink.isPending}>Salvar</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
             </div>
           </CardContent>
         </Card>
@@ -456,10 +456,10 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Grupos</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant="outline" onClick={() => { setAddingGroups(true); handleFetchGroupsForAdd(); }} disabled={addingGroups || fetchingGroups} className="text-xs border-border/50 h-7">
+                  <Button type="button" size="sm" variant="outline" onClick={() => { setAddingGroups(true); handleFetchGroupsForAdd(); }} disabled={addingGroups || fetchingGroups} className="text-xs border-border/50 h-7">
                     <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7">
+                  <Button type="button" size="sm" variant="outline" onClick={() => syncInviteLinks.mutate(smartLink.id)} disabled={syncInviteLinks.isPending || !!smartLink.sync_progress} className="text-xs border-border/50 h-7">
                     <RefreshCw className={`h-3.5 w-3.5 mr-1 ${(syncInviteLinks.isPending || smartLink.sync_progress) ? "animate-spin" : ""}`} /> Sincronizar
                   </Button>
                 </div>
@@ -517,7 +517,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                           <TableCell className="text-center">
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
+                                 <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive">
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </AlertDialogTrigger>
