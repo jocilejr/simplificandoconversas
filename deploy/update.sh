@@ -54,8 +54,8 @@ fi
 echo "   → Postgres container: $PG_CONTAINER"
 
 echo "   → Applying all SQL migrations in a single pass..."
-cat "$DEPLOY_DIR/init-db.sql" \
-    "$DEPLOY_DIR/migrate-workspace.sql" \
+cat "$DEPLOY_DIR/migrate-workspace.sql" \
+    "$DEPLOY_DIR/init-db.sql" \
     "$DEPLOY_DIR/fix-member-tables.sql" \
   | docker exec -i "$PG_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1
 echo "✓ Migrações aplicadas"
