@@ -1064,3 +1064,19 @@ ALTER TABLE IF EXISTS group_smart_links
 
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
+
+-- ============================================================
+-- Baileys Gateway: persistent auth state per instance
+-- (replaces Evolution API's internal session storage)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.baileys_auth_state (
+  instance_name text NOT NULL,
+  key text NOT NULL,
+  value jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (instance_name, key)
+);
+CREATE INDEX IF NOT EXISTS idx_baileys_auth_state_instance
+  ON public.baileys_auth_state (instance_name);
+
+GRANT ALL ON public.baileys_auth_state TO service_role;
