@@ -22,13 +22,20 @@ function destFor(input: string): string {
   return toJid(input);
 }
 
-/** POST /message/sendText/:instance  body: { number, text, delay? } */
+/** POST /message/sendText/:instance  body: { number, text, mentionsEveryOne?, delay? } */
 router.post("/sendText/:instance", async (req, res) => {
   try {
     const sock = await getSock(decodeURIComponent(req.params.instance));
-    const { number, text } = req.body || {};
+    const { number, text, mentionsEveryOne } = req.body || {};
     const jid = destFor(number);
-    const sent = await sock.sendMessage(jid, { text: String(text ?? "") });
+    let payload: any = { text: String(text ?? "") };
+    if (mentionsEveryOne && jid.endsWith("@g.us")) {
+      try {
+        const meta = await sock.groupMetadata(jid);
+        payload.mentions = meta.participants.map((p: any) => p.id);
+      } catch {}
+    }
+    const sent = await sock.sendMessage(jid, payload);
     res.json({
       key: sent?.key,
       status: "PENDING",
@@ -44,7 +51,7 @@ router.post("/sendText/:instance", async (req, res) => {
 router.post("/sendMedia/:instance", async (req, res) => {
   try {
     const sock = await getSock(decodeURIComponent(req.params.instance));
-    const { number, mediatype, media, caption, fileName, mimetype } = req.body || {};
+    const { number, mediatype, media, caption, fileName, mimetype, mentionsEveryOne } = req.body || {};
     const jid = destFor(number);
 
     // `media` may be a URL or base64 string
@@ -63,6 +70,12 @@ router.post("/sendMedia/:instance", async (req, res) => {
       };
     else payload = { document: buf, fileName: fileName || "file", mimetype: mimetype || "application/octet-stream" };
 
+    if (mentionsEveryOne && jid.endsWith("@g.us")) {
+      try {
+        const meta = await sock.groupMetadata(jid);
+        payload.mentions = meta.participants.map((p: any) => p.id);
+      } catch {}
+    }
     const sent = await sock.sendMessage(jid, payload);
     res.json({
       key: sent?.key,
@@ -74,19 +87,21 @@ router.post("/sendMedia/:instance", async (req, res) => {
   }
 });
 
-/** POST /message/sendWhatsAppAudio/:instance  body: { number, audio } */
+/** POST /message/sendWhatsAppAudio/:instance  body: { number, audio, ptt? }
+ *  OGG/OPUS → voice message (ptt=true); MP3/AAC/etc → regular audio file (ptt=false).
+ *  Caller can override with explicit ptt boolean. */
 router.post("/sendWhatsAppAudio/:instance", async (req, res) => {
   try {
     const sock = await getSock(decodeURIComponent(req.params.instance));
-    const { number, audio } = req.body || {};
+    const { number, audio, ptt: pttOverride } = req.body || {};
     const jid = destFor(number);
     const isUrl = typeof audio === "string" && /^https?:\/\//i.test(audio);
     const buf = isUrl ? { url: audio as string } : Buffer.from(String(audio || ""), "base64");
-    const sent = await sock.sendMessage(jid, {
-      audio: buf,
-      mimetype: "audio/ogg; codecs=opus",
-      ptt: true,
-    });
+    // Auto-detect: OGG/OPUS → voice (PTT); anything else → audio file
+    const isOgg = typeof audio === "string" && /\.(ogg|opus)(\?.*)?$/i.test(audio);
+    const ptt = pttOverride !== undefined ? Boolean(pttOverride) : isOgg;
+    const mimetype = ptt ? "audio/ogg; codecs=opus" : "audio/mpeg";
+    const sent = await sock.sendMessage(jid, { audio: buf, mimetype, ptt });
     res.json({
       key: sent?.key,
       status: "PENDING",
@@ -116,6 +131,43 @@ router.post("/sendPresence/:instance", async (req, res) => {
     res.json({ presence: p, jid });
   } catch (err: any) {
     res.status(400).json({ status: 400, error: err?.message || "presence failed" });
+  }
+});
+
+/** POST /message/sendContact/:instance  body: { number, contact: [{fullName, phoneNumber, organization?, email?}] } */
+router.post("/sendContact/:instance", async (req, res) => {
+  try {
+    const sock = await getSock(decodeURIComponent(req.params.instance));
+    const { number, contact } = req.body || {};
+    const jid = destFor(number);
+    const contacts = (Array.isArray(contact) ? contact : [contact]).filter(Boolean);
+    if (contacts.length === 0) throw new Error("No contact data provided");
+    const vcards = contacts.map((c: any) => {
+      const phone = String(c.phoneNumber || c.wuid || "").replace(/\D/g, "");
+      const name = c.fullName || c.contactName || c.name || phone;
+      const org = c.organization ? `
+ORG:${c.organization}` : "";
+      const email = c.email ? `
+EMAIL:${c.email}` : "";
+      return {
+        vcard: `BEGIN:VCARD
+VERSION:3.0
+FN:${name}${org}${email}
+TEL;type=CELL;waid=${phone}:+${phone}
+END:VCARD`,
+      };
+    });
+    const displayName = contacts[0]?.fullName || contacts[0]?.contactName || "";
+    const sent = await sock.sendMessage(jid, {
+      contacts: { displayName, contacts: vcards },
+    });
+    res.json({
+      key: sent?.key,
+      status: "PENDING",
+      messageTimestamp: Math.floor(Date.now() / 1000),
+    });
+  } catch (err: any) {
+    res.status(400).json({ status: 400, error: err?.message || "send contact failed" });
   }
 });
 

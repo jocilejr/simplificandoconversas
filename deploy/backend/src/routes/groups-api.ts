@@ -1208,10 +1208,12 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_audio_url: ${JSON.stringify(content)}`);
           }
+          // OGG/OPUS → voice message (PTT); any other format → regular audio file
+          const isOgg = /\.(ogg|opus)(\?.*)?$/i.test(mediaUrl);
           const r = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
+            body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, ptt: isOgg, mentionsEveryOne }),
           });
           if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "contact") {
