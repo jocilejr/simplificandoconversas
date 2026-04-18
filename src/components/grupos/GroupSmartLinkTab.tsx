@@ -553,7 +553,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Grupos</p>
-              <Button size="sm" variant="ghost" onClick={() => { setAddingGroups(false); setFetchedGroups([]); setSelectedNewJids(new Set()); }} className="h-7 text-xs">
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setAddingGroups(false); setFetchedGroups([]); setSelectedNewJids(new Set()); }} className="h-7 text-xs">
                 Cancelar
               </Button>
             </div>
@@ -578,8 +578,8 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                       </TableHeader>
                       <TableBody>
                         {fetchedGroups.map(g => (
-                          <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleNewGroup(g.jid)}>
-                            <TableCell><Checkbox checked={selectedNewJids.has(g.jid)} onCheckedChange={() => toggleNewGroup(g.jid)} /></TableCell>
+                            <TableRow key={g.jid} className="cursor-pointer" onClick={() => toggleNewGroup(g.jid)}>
+                              <TableCell><Checkbox checked={selectedNewJids.has(g.jid)} onCheckedChange={() => toggleNewGroup(g.jid)} onClick={(e) => e.stopPropagation()} /></TableCell>
                             <TableCell className="text-sm truncate max-w-[250px]">{g.name}</TableCell>
                             <TableCell className="text-center"><Badge variant="secondary" className="text-xs">{g.memberCount}</Badge></TableCell>
                           </TableRow>
@@ -587,7 +587,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
                       </TableBody>
                     </Table>
                   </div>
-                  <Button size="sm" onClick={handleAddGroups} disabled={selectedNewJids.size === 0 || updateSmartLink.isPending}>
+                  <Button type="button" size="sm" onClick={handleAddGroups} disabled={selectedNewJids.size === 0 || updateSmartLink.isPending}>
                     <Plus className="h-4 w-4 mr-1" /> Adicionar {selectedNewJids.size} grupo(s)
                   </Button>
                 </>
