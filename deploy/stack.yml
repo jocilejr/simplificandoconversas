@@ -140,7 +140,7 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
-      MEMBER_DOMAIN: ${MEMBER_DOMAIN:-membros.origemdavida.online}
+      MEMBER_DOMAIN: ${MEMBER_DOMAIN:-membro.origemdavida.online}
     volumes:
       - /opt/simplificandoconversas/deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - /opt/simplificandoconversas/deploy/frontend:/usr/share/nginx/html:ro
