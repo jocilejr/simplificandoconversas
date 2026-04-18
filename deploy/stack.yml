@@ -1,0 +1,179 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: supabase/postgres:15.8.1.085
+    restart: always
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - sc_pgdata:/var/lib/postgresql/data
+      - /opt/simplificandoconversas/deploy/init-roles.sh:/docker-entrypoint-initdb.d/00-init-roles.sh
+      - /opt/simplificandoconversas/deploy/init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  gotrue:
+    image: supabase/gotrue:v2.186.0
+    environment:
+      GOTRUE_API_HOST: "0.0.0.0"
+      GOTRUE_API_PORT: "9999"
+      API_EXTERNAL_URL: ${API_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: "postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable&options=-csearch_path%3Dauth"
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_SITE_URL: ${APP_URL}
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_SMTP_ADMIN_EMAIL: "admin@example.com"
+      GOTRUE_SMTP_HOST: "localhost"
+      GOTRUE_SMTP_PORT: "587"
+      GOTRUE_SMTP_USER: "no-reply@example.com"
+      GOTRUE_SMTP_PASS: "unused"
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  storage:
+    image: supabase/storage-api:v1.11.13
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://postgrest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      FILE_SIZE_LIMIT: "52428800"
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: local
+      GLOBAL_S3_BUCKET: stub
+      IS_MULTITENANT: "false"
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      AUTH_JWT_ALGORITHM: HS256
+    volumes:
+      - sc_storagedata:/var/lib/storage
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  baileys-gateway:
+    image: simplificando-baileys-gateway:latest
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      BAILEYS_API_KEY: ${EVOLUTION_API_KEY}
+      WEBHOOK_GLOBAL_URL: http://backend:3001/api/webhook
+      API_URL: ${API_URL}
+      BAILEYS_LOG_LEVEL: warn
+    volumes:
+      - sc_baileys_sessions:/app/sessions
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  backend:
+    image: simplificando-backend
+    environment:
+      PORT: "3001"
+      SUPABASE_URL: http://nginx:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_URL: http://gotrue:9999
+      STORAGE_URL: http://storage:5000
+      BAILEYS_URL: http://baileys-gateway:8080
+      BAILEYS_API_KEY: ${EVOLUTION_API_KEY}
+      APP_URL: ${APP_URL}
+      API_URL: ${API_URL}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CSV_ANALYZER_MODE: heuristic
+      APP_PUBLIC_URL: ${APP_URL}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+    volumes:
+      - sc_media:/media-files
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  nginx:
+    image: nginx:alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      MEMBER_DOMAIN: ${MEMBER_DOMAIN:-membros.origemdavida.online}
+    volumes:
+      - /opt/simplificandoconversas/deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - /opt/simplificandoconversas/deploy/frontend:/usr/share/nginx/html:ro
+      - sc_media:/usr/share/nginx/media:ro
+    networks:
+      - internal
+      - PrincipalNet
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=PrincipalNet"
+        - "traefik.http.routers.sc-app.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.sc-app.entrypoints=websecure"
+        - "traefik.http.routers.sc-app.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.sc-api.rule=Host(`${API_DOMAIN}`)"
+        - "traefik.http.routers.sc-api.entrypoints=websecure"
+        - "traefik.http.routers.sc-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.sc-membros.rule=Host(`${MEMBER_DOMAIN}`)"
+        - "traefik.http.routers.sc-membros.entrypoints=websecure"
+        - "traefik.http.routers.sc-membros.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.sc-nginx.loadbalancer.server.port=80"
+
+networks:
+  internal:
+    driver: overlay
+  PrincipalNet:
+    external: true
+
+volumes:
+  sc_pgdata:
+  sc_storagedata:
+  sc_baileys_sessions:
+  sc_media:
