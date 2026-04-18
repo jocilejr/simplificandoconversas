@@ -1607,8 +1607,10 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
       let inviteFetched = false;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
-            headers: { apikey: apiKey },
+          const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}`, {
+            method: "POST",
+            headers: { apikey: apiKey, "Content-Type": "application/json" },
+            body: JSON.stringify({ groupJid: gl.group_jid }),
             signal: AbortSignal.timeout(8000),
           });
           if (r.ok) {
@@ -1870,8 +1872,10 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
           let inviteFetched = false;
           for (let attempt = 0; attempt < 4; attempt++) {
             try {
-              const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
-                headers: { apikey: apiKey },
+              const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}`, {
+                method: "POST",
+                headers: { apikey: apiKey, "Content-Type": "application/json" },
+                body: JSON.stringify({ groupJid: gl.group_jid }),
                 signal: AbortSignal.timeout(8000),
               });
               if (r.ok) {
