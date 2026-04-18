@@ -1,17 +1,16 @@
 import { useState, useMemo } from "react";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
+import { useQuickReplyCategories } from "@/hooks/useQuickReplyCategories";
 import { QuickRepliesSidebar } from "@/components/quick-replies/QuickRepliesSidebar";
 import { QuickRepliesList } from "@/components/quick-replies/QuickRepliesList";
 import { toast } from "sonner";
 
 export default function RespostasRapidas() {
-  const { data = [], create, update, remove, renameCategory } = useQuickReplies();
+  const { data = [], create, update, remove } = useQuickReplies();
+  const { data: categoryRows = [], create: createCat, rename: renameCat, remove: removeCat } = useQuickReplyCategories();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  const categories = useMemo(() => {
-    const set = new Set(data.map((d) => d.category));
-    return Array.from(set).sort();
-  }, [data]);
+  const categories = useMemo(() => categoryRows.map((c) => c.name), [categoryRows]);
 
   const counts = useMemo(() => {
     const map: Record<string, number> = {};
@@ -53,15 +52,48 @@ export default function RespostasRapidas() {
     });
   };
 
+  const handleCreateCategory = (name: string) => {
+    createCat.mutate(
+      { name },
+      {
+        onSuccess: () => { toast.success("Categoria criada!"); setActiveCategory(name.trim()); },
+        onError: (err) => toast.error(formatError(err)),
+      }
+    );
+  };
+
   const handleRenameCategory = (oldName: string, newName: string) => {
-    renameCategory.mutate(
-      { oldName, newName },
+    const row = categoryRows.find((c) => c.name === oldName);
+    if (!row) {
+      toast.error("Categoria não encontrada");
+      return;
+    }
+    renameCat.mutate(
+      { id: row.id, oldName, newName },
       {
         onSuccess: () => {
           toast.success("Categoria renomeada!");
-          if (activeCategory === oldName) setActiveCategory(newName);
+          if (activeCategory === oldName) setActiveCategory(newName.trim());
         },
-        onError: () => toast.error("Erro ao renomear"),
+        onError: (err) => toast.error(formatError(err)),
+      }
+    );
+  };
+
+  const handleDeleteCategory = (name: string) => {
+    const row = categoryRows.find((c) => c.name === name);
+    if (!row) {
+      toast.error("Categoria não encontrada");
+      return;
+    }
+    removeCat.mutate(
+      { id: row.id, name },
+      {
+        onSuccess: () => {
+          toast.success("Categoria excluída!");
+          if (activeCategory === name) setActiveCategory(null);
+        },
+        onError: (err) => toast.error(formatError(err)),
       }
     );
   };
@@ -72,13 +104,15 @@ export default function RespostasRapidas() {
         categories={categories}
         activeCategory={activeCategory}
         onSelect={setActiveCategory}
+        onCreateCategory={handleCreateCategory}
         onRenameCategory={handleRenameCategory}
+        onDeleteCategory={handleDeleteCategory}
         counts={counts}
         total={data.length}
       />
       <QuickRepliesList
         items={data}
-        categories={categories.length > 0 ? categories : ["Geral"]}
+        categories={categories}
         activeCategory={activeCategory}
         onUpdate={handleUpdate}
         onCreate={handleCreate}

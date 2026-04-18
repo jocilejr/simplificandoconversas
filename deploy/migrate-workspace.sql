@@ -92,7 +92,7 @@ DECLARE _t text;
     'email_queue','email_sends','email_suppressions','email_templates',
     'flow_executions','flow_timeouts','followup_settings','labels','messages',
     'message_queue_config','meta_pixels',
-    'platform_connections','quick_replies','recovery_queue','recovery_settings',
+    'platform_connections','quick_replies','quick_reply_categories','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
@@ -104,6 +104,28 @@ DECLARE _t text;
     'daily_prayers','openai_settings','product_knowledge_summaries','manual_boleto_settings'
   ];
 BEGIN
+  -- Ensure quick_reply_categories table exists (created independently of quick_replies)
+  CREATE TABLE IF NOT EXISTS public.quick_reply_categories (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id uuid,
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  BEGIN
+    ALTER TABLE public.quick_reply_categories ADD CONSTRAINT quick_reply_categories_ws_name_key UNIQUE (workspace_id, name);
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  ALTER TABLE public.quick_reply_categories ENABLE ROW LEVEL SECURITY;
+  GRANT ALL ON public.quick_reply_categories TO anon, authenticated, service_role;
+
+  -- Seed from existing quick_replies categories
+  INSERT INTO public.quick_reply_categories (workspace_id, user_id, name)
+  SELECT DISTINCT workspace_id, user_id, category
+  FROM public.quick_replies
+  WHERE category IS NOT NULL AND category <> '' AND workspace_id IS NOT NULL
+  ON CONFLICT DO NOTHING;
+
   FOREACH _t IN ARRAY _tables LOOP
     IF to_regclass(format('public.%I', _t)) IS NULL THEN
       RAISE NOTICE 'Pulando tabela ausente: %', _t;
@@ -125,7 +147,7 @@ DECLARE _rec RECORD; _ws_id uuid;
     'email_queue','email_sends','email_suppressions','email_templates',
     'flow_executions','flow_timeouts','followup_settings','labels','messages',
     'message_queue_config','meta_pixels',
-    'platform_connections','quick_replies','recovery_queue','recovery_settings',
+    'platform_connections','quick_replies','quick_reply_categories','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
@@ -176,7 +198,7 @@ DECLARE _t text; _cnt bigint; _total bigint := 0;
     'email_queue','email_sends','email_suppressions','email_templates',
     'flow_executions','flow_timeouts','followup_settings','labels','messages',
     'message_queue_config','meta_pixels',
-    'platform_connections','quick_replies','recovery_queue','recovery_settings',
+    'platform_connections','quick_replies','quick_reply_categories','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
@@ -217,7 +239,7 @@ DECLARE _t text; _cnt bigint;
     'email_queue','email_sends','email_suppressions','email_templates',
     'flow_executions','flow_timeouts','followup_settings','labels','messages',
     'message_queue_config','meta_pixels',
-    'platform_connections','quick_replies','recovery_queue','recovery_settings',
+    'platform_connections','quick_replies','quick_reply_categories','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
@@ -273,7 +295,7 @@ DECLARE _t text;
     'email_queue','email_sends','email_suppressions','email_templates',
     'flow_executions','flow_timeouts','followup_settings','labels','messages',
     'message_queue_config','meta_pixels',
-    'platform_connections','quick_replies','recovery_queue','recovery_settings',
+    'platform_connections','quick_replies','quick_reply_categories','recovery_queue','recovery_settings',
     'reminders','smtp_config',
     'tracked_links','transactions','whatsapp_instances',
     'group_selected','group_campaigns','group_scheduled_messages',
