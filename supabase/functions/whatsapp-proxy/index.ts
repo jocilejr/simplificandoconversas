@@ -14,8 +14,8 @@ Deno.serve(async (req) => {
   // If this code runs, it means the app is not on the self-hosted environment.
   return new Response(
     JSON.stringify({
-      error: "This feature requires the self-hosted backend (Evolution API). Configure your VPS deployment.",
-      info: "Na VPS, esta rota é interceptada pelo Nginx e encaminhada para o backend Express que se comunica com a Evolution API.",
+      error: "This feature requires the self-hosted backend (Baileys gateway). Configure your VPS deployment.",
+      info: "Na VPS, esta rota é interceptada pelo Nginx e encaminhada para o backend Express que se comunica com o Baileys gateway.",
     }),
     {
       status: 503,
