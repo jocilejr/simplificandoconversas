@@ -62,10 +62,9 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
     setSearchFilter("");
   }, [editData, open]);
 
-  // Auto-fetch groups when instance changes
+  // Auto-fetch groups when instance changes (only while dialog is open)
   useEffect(() => {
-    if (!instanceName || !workspaceId) {
-      setRemoteGroups([]);
+    if (!open || !instanceName || !workspaceId) {
       return;
     }
 
@@ -91,14 +90,14 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
           }
         }
       } catch (err: any) {
-        if (!cancelled) {
-          const msg = err.message || "";
-          const description = msg.includes("403")
-            ? "Instância não pertence a este workspace"
-            : "Não foi possível validar os grupos da instância. Verifique a conexão.";
-          toast({ title: "Erro ao buscar grupos", description, variant: "destructive" });
-          setRemoteGroups([]);
-        }
+        // Silently ignore if dialog already closed (avoids stale toasts after save)
+        if (cancelled || !open) return;
+        const msg = err.message || "";
+        const description = msg.includes("403")
+          ? "Instância não pertence a este workspace"
+          : "Não foi possível validar os grupos da instância. Verifique a conexão.";
+        toast({ title: "Erro ao buscar grupos", description, variant: "destructive" });
+        setRemoteGroups([]);
       } finally {
         if (!cancelled) setFetchingGroups(false);
       }
@@ -106,7 +105,7 @@ export default function GroupCampaignDialog({ open, onOpenChange, editData }: Pr
 
     fetchGroups();
     return () => { cancelled = true; };
-  }, [instanceName, workspaceId]);
+  }, [instanceName, workspaceId, open]);
 
   const toggleGroup = (jid: string) => {
     setGroupJids((prev) => {
