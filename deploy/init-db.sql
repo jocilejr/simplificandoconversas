@@ -32,6 +32,60 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authen
 
 -- NOTE: storage schema and tables are managed by the supabase storage service.
 
+-- Bootstrap workspace primitives early so downstream policies/FKs do not depend on external file order
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'workspace_role') THEN
+    CREATE TYPE public.workspace_role AS ENUM ('admin', 'operator', 'viewer');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.workspaces (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  slug text NOT NULL UNIQUE,
+  logo_url text,
+  openai_api_key text,
+  app_public_url text,
+  created_by uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.workspaces TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  role public.workspace_role NOT NULL DEFAULT 'viewer',
+  permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
+  invited_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(workspace_id, user_id)
+);
+ALTER TABLE public.workspace_members ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.workspace_members TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.is_workspace_member(_user_id uuid, _workspace_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id) $$;
+
+CREATE OR REPLACE FUNCTION public.get_workspace_role(_user_id uuid, _workspace_id uuid)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT role::text FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id LIMIT 1 $$;
+
+CREATE OR REPLACE FUNCTION public.has_workspace_role(_user_id uuid, _workspace_id uuid, _role public.workspace_role)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id AND role = _role) $$;
+
+CREATE OR REPLACE FUNCTION public.can_write_workspace(_user_id uuid, _workspace_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id AND role IN ('admin', 'operator')) $$;
+
+CREATE OR REPLACE FUNCTION public.get_user_workspace_ids(_user_id uuid)
+RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT workspace_id FROM public.workspace_members WHERE user_id = _user_id $$;
+
 -- ============================================================
 -- PUBLIC TABLES
 -- ============================================================
