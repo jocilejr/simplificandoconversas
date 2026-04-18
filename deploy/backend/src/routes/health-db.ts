@@ -78,7 +78,7 @@ router.get("/", async (_req, res) => {
       config: {
         SUPABASE_URL: supabaseUrl,
         SERVICE_ROLE_KEY: serviceRoleKey,
-        EVOLUTION_URL: process.env.EVOLUTION_URL || "NOT SET",
+        BAILEYS_URL: process.env.BAILEYS_URL || process.env.EVOLUTION_URL || "NOT SET",
         GOTRUE_URL: process.env.GOTRUE_URL || "NOT SET",
       },
       tests: {

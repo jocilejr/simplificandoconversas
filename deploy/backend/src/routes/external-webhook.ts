@@ -195,15 +195,14 @@ router.post("/", async (req, res) => {
         .limit(1);
 
       if (instances && instances.length > 0) {
-        const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-        const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
+        const { BAILEYS_URL, BAILEYS_API_KEY } = await import("../lib/baileys-config");
 
         try {
           const sendResult = await fetch(
-            `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instances[0].instance_name)}`,
+            `${BAILEYS_URL}/message/sendText/${encodeURIComponent(instances[0].instance_name)}`,
             {
               method: "POST",
-              headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
+              headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
               body: JSON.stringify({ number: cleanedPhone, text: message }),
             }
           );

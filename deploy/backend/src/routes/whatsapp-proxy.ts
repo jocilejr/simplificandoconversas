@@ -8,13 +8,12 @@ import path from "path";
 
 const router = Router();
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
+import { BAILEYS_URL, BAILEYS_API_KEY } from "../lib/baileys-config";
 
 async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
+  const resp = await fetch(`${BAILEYS_URL}${path}`, {
     method,
-    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
+    headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return resp.json() as Promise<any>;

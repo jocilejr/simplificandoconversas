@@ -8,6 +8,8 @@ import crypto from "crypto";
 const router = Router();
 
 /* ─── helpers ─── */
+import { BAILEYS_URL, BAILEYS_API_KEY } from "../lib/baileys-config";
+
 async function getEvolutionConfig(workspaceId: string) {
   const sb = getServiceClient();
   const { data } = await sb
@@ -17,8 +19,8 @@ async function getEvolutionConfig(workspaceId: string) {
     .limit(1)
     .maybeSingle();
 
-  const baseUrl = data?.proxy_url || process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const apiKey = process.env.EVOLUTION_API_KEY || "";
+  const baseUrl = data?.proxy_url || BAILEYS_URL;
+  const apiKey = BAILEYS_API_KEY;
   return { baseUrl, apiKey };
 }
 
