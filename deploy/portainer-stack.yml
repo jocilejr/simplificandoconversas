@@ -147,12 +147,15 @@ services:
         - "traefik.http.routers.chatbot-app.rule=Host(`${APP_DOMAIN}`)"
         - "traefik.http.routers.chatbot-app.entrypoints=websecure"
         - "traefik.http.routers.chatbot-app.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.chatbot-app.service=chatbot-nginx"
         - "traefik.http.routers.chatbot-api.rule=Host(`${API_DOMAIN}`)"
         - "traefik.http.routers.chatbot-api.entrypoints=websecure"
         - "traefik.http.routers.chatbot-api.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.chatbot-api.service=chatbot-nginx"
         - "traefik.http.routers.chatbot-membros.rule=Host(`${MEMBER_DOMAIN}`)"
         - "traefik.http.routers.chatbot-membros.entrypoints=websecure"
         - "traefik.http.routers.chatbot-membros.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.chatbot-membros.service=chatbot-nginx"
         - "traefik.http.services.chatbot-nginx.loadbalancer.server.port=80"
 
 networks:
