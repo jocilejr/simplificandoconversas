@@ -1,69 +1,111 @@
 
 
-## Refatoração: monitoramento via Smart Links (sem botão manual)
+## Diagnóstico
 
-### Conceito
+Olhando `useQuickReplies.ts` e `RespostasRapidas.tsx`:
 
-Eliminar a aba **"Selecionar"** e a tabela `group_selected`. O monitoramento opera 100% sobre Smart Links existentes — escolhe um Smart Link no header e vê os grupos daquele link, com totais e eventos add/remove.
+**Problema:** Categorias só "existem" quando há pelo menos uma resposta usando aquele nome. A função `categories` é derivada de `data.map(d => d.category)`. Consequência:
 
-Sem botão "Atualizar agora". Tudo depende do sync periódico do Smart Link que já roda (`/smart-links/sync-all`, comprovadamente correto).
+1. Criar categoria nova pelo botão "+" da sidebar **não persiste nada** — só seleciona um nome em memória. Ao recarregar, sumiu.
+2. Renomear categoria vazia falha silenciosamente — `UPDATE` em zero linhas.
+3. Excluir a última resposta de uma categoria faz a categoria desaparecer da sidebar.
+4. Categoria padrão "Geral" aparece no Select de criação mesmo que não exista no banco — confunde.
 
-### Frontend
+Não há tabela `quick_reply_categories`. A "categoria" é só um campo `text` em `quick_replies`.
 
-**`src/pages/GruposPage.tsx`**
-- Remove TabsTrigger/Content "Selecionar".
-- Tabs finais: Visão Geral · Campanhas · Fila · Smart Link.
+## Solução
 
-**`src/components/grupos/GroupDashboardTab.tsx`** (reescrita)
-- Header com `<Select>` "Smart Link a monitorar" populado por `useGroupSmartLinks()`. Persiste em `localStorage` (`grupos:dashboard:smartLinkId`).
-- Estado vazio: "Crie um Smart Link na aba Smart Link para começar a monitorar."
-- KPIs do Smart Link selecionado:
-  - Total de grupos · Total de membros (soma de `group_links[*].member_count`)
-  - Entraram hoje · Saíram hoje (de `group_events` filtrado pelos `group_jid` do link)
-- Lista de grupos do Smart Link: nome, contagem real, status (`ok` / `banned` / `error`), `last_synced_at`.
-- Feed live de add/remove via `useGroupEventsLive`, filtrado pelos `group_jid` do Smart Link.
-- Sem botão de refresh. Dados se atualizam pelo `refetchInterval` do `useGroupSmartLinks` (15s) e pelo cron de sync do backend.
+Criar tabela própria de categorias por workspace. Categorias passam a ser entidades reais — criar, renomear, excluir funcionam de forma persistente e independente das respostas.
 
-**Arquivos a deletar:**
-- `src/components/grupos/GroupSelectorTab.tsx`
-- `src/hooks/useGroupSelected.ts`
+### 1. Banco
 
-### Backend
-
-**`deploy/backend/src/routes/groups-api.ts`**
-- Remover: `POST /select-groups`, `GET /selected-groups`, `DELETE /selected-groups/:id`, `POST /sync-stats`, função `syncWorkspaceStats`, cron `sync-all` antigo de `group_selected`.
-- Manter: `POST /fetch-groups` (usado pela criação de Smart Link), todo o módulo `/smart-links/*` intacto.
-- Adicionar: `GET /smart-link-events?smartLinkId=...` que retorna eventos de `group_events` filtrados pelos JIDs do Smart Link.
-
-### Banco
-
+Migration:
 ```sql
-DROP TABLE IF EXISTS public.group_selected CASCADE;
+CREATE TABLE public.quick_reply_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  name text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, name)
+);
+
+ALTER TABLE public.quick_reply_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "ws_select" ON public.quick_reply_categories FOR SELECT TO authenticated
+  USING (is_workspace_member(auth.uid(), workspace_id));
+CREATE POLICY "ws_insert" ON public.quick_reply_categories FOR INSERT TO authenticated
+  WITH CHECK (can_write_workspace(auth.uid(), workspace_id));
+CREATE POLICY "ws_update" ON public.quick_reply_categories FOR UPDATE TO authenticated
+  USING (can_write_workspace(auth.uid(), workspace_id));
+CREATE POLICY "ws_delete" ON public.quick_reply_categories FOR DELETE TO authenticated
+  USING (has_workspace_role(auth.uid(), workspace_id, 'admin'::workspace_role));
+
+-- Seed: pegar categorias existentes em quick_replies por workspace
+INSERT INTO public.quick_reply_categories (workspace_id, user_id, name)
+SELECT DISTINCT workspace_id, user_id, category
+FROM public.quick_replies
+WHERE category IS NOT NULL AND category <> ''
+ON CONFLICT DO NOTHING;
+
 NOTIFY pgrst, 'reload schema';
 ```
 
-### Validação na VPS
+Registrar a tabela em `deploy/migrate-workspace.sql` e nos arrays de tabelas multi-tenant (conforme `mem://tech/workspace-migration-registration`).
+
+### 2. Frontend
+
+**Novo hook `useQuickReplyCategories.ts`:**
+- `list` — query da nova tabela ordenada por `name`
+- `create({ name })` — insert (rejeita duplicado via unique constraint)
+- `rename({ id, name })` — update na tabela + update em `quick_replies` no `category` antigo (transação lógica via 2 chamadas, com rollback de UI no erro)
+- `remove({ id, name })` — bloqueia delete se existirem respostas usando essa categoria; senão delete
+
+**`useQuickReplies.ts`:**
+- Manter `renameCategory` mas passar a aceitar `oldName/newName` consistentes com o novo hook (já está OK).
+
+**`RespostasRapidas.tsx`:**
+- Trocar `categories` derivado por `useQuickReplyCategories().data`.
+- `counts` continua derivado de `data` (respostas por nome).
+- Passar callbacks `onCreateCategory`, `onDeleteCategory` para sidebar.
+
+**`QuickRepliesSidebar.tsx`:**
+- Botão "+" agora chama `onCreateCategory(name)` (persiste).
+- DropdownMenu da categoria ganha item "Excluir" → chama `onDeleteCategory`. Se categoria tem respostas, toast de erro orientando mover/excluir antes.
+- Renomear: chama `onRenameCategory` que renomeia tabela + atualiza `quick_replies`.
+
+**`QuickRepliesList.tsx`:**
+- `categories` recebido como prop continua. Remover fallback `["Geral"]` — se vazio, desabilitar botão "Nova Resposta" com tooltip "Crie uma categoria primeiro".
+
+### 3. Fix do warning de ref
+
+`QuickRepliesList` é function component sem `forwardRef`, mas Radix `Dialog` não exige ref no filho — o warning vem do uso interno. Não-bloqueante. Opcional: envolver em `forwardRef` se necessário, mas geralmente ignorável. Avaliar após mudanças principais.
+
+## Validação na VPS
 
 ```bash
 cd ~/simplificandoconversas && git pull && bash deploy/update.sh
 
-source deploy/.env
+docker exec deploy-postgres-1 psql -U postgres -d postgres -c "\d quick_reply_categories"
+
 docker exec deploy-postgres-1 psql -U postgres -d postgres -c \
-  "SELECT slug, jsonb_array_length(group_links) AS grupos,
-          (SELECT SUM((g->>'member_count')::int) FROM jsonb_array_elements(group_links) g) AS total_membros
-   FROM group_smart_links WHERE workspace_id='65698ec3-731a-436e-84cf-8997e4ed9b41';"
+  "SELECT name, (SELECT COUNT(*) FROM quick_replies q WHERE q.workspace_id=c.workspace_id AND q.category=c.name) AS uso
+   FROM quick_reply_categories c
+   WHERE workspace_id='65698ec3-731a-436e-84cf-8997e4ed9b41'
+   ORDER BY name;"
 ```
 
-### Arquivos alterados
+## Arquivos alterados
 
-- `deploy/backend/src/routes/groups-api.ts` — remoções + nova rota `/smart-link-events`
-- `src/pages/GruposPage.tsx` — remove aba Selecionar
-- `src/components/grupos/GroupDashboardTab.tsx` — reescrita orientada a Smart Link
-- `src/components/grupos/GroupSelectorTab.tsx` — deletar
-- `src/hooks/useGroupSelected.ts` — deletar
-- Migration: `DROP TABLE group_selected`
+- Migration nova: `quick_reply_categories` + RLS + seed
+- `deploy/migrate-workspace.sql` — registrar tabela
+- `src/hooks/useQuickReplyCategories.ts` — novo
+- `src/hooks/useQuickReplies.ts` — ajuste no `renameCategory`
+- `src/pages/RespostasRapidas.tsx` — usar novo hook
+- `src/components/quick-replies/QuickRepliesSidebar.tsx` — criar/excluir persistentes
+- `src/components/quick-replies/QuickRepliesList.tsx` — desabilitar botão sem categorias
 
-### Risco
+## Risco
 
-Médio — remove tabela e rotas. Mitigado: Smart Link já é a fonte oficial das contagens.
+Baixo. Tabela nova, seed preserva categorias atuais, RLS isolado por workspace.
 
