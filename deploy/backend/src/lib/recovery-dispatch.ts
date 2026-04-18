@@ -409,8 +409,9 @@ export async function dispatchRecovery(opts: {
 
   // 9. Enqueue into the universal instance queue — ONE TIME, the queue handles everything
   const queue = getMessageQueue(instanceName, delayMs, configPauseAfterSends, configPauseMinutes);
-  const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const evoApiKey = process.env.EVOLUTION_API_KEY || "";
+  const { BAILEYS_URL, BAILEYS_API_KEY } = await import("./baileys-config");
+  const evoBaseUrl = BAILEYS_URL;
+  const evoApiKey = BAILEYS_API_KEY;
   const vars = { name: opts.customerName, amount: opts.amount };
   const label = `tx:${txType}:${normalizedPhone}`;
 
@@ -468,8 +469,9 @@ export async function checkWhatsAppNumber(
   phone: string,
   instanceName: string,
 ): Promise<boolean | null> {
-  const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const evoApiKey = process.env.EVOLUTION_API_KEY || "";
+  const { BAILEYS_URL, BAILEYS_API_KEY } = await import("./baileys-config");
+  const evoBaseUrl = BAILEYS_URL;
+  const evoApiKey = BAILEYS_API_KEY;
 
   if (!phone || !instanceName || !evoApiKey) return null;
 
