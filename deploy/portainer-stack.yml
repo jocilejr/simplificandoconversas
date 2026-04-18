@@ -73,6 +73,8 @@ services:
     restart: always
     depends_on:
       - postgres
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       PGRST_DB_SCHEMAS: public,storage
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
@@ -84,6 +86,8 @@ services:
     restart: always
     depends_on:
       - postgres
+    environment:
+      ANON_KEY: ${ANON_KEY}
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
       POSTGREST_URL: http://postgrest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
