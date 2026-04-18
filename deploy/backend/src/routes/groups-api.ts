@@ -917,22 +917,26 @@ router.post("/campaigns/:id/enqueue", async (req: Request, res: Response) => {
     const queueItems: any[] = [];
 
     const messages = (campaign as any).group_scheduled_messages || [];
+    // Lookup de group_name a partir dos smart links do workspace
+    const { data: wsLinks } = await sb
+      .from("group_smart_links")
+      .select("group_links")
+      .eq("workspace_id", campaign.workspace_id);
+    const nameByJid = new Map<string, string>();
+    for (const sl of (wsLinks || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid && gl?.group_name) nameByJid.set(gl.group_jid, gl.group_name);
+      }
+    }
     for (const msg of messages) {
       for (const jid of campaign.group_jids) {
-        const { data: sg } = await sb
-          .from("group_selected")
-          .select("group_name")
-          .eq("workspace_id", campaign.workspace_id)
-          .eq("group_jid", jid)
-          .maybeSingle();
-
         queueItems.push({
           workspace_id: campaign.workspace_id,
           user_id: campaign.user_id,
           campaign_id: campaign.id,
           scheduled_message_id: msg.id,
           group_jid: jid,
-          group_name: sg?.group_name || "",
+          group_name: nameByJid.get(jid) || "",
           instance_name: campaign.instance_name,
           message_type: msg.message_type,
           content: msg.content,
@@ -1473,13 +1477,23 @@ router.post("/smart-links", async (req: Request, res: Response) => {
     if (groupLinks.length === 0 && campaignId) {
       const { data: campaign } = await sb.from("group_campaigns").select("group_jids, instance_name").eq("id", campaignId).single();
       if (campaign?.group_jids) {
+        // Lookup nome/contagem nos demais smart links do workspace
+        const { data: wsLinks } = await sb
+          .from("group_smart_links")
+          .select("group_links")
+          .eq("workspace_id", workspaceId);
+        const infoByJid = new Map<string, { name: string; count: number }>();
+        for (const sl of (wsLinks || [])) {
+          for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+            if (gl?.group_jid) infoByJid.set(gl.group_jid, { name: gl.group_name || "", count: gl.member_count || 0 });
+          }
+        }
         for (const jid of campaign.group_jids) {
-          const { data: gs } = await sb.from("group_selected").select("group_name, member_count")
-            .eq("workspace_id", workspaceId).eq("group_jid", jid).maybeSingle();
+          const info = infoByJid.get(jid);
           groupLinks.push({
             group_jid: jid,
-            group_name: gs?.group_name || "",
-            member_count: gs?.member_count || 0,
+            group_name: info?.name || "",
+            member_count: info?.count || 0,
             invite_url: "",
           });
         }
