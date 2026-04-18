@@ -43,7 +43,7 @@ export function QuickRepliesList({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
-  const [newCategory, setNewCategory] = useState(activeCategory || "Geral");
+  const [newCategory, setNewCategory] = useState(activeCategory || categories[0] || "");
   const [creating, setCreating] = useState(false);
 
   const filtered = items.filter(
@@ -55,13 +55,13 @@ export function QuickRepliesList({
   );
 
   const handleCreate = async () => {
-    if (!newTitle.trim() || !newContent.trim()) return;
+    if (!newTitle.trim() || !newContent.trim() || !newCategory) return;
     setCreating(true);
     try {
       await onCreate({ title: newTitle.trim(), content: newContent.trim(), category: newCategory });
       setNewTitle("");
       setNewContent("");
-      setNewCategory(activeCategory || "Geral");
+      setNewCategory(activeCategory || categories[0] || "");
       setDialogOpen(false);
     } catch {
       // toast already shown by parent
@@ -69,6 +69,8 @@ export function QuickRepliesList({
       setCreating(false);
     }
   };
+
+  const noCategories = categories.length === 0;
 
   const label = activeCategory || "Todas";
 
@@ -92,7 +94,13 @@ export function QuickRepliesList({
               className="h-8 w-48 pl-8 text-xs"
             />
           </div>
-          <Button size="sm" className="h-8 text-xs gap-1" onClick={() => setDialogOpen(true)}>
+          <Button
+            size="sm"
+            className="h-8 text-xs gap-1"
+            onClick={() => setDialogOpen(true)}
+            disabled={noCategories}
+            title={noCategories ? "Crie uma categoria primeiro" : undefined}
+          >
             <Plus className="h-3.5 w-3.5" /> Nova Resposta
           </Button>
         </div>

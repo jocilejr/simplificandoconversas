@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderOpen, Plus, MoreHorizontal, Pencil } from "lucide-react";
+import { FolderOpen, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,6 +9,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +31,9 @@ interface QuickRepliesSidebarProps {
   categories: string[];
   activeCategory: string | null;
   onSelect: (category: string | null) => void;
+  onCreateCategory: (name: string) => void;
   onRenameCategory: (oldName: string, newName: string) => void;
+  onDeleteCategory: (name: string) => void;
   counts: Record<string, number>;
   total: number;
 }
@@ -30,7 +42,9 @@ export function QuickRepliesSidebar({
   categories,
   activeCategory,
   onSelect,
+  onCreateCategory,
   onRenameCategory,
+  onDeleteCategory,
   counts,
   total,
 }: QuickRepliesSidebarProps) {
@@ -39,11 +53,11 @@ export function QuickRepliesSidebar({
   const [renameOpen, setRenameOpen] = useState(false);
   const [renamingCat, setRenamingCat] = useState("");
   const [renameValue, setRenameValue] = useState("");
+  const [deletingCat, setDeletingCat] = useState<string | null>(null);
 
   const handleCreate = () => {
     if (!newCatName.trim()) return;
-    // Creating a category = just selecting it; it'll exist once a reply is created with it
-    onSelect(newCatName.trim());
+    onCreateCategory(newCatName.trim());
     setNewCatName("");
     setCreateOpen(false);
   };
@@ -63,7 +77,6 @@ export function QuickRepliesSidebar({
         </Button>
       </div>
 
-      {/* All */}
       <button
         onClick={() => onSelect(null)}
         className={cn(
@@ -113,12 +126,17 @@ export function QuickRepliesSidebar({
               >
                 <Pencil className="h-3.5 w-3.5 mr-2" /> Renomear
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setDeletingCat(cat)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-2" /> Excluir
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       ))}
 
-      {/* Create Category Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-xs">
           <DialogHeader>
@@ -129,6 +147,7 @@ export function QuickRepliesSidebar({
             onChange={(e) => setNewCatName(e.target.value)}
             placeholder="Nome da categoria"
             className="h-8 text-sm"
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
           />
           <DialogFooter>
             <Button size="sm" onClick={handleCreate} disabled={!newCatName.trim()}>
@@ -138,7 +157,6 @@ export function QuickRepliesSidebar({
         </DialogContent>
       </Dialog>
 
-      {/* Rename Dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="sm:max-w-xs">
           <DialogHeader>
@@ -149,6 +167,7 @@ export function QuickRepliesSidebar({
             onChange={(e) => setRenameValue(e.target.value)}
             placeholder="Novo nome"
             className="h-8 text-sm"
+            onKeyDown={(e) => e.key === "Enter" && handleRename()}
           />
           <DialogFooter>
             <Button size="sm" onClick={handleRename} disabled={!renameValue.trim()}>
@@ -157,6 +176,29 @@ export function QuickRepliesSidebar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deletingCat} onOpenChange={(open) => !open && setDeletingCat(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir categoria</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a categoria <strong>{deletingCat}</strong>? Categorias com respostas não podem ser excluídas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingCat) onDeleteCategory(deletingCat);
+                setDeletingCat(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
