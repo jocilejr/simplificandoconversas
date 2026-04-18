@@ -2542,10 +2542,30 @@ function resolveEventWindow(query: Record<string, string>): { startUtc: string; 
    ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD] */
 router.get("/events", async (req: Request, res: Response) => {
   try {
-    const { workspaceId } = req.query as Record<string, string>;
+    const { workspaceId, smartLinkId } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
+
+    // Resolve JIDs e nomes a partir dos smart links do workspace
+    const sb = getServiceClient();
+    let q = sb.from("group_smart_links").select("id, group_links").eq("workspace_id", workspaceId);
+    if (smartLinkId) q = q.eq("id", smartLinkId);
+    const { data: links } = await q;
+
+    const nameByJid = new Map<string, string>();
+    for (const sl of (links || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid && !nameByJid.has(gl.group_jid)) {
+          nameByJid.set(gl.group_jid, gl.group_name || "");
+        }
+      }
+    }
+    const jids = [...nameByJid.keys()];
+
+    if (jids.length === 0) {
+      return res.json({ window: { startUtc, endUtc }, totals: { adds: 0, removes: 0 }, groups: [] });
+    }
 
     const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL });
@@ -2553,29 +2573,38 @@ router.get("/events", async (req: Request, res: Response) => {
     try {
       const sql = `
         SELECT
-          s.group_jid,
-          COALESCE(s.group_name, e.group_name) AS group_name,
+          e.group_jid,
+          MAX(e.group_name) AS group_name,
           COUNT(*) FILTER (WHERE e.action = 'add')    AS adds,
           COUNT(*) FILTER (WHERE e.action = 'remove') AS removes
-        FROM public.group_selected s
-        LEFT JOIN public.group_events e
-          ON e.workspace_id  = s.workspace_id
-         AND e.instance_name = s.instance_name
-         AND e.group_jid     = s.group_jid
-         AND e.occurred_at  >= $2
-         AND e.occurred_at  <  $3
-        WHERE s.workspace_id = $1
-        GROUP BY s.group_jid, COALESCE(s.group_name, e.group_name)
-        ORDER BY group_name NULLS LAST, s.group_jid;
+        FROM public.group_events e
+        WHERE e.workspace_id = $1
+          AND e.group_jid    = ANY($2::text[])
+          AND e.occurred_at >= $3
+          AND e.occurred_at <  $4
+        GROUP BY e.group_jid;
       `;
-      const { rows } = await pool.query(sql, [workspaceId, startUtc, endUtc]);
+      const { rows } = await pool.query(sql, [workspaceId, jids, startUtc, endUtc]);
 
-      const groups = rows.map((r: any) => ({
-        group_jid: r.group_jid as string,
-        group_name: (r.group_name as string) || r.group_jid,
-        adds: Number(r.adds) || 0,
-        removes: Number(r.removes) || 0,
-      }));
+      const aggByJid = new Map<string, { adds: number; removes: number; group_name: string }>();
+      for (const r of rows) {
+        aggByJid.set(r.group_jid, {
+          adds: Number(r.adds) || 0,
+          removes: Number(r.removes) || 0,
+          group_name: (r.group_name as string) || "",
+        });
+      }
+
+      // Garante uma linha por JID conhecido (mesmo sem eventos)
+      const groups = jids.map((jid) => {
+        const a = aggByJid.get(jid);
+        return {
+          group_jid: jid,
+          group_name: nameByJid.get(jid) || a?.group_name || jid,
+          adds: a?.adds || 0,
+          removes: a?.removes || 0,
+        };
+      }).sort((x, y) => x.group_name.localeCompare(y.group_name));
 
       const totals = groups.reduce(
         (acc, g) => ({ adds: acc.adds + g.adds, removes: acc.removes + g.removes }),
@@ -2594,15 +2623,35 @@ router.get("/events", async (req: Request, res: Response) => {
 
 /* ─── GET /events-live — eventos crus (add/remove) cronologicamente ───
    Retorna { window, events: [{id,group_jid,group_name,participant_jid,action,occurred_at}] }
-   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD][&limit=200] */
+   ?workspaceId=...&period=today|yesterday|custom[&from=YYYY-MM-DD&to=YYYY-MM-DD][&limit=200][&smartLinkId=...] */
 router.get("/events-live", async (req: Request, res: Response) => {
   try {
-    const { workspaceId } = req.query as Record<string, string>;
+    const { workspaceId, smartLinkId } = req.query as Record<string, string>;
     if (!workspaceId) return res.status(400).json({ error: "workspaceId required" });
 
     const { startUtc, endUtc } = resolveEventWindow(req.query as Record<string, string>);
     const limitRaw = parseInt((req.query.limit as string) || "200", 10);
     const limit = Math.min(Math.max(isNaN(limitRaw) ? 200 : limitRaw, 1), 1000);
+
+    // Resolve JIDs do(s) smart link(s) para escopar a busca
+    const sb = getServiceClient();
+    let q = sb.from("group_smart_links").select("group_links").eq("workspace_id", workspaceId);
+    if (smartLinkId) q = q.eq("id", smartLinkId);
+    const { data: links } = await q;
+
+    const nameByJid = new Map<string, string>();
+    for (const sl of (links || [])) {
+      for (const gl of (Array.isArray(sl.group_links) ? sl.group_links : [])) {
+        if (gl?.group_jid && !nameByJid.has(gl.group_jid)) {
+          nameByJid.set(gl.group_jid, gl.group_name || "");
+        }
+      }
+    }
+    const jids = [...nameByJid.keys()];
+
+    if (jids.length === 0) {
+      return res.json({ window: { startUtc, endUtc }, events: [] });
+    }
 
     const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL });
@@ -2612,27 +2661,24 @@ router.get("/events-live", async (req: Request, res: Response) => {
         SELECT
           e.id,
           e.group_jid,
-          COALESCE(s.group_name, e.group_name) AS group_name,
+          e.group_name,
           e.participant_jid,
           e.action,
           e.occurred_at
         FROM public.group_events e
-        JOIN public.group_selected s
-          ON s.workspace_id  = e.workspace_id
-         AND s.instance_name = e.instance_name
-         AND s.group_jid     = e.group_jid
         WHERE e.workspace_id = $1
-          AND e.occurred_at >= $2
-          AND e.occurred_at <  $3
+          AND e.group_jid    = ANY($2::text[])
+          AND e.occurred_at >= $3
+          AND e.occurred_at <  $4
         ORDER BY e.occurred_at DESC
-        LIMIT $4;
+        LIMIT $5;
       `;
-      const { rows } = await pool.query(sql, [workspaceId, startUtc, endUtc, limit]);
+      const { rows } = await pool.query(sql, [workspaceId, jids, startUtc, endUtc, limit]);
 
       const events = rows.map((r: any) => ({
         id: r.id as string,
         group_jid: r.group_jid as string,
-        group_name: (r.group_name as string) || r.group_jid,
+        group_name: nameByJid.get(r.group_jid) || (r.group_name as string) || r.group_jid,
         participant_jid: r.participant_jid as string,
         action: r.action as "add" | "remove",
         occurred_at: r.occurred_at as string,
