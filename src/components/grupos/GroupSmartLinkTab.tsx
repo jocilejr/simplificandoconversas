@@ -70,7 +70,7 @@ export default function GroupSmartLinkTab() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={() => setView("create")}>
+        <Button type="button" size="sm" onClick={() => setView("create")}>
           <Plus className="h-4 w-4 mr-1" /> Novo Smart Link
         </Button>
       </div>
@@ -80,7 +80,7 @@ export default function GroupSmartLinkTab() {
           <CardContent className="p-8 text-center">
             <Link2 className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Nenhum Smart Link criado ainda.</p>
-            <Button size="sm" className="mt-3" onClick={() => setView("create")}>
+            <Button type="button" size="sm" className="mt-3" onClick={() => setView("create")}>
               <Plus className="h-4 w-4 mr-1" /> Criar primeiro Smart Link
             </Button>
           </CardContent>
@@ -355,7 +355,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" size="sm" onClick={onBack}>
+      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
       </Button>
 
