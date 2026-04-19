@@ -1,43 +1,71 @@
 
 
-## Diagnóstico real
+## Diagnóstico
 
-A saída revelou tudo:
+A mensagem "Aguardando mensagem. Essa ação pode levar alguns instantes" no WhatsApp do destinatário é **falha de descriptografia Signal/E2E**. O destinatário recebeu o pacote criptografado mas não tem a chave correta para abrir. Isso acontece quando:
 
-1. **Nginx está vivo, na rede `traefik-public`** (IP 10.0.2.34) ✓
-2. **Nginx fala perfeitamente com backend/postgrest/gotrue** (todos retornam 200 em ~100ms) ✓
-3. **Backend está rodando e funcional** — vejo nos logs do nginx requests passando: `flow_timeouts 200`, `group_message_queue 200`, etc. ✓
-4. **Traefik tem erro genérico "port is missing"** em TODOS os serviços — isso é log antigo/normal do Traefik Swarm e NÃO é a causa do 504
-5. **Causa real do 504**: O Traefik não tem um router casando com `Host(\`interno.origemdavida.online\`)` porque a label `traefik.http.routers.chatbot-api.rule=Host(\`${API_DOMAIN}\`)` foi processada **mas o router precisa de `traefik.http.services.chatbot-nginx.loadbalancer.server.port=80`** declarado por router. Como o stack tem 3 routers (app, api, membros) apontando para 1 service único (`chatbot-nginx`), e o erro "port is missing" no Traefik confirma que ele não conseguiu resolver a porta para nenhum container.
+1. **Sender keys defasadas** (principalmente em grupos após restart do gateway)
+2. **`getMessage` retorna conteúdo vazio** no retry — o WhatsApp precisa do conteúdo original para re-criptografar
+3. **`msgStore` é só em memória** — perde tudo no restart do container, nenhum retry funciona após deploy
+4. **Falta `cachedGroupMetadata`** — Baileys re-busca metadata constantemente e pode usar lista de participantes desatualizada para distribuir sender keys
 
-Mas tem outro detalhe crítico: na saída de `service inspect ... .Networks`, vi **2 networks anexadas**:
+O fix anterior (Baileys 7.0.0-rc.9 + `getMessage` + `msgStore` + `clearSenderKeyMemory`) está incompleto: a função `clearSenderKeyMemory` foi criada mas nunca é chamada, e o `msgStore` é volátil.
+
+## Plano de correção
+
+### 1. Persistir `msgStore` em Postgres (`baileys_message_store`)
+
+Nova tabela para sobreviver a restarts:
+```text
+baileys_message_store(instance_name, message_id, message jsonb, created_at)
 ```
-[{"Target":"vkid8baymcg28..."},{"Target":"o6sgco68ria1..."}]
+- Auto-cleanup: manter só últimos 7 dias
+- `getMessage` consulta a tabela quando memória não tem
+
+### 2. Chamar `clearSenderKeyMemory` na reconexão de grupos
+
+No `connection.update` quando `connection === "open"` E é uma reconexão (não primeiro QR), executar `clearSenderKeyMemory`. Isso força redistribuição de sender keys no próximo envio em grupo.
+
+### 3. Adicionar `cachedGroupMetadata` ao socket
+
+Cache de 5min para metadata de grupos, evita Baileys usar lista de participantes obsoleta:
+```typescript
+cachedGroupMetadata: async (jid) => groupMetadataCache.get(jid)
 ```
-Isso é normal (uma network interna do stack + traefik-public).
 
-**Porém** — observe os logs do nginx: as requisições que chegam vêm de `10.0.4.4` que **não é o Traefik**. O Traefik está em `10.0.2.5` (rede `traefik-public`). O `10.0.4.4` parece ser o backend interno chamando o nginx via rede do stack.
+### 4. Atualizar handler de `groups.update` e `group-participants.update`
 
-Conclusão: **o Traefik não está conseguindo rotear para o nginx via `traefik-public`**, provavelmente porque falta a label `traefik.docker.network=traefik-public` no service nginx (com 2 redes, o Traefik não sabe qual usar e escolhe errado).
+Invalidar cache quando participantes mudam, garantindo nova distribuição de sender keys.
 
-## Correção em 1 passo
+### 5. Migration SQL para a tabela
 
-Adicionar a label `traefik.docker.network=traefik-public` ao service nginx no `portainer-stack.yml`, depois fazer redeploy do stack.
+Adicionar em `deploy/migrate-workspace.sql` (idempotente, pode rodar múltiplas vezes).
 
-### Arquivo a editar
-- `deploy/portainer-stack.yml` — adicionar uma única label no service `nginx`:
-  ```yaml
-  - "traefik.docker.network=traefik-public"
-  ```
+## Arquivos a editar
 
-### Comando para o usuário aplicar (após o edit)
+- `deploy/baileys-gateway/src/postgres-auth-state.ts` — adicionar `saveMessageToStore` / `getMessageFromStore`
+- `deploy/baileys-gateway/src/instance-manager.ts` — usar store persistente, chamar `clearSenderKeyMemory` em reconexão, adicionar `cachedGroupMetadata`
+- `deploy/migrate-workspace.sql` — criar tabela `baileys_message_store` + índice + cleanup function
+
+## Comandos para aplicar na VPS (após o edit)
+
 ```bash
-cd /opt/simplificandoconversas/deploy
-docker stack deploy -c portainer-stack.yml simplificando
-sleep 15
-curl -sS -o /dev/null -w "API:      %{http_code}\n" https://interno.origemdavida.online/api/health
-curl -sS -o /dev/null -w "Frontend: %{http_code}\n" https://dashboard.origemdavida.online/
+cd /opt/simplificandoconversas
+git pull
+
+cd deploy
+set -a; source .env; set +a
+
+PG=$(docker ps --filter name=simplificando_postgres --format '{{.Names}}' | head -1)
+cat migrate-workspace.sql | docker exec -i "$PG" psql -U postgres -d postgres 2>&1 | grep -iE "create|notice|error" | tail -10
+docker exec -i "$PG" psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+
+cd /opt/simplificandoconversas
+docker build -t simplificando-baileys-gateway:latest ./deploy/baileys-gateway
+docker service update --force --image simplificando-baileys-gateway:latest simplificando_baileys-gateway
+sleep 25
+docker service logs simplificando_baileys-gateway --tail 30
 ```
 
-Esperado: `200` em ambos.
+Após reconectar todas as instâncias (ou aguardar 1 min para reconexão automática), o próximo envio em cada grupo redistribuirá sender keys corretas e a mensagem "Aguardando" some.
 
