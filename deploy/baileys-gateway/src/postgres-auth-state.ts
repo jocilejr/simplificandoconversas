@@ -60,6 +60,16 @@ export async function deleteAllAuth(instanceName: string): Promise<void> {
   );
 }
 
+/** Clear sender-key-memory so Baileys redistributes sender keys to all group
+ *  participants on the next send. Fixes the "messages loading" issue on restart. */
+export async function clearSenderKeyMemory(instanceName: string): Promise<void> {
+  const { rowCount } = await pool.query(
+    `DELETE FROM public.baileys_auth_state WHERE instance_name = $1 AND key LIKE 'sender-key-memory%'`,
+    [instanceName]
+  );
+  console.log(`[baileys:${instanceName}] cleared ${rowCount} sender-key-memory entries`);
+}
+
 export async function listInstanceNames(): Promise<string[]> {
   const { rows } = await pool.query(
     `SELECT DISTINCT instance_name FROM public.baileys_auth_state WHERE key = 'creds'`

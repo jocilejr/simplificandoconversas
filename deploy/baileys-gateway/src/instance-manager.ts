@@ -38,6 +38,8 @@ type InstanceRuntime = {
   ownerJid: string;
   profileName: string;
   profilePicUrl: string;
+  /** LRU message store: messageId → message. Used by getMessage for group retries. */
+  msgStore: Map<string, any>;
 };
 
 const instances = new Map<string, InstanceRuntime>();
@@ -56,6 +58,7 @@ function getRuntime(instanceName: string): InstanceRuntime {
       ownerJid: "",
       profileName: "",
       profilePicUrl: "",
+      msgStore: new Map(),
     };
     instances.set(instanceName, r);
   }
@@ -84,6 +87,13 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     syncFullHistory: false,
     markOnlineOnConnect: false,
     generateHighQualityLinkPreview: false,
+    defaultQueryTimeoutMs: 60_000,
+    getMessage: async (key) => {
+      const stored = runtime.msgStore.get(key.id!);
+      // Return stored content so WA can re-encrypt with fresh sender key on retry.
+      // Falling back to a stub ensures the retry fires even for messages we don't have.
+      return stored ?? { conversation: "" };
+    },
   });
 
   runtime.sock = sock;
@@ -168,6 +178,17 @@ async function startSocket(instanceName: string): Promise<WASocket> {
   });
 
   sock.ev.on("messages.upsert", (m) => {
+    // Cache sent messages so getMessage can serve them on retry requests
+    for (const msg of m.messages || []) {
+      if (msg.key?.id && msg.message) {
+        runtime.msgStore.set(msg.key.id, msg.message);
+        // Keep store size bounded (max 500 messages)
+        if (runtime.msgStore.size > 500) {
+          const firstKey = runtime.msgStore.keys().next().value;
+          if (firstKey) runtime.msgStore.delete(firstKey);
+        }
+      }
+    }
     forwardEvent(instanceName, "messages.upsert", m).catch(() => {});
   });
 

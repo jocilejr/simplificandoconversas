@@ -557,15 +557,23 @@ async function checkAndTriggerFlows(
 
     for (const node of nodes) {
       const data = node.data || {};
-      if (data.type === "trigger" && data.triggerKeyword) {
-        const keyword = data.triggerKeyword.trim().toLowerCase();
-        if (keyword && contentLower.includes(keyword)) { matched = true; break; }
+      if (data.type === "trigger") {
+        if (data.triggerType === "any_message") {
+          matched = true; break;
+        } else if (data.triggerKeyword) {
+          const keyword = data.triggerKeyword.trim().toLowerCase();
+          if (keyword && contentLower.includes(keyword)) { matched = true; break; }
+        }
       }
       if ((data.type === "group" || data.type === "groupBlock") && data.steps) {
         for (const step of data.steps) {
-          if (step.data?.type === "trigger" && step.data?.triggerKeyword) {
-            const keyword = step.data.triggerKeyword.trim().toLowerCase();
-            if (keyword && contentLower.includes(keyword)) { matched = true; break; }
+          if (step.data?.type === "trigger") {
+            if (step.data?.triggerType === "any_message") {
+              matched = true; break;
+            } else if (step.data?.triggerKeyword) {
+              const keyword = step.data.triggerKeyword.trim().toLowerCase();
+              if (keyword && contentLower.includes(keyword)) { matched = true; break; }
+            }
           }
         }
         if (matched) break;
