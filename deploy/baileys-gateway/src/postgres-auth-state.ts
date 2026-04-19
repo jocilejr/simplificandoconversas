@@ -60,64 +60,6 @@ export async function deleteAllAuth(instanceName: string): Promise<void> {
   );
 }
 
-/** Clear sender-key-memory so Baileys redistributes sender keys to all group
- *  participants on the next send. Fixes the "messages loading" issue on restart. */
-export async function clearSenderKeyMemory(instanceName: string): Promise<void> {
-  const { rowCount } = await pool.query(
-    `DELETE FROM public.baileys_auth_state WHERE instance_name = $1 AND key LIKE 'sender-key-memory%'`,
-    [instanceName]
-  );
-  console.log(`[baileys:${instanceName}] cleared ${rowCount} sender-key-memory entries`);
-}
-
-/** Persist a sent message so getMessage can return it on retries even after restart. */
-export async function saveMessageToStore(
-  instanceName: string,
-  messageId: string,
-  message: any
-): Promise<void> {
-  try {
-    const encoded = encode(message);
-    await pool.query(
-      `INSERT INTO public.baileys_message_store (instance_name, message_id, message, created_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (instance_name, message_id)
-       DO UPDATE SET message = EXCLUDED.message, created_at = now()`,
-      [instanceName, messageId, JSON.stringify(encoded)]
-    );
-    console.log(`[baileys:${instanceName}] msgStore SAVE id=${messageId}`);
-  } catch (err: any) {
-    // Loud — we want to know if persistence is broken
-    console.error(
-      `[baileys:${instanceName}] msgStore SAVE FAIL id=${messageId} err=${err?.message}`
-    );
-  }
-}
-
-/** Retrieve a previously sent message for retry decryption. */
-export async function getMessageFromStore(
-  instanceName: string,
-  messageId: string
-): Promise<any | null> {
-  try {
-    const { rows } = await pool.query(
-      `SELECT message FROM public.baileys_message_store WHERE instance_name = $1 AND message_id = $2`,
-      [instanceName, messageId]
-    );
-    if (!rows.length) {
-      console.log(`[baileys:${instanceName}] msgStore MISS id=${messageId}`);
-      return null;
-    }
-    console.log(`[baileys:${instanceName}] msgStore HIT  id=${messageId}`);
-    return decode(rows[0].message);
-  } catch (err: any) {
-    console.error(
-      `[baileys:${instanceName}] msgStore GET FAIL id=${messageId} err=${err?.message}`
-    );
-    return null;
-  }
-}
-
 export async function listInstanceNames(): Promise<string[]> {
   const { rows } = await pool.query(
     `SELECT DISTINCT instance_name FROM public.baileys_auth_state WHERE key = 'creds'`
