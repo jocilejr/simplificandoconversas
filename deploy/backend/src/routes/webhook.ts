@@ -7,12 +7,13 @@ import path from "path";
 
 const router = Router();
 
-import { BAILEYS_URL, BAILEYS_API_KEY } from "../lib/baileys-config";
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 
 async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${BAILEYS_URL}${path}`, {
+  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
     method,
-    headers: { apikey: BAILEYS_API_KEY, "Content-Type": "application/json" },
+    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return resp.json() as Promise<any>;
@@ -254,7 +255,7 @@ router.post("/*", async (req, res) => {
     // Smart lookup: find existing conversation by lid or phone_number (NEVER change remote_jid)
     let existingConvId: string | null = null;
 
-    if (remoteJid && (remoteJid.includes("@s.whatsapp.net") || remoteJid.includes("@lid"))) {
+    if (remoteJid.includes("@s.whatsapp.net") || remoteJid.includes("@lid")) {
       const supabaseLookup = getServiceClient();
       const { data: instRec } = await supabaseLookup
         .from("whatsapp_instances")
@@ -298,14 +299,8 @@ router.post("/*", async (req, res) => {
       }
     }
 
-    // Skip messages with no remoteJid (undecryptable/protocol messages with empty key)
-    if (!remoteJid) {
-      console.log(`[webhook] Skipping message with no remoteJid (instance=${instance}, hasStub=${hasStubType})`);
-      return res.json({ ok: true, skipped: "no_remote_jid" });
-    }
-
     // Skip group messages
-    if (remoteJid.includes("@g.us")) {
+    if (remoteJid && remoteJid.includes("@g.us")) {
       return res.json({ ok: true, skipped: "group" });
     }
 
@@ -557,23 +552,15 @@ async function checkAndTriggerFlows(
 
     for (const node of nodes) {
       const data = node.data || {};
-      if (data.type === "trigger") {
-        if (data.triggerType === "any_message") {
-          matched = true; break;
-        } else if (data.triggerKeyword) {
-          const keyword = data.triggerKeyword.trim().toLowerCase();
-          if (keyword && contentLower.includes(keyword)) { matched = true; break; }
-        }
+      if (data.type === "trigger" && data.triggerKeyword) {
+        const keyword = data.triggerKeyword.trim().toLowerCase();
+        if (keyword && contentLower === keyword) { matched = true; break; }
       }
       if ((data.type === "group" || data.type === "groupBlock") && data.steps) {
         for (const step of data.steps) {
-          if (step.data?.type === "trigger") {
-            if (step.data?.triggerType === "any_message") {
-              matched = true; break;
-            } else if (step.data?.triggerKeyword) {
-              const keyword = step.data.triggerKeyword.trim().toLowerCase();
-              if (keyword && contentLower.includes(keyword)) { matched = true; break; }
-            }
+          if (step.data?.type === "trigger" && step.data?.triggerKeyword) {
+            const keyword = step.data.triggerKeyword.trim().toLowerCase();
+            if (keyword && contentLower === keyword) { matched = true; break; }
           }
         }
         if (matched) break;

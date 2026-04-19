@@ -371,13 +371,9 @@ Deno.serve(async (req) => {
 
     const { data: profile } = profileResult;
 
-    // Baileys gateway connection via env vars (backend handles routing)
-    const evolutionUrl =
-      Deno.env.get("BAILEYS_URL") ||
-      Deno.env.get("EVOLUTION_URL") ||
-      "http://baileys-gateway:8080";
-    const apiKey =
-      Deno.env.get("BAILEYS_API_KEY") || Deno.env.get("EVOLUTION_API_KEY") || "";
+    // Evolution API connection via env vars (backend handles routing)
+    const evolutionUrl = Deno.env.get("EVOLUTION_URL") || "http://evolution:8080";
+    const apiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
     const instanceName = activeInstanceResult?.data?.instance_name || bodyInstanceName;
     if (!instanceName) {
       return new Response(JSON.stringify({ error: "Nenhuma instância WhatsApp ativa. Vincule uma instância nas configurações." }), {

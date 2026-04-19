@@ -8,8 +8,6 @@ import crypto from "crypto";
 const router = Router();
 
 /* ─── helpers ─── */
-import { BAILEYS_URL, BAILEYS_API_KEY } from "../lib/baileys-config";
-
 async function getEvolutionConfig(workspaceId: string) {
   const sb = getServiceClient();
   const { data } = await sb
@@ -19,8 +17,8 @@ async function getEvolutionConfig(workspaceId: string) {
     .limit(1)
     .maybeSingle();
 
-  const baseUrl = data?.proxy_url || BAILEYS_URL;
-  const apiKey = BAILEYS_API_KEY;
+  const baseUrl = data?.proxy_url || process.env.EVOLUTION_API_URL || "http://evolution:8080";
+  const apiKey = process.env.EVOLUTION_API_KEY || "";
   return { baseUrl, apiKey };
 }
 
@@ -1208,12 +1206,10 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_audio_url: ${JSON.stringify(content)}`);
           }
-          // OGG/OPUS → voice message (PTT); any other format → regular audio file
-          const isOgg = /\.(ogg|opus)(\?.*)?$/i.test(mediaUrl);
           const r = await fetch(`${baseUrl}/message/sendWhatsAppAudio/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, ptt: isOgg, mentionsEveryOne }),
+            body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
           });
           if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "contact") {
@@ -1609,10 +1605,8 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
       let inviteFetched = false;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}`, {
-            method: "POST",
-            headers: { apikey: apiKey, "Content-Type": "application/json" },
-            body: JSON.stringify({ groupJid: gl.group_jid }),
+          const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+            headers: { apikey: apiKey },
             signal: AbortSignal.timeout(8000),
           });
           if (r.ok) {
@@ -1874,10 +1868,8 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
           let inviteFetched = false;
           for (let attempt = 0; attempt < 4; attempt++) {
             try {
-              const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}`, {
-                method: "POST",
-                headers: { apikey: apiKey, "Content-Type": "application/json" },
-                body: JSON.stringify({ groupJid: gl.group_jid }),
+              const r = await fetch(`${baseUrl}/group/inviteCode/${encoded}?groupJid=${encodeURIComponent(gl.group_jid)}`, {
+                headers: { apikey: apiKey },
                 signal: AbortSignal.timeout(8000),
               });
               if (r.ok) {

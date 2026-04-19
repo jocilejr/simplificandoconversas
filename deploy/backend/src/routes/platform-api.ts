@@ -712,12 +712,13 @@ router.delete("/reminders/:id", async (req, res) => {
 // MESSAGING / ENVIO DE MENSAGENS
 // ═══════════════════════════════════════════════════
 
-import { BAILEYS_URL as _BAILEYS_URL, BAILEYS_API_KEY as _BAILEYS_API_KEY } from "../lib/baileys-config";
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 
 async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${_BAILEYS_URL}${path}`, {
+  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
     method,
-    headers: { apikey: _BAILEYS_API_KEY, "Content-Type": "application/json" },
+    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return resp.json() as Promise<any>;

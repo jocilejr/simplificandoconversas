@@ -1,14 +1,12 @@
 FROM node:20-alpine
 
 # Native deps for Baileys (sharp for sticker/image processing, ffmpeg for audio conversion)
-RUN apk add --no-cache python3 make g++ ffmpeg vips-dev curl git
+RUN apk add --no-cache python3 make g++ ffmpeg vips-dev curl
 
 WORKDIR /app
 
 COPY package.json ./
-ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
-RUN npm install --omit=dev --ignore-scripts \
- && npm rebuild sharp --verbose || true
+RUN npm install --omit=dev
 
 COPY tsconfig.json ./
 COPY src ./src

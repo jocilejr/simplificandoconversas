@@ -32,60 +32,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authen
 
 -- NOTE: storage schema and tables are managed by the supabase storage service.
 
--- Bootstrap workspace primitives early so downstream policies/FKs do not depend on external file order
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'workspace_role') THEN
-    CREATE TYPE public.workspace_role AS ENUM ('admin', 'operator', 'viewer');
-  END IF;
-END $$;
-
-CREATE TABLE IF NOT EXISTS public.workspaces (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  slug text NOT NULL UNIQUE,
-  logo_url text,
-  openai_api_key text,
-  app_public_url text,
-  created_by uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
-GRANT ALL ON public.workspaces TO anon, authenticated, service_role;
-
-CREATE TABLE IF NOT EXISTS public.workspace_members (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL,
-  role public.workspace_role NOT NULL DEFAULT 'viewer',
-  permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
-  invited_by uuid,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(workspace_id, user_id)
-);
-ALTER TABLE public.workspace_members ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
-GRANT ALL ON public.workspace_members TO anon, authenticated, service_role;
-
-CREATE OR REPLACE FUNCTION public.is_workspace_member(_user_id uuid, _workspace_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$ SELECT EXISTS (SELECT 1 FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id) $$;
-
-CREATE OR REPLACE FUNCTION public.get_workspace_role(_user_id uuid, _workspace_id uuid)
-RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$ SELECT role::text FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id LIMIT 1 $$;
-
-CREATE OR REPLACE FUNCTION public.has_workspace_role(_user_id uuid, _workspace_id uuid, _role public.workspace_role)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$ SELECT EXISTS (SELECT 1 FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id AND role = _role) $$;
-
-CREATE OR REPLACE FUNCTION public.can_write_workspace(_user_id uuid, _workspace_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$ SELECT EXISTS (SELECT 1 FROM public.workspace_members WHERE user_id = _user_id AND workspace_id = _workspace_id AND role IN ('admin', 'operator')) $$;
-
-CREATE OR REPLACE FUNCTION public.get_user_workspace_ids(_user_id uuid)
-RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$ SELECT workspace_id FROM public.workspace_members WHERE user_id = _user_id $$;
-
 -- ============================================================
 -- PUBLIC TABLES
 -- ============================================================
@@ -581,37 +527,29 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_email_contacts_user_email ON public.email_contacts(user_id, email);
 GRANT ALL ON public.email_contacts TO anon, authenticated, service_role;
 
--- Email Queue (async processing) — só cria se email_campaigns e email_templates existirem
+-- Email Queue (async processing)
+CREATE TABLE IF NOT EXISTS public.email_queue (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  campaign_id uuid REFERENCES public.email_campaigns(id),
+  template_id uuid REFERENCES public.email_templates(id),
+  smtp_config_id uuid,
+  recipient_email text NOT NULL,
+  recipient_name text,
+  personalization jsonb DEFAULT '{}',
+  status text NOT NULL DEFAULT 'pending',
+  error_message text,
+  created_at timestamptz DEFAULT now(),
+  processed_at timestamptz
+);
+ALTER TABLE public.email_queue ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
-  IF to_regclass('public.email_campaigns') IS NOT NULL
-     AND to_regclass('public.email_templates') IS NOT NULL
-     AND to_regclass('public.email_queue') IS NULL THEN
-    CREATE TABLE public.email_queue (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id uuid NOT NULL,
-      campaign_id uuid REFERENCES public.email_campaigns(id),
-      template_id uuid REFERENCES public.email_templates(id),
-      smtp_config_id uuid,
-      recipient_email text NOT NULL,
-      recipient_name text,
-      personalization jsonb DEFAULT '{}',
-      status text NOT NULL DEFAULT 'pending',
-      error_message text,
-      created_at timestamptz DEFAULT now(),
-      processed_at timestamptz
-    );
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_queue' AND policyname = 'Users can manage own email queue') THEN
+    CREATE POLICY "Users can manage own email queue" ON public.email_queue FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
   END IF;
 END $$;
-DO $$ BEGIN
-  IF to_regclass('public.email_queue') IS NOT NULL THEN
-    EXECUTE 'ALTER TABLE public.email_queue ENABLE ROW LEVEL SECURITY';
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_queue' AND policyname = 'Users can manage own email queue') THEN
-      EXECUTE 'CREATE POLICY "Users can manage own email queue" ON public.email_queue FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid())';
-    END IF;
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, created_at) WHERE status = ''pending''';
-    EXECUTE 'GRANT ALL ON public.email_queue TO anon, authenticated, service_role';
-  END IF;
-END $$;
+CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, created_at) WHERE status = 'pending';
+GRANT ALL ON public.email_queue TO anon, authenticated, service_role;
 
 -- message_queue_config (anti-ban global wait)
 CREATE TABLE IF NOT EXISTS public.message_queue_config (

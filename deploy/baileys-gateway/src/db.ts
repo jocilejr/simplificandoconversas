@@ -9,8 +9,7 @@ export const pool = new Pool({
 });
 
 export async function ensureSchema() {
-  // Auth state storage (Postgres replaces Baileys' default file store).
-  // Multi-replica safe and survives container redeploys.
+  // Auth state storage (Postgres replaces Baileys' default file store)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS public.baileys_auth_state (
       instance_name text NOT NULL,
@@ -22,6 +21,4 @@ export async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_baileys_auth_state_instance
       ON public.baileys_auth_state (instance_name);
   `);
-
-  console.log("[baileys:db] ensureSchema OK (auth_state)");
 }

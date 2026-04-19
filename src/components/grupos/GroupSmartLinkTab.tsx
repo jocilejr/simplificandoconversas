@@ -28,25 +28,6 @@ export default function GroupSmartLinkTab() {
   const [view, setView] = useState<"list" | "create" | string>("list");
   const { smartLinks, isLoading, createSmartLink, updateSmartLink, deleteSmartLink, syncInviteLinks } = useGroupSmartLinks();
 
-  if (view === "create") {
-    return <CreateForm onBack={() => setView("list")} onCreated={() => setView("list")} createSmartLink={createSmartLink} />;
-  }
-
-  if (view !== "list") {
-    const sl = smartLinks.find(s => s.id === view);
-    if (!sl) { setView("list"); return null; }
-    return (
-      <SmartLinkDetail
-        smartLink={sl}
-        onBack={() => setView("list")}
-        updateSmartLink={updateSmartLink}
-        deleteSmartLink={deleteSmartLink}
-        syncInviteLinks={syncInviteLinks}
-        onDeleted={() => setView("list")}
-      />
-    );
-  }
-
   if (isLoading) return (
     <div className="space-y-4">
       <div className="flex justify-end"><Skeleton className="h-9 w-40" /></div>
@@ -66,6 +47,25 @@ export default function GroupSmartLinkTab() {
       </div>
     </div>
   );
+
+  if (view === "create") {
+    return <CreateForm onBack={() => setView("list")} onCreated={() => setView("list")} createSmartLink={createSmartLink} />;
+  }
+
+  if (view !== "list") {
+    const sl = smartLinks.find(s => s.id === view);
+    if (!sl) { setView("list"); return null; }
+    return (
+      <SmartLinkDetail
+        smartLink={sl}
+        onBack={() => setView("list")}
+        updateSmartLink={updateSmartLink}
+        deleteSmartLink={deleteSmartLink}
+        syncInviteLinks={syncInviteLinks}
+        onDeleted={() => setView("list")}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -601,7 +601,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
       <div className="flex items-center justify-between pt-2">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="text-destructive">
+            <Button variant="ghost" size="sm" className="text-destructive">
               <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir Smart Link
             </Button>
           </AlertDialogTrigger>
@@ -619,7 +619,7 @@ function SmartLinkDetail({ smartLink, onBack, updateSmartLink, deleteSmartLink, 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        {!editing && <Button type="button" variant="outline" size="sm" className="border-border/50" onClick={startEdit}>Editar configuração</Button>}
+        {!editing && <Button variant="outline" size="sm" className="border-border/50" onClick={startEdit}>Editar configuração</Button>}
       </div>
     </div>
   );

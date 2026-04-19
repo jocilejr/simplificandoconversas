@@ -6,43 +6,25 @@ const router = Router();
 /** Apenas add/remove são contabilizados nesta versão. */
 const VALID_ACTIONS = new Set(["add", "remove"]);
 
-/** Extract participant identifier from a JID or participant object.
- *  Accepts @s.whatsapp.net (phone), @lid (WhatsApp internal ID), and plain numbers.
- *  Returns "" only if no usable identifier can be found. */
+/** Extract clean phone number (10–13 digits). Returns "" if invalid (e.g., @lid without phoneNumber). */
 function extractPhone(p: any): string {
-  const stripDomain = (s: string) => s.replace(/@.*/, "").replace(/\D/g, "");
+  const clean = (s: string) => s.replace(/@.*/, "").replace(/\D/g, "");
 
   if (typeof p === "string") {
-    // @lid: numeric internal ID — accept as-is
-    if (p.includes("@lid")) {
-      const v = p.replace(/@.*/, "").replace(/\D/g, "");
-      return v.length >= 8 ? v : "";
-    }
-    const v = stripDomain(p);
-    return v.length >= 8 ? v : "";
+    const v = clean(p);
+    return v.length >= 10 && v.length <= 13 ? v : "";
   }
   if (typeof p !== "object" || !p) return "";
 
-  // phoneNumber field (prefer @s.whatsapp.net format)
   const pn = typeof p.phoneNumber === "string" ? p.phoneNumber : "";
-  if (pn) {
-    if (pn.includes("@lid")) {
-      const v = pn.replace(/@.*/, "").replace(/\D/g, "");
-      if (v.length >= 8) return v;
-    } else {
-      const v = stripDomain(pn);
-      if (v.length >= 8) return v;
-    }
+  if (pn && !pn.includes("@lid")) {
+    const v = clean(pn);
+    if (v.length >= 10 && v.length <= 13) return v;
   }
-  // id field
   const id = typeof p.id === "string" ? p.id : "";
-  if (id) {
-    if (id.includes("@lid")) {
-      const v = id.replace(/@.*/, "").replace(/\D/g, "");
-      if (v.length >= 8) return v;
-    }
-    const v = stripDomain(id);
-    if (v.length >= 8) return v;
+  if (id && !id.includes("@lid")) {
+    const v = clean(id);
+    if (v.length >= 10 && v.length <= 13) return v;
   }
   return "";
 }

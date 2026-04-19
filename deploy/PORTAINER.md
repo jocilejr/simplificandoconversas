@@ -24,7 +24,7 @@ openssl rand -hex 32
 # Postgres Password
 openssl rand -hex 16
 
-# Baileys Gateway API Key
+# Evolution API Key
 openssl rand -hex 16
 ```
 
@@ -98,7 +98,7 @@ docker run --rm -v simplificando_frontend:/data -v $(pwd)/dist:/src alpine sh -c
 | `ANON_KEY` | *(gerado no passo 1)* | ✅ |
 | `SERVICE_ROLE_KEY` | *(gerado no passo 1)* | ✅ |
 | `APP_URL` | `http://SEU_IP` ou `https://seudominio.com` | ✅ |
-| `BAILEYS_API_KEY` | *(gerado no passo 1)* | ✅ |
+| `EVOLUTION_API_KEY` | *(gerado no passo 1)* | ✅ |
 | `STACK_NAME` | `simplificando` | ✅ |
 | `OPENAI_API_KEY` | *(sua chave OpenAI)* | ❌ |
 
@@ -119,7 +119,7 @@ Acesse `http://SEU_IP` no navegador — o sistema deve estar funcionando.
 ### Frontend
 Repita o **Passo 2** (build + copiar para o volume) e reinicie o container Nginx pelo Portainer.
 
-### Backend / Baileys Gateway
+### Backend / Evolution API
 No Portainer, vá na Stack e clique em **Pull and redeploy** para puxar as mudanças do Git e rebuildar.
 
 ---
@@ -131,7 +131,7 @@ No Portainer, vá na Stack e clique em **Pull and redeploy** para puxar as mudan
 | Containers reiniciando | Verifique os logs no Portainer (clique no container → Logs) |
 | Erro de conexão ao banco | Confirme que o `POSTGRES_PASSWORD` é o mesmo em todos os serviços |
 | Frontend em branco | Verifique se o volume `frontend_data` foi populado corretamente |
-| QR Code não aparece | Verifique os logs do container `baileys-gateway` |
+| QR Code não aparece | Verifique os logs do container `evolution` |
 | Erro 502 no Nginx | Aguarde alguns segundos para os serviços iniciarem |
 
 ---
@@ -144,6 +144,6 @@ Nginx (:80)
   ├── /rest/v1/      → PostgREST (API do banco)
   ├── /auth/v1/      → GoTrue (autenticação)
   ├── /storage/v1/   → Supabase Storage
-  └── /functions/v1/ → Backend Express
-                         └── (interno) → Baileys Gateway (WhatsApp)
+  ├── /functions/v1/ → Backend Express
+  └── /evolution/    → Evolution API (WhatsApp)
 ```

@@ -66,44 +66,6 @@ export async function listInstanceNames(): Promise<string[]> {
   );
   return rows.map((r) => r.instance_name);
 }
-/** Persist a sent message so getMessage returns real content on WA retry requests. */
-export async function saveMessageToStore(
-  instanceName: string,
-  messageId: string,
-  message: any
-): Promise<void> {
-  try {
-    const encoded = encode(message);
-    await pool.query(
-      `INSERT INTO public.baileys_message_store (instance_name, message_id, message, created_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (instance_name, message_id)
-       DO UPDATE SET message = EXCLUDED.message, created_at = now()`,
-      [instanceName, messageId, JSON.stringify(encoded)]
-    );
-  } catch (err: any) {
-    if (!/relation .* does not exist/i.test(err?.message || '')) {
-      console.error(`[baileys:${instanceName}] saveMessageToStore error:`, err?.message);
-    }
-  }
-}
-
-/** Retrieve a persisted sent message for getMessage retry handling. */
-export async function getMessageFromStore(
-  instanceName: string,
-  messageId: string
-): Promise<any | null> {
-  try {
-    const { rows } = await pool.query(
-      `SELECT message FROM public.baileys_message_store WHERE instance_name = $1 AND message_id = $2`,
-      [instanceName, messageId]
-    );
-    if (!rows.length) return null;
-    return decode(rows[0].message);
-  } catch {
-    return null;
-  }
-}
 
 export async function usePostgresAuthState(
   instanceName: string
