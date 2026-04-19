@@ -1593,8 +1593,10 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
           if (infoResp.ok) {
             const info: any = await infoResp.json();
             const participants = info?.participants || [];
-            if (Array.isArray(participants) && participants.length > 0) {
-              gl.member_count = participants.length;
+            const sizeNum = typeof info?.size === "number" ? info.size : 0;
+            const real = Math.max(Array.isArray(participants) ? participants.length : 0, sizeNum);
+            if (real > 0) {
+              gl.member_count = real;
             }
           }
           break; // success, no retry needed
@@ -1856,8 +1858,10 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
               if (infoResp.ok) {
                 const info: any = await infoResp.json();
                 const participants = info?.participants || [];
-                if (Array.isArray(participants) && participants.length > 0) {
-                  gl.member_count = participants.length;
+                const sizeNum = typeof info?.size === "number" ? info.size : 0;
+                const real = Math.max(Array.isArray(participants) ? participants.length : 0, sizeNum);
+                if (real > 0) {
+                  gl.member_count = real;
                 }
               }
               break;
