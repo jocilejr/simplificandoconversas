@@ -25,8 +25,30 @@ import {
   usePostgresAuthState,
   deleteAllAuth,
   listInstanceNames,
+  clearSenderKeyMemory,
+  saveMessageToStore,
+  getMessageFromStore,
 } from "./postgres-auth-state";
 import { forwardEvent } from "./event-bridge";
+
+/** Per-instance group metadata cache (5 min TTL). Prevents Baileys from sending
+ *  to a stale participant list, which causes "Aguardando mensagem" on receivers. */
+type CachedMeta = { data: any; expiresAt: number };
+const groupMetadataCache = new Map<string, Map<string, CachedMeta>>();
+const GROUP_META_TTL_MS = 5 * 60_000;
+
+function getMetaCache(instanceName: string): Map<string, CachedMeta> {
+  let c = groupMetadataCache.get(instanceName);
+  if (!c) {
+    c = new Map();
+    groupMetadataCache.set(instanceName, c);
+  }
+  return c;
+}
+
+function invalidateGroupMeta(instanceName: string, jid: string) {
+  getMetaCache(instanceName).delete(jid);
+}
 
 type InstanceRuntime = {
   name: string;

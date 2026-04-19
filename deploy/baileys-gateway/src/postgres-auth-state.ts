@@ -70,6 +70,46 @@ export async function clearSenderKeyMemory(instanceName: string): Promise<void> 
   console.log(`[baileys:${instanceName}] cleared ${rowCount} sender-key-memory entries`);
 }
 
+/** Persist a sent message so getMessage can return it on retries even after restart. */
+export async function saveMessageToStore(
+  instanceName: string,
+  messageId: string,
+  message: any
+): Promise<void> {
+  try {
+    const encoded = encode(message);
+    await pool.query(
+      `INSERT INTO public.baileys_message_store (instance_name, message_id, message, created_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (instance_name, message_id)
+       DO UPDATE SET message = EXCLUDED.message, created_at = now()`,
+      [instanceName, messageId, JSON.stringify(encoded)]
+    );
+  } catch (err: any) {
+    // Table may not exist yet on first deploy — fail silently
+    if (!/relation .* does not exist/i.test(err?.message || "")) {
+      console.error(`[baileys:${instanceName}] saveMessageToStore error:`, err?.message);
+    }
+  }
+}
+
+/** Retrieve a previously sent message for retry decryption. */
+export async function getMessageFromStore(
+  instanceName: string,
+  messageId: string
+): Promise<any | null> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT message FROM public.baileys_message_store WHERE instance_name = $1 AND message_id = $2`,
+      [instanceName, messageId]
+    );
+    if (!rows.length) return null;
+    return decode(rows[0].message);
+  } catch {
+    return null;
+  }
+}
+
 export async function listInstanceNames(): Promise<string[]> {
   const { rows } = await pool.query(
     `SELECT DISTINCT instance_name FROM public.baileys_auth_state WHERE key = 'creds'`
