@@ -531,8 +531,8 @@ GRANT ALL ON public.email_contacts TO anon, authenticated, service_role;
 CREATE TABLE IF NOT EXISTS public.email_queue (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
-  campaign_id uuid REFERENCES public.email_campaigns(id),
-  template_id uuid REFERENCES public.email_templates(id),
+  campaign_id uuid,
+  template_id uuid,
   smtp_config_id uuid,
   recipient_email text NOT NULL,
   recipient_name text,

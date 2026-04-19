@@ -329,7 +329,7 @@ END $$;
 
 -- Read-only workspace-scoped tables
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='api_request_logs' AND policyname='ws_select') THEN
+  IF to_regclass('public.api_request_logs') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='api_request_logs' AND policyname='ws_select') THEN
     CREATE POLICY "ws_select" ON public.api_request_logs FOR SELECT TO authenticated USING (public.is_workspace_member(auth.uid(), workspace_id));
   END IF;
 END $$;

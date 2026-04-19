@@ -6,45 +6,58 @@ REPO_ROOT="$(dirname "$DEPLOY_DIR")"
 
 echo "═══ Atualizando deploy ═══"
 
-# Load env
+# Load and export all env vars (required for docker stack deploy variable substitution)
+set -a
 source "$DEPLOY_DIR/.env"
+set +a
 
 # ============================================================
 # [1/5] Pull latest code
 # ============================================================
 echo "[1/5] Pulling latest code..."
 cd "$REPO_ROOT"
-git checkout -- .
 git pull origin main
 
 # ============================================================
-# [2/5] Database migrations (consolidated)
+# [2/5] Database migrations
 # ============================================================
 echo "[2/5] Running database migrations..."
-cd "$DEPLOY_DIR"
 
-echo "   → Applying all SQL migrations in a single pass..."
+# Find postgres container (Docker Swarm — avoid matching postgrest)
+POSTGRES_CONTAINER=$(docker ps --format '{{.ID}}\t{{.Names}}' | grep 'simplificando_postgres\.' | awk '{print $1}' | head -1)
+if [ -z "$POSTGRES_CONTAINER" ]; then
+  echo "❌ Postgres container not found! Is the stack running?"
+  exit 1
+fi
+echo "   → Postgres container: $POSTGRES_CONTAINER"
+
+# Ensure evolution database exists (required by Evolution API)
+echo "   → Criando banco 'evolution' se não existir..."
+docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -tc \
+  "SELECT 1 FROM pg_database WHERE datname='evolution'" | grep -q 1 || \
+  docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -c "CREATE DATABASE evolution;"
+
+# Apply SQL migrations
+echo "   → Aplicando migrações SQL..."
 cat "$DEPLOY_DIR/init-db.sql" \
     "$DEPLOY_DIR/migrate-workspace.sql" \
     "$DEPLOY_DIR/fix-member-tables.sql" \
-  | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
+  | docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1
 echo "✓ Migrações aplicadas"
 
-# Validate workspace membership exists for all users
-ORPHAN_USERS=$(docker compose exec -T postgres psql -U postgres -d postgres -tAc "
-  SELECT count(*) FROM auth.users u
-  WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.user_id = u.id);
-")
-ORPHAN_USERS=$(echo "$ORPHAN_USERS" | tr -d '[:space:]')
+# Validate workspace membership
+ORPHAN_USERS=$(docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tAc \
+  "SELECT count(*) FROM auth.users u WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.user_id = u.id);" \
+  | tr -d '[:space:]')
 if [ "$ORPHAN_USERS" != "0" ]; then
   echo "⚠ AVISO: $ORPHAN_USERS usuários sem workspace. Verifique manualmente."
 else
   echo "✓ Todos os usuários possuem workspace"
 fi
 
-# Restart PostgREST to guarantee schema reload
-docker compose restart postgrest 2>/dev/null || echo "⚠ PostgREST não encontrado (ok se não usar)"
-sleep 3
+# Notify PostgREST to reload schema
+docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres \
+  -c "NOTIFY pgrst, 'reload schema';" 2>/dev/null || true
 echo "✓ PostgREST schema recarregado"
 
 # ============================================================
@@ -64,47 +77,54 @@ else
   npm install && npm run build
 fi
 
-# Verify build succeeded
 if [ ! -f "$REPO_ROOT/dist/index.html" ]; then
   echo "❌ Build falhou! dist/index.html não encontrado."
-  echo "   Frontend anterior mantido intacto."
-  echo "   ⚠ Migrações SQL já foram aplicadas com sucesso."
   exit 1
 fi
 
-# Replace frontend files (preserve directory inode for bind mount)
 mkdir -p "$DEPLOY_DIR/frontend"
 rm -rf "$DEPLOY_DIR/frontend/"*
 cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
 echo "✓ Frontend copiado com sucesso"
 
 # ============================================================
-# [4/5] Rebuild containers
+# [4/5] Rebuild backend image
 # ============================================================
-echo "[4/5] Rebuilding containers..."
+echo "[4/5] Rebuilding backend image..."
 cd "$DEPLOY_DIR"
-docker compose build --no-cache backend
-docker compose build
+docker build -t simplificando-backend:latest ./backend
+echo "✓ Imagem backend construída"
 
 # ============================================================
-# [5/5] Restart + health check
+# [5/5] Deploy stack
 # ============================================================
-echo "[5/5] Restarting..."
-docker compose up -d
+echo "[5/5] Deploying stack..."
+cd "$DEPLOY_DIR"
+docker stack deploy -c portainer-stack.yml simplificando --with-registry-auth
+echo "   → Aguardando serviços iniciarem..."
+sleep 10
 
-# Force restart Nginx to guarantee bind mount refresh
-docker compose restart nginx
-echo "✓ Nginx reiniciado"
+# Force nginx container restart to refresh bind mount
+NGINX_CONTAINER=$(docker ps --format '{{.ID}}\t{{.Names}}' | grep 'simplificando_nginx\.' | awk '{print $1}' | head -1)
+if [ -n "$NGINX_CONTAINER" ]; then
+  docker restart "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+  echo "✓ Nginx reiniciado"
+fi
 
 # Post-deploy health check
 echo "Verificando backend..."
-sleep 3
-HEALTH=$(docker compose exec -T backend wget -qO- http://localhost:3001/api/health/version 2>/dev/null || echo '{"ok":false}')
-echo "   Health: $HEALTH"
-if echo "$HEALTH" | grep -q '"ok":true'; then
-  echo "✓ Backend respondendo corretamente"
+sleep 5
+BACKEND_CONTAINER=$(docker ps --format '{{.ID}}\t{{.Names}}' | grep 'simplificando_backend\.' | awk '{print $1}' | head -1)
+if [ -n "$BACKEND_CONTAINER" ]; then
+  HEALTH=$(docker exec -i "$BACKEND_CONTAINER" wget -qO- http://localhost:3001/api/health/version 2>/dev/null || echo '{"ok":false}')
+  echo "   Health: $HEALTH"
+  if echo "$HEALTH" | grep -q '"ok":true'; then
+    echo "✓ Backend respondendo corretamente"
+  else
+    echo "⚠ Backend não respondeu. Verifique: docker service logs simplificando_backend --tail=20"
+  fi
 else
-  echo "⚠ Backend não respondeu ao health check. Verifique logs: docker compose logs backend --tail=20"
+  echo "⚠ Container do backend não encontrado ainda (pode estar iniciando)"
 fi
 
 echo ""
