@@ -54,9 +54,12 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
     .map((raw) => {
       const group = raw as EvolutionGroupPayload;
       const jid = group.id || group.jid || group.groupJid || "";
-      const memberCount = Array.isArray(group.participants) ? group.participants.length : 0;
+      // Prefer real total from `size` (Evolution sometimes omits participants in bulk)
+      const participantsLen = Array.isArray(group.participants) ? group.participants.length : 0;
+      const sizeNum = typeof group.size === "number" ? group.size : 0;
+      const memberCount = Math.max(participantsLen, sizeNum);
       if (memberCount === 0) {
-        console.warn(`[fetch-groups] no participants returned for ${jid}`);
+        console.warn(`[fetch-groups] no participants/size returned for ${jid}`);
       }
 
       return {
@@ -1590,8 +1593,10 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
           if (infoResp.ok) {
             const info: any = await infoResp.json();
             const participants = info?.participants || [];
-            if (Array.isArray(participants) && participants.length > 0) {
-              gl.member_count = participants.length;
+            const sizeNum = typeof info?.size === "number" ? info.size : 0;
+            const real = Math.max(Array.isArray(participants) ? participants.length : 0, sizeNum);
+            if (real > 0) {
+              gl.member_count = real;
             }
           }
           break; // success, no retry needed
@@ -1853,8 +1858,10 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
               if (infoResp.ok) {
                 const info: any = await infoResp.json();
                 const participants = info?.participants || [];
-                if (Array.isArray(participants) && participants.length > 0) {
-                  gl.member_count = participants.length;
+                const sizeNum = typeof info?.size === "number" ? info.size : 0;
+                const real = Math.max(Array.isArray(participants) ? participants.length : 0, sizeNum);
+                if (real > 0) {
+                  gl.member_count = real;
                 }
               }
               break;

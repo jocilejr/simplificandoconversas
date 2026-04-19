@@ -104,8 +104,10 @@ export default function GroupDashboardTab() {
   }, []);
 
   const groupLinks = selectedLink?.group_links || [];
-  const baseTotalMembers = groupLinks.reduce((sum, g) => sum + (g.member_count || 0), 0);
-  const totalMembers = baseTotalMembers + filteredTotals.adds - filteredTotals.removes;
+  // member_count vem do último sync e já reflete o estado real do grupo.
+  // Não somar adds/removes do período (eles já são exibidos nos cards "Entraram"/"Saíram"
+  // e dupliciariam a contagem se aplicados aqui).
+  const totalMembers = groupLinks.reduce((sum, g) => sum + (g.member_count || 0), 0);
   const activeCampaigns = campaigns.filter((c: any) => c.is_active).length;
   const groupsCount = groupLinks.length;
 
