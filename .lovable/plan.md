@@ -1,71 +1,67 @@
 
 
-## Diagnóstico
+Usuário quer:
+1. Implementar o fix de visibilidade do gateway (logs + DM recovery + auto-schema) que já foi planejado
+2. **Reformar `update.sh`** para ser minimalista e seguro — sem recriar tabelas, sem migrations agressivas, sem derrubar o servidor inteiro
+3. Migrations de tabela ele faz na mão
 
-A mensagem "Aguardando mensagem. Essa ação pode levar alguns instantes" no WhatsApp do destinatário é **falha de descriptografia Signal/E2E**. O destinatário recebeu o pacote criptografado mas não tem a chave correta para abrir. Isso acontece quando:
+## Plano
 
-1. **Sender keys defasadas** (principalmente em grupos após restart do gateway)
-2. **`getMessage` retorna conteúdo vazio** no retry — o WhatsApp precisa do conteúdo original para re-criptografar
-3. **`msgStore` é só em memória** — perde tudo no restart do container, nenhum retry funciona após deploy
-4. **Falta `cachedGroupMetadata`** — Baileys re-busca metadata constantemente e pode usar lista de participantes desatualizada para distribuir sender keys
+### 1. `deploy/update.sh` — modo seguro/mínimo
 
-O fix anterior (Baileys 7.0.0-rc.9 + `getMessage` + `msgStore` + `clearSenderKeyMemory`) está incompleto: a função `clearSenderKeyMemory` foi criada mas nunca é chamada, e o `msgStore` é volátil.
+Remover completamente o passo `[2/5] migrations` que faz `cat migrate-workspace.sql + init-db.sql + fix-member-tables.sql | psql`. Esse bloco é o que “quebra o servidor inteiro” quando há divergência de schema.
 
-## Plano de correção
+Novo fluxo enxuto:
+- `[1/4]` git pull
+- `[2/4]` rebuild frontend (só copia `dist/` se build OK — já tem essa proteção)
+- `[3/4]` rebuild imagens locais (backend + baileys-gateway)
+- `[4/4]` `docker service update --force` em backend, baileys-gateway, nginx (Swarm) ou `docker compose up -d` (Compose)
+- Health check final
 
-### 1. Persistir `msgStore` em Postgres (`baileys_message_store`)
+Sem migrations automáticas. Sem `NOTIFY pgrst`. Sem mexer em Postgres.
+Manter detecção Swarm vs Compose.
+Manter validação de build do frontend (não sobrescreve `dist/` se quebrou).
 
-Nova tabela para sobreviver a restarts:
-```text
-baileys_message_store(instance_name, message_id, message jsonb, created_at)
-```
-- Auto-cleanup: manter só últimos 7 dias
-- `getMessage` consulta a tabela quando memória não tem
+Mensagem final lembra: “Se houver mudança de schema, rode os SQLs manualmente antes/depois.”
 
-### 2. Chamar `clearSenderKeyMemory` na reconexão de grupos
+### 2. Gateway — visibilidade + DM recovery + auto-schema
 
-No `connection.update` quando `connection === "open"` E é uma reconexão (não primeiro QR), executar `clearSenderKeyMemory`. Isso força redistribuição de sender keys no próximo envio em grupo.
+**`deploy/baileys-gateway/src/db.ts`**
+Mover criação de `baileys_message_store` para dentro de `ensureSchema()` (idempotente, `CREATE TABLE IF NOT EXISTS`). Assim o gateway se auto-cura no boot sem depender de SQL externo.
 
-### 3. Adicionar `cachedGroupMetadata` ao socket
+**`deploy/baileys-gateway/src/postgres-auth-state.ts`**
+- `saveMessageToStore`: log explícito de sucesso/erro (não mais silencioso)
+- `getMessageFromStore`: log hit/miss
 
-Cache de 5min para metadata de grupos, evita Baileys usar lista de participantes obsoleta:
-```typescript
-cachedGroupMetadata: async (jid) => groupMetadataCache.get(jid)
-```
+**`deploy/baileys-gateway/src/instance-manager.ts`**
+- `getMessage`: log indicando origem (memória / postgres / stub vazio) com `messageId`
+- `messages.upsert` outbound: log do `messageId` salvo
+- `connection.update`:
+  - log do motivo do disconnect (statusCode + descrição)
+  - tratar `badSession`, `restartRequired`, `connectionReplaced`, `multideviceMismatch` com recriação limpa do socket
+  - log de reconexão bem-sucedida + se chamou `clearSenderKeyMemory`
 
-### 4. Atualizar handler de `groups.update` e `group-participants.update`
+**`deploy/baileys-gateway/src/routes/message.ts`**
+- log no início de cada envio: instância, jid, tipo
+- log no sucesso com `messageId` retornado
+- log de erro com contexto
 
-Invalidar cache quando participantes mudam, garantindo nova distribuição de sender keys.
+### 3. Comandos VPS pós-deploy (eu entrego prontos)
 
-### 5. Migration SQL para a tabela
+Build + update do gateway + verificação de logs + verificação da tabela auto-criada. Sem rodar migration nenhuma.
 
-Adicionar em `deploy/migrate-workspace.sql` (idempotente, pode rodar múltiplas vezes).
+## Arquivos editados
 
-## Arquivos a editar
+- `deploy/update.sh`
+- `deploy/baileys-gateway/src/db.ts`
+- `deploy/baileys-gateway/src/postgres-auth-state.ts`
+- `deploy/baileys-gateway/src/instance-manager.ts`
+- `deploy/baileys-gateway/src/routes/message.ts`
 
-- `deploy/baileys-gateway/src/postgres-auth-state.ts` — adicionar `saveMessageToStore` / `getMessageFromStore`
-- `deploy/baileys-gateway/src/instance-manager.ts` — usar store persistente, chamar `clearSenderKeyMemory` em reconexão, adicionar `cachedGroupMetadata`
-- `deploy/migrate-workspace.sql` — criar tabela `baileys_message_store` + índice + cleanup function
+## Resultado esperado
 
-## Comandos para aplicar na VPS (após o edit)
-
-```bash
-cd /opt/simplificandoconversas
-git pull
-
-cd deploy
-set -a; source .env; set +a
-
-PG=$(docker ps --filter name=simplificando_postgres --format '{{.Names}}' | head -1)
-cat migrate-workspace.sql | docker exec -i "$PG" psql -U postgres -d postgres 2>&1 | grep -iE "create|notice|error" | tail -10
-docker exec -i "$PG" psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
-
-cd /opt/simplificandoconversas
-docker build -t simplificando-baileys-gateway:latest ./deploy/baileys-gateway
-docker service update --force --image simplificando-baileys-gateway:latest simplificando_baileys-gateway
-sleep 25
-docker service logs simplificando_baileys-gateway --tail 30
-```
-
-Após reconectar todas as instâncias (ou aguardar 1 min para reconexão automática), o próximo envio em cada grupo redistribuirá sender keys corretas e a mensagem "Aguardando" some.
+- `update.sh` nunca mais toca em SQL — risco zero de quebrar Postgres em update
+- Gateway cria sua própria tabela no boot
+- Próxima ocorrência de “Aguardando mensagem” gera log explícito mostrando exatamente onde quebrou (store vazio / sessão corrompida / reconnect incompleto)
+- Sessões DM corrompidas se autorrecuperam via tratamento explícito de disconnect codes
 
