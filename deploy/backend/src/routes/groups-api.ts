@@ -54,9 +54,12 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
     .map((raw) => {
       const group = raw as EvolutionGroupPayload;
       const jid = group.id || group.jid || group.groupJid || "";
-      const memberCount = Array.isArray(group.participants) ? group.participants.length : 0;
+      // Prefer real total from `size` (Evolution sometimes omits participants in bulk)
+      const participantsLen = Array.isArray(group.participants) ? group.participants.length : 0;
+      const sizeNum = typeof group.size === "number" ? group.size : 0;
+      const memberCount = Math.max(participantsLen, sizeNum);
       if (memberCount === 0) {
-        console.warn(`[fetch-groups] no participants returned for ${jid}`);
+        console.warn(`[fetch-groups] no participants/size returned for ${jid}`);
       }
 
       return {
