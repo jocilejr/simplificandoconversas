@@ -28,6 +28,8 @@ import {
   usePostgresAuthState,
   deleteAllAuth,
   listInstanceNames,
+  saveMessageToStore,
+  getMessageFromStore,
 } from "./postgres-auth-state";
 import { forwardEvent } from "./event-bridge";
 
@@ -49,6 +51,7 @@ type InstanceRuntime = {
   ownerJid: string;
   profileName: string;
   profilePicUrl: string;
+  msgStore: Map<string, any>;
 };
 
 const instances = new Map<string, InstanceRuntime>();
@@ -67,6 +70,7 @@ function getRuntime(instanceName: string): InstanceRuntime {
       ownerJid: "",
       profileName: "",
       profilePicUrl: "",
+      msgStore: new Map(),
     };
     instances.set(instanceName, r);
   }
@@ -92,6 +96,15 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     printQRInTerminal: false,
     browser: Browsers.appropriate("Chrome"),
     generateHighQualityLinkPreview: true,
+    defaultQueryTimeoutMs: 60_000,
+    getMessage: async (key) => {
+      // Return real sent message so WA can re-encrypt with fresh sender key on retry.
+      // Returning undefined is correct when unknown (NOT an empty stub which causes
+      // "aguardando mensagem" by delivering an empty message to the recipient).
+      const inMemory = runtime.msgStore.get(key.id!);
+      if (inMemory) return inMemory;
+      return await getMessageFromStore(instanceName, key.id!) || undefined;
+    },
   });
 
   runtime.sock = sock;
@@ -141,11 +154,11 @@ async function startSocket(instanceName: string): Promise<WASocket> {
       // Drop dead socket reference; let GC handle the rest.
       runtime.sock = null;
 
-      // Terminal codes — same set the reference treats as fatal.
+      // Terminal codes — only truly fatal disconnects should wipe auth.
+      // 440 (connectionReplaced) must NOT wipe auth: it happens during service
+      // updates when the new container connects before the old one stops.
       const terminalCodes: number[] = [
         DisconnectReason.loggedOut, // 401
-        405,
-        DisconnectReason.connectionReplaced, // 440
         DisconnectReason.multideviceMismatch, // 411
       ];
 
@@ -182,6 +195,19 @@ async function startSocket(instanceName: string): Promise<WASocket> {
 
   // Forward inbound/outbound messages to the backend (unchanged contract).
   sock.ev.on("messages.upsert", (m) => {
+    // Cache sent messages so getMessage returns real content on WA retry requests
+    for (const msg of m.messages || []) {
+      if (msg.key?.id && msg.message) {
+        runtime.msgStore.set(msg.key.id, msg.message);
+        if (msg.key.fromMe) {
+          saveMessageToStore(instanceName, msg.key.id, msg.message).catch(() => {});
+        }
+        if (runtime.msgStore.size > 500) {
+          const firstKey = runtime.msgStore.keys().next().value;
+          if (firstKey) runtime.msgStore.delete(firstKey);
+        }
+      }
+    }
     forwardEvent(instanceName, "messages.upsert", m).catch(() => {});
   });
 
