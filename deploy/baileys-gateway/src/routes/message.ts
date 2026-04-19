@@ -54,10 +54,13 @@ router.post("/sendText/:instance", async (req, res) => {
 
 /** POST /message/sendMedia/:instance  body: { number, mediatype, media, caption?, fileName?, mimetype? } */
 router.post("/sendMedia/:instance", async (req, res) => {
+  const instance = decodeURIComponent(req.params.instance);
+  const { number, mediatype, media, caption, fileName, mimetype, mentionsEveryOne } = req.body || {};
+  const jid = destFor(number);
+  const isGroup = jid.endsWith("@g.us");
+  console.log(`[send:${instance}] sendMedia START jid=${jid} group=${isGroup} type=${mediatype}`);
   try {
-    const sock = await getSock(decodeURIComponent(req.params.instance));
-    const { number, mediatype, media, caption, fileName, mimetype, mentionsEveryOne } = req.body || {};
-    const jid = destFor(number);
+    const sock = await getSock(instance);
 
     // `media` may be a URL or base64 string
     const isUrl = typeof media === "string" && /^https?:\/\//i.test(media);
@@ -75,19 +78,21 @@ router.post("/sendMedia/:instance", async (req, res) => {
       };
     else payload = { document: buf, fileName: fileName || "file", mimetype: mimetype || "application/octet-stream" };
 
-    if (mentionsEveryOne && jid.endsWith("@g.us")) {
+    if (mentionsEveryOne && isGroup) {
       try {
         const meta = await sock.groupMetadata(jid);
         payload.mentions = meta.participants.map((p: any) => p.id);
       } catch {}
     }
     const sent = await sock.sendMessage(jid, payload);
+    console.log(`[send:${instance}] sendMedia OK id=${sent?.key?.id} jid=${jid}`);
     res.json({
       key: sent?.key,
       status: "PENDING",
       messageTimestamp: Math.floor(Date.now() / 1000),
     });
   } catch (err: any) {
+    console.error(`[send:${instance}] sendMedia FAIL jid=${jid} err=${err?.message}`);
     res.status(400).json({ status: 400, error: err?.message || "send failed" });
   }
 });
@@ -96,10 +101,12 @@ router.post("/sendMedia/:instance", async (req, res) => {
  *  OGG/OPUS → voice message (ptt=true); MP3/AAC/etc → regular audio file (ptt=false).
  *  Caller can override with explicit ptt boolean. */
 router.post("/sendWhatsAppAudio/:instance", async (req, res) => {
+  const instance = decodeURIComponent(req.params.instance);
+  const { number, audio, ptt: pttOverride } = req.body || {};
+  const jid = destFor(number);
+  console.log(`[send:${instance}] sendAudio START jid=${jid}`);
   try {
-    const sock = await getSock(decodeURIComponent(req.params.instance));
-    const { number, audio, ptt: pttOverride } = req.body || {};
-    const jid = destFor(number);
+    const sock = await getSock(instance);
     const isUrl = typeof audio === "string" && /^https?:\/\//i.test(audio);
     const buf = isUrl ? { url: audio as string } : Buffer.from(String(audio || ""), "base64");
     // Auto-detect: OGG/OPUS → voice (PTT); anything else → audio file
@@ -107,12 +114,14 @@ router.post("/sendWhatsAppAudio/:instance", async (req, res) => {
     const ptt = pttOverride !== undefined ? Boolean(pttOverride) : isOgg;
     const mimetype = ptt ? "audio/ogg; codecs=opus" : "audio/mpeg";
     const sent = await sock.sendMessage(jid, { audio: buf, mimetype, ptt });
+    console.log(`[send:${instance}] sendAudio OK id=${sent?.key?.id} jid=${jid} ptt=${ptt}`);
     res.json({
       key: sent?.key,
       status: "PENDING",
       messageTimestamp: Math.floor(Date.now() / 1000),
     });
   } catch (err: any) {
+    console.error(`[send:${instance}] sendAudio FAIL jid=${jid} err=${err?.message}`);
     res.status(400).json({ status: 400, error: err?.message || "send failed" });
   }
 });
