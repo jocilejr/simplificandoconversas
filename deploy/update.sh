@@ -90,15 +90,29 @@ fi
 echo "[4/4] Restarting services..."
 
 if [ "$SWARM_ACTIVE" = true ]; then
-  for svc in backend baileys-gateway nginx; do
+  # Serviços com imagem custom (build local)
+  for svc in backend baileys-gateway; do
     if docker service inspect "${STACK_NAME}_${svc}" >/dev/null 2>&1; then
-      docker service update --force --image "simplificando-${svc}:latest" "${STACK_NAME}_${svc}" >/dev/null 2>&1 \
-        || docker service update --force "${STACK_NAME}_${svc}" >/dev/null 2>&1
-      echo "✓ Serviço ${svc} atualizado"
+      docker service update --force --image "simplificando-${svc}:latest" "${STACK_NAME}_${svc}" >/dev/null 2>&1
+      echo "✓ Serviço ${svc} atualizado (simplificando-${svc}:latest)"
     else
       echo "⚠ Serviço ${STACK_NAME}_${svc} não existe (pule se não usar)"
     fi
   done
+
+  # Nginx usa imagem oficial — NUNCA trocar imagem, apenas force restart
+  # para recarregar volumes (frontend dist/ + template)
+  if docker service inspect "${STACK_NAME}_nginx" >/dev/null 2>&1; then
+    CURRENT_NGINX_IMAGE=$(docker service inspect "${STACK_NAME}_nginx" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d'@' -f1)
+    # Se por acidente apontou pra imagem custom, restaura nginx:alpine
+    if echo "$CURRENT_NGINX_IMAGE" | grep -q "simplificando-nginx"; then
+      echo "⚠ nginx estava com imagem inválida ($CURRENT_NGINX_IMAGE) — restaurando nginx:alpine"
+      docker service update --image nginx:alpine "${STACK_NAME}_nginx" >/dev/null 2>&1
+    else
+      docker service update --force "${STACK_NAME}_nginx" >/dev/null 2>&1
+    fi
+    echo "✓ Serviço nginx atualizado (mantém imagem oficial)"
+  fi
 else
   docker compose up -d backend baileys-gateway
   docker compose restart nginx
