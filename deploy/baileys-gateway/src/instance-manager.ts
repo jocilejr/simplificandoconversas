@@ -260,7 +260,10 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     forwardEvent(instanceName, "groups.update", updates).catch(() => {});
   });
 
-  sock.ev.on("group-participants.update", (g) => {
+  sock.ev.on("group-participants.update", (g: any) => {
+    // Membership changed → invalidate cached metadata so Baileys
+    // re-fetches and redistributes sender keys to the new participant set.
+    if (g?.id) invalidateGroupMeta(instanceName, g.id);
     forwardEvent(instanceName, "group-participants.update", g).catch(() => {});
   });
 
