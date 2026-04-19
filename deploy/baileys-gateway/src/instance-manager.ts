@@ -1,21 +1,24 @@
 /**
  * Multi-instance Baileys manager.
  *
- * Holds one WASocket per instance name. Auth state is persisted in Postgres
- * so the gateway survives restarts without losing sessions.
+ * Aligned with the proven jocilejr/whats-grupos reference gateway:
+ *  - No `getMessage` callback (returning empty stubs causes "Aguardando mensagem"
+ *    on recipients indefinitely; letting WA handle retries is the correct behavior).
+ *  - No `cachedGroupMetadata` (Baileys fetches live with an internal timeout —
+ *    stale cached metadata also caused undelivered group messages).
+ *  - Pinned WhatsApp Web version (matches the reference, more stable than
+ *    `fetchLatestBaileysVersion` which can land on broken builds).
+ *  - Simple backoff reconnect (5s, 15s, 60s) on non-fatal disconnects.
+ *  - Custom browser identifier string (Evolution API style).
  *
- * Public API:
- *   getOrCreate(instanceName)  → ensures a socket exists (creates if missing)
- *   get(instanceName)          → returns the socket or null
- *   getQR(instanceName)        → returns last QR (data URL) if any
- *   getState(instanceName)     → "open" | "connecting" | "close"
- *   logout(instanceName)       → terminates session, wipes auth, deletes from memory
- *   destroy(instanceName)      → like logout but called on deletion
+ * Differences from the reference (kept on purpose for our infra):
+ *  - Auth state lives in Postgres, not on disk (multi-replica safe).
+ *  - Webhook bridge fans events to the backend.
+ *  - Multi-instance manager exposes runtime info to /instance routes.
  */
 import makeWASocket, {
   DisconnectReason,
   WASocket,
-  fetchLatestBaileysVersion,
   Browsers,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
@@ -25,30 +28,16 @@ import {
   usePostgresAuthState,
   deleteAllAuth,
   listInstanceNames,
-  clearSenderKeyMemory,
-  saveMessageToStore,
-  getMessageFromStore,
 } from "./postgres-auth-state";
 import { forwardEvent } from "./event-bridge";
 
-/** Per-instance group metadata cache (5 min TTL). Prevents Baileys from sending
- *  to a stale participant list, which causes "Aguardando mensagem" on receivers. */
-type CachedMeta = { data: any; expiresAt: number };
-const groupMetadataCache = new Map<string, Map<string, CachedMeta>>();
-const GROUP_META_TTL_MS = 5 * 60_000;
+// Pinned WhatsApp Web version — matches the reference gateway (proven stable).
+// Updating this requires testing; do not switch back to fetchLatestBaileysVersion
+// without verifying group delivery still works.
+const WA_VERSION: [number, number, number] = [2, 3000, 1033893291];
 
-function getMetaCache(instanceName: string): Map<string, CachedMeta> {
-  let c = groupMetadataCache.get(instanceName);
-  if (!c) {
-    c = new Map();
-    groupMetadataCache.set(instanceName, c);
-  }
-  return c;
-}
-
-function invalidateGroupMeta(instanceName: string, jid: string) {
-  getMetaCache(instanceName).delete(jid);
-}
+// Backoff schedule for reconnection on transient disconnects.
+const RECONNECT_DELAYS_MS = [5_000, 15_000, 60_000];
 
 type InstanceRuntime = {
   name: string;
@@ -60,8 +49,6 @@ type InstanceRuntime = {
   ownerJid: string;
   profileName: string;
   profilePicUrl: string;
-  /** LRU message store: messageId → message. Used by getMessage for group retries. */
-  msgStore: Map<string, any>;
 };
 
 const instances = new Map<string, InstanceRuntime>();
@@ -80,7 +67,6 @@ function getRuntime(instanceName: string): InstanceRuntime {
       ownerJid: "",
       profileName: "",
       profilePicUrl: "",
-      msgStore: new Map(),
     };
     instances.set(instanceName, r);
   }
@@ -98,45 +84,14 @@ export function listAllInstances(): InstanceRuntime[] {
 async function startSocket(instanceName: string): Promise<WASocket> {
   const runtime = getRuntime(instanceName);
   const { state, saveCreds } = await usePostgresAuthState(instanceName);
-  const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
-    version,
+    version: WA_VERSION,
     auth: state,
     logger: logger as any,
     printQRInTerminal: false,
-    browser: Browsers.macOS("Chrome"),
-    syncFullHistory: false,
-    markOnlineOnConnect: false,
-    generateHighQualityLinkPreview: false,
-    defaultQueryTimeoutMs: 60_000,
-    getMessage: async (key) => {
-      const id = key.id!;
-      const stored = runtime.msgStore.get(id);
-      if (stored) {
-        console.log(`[baileys:${instanceName}] getMessage MEM  id=${id}`);
-        return stored;
-      }
-      // Fall back to persistent store (survives restarts)
-      const persisted = await getMessageFromStore(instanceName, id);
-      if (persisted) {
-        runtime.msgStore.set(id, persisted);
-        console.log(`[baileys:${instanceName}] getMessage PG   id=${id}`);
-        return persisted;
-      }
-      // Stub ensures the retry fires even for messages we don't have.
-      console.warn(`[baileys:${instanceName}] getMessage STUB id=${id} (empty payload — recipient will see "Aguardando mensagem")`);
-      return { conversation: "" };
-    },
-    cachedGroupMetadata: async (jid) => {
-      const cache = getMetaCache(instanceName);
-      const entry = cache.get(jid);
-      if (entry && entry.expiresAt > Date.now()) {
-        return entry.data;
-      }
-      cache.delete(jid);
-      return undefined;
-    },
+    browser: Browsers.appropriate("Chrome"),
+    generateHighQualityLinkPreview: true,
   });
 
   runtime.sock = sock;
@@ -150,13 +105,13 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     if (qr) {
       try {
         runtime.qr = await QRCode.toDataURL(qr);
+        console.log(`[baileys:${instanceName}] QR generated`);
       } catch (err: any) {
         console.error(`[baileys:${instanceName}] qr encode error:`, err?.message);
       }
     }
 
     if (connection === "open") {
-      const wasReconnect = runtime.lastConnectedAt !== null;
       runtime.state = "open";
       runtime.qr = null;
       runtime.lastConnectedAt = Date.now();
@@ -164,84 +119,51 @@ async function startSocket(instanceName: string): Promise<WASocket> {
       const me = sock.user;
       runtime.ownerJid = me?.id?.split(":")[0] + "@s.whatsapp.net" || "";
       runtime.profileName = me?.name || me?.verifiedName || "";
-      console.log(
-        `[baileys:${instanceName}] CONNECTED as=${runtime.ownerJid} reconnect=${wasReconnect}`
-      );
-      // Try to fetch profile pic (best effort)
+      console.log(`[baileys:${instanceName}] CONNECTED as=${runtime.ownerJid}`);
       try {
         if (me?.id) {
           runtime.profilePicUrl =
             (await sock.profilePictureUrl(me.id, "image").catch(() => "")) || "";
         }
       } catch {}
-      // On reconnects, force sender-key redistribution so group recipients can decrypt
-      if (wasReconnect) {
-        console.log(`[baileys:${instanceName}] reconnect → clearing sender-key-memory + group meta cache`);
-        clearSenderKeyMemory(instanceName).catch((err) =>
-          console.error(`[baileys:${instanceName}] clearSenderKeyMemory error:`, err?.message)
-        );
-        groupMetadataCache.delete(instanceName);
-      }
     }
 
     if (connection === "close") {
       runtime.state = "close";
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      const loggedOut = statusCode === DisconnectReason.loggedOut;
       const reasonName =
         Object.entries(DisconnectReason).find(([, v]) => v === statusCode)?.[0] || "unknown";
+      const loggedOut = statusCode === DisconnectReason.loggedOut;
       console.log(
         `[baileys:${instanceName}] connection closed status=${statusCode} reason=${reasonName} loggedOut=${loggedOut}`
       );
 
-      const timedOut = statusCode === DisconnectReason.timedOut;
-      // Critical session-level failures: drop & rebuild socket cleanly
-      const criticalSessionError =
-        statusCode === DisconnectReason.badSession ||
-        statusCode === DisconnectReason.restartRequired ||
-        statusCode === DisconnectReason.connectionReplaced ||
-        statusCode === DisconnectReason.multideviceMismatch;
-
-      // Drop the dead socket reference so reconnect builds fresh.
-      // Note: Baileys' EventEmitter requires an event name for removeAllListeners,
-      // so we just null the reference and let GC clean it up.
+      // Drop dead socket reference; let GC handle the rest.
       runtime.sock = null;
 
-      if (loggedOut) {
+      // Terminal codes — same set the reference treats as fatal.
+      const terminalCodes: number[] = [
+        DisconnectReason.loggedOut, // 401
+        405,
+        DisconnectReason.connectionReplaced, // 440
+        DisconnectReason.multideviceMismatch, // 411
+      ];
+
+      if (loggedOut || (statusCode && terminalCodes.includes(statusCode))) {
+        console.warn(
+          `[baileys:${instanceName}] terminal disconnect (${statusCode}) — wiping auth`
+        );
         await deleteAllAuth(instanceName).catch(() => {});
         runtime.qr = null;
         instances.delete(instanceName);
-      } else if (criticalSessionError) {
-        console.warn(
-          `[baileys:${instanceName}] critical session error (${reasonName}) — clearing sender keys and reconnecting clean`
-        );
-        // Clear sender-key-memory so next group send redistributes keys
-        await clearSenderKeyMemory(instanceName).catch((err) =>
-          console.error(`[baileys:${instanceName}] clearSenderKeyMemory error:`, err?.message)
-        );
-        groupMetadataCache.delete(instanceName);
-        runtime.reconnectAttempts = 0;
-        setTimeout(() => {
-          startSocket(instanceName).catch((err) =>
-            console.error(`[baileys:${instanceName}] reconnect error:`, err?.message)
-          );
-        }, 2_000);
-      } else if (timedOut && runtime.reconnectAttempts >= 3) {
-        // After 3 timeouts, clear auth state so a fresh QR is generated
-        console.log(`[baileys:${instanceName}] clearing stale auth after repeated timeouts`);
-        await deleteAllAuth(instanceName).catch(() => {});
-        runtime.reconnectAttempts = 0;
-        setTimeout(() => {
-          startSocket(instanceName).catch((err) =>
-            console.error(`[baileys:${instanceName}] reconnect error:`, err?.message)
-          );
-        }, 3_000);
       } else {
-        // Reconnect with exponential backoff (cap 60s)
-        runtime.reconnectAttempts += 1;
-        const delay = Math.min(60_000, 2_000 * Math.pow(2, Math.min(runtime.reconnectAttempts, 5)));
+        // Backoff reconnect: 5s, 15s, 60s, then keep retrying every 60s.
+        const attempt = runtime.reconnectAttempts;
+        const delay =
+          RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)];
+        runtime.reconnectAttempts = attempt + 1;
         console.log(
-          `[baileys:${instanceName}] reconnect scheduled attempt=${runtime.reconnectAttempts} in ${delay}ms`
+          `[baileys:${instanceName}] reconnect scheduled attempt=${attempt + 1} in ${delay}ms`
         );
         setTimeout(() => {
           startSocket(instanceName).catch((err) =>
@@ -251,7 +173,6 @@ async function startSocket(instanceName: string): Promise<WASocket> {
       }
     }
 
-    // Forward to backend in Evolution-compatible shape
     forwardEvent(instanceName, "connection.update", {
       state: connection || runtime.state,
       qr: runtime.qr,
@@ -259,25 +180,8 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     }).catch(() => {});
   });
 
+  // Forward inbound/outbound messages to the backend (unchanged contract).
   sock.ev.on("messages.upsert", (m) => {
-    // Cache sent messages so getMessage can serve them on retry requests
-    for (const msg of m.messages || []) {
-      if (msg.key?.id && msg.message) {
-        runtime.msgStore.set(msg.key.id, msg.message);
-        // Persist for cross-restart retries (only outbound — inbound has fromMe=false)
-        if (msg.key.fromMe) {
-          const dest = msg.key.remoteJid || "?";
-          console.log(
-            `[baileys:${instanceName}] upsert OUTBOUND id=${msg.key.id} to=${dest}`
-          );
-          saveMessageToStore(instanceName, msg.key.id, msg.message).catch(() => {});
-        }
-        if (runtime.msgStore.size > 500) {
-          const firstKey = runtime.msgStore.keys().next().value;
-          if (firstKey) runtime.msgStore.delete(firstKey);
-        }
-      }
-    }
     forwardEvent(instanceName, "messages.upsert", m).catch(() => {});
   });
 
@@ -286,24 +190,14 @@ async function startSocket(instanceName: string): Promise<WASocket> {
   });
 
   sock.ev.on("groups.upsert", (groups) => {
-    const cache = getMetaCache(instanceName);
-    for (const g of groups || []) {
-      if (g?.id) cache.set(g.id, { data: g, expiresAt: Date.now() + GROUP_META_TTL_MS });
-    }
     forwardEvent(instanceName, "groups.upsert", groups).catch(() => {});
   });
 
   sock.ev.on("groups.update", (updates: any[]) => {
-    for (const u of updates || []) {
-      if (u?.id) invalidateGroupMeta(instanceName, u.id);
-    }
     forwardEvent(instanceName, "groups.update", updates).catch(() => {});
   });
 
   sock.ev.on("group-participants.update", (g: any) => {
-    // Membership changed → invalidate cached metadata so Baileys
-    // re-fetches and redistributes sender keys to the new participant set.
-    if (g?.id) invalidateGroupMeta(instanceName, g.id);
     forwardEvent(instanceName, "group-participants.update", g).catch(() => {});
   });
 
@@ -326,6 +220,9 @@ export async function logout(instanceName: string): Promise<void> {
   const runtime = instances.get(instanceName);
   try {
     await runtime?.sock?.logout().catch(() => {});
+  } catch {}
+  try {
+    runtime?.sock?.end(undefined as any);
   } catch {}
   await deleteAllAuth(instanceName).catch(() => {});
   instances.delete(instanceName);
