@@ -24,18 +24,22 @@ function destFor(input: string): string {
 
 /** POST /message/sendText/:instance  body: { number, text, mentionsEveryOne?, delay? } */
 router.post("/sendText/:instance", async (req, res) => {
+  const instance = decodeURIComponent(req.params.instance);
+  const { number, text, mentionsEveryOne } = req.body || {};
+  const jid = destFor(number);
+  const isGroup = jid.endsWith("@g.us");
+  console.log(`[send:${instance}] sendText START jid=${jid} group=${isGroup} len=${(text || "").length}`);
   try {
-    const sock = await getSock(decodeURIComponent(req.params.instance));
-    const { number, text, mentionsEveryOne } = req.body || {};
-    const jid = destFor(number);
+    const sock = await getSock(instance);
     let payload: any = { text: String(text ?? "") };
-    if (mentionsEveryOne && jid.endsWith("@g.us")) {
+    if (mentionsEveryOne && isGroup) {
       try {
         const meta = await sock.groupMetadata(jid);
         payload.mentions = meta.participants.map((p: any) => p.id);
       } catch {}
     }
     const sent = await sock.sendMessage(jid, payload);
+    console.log(`[send:${instance}] sendText OK id=${sent?.key?.id} jid=${jid}`);
     res.json({
       key: sent?.key,
       status: "PENDING",
@@ -43,6 +47,7 @@ router.post("/sendText/:instance", async (req, res) => {
       messageTimestamp: Math.floor(Date.now() / 1000),
     });
   } catch (err: any) {
+    console.error(`[send:${instance}] sendText FAIL jid=${jid} err=${err?.message}`);
     res.status(400).json({ status: 400, error: err?.message || "send failed" });
   }
 });

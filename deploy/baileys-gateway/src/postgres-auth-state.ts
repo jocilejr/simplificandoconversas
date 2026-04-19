@@ -85,11 +85,12 @@ export async function saveMessageToStore(
        DO UPDATE SET message = EXCLUDED.message, created_at = now()`,
       [instanceName, messageId, JSON.stringify(encoded)]
     );
+    console.log(`[baileys:${instanceName}] msgStore SAVE id=${messageId}`);
   } catch (err: any) {
-    // Table may not exist yet on first deploy — fail silently
-    if (!/relation .* does not exist/i.test(err?.message || "")) {
-      console.error(`[baileys:${instanceName}] saveMessageToStore error:`, err?.message);
-    }
+    // Loud — we want to know if persistence is broken
+    console.error(
+      `[baileys:${instanceName}] msgStore SAVE FAIL id=${messageId} err=${err?.message}`
+    );
   }
 }
 
@@ -103,9 +104,16 @@ export async function getMessageFromStore(
       `SELECT message FROM public.baileys_message_store WHERE instance_name = $1 AND message_id = $2`,
       [instanceName, messageId]
     );
-    if (!rows.length) return null;
+    if (!rows.length) {
+      console.log(`[baileys:${instanceName}] msgStore MISS id=${messageId}`);
+      return null;
+    }
+    console.log(`[baileys:${instanceName}] msgStore HIT  id=${messageId}`);
     return decode(rows[0].message);
-  } catch {
+  } catch (err: any) {
+    console.error(
+      `[baileys:${instanceName}] msgStore GET FAIL id=${messageId} err=${err?.message}`
+    );
     return null;
   }
 }

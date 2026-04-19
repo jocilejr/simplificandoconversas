@@ -111,15 +111,21 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     generateHighQualityLinkPreview: false,
     defaultQueryTimeoutMs: 60_000,
     getMessage: async (key) => {
-      const stored = runtime.msgStore.get(key.id!);
-      if (stored) return stored;
+      const id = key.id!;
+      const stored = runtime.msgStore.get(id);
+      if (stored) {
+        console.log(`[baileys:${instanceName}] getMessage MEM  id=${id}`);
+        return stored;
+      }
       // Fall back to persistent store (survives restarts)
-      const persisted = await getMessageFromStore(instanceName, key.id!);
+      const persisted = await getMessageFromStore(instanceName, id);
       if (persisted) {
-        runtime.msgStore.set(key.id!, persisted);
+        runtime.msgStore.set(id, persisted);
+        console.log(`[baileys:${instanceName}] getMessage PG   id=${id}`);
         return persisted;
       }
       // Stub ensures the retry fires even for messages we don't have.
+      console.warn(`[baileys:${instanceName}] getMessage STUB id=${id} (empty payload — recipient will see "Aguardando mensagem")`);
       return { conversation: "" };
     },
     cachedGroupMetadata: async (jid) => {
@@ -159,7 +165,7 @@ async function startSocket(instanceName: string): Promise<WASocket> {
       runtime.ownerJid = me?.id?.split(":")[0] + "@s.whatsapp.net" || "";
       runtime.profileName = me?.name || me?.verifiedName || "";
       console.log(
-        `[baileys:${instanceName}] connected as ${runtime.ownerJid}`
+        `[baileys:${instanceName}] CONNECTED as=${runtime.ownerJid} reconnect=${wasReconnect}`
       );
       // Try to fetch profile pic (best effort)
       try {
@@ -170,10 +176,10 @@ async function startSocket(instanceName: string): Promise<WASocket> {
       } catch {}
       // On reconnects, force sender-key redistribution so group recipients can decrypt
       if (wasReconnect) {
+        console.log(`[baileys:${instanceName}] reconnect → clearing sender-key-memory + group meta cache`);
         clearSenderKeyMemory(instanceName).catch((err) =>
           console.error(`[baileys:${instanceName}] clearSenderKeyMemory error:`, err?.message)
         );
-        // Also drop stale group metadata cache
         groupMetadataCache.delete(instanceName);
       }
     }
@@ -182,17 +188,45 @@ async function startSocket(instanceName: string): Promise<WASocket> {
       runtime.state = "close";
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
+      const reasonName =
+        Object.entries(DisconnectReason).find(([, v]) => v === statusCode)?.[0] || "unknown";
       console.log(
-        `[baileys:${instanceName}] connection closed (statusCode=${statusCode}, loggedOut=${loggedOut})`
+        `[baileys:${instanceName}] connection closed status=${statusCode} reason=${reasonName} loggedOut=${loggedOut}`
       );
 
       const timedOut = statusCode === DisconnectReason.timedOut;
+      // Critical session-level failures: drop & rebuild socket cleanly
+      const criticalSessionError =
+        statusCode === DisconnectReason.badSession ||
+        statusCode === DisconnectReason.restartRequired ||
+        statusCode === DisconnectReason.connectionReplaced ||
+        statusCode === DisconnectReason.multideviceMismatch;
+
+      // Drop the dead socket reference so reconnect builds fresh
+      try {
+        runtime.sock?.ev?.removeAllListeners?.();
+      } catch {}
+      runtime.sock = null;
 
       if (loggedOut) {
         await deleteAllAuth(instanceName).catch(() => {});
-        runtime.sock = null;
         runtime.qr = null;
         instances.delete(instanceName);
+      } else if (criticalSessionError) {
+        console.warn(
+          `[baileys:${instanceName}] critical session error (${reasonName}) — clearing sender keys and reconnecting clean`
+        );
+        // Clear sender-key-memory so next group send redistributes keys
+        await clearSenderKeyMemory(instanceName).catch((err) =>
+          console.error(`[baileys:${instanceName}] clearSenderKeyMemory error:`, err?.message)
+        );
+        groupMetadataCache.delete(instanceName);
+        runtime.reconnectAttempts = 0;
+        setTimeout(() => {
+          startSocket(instanceName).catch((err) =>
+            console.error(`[baileys:${instanceName}] reconnect error:`, err?.message)
+          );
+        }, 2_000);
       } else if (timedOut && runtime.reconnectAttempts >= 3) {
         // After 3 timeouts, clear auth state so a fresh QR is generated
         console.log(`[baileys:${instanceName}] clearing stale auth after repeated timeouts`);
@@ -207,6 +241,9 @@ async function startSocket(instanceName: string): Promise<WASocket> {
         // Reconnect with exponential backoff (cap 60s)
         runtime.reconnectAttempts += 1;
         const delay = Math.min(60_000, 2_000 * Math.pow(2, Math.min(runtime.reconnectAttempts, 5)));
+        console.log(
+          `[baileys:${instanceName}] reconnect scheduled attempt=${runtime.reconnectAttempts} in ${delay}ms`
+        );
         setTimeout(() => {
           startSocket(instanceName).catch((err) =>
             console.error(`[baileys:${instanceName}] reconnect error:`, err?.message)
@@ -230,6 +267,10 @@ async function startSocket(instanceName: string): Promise<WASocket> {
         runtime.msgStore.set(msg.key.id, msg.message);
         // Persist for cross-restart retries (only outbound — inbound has fromMe=false)
         if (msg.key.fromMe) {
+          const dest = msg.key.remoteJid || "?";
+          console.log(
+            `[baileys:${instanceName}] upsert OUTBOUND id=${msg.key.id} to=${dest}`
+          );
           saveMessageToStore(instanceName, msg.key.id, msg.message).catch(() => {});
         }
         if (runtime.msgStore.size > 500) {

@@ -4,7 +4,7 @@ set -e
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$DEPLOY_DIR")"
 
-echo "═══ Atualizando deploy ═══"
+echo "═══ Atualizando deploy (modo seguro — SEM migrations) ═══"
 
 # Load env
 set -a; source "$DEPLOY_DIR/.env"; set +a
@@ -20,74 +20,29 @@ else
   echo "✓ Docker Compose detectado"
 fi
 
-# Stack name (Swarm) — defaults to 'simplificando'
 STACK_NAME="${STACK_NAME:-simplificando}"
 
-# Helper: find a running container by service suffix
 find_container() {
   local svc="$1"
   docker ps --format '{{.Names}}' \
     | grep -E "(^|_)${svc}(\.|$)" \
     | grep -v supabase \
+    | grep -v postgrest \
     | head -n1
 }
 
 # ============================================================
-# [1/5] Pull latest code
+# [1/4] Pull latest code
 # ============================================================
-echo "[1/5] Pulling latest code..."
+echo "[1/4] Pulling latest code..."
 cd "$REPO_ROOT"
 git checkout -- .
 git pull origin main
 
 # ============================================================
-# [2/5] Database migrations (consolidated)
+# [2/4] Rebuild frontend
 # ============================================================
-echo "[2/5] Running database migrations..."
-cd "$DEPLOY_DIR"
-
-PG_CONTAINER=$(find_container "postgres")
-if [ -z "$PG_CONTAINER" ]; then
-  echo "❌ Nenhum container Postgres rodando. Suba a stack antes."
-  exit 1
-fi
-echo "   → Postgres container: $PG_CONTAINER"
-
-echo "   → Applying all SQL migrations in a single pass..."
-cat "$DEPLOY_DIR/migrate-workspace.sql" \
-    "$DEPLOY_DIR/init-db.sql" \
-    "$DEPLOY_DIR/fix-member-tables.sql" \
-  | docker exec -i "$PG_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1
-echo "✓ Migrações aplicadas"
-
-# Validate workspace membership exists for all users
-ORPHAN_USERS=$(docker exec -i "$PG_CONTAINER" psql -U postgres -d postgres -tAc "
-  SELECT count(*) FROM auth.users u
-  WHERE NOT EXISTS (SELECT 1 FROM public.workspace_members wm WHERE wm.user_id = u.id);
-")
-ORPHAN_USERS=$(echo "$ORPHAN_USERS" | tr -d '[:space:]')
-if [ "$ORPHAN_USERS" != "0" ]; then
-  echo "⚠ AVISO: $ORPHAN_USERS usuários sem workspace. Verifique manualmente."
-else
-  echo "✓ Todos os usuários possuem workspace"
-fi
-
-# Restart PostgREST to guarantee schema reload
-if [ "$SWARM_ACTIVE" = true ]; then
-  docker service update --force "${STACK_NAME}_postgrest" >/dev/null 2>&1 \
-    && echo "✓ PostgREST schema recarregado (swarm)" \
-    || echo "⚠ PostgREST service não encontrado em swarm (ok se não usar)"
-else
-  docker compose restart postgrest 2>/dev/null \
-    && echo "✓ PostgREST schema recarregado (compose)" \
-    || echo "⚠ PostgREST não encontrado (ok se não usar)"
-fi
-sleep 3
-
-# ============================================================
-# [3/5] Rebuild frontend
-# ============================================================
-echo "[3/5] Rebuilding frontend..."
+echo "[2/4] Rebuilding frontend..."
 cd "$REPO_ROOT"
 cat > .env.production << EOF
 VITE_SUPABASE_URL=${API_URL}
@@ -101,24 +56,22 @@ else
   npm install && npm run build
 fi
 
-# Verify build succeeded
+# Verify build succeeded — preserve previous frontend if broken
 if [ ! -f "$REPO_ROOT/dist/index.html" ]; then
   echo "❌ Build falhou! dist/index.html não encontrado."
   echo "   Frontend anterior mantido intacto."
-  echo "   ⚠ Migrações SQL já foram aplicadas com sucesso."
   exit 1
 fi
 
-# Replace frontend files (preserve directory inode for bind mount)
 mkdir -p "$DEPLOY_DIR/frontend"
 rm -rf "$DEPLOY_DIR/frontend/"*
 cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
 echo "✓ Frontend copiado com sucesso"
 
 # ============================================================
-# [4/5] Rebuild containers
+# [3/4] Rebuild containers
 # ============================================================
-echo "[4/5] Rebuilding containers..."
+echo "[3/4] Rebuilding containers..."
 cd "$DEPLOY_DIR"
 
 if [ "$SWARM_ACTIVE" = true ]; then
@@ -127,39 +80,29 @@ if [ "$SWARM_ACTIVE" = true ]; then
   docker build -t simplificando-baileys-gateway:latest ./baileys-gateway
   echo "✓ Imagens construídas"
 else
-  docker compose build --no-cache backend
-  docker compose build
+  docker compose build backend
+  docker compose build baileys-gateway
 fi
 
 # ============================================================
-# [5/5] Restart + health check
+# [4/4] Restart services + health check
 # ============================================================
-echo "[5/5] Restarting..."
+echo "[4/4] Restarting services..."
 
 if [ "$SWARM_ACTIVE" = true ]; then
-  echo "   → Aplicando stack (cria serviços novos + atualiza existentes)..."
-  docker stack deploy \
-    -c "$DEPLOY_DIR/portainer-stack.yml" \
-    --with-registry-auth \
-    --resolve-image=always \
-    "$STACK_NAME"
-  echo "✓ Stack aplicada"
-
-  # Força recriação dos serviços que usam imagens locais recém-buildadas
-  sleep 3
   for svc in backend baileys-gateway nginx; do
     if docker service inspect "${STACK_NAME}_${svc}" >/dev/null 2>&1; then
-      docker service update --force "${STACK_NAME}_${svc}" >/dev/null 2>&1 \
-        && echo "✓ Serviço ${svc} reiniciado" \
-        || echo "⚠ Falha reiniciando ${svc}"
+      docker service update --force --image "simplificando-${svc}:latest" "${STACK_NAME}_${svc}" >/dev/null 2>&1 \
+        || docker service update --force "${STACK_NAME}_${svc}" >/dev/null 2>&1
+      echo "✓ Serviço ${svc} atualizado"
     else
-      echo "⚠ Serviço ${STACK_NAME}_${svc} ainda não existe após deploy"
+      echo "⚠ Serviço ${STACK_NAME}_${svc} não existe (pule se não usar)"
     fi
   done
 else
-  docker compose up -d
+  docker compose up -d backend baileys-gateway
   docker compose restart nginx
-  echo "✓ Nginx reiniciado"
+  echo "✓ Serviços reiniciados"
 fi
 
 # Post-deploy health check
@@ -182,8 +125,8 @@ echo ""
 echo "✅ Atualização concluída!"
 echo "   Frontend: ${APP_URL}"
 echo "   API:      ${API_URL}"
-if [ "$SWARM_ACTIVE" = true ]; then
-  echo ""
-  echo "ℹ Modo Swarm: para incluir novos serviços (ex: baileys-gateway),"
-  echo "  use Portainer → Stacks → ${STACK_NAME} → Pull and redeploy."
-fi
+echo ""
+echo "ℹ️  Migrations NÃO foram executadas (modo seguro)."
+echo "   Se houver mudança de schema, rode os SQLs manualmente:"
+echo "   PG=\$(docker ps --format '{{.Names}}' | grep -E '^simplificando_postgres(\\.|\$)' | head -1)"
+echo "   docker exec -i \"\$PG\" psql -U postgres -d postgres < deploy/<arquivo.sql>"
