@@ -1,67 +1,36 @@
 
 
-Usuário quer:
-1. Implementar o fix de visibilidade do gateway (logs + DM recovery + auto-schema) que já foi planejado
-2. **Reformar `update.sh`** para ser minimalista e seguro — sem recriar tabelas, sem migrations agressivas, sem derrubar o servidor inteiro
-3. Migrations de tabela ele faz na mão
+## Diagnóstico
 
-## Plano
+Nginx voltou (1/1 running, `nginx:alpine`, `index.html` montado). O 404 do `curl http://localhost` é só porque está batendo na porta 80 sem header `Host` — Traefik que roteia por domínio, então `curl` direto sem Host sempre dá 404. **A aplicação está OK agora.**
 
-### 1. `deploy/update.sh` — modo seguro/mínimo
+Resta consertar o `update.sh` para nunca mais quebrar o nginx tentando subir uma imagem `simplificando-nginx:latest` que não existe.
 
-Remover completamente o passo `[2/5] migrations` que faz `cat migrate-workspace.sql + init-db.sql + fix-member-tables.sql | psql`. Esse bloco é o que “quebra o servidor inteiro” quando há divergência de schema.
+## Causa raiz
 
-Novo fluxo enxuto:
-- `[1/4]` git pull
-- `[2/4]` rebuild frontend (só copia `dist/` se build OK — já tem essa proteção)
-- `[3/4]` rebuild imagens locais (backend + baileys-gateway)
-- `[4/4]` `docker service update --force` em backend, baileys-gateway, nginx (Swarm) ou `docker compose up -d` (Compose)
-- Health check final
+O loop atual em `deploy/update.sh` faz `docker service update --force --image simplificando-${svc}:latest` para todos os serviços, incluindo nginx. Mas nginx usa a imagem oficial `nginx:alpine` — não há build custom. Por isso o serviço foi rejeitado com "No such image".
 
-Sem migrations automáticas. Sem `NOTIFY pgrst`. Sem mexer em Postgres.
-Manter detecção Swarm vs Compose.
-Manter validação de build do frontend (não sobrescreve `dist/` se quebrou).
+## Fix
 
-Mensagem final lembra: “Se houver mudança de schema, rode os SQLs manualmente antes/depois.”
+**`deploy/update.sh`** — separar nginx do loop:
+- Loop de imagens custom: apenas `backend` e `baileys-gateway` → build local + `docker service update --force --image simplificando-{svc}:latest`
+- Nginx tratado à parte: apenas `docker service update --force simplificando_nginx` (sem `--image`), para recarregar volumes (frontend `dist/` + template) mantendo `nginx:alpine`
 
-### 2. Gateway — visibilidade + DM recovery + auto-schema
+Manter detecção Swarm vs Compose. Manter validação de build do frontend. Continuar sem migrations SQL.
 
-**`deploy/baileys-gateway/src/db.ts`**
-Mover criação de `baileys_message_store` para dentro de `ensureSchema()` (idempotente, `CREATE TABLE IF NOT EXISTS`). Assim o gateway se auto-cura no boot sem depender de SQL externo.
+## Verificação pós-fix
 
-**`deploy/baileys-gateway/src/postgres-auth-state.ts`**
-- `saveMessageToStore`: log explícito de sucesso/erro (não mais silencioso)
-- `getMessageFromStore`: log hit/miss
+Comandos prontos para rodar na VPS depois do deploy:
+```bash
+docker service inspect simplificando_nginx --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+# deve continuar: nginx:alpine
+docker service ls | grep simplificando
+# todos 1/1
+curl -sI -H "Host: SEU_APP_DOMAIN" http://localhost | head -3
+# 200 OK ou 301
+```
 
-**`deploy/baileys-gateway/src/instance-manager.ts`**
-- `getMessage`: log indicando origem (memória / postgres / stub vazio) com `messageId`
-- `messages.upsert` outbound: log do `messageId` salvo
-- `connection.update`:
-  - log do motivo do disconnect (statusCode + descrição)
-  - tratar `badSession`, `restartRequired`, `connectionReplaced`, `multideviceMismatch` com recriação limpa do socket
-  - log de reconexão bem-sucedida + se chamou `clearSenderKeyMemory`
-
-**`deploy/baileys-gateway/src/routes/message.ts`**
-- log no início de cada envio: instância, jid, tipo
-- log no sucesso com `messageId` retornado
-- log de erro com contexto
-
-### 3. Comandos VPS pós-deploy (eu entrego prontos)
-
-Build + update do gateway + verificação de logs + verificação da tabela auto-criada. Sem rodar migration nenhuma.
-
-## Arquivos editados
+## Arquivo editado
 
 - `deploy/update.sh`
-- `deploy/baileys-gateway/src/db.ts`
-- `deploy/baileys-gateway/src/postgres-auth-state.ts`
-- `deploy/baileys-gateway/src/instance-manager.ts`
-- `deploy/baileys-gateway/src/routes/message.ts`
-
-## Resultado esperado
-
-- `update.sh` nunca mais toca em SQL — risco zero de quebrar Postgres em update
-- Gateway cria sua própria tabela no boot
-- Próxima ocorrência de “Aguardando mensagem” gera log explícito mostrando exatamente onde quebrou (store vazio / sessão corrompida / reconnect incompleto)
-- Sessões DM corrompidas se autorrecuperam via tratamento explícito de disconnect codes
 
