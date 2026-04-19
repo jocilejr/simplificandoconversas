@@ -168,6 +168,14 @@ async function startSocket(instanceName: string): Promise<WASocket> {
             (await sock.profilePictureUrl(me.id, "image").catch(() => "")) || "";
         }
       } catch {}
+      // On reconnects, force sender-key redistribution so group recipients can decrypt
+      if (wasReconnect) {
+        clearSenderKeyMemory(instanceName).catch((err) =>
+          console.error(`[baileys:${instanceName}] clearSenderKeyMemory error:`, err?.message)
+        );
+        // Also drop stale group metadata cache
+        groupMetadataCache.delete(instanceName);
+      }
     }
 
     if (connection === "close") {
