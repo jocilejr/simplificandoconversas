@@ -202,10 +202,9 @@ async function startSocket(instanceName: string): Promise<WASocket> {
         statusCode === DisconnectReason.connectionReplaced ||
         statusCode === DisconnectReason.multideviceMismatch;
 
-      // Drop the dead socket reference so reconnect builds fresh
-      try {
-        runtime.sock?.ev?.removeAllListeners?.();
-      } catch {}
+      // Drop the dead socket reference so reconnect builds fresh.
+      // Note: Baileys' EventEmitter requires an event name for removeAllListeners,
+      // so we just null the reference and let GC clean it up.
       runtime.sock = null;
 
       if (loggedOut) {
