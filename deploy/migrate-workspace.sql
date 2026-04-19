@@ -399,6 +399,30 @@ CREATE POLICY "ws_insert" ON public.workspaces
   FOR INSERT TO authenticated
   WITH CHECK (created_by = auth.uid());
 
+-- ============================================================
+-- Baileys persistent message store (for getMessage retries)
+-- Survives container restarts so E2E retries don't fail with
+-- "Aguardando mensagem" on the receiver side.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.baileys_message_store (
+  instance_name text NOT NULL,
+  message_id text NOT NULL,
+  message jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (instance_name, message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_baileys_message_store_created
+  ON public.baileys_message_store (created_at);
+CREATE INDEX IF NOT EXISTS idx_baileys_message_store_instance
+  ON public.baileys_message_store (instance_name);
+
+-- Cleanup function: drop messages older than 7 days
+CREATE OR REPLACE FUNCTION public.cleanup_baileys_message_store()
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+  DELETE FROM public.baileys_message_store WHERE created_at < now() - interval '7 days';
+$$;
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;

@@ -25,8 +25,30 @@ import {
   usePostgresAuthState,
   deleteAllAuth,
   listInstanceNames,
+  clearSenderKeyMemory,
+  saveMessageToStore,
+  getMessageFromStore,
 } from "./postgres-auth-state";
 import { forwardEvent } from "./event-bridge";
+
+/** Per-instance group metadata cache (5 min TTL). Prevents Baileys from sending
+ *  to a stale participant list, which causes "Aguardando mensagem" on receivers. */
+type CachedMeta = { data: any; expiresAt: number };
+const groupMetadataCache = new Map<string, Map<string, CachedMeta>>();
+const GROUP_META_TTL_MS = 5 * 60_000;
+
+function getMetaCache(instanceName: string): Map<string, CachedMeta> {
+  let c = groupMetadataCache.get(instanceName);
+  if (!c) {
+    c = new Map();
+    groupMetadataCache.set(instanceName, c);
+  }
+  return c;
+}
+
+function invalidateGroupMeta(instanceName: string, jid: string) {
+  getMetaCache(instanceName).delete(jid);
+}
 
 type InstanceRuntime = {
   name: string;
@@ -90,9 +112,24 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     defaultQueryTimeoutMs: 60_000,
     getMessage: async (key) => {
       const stored = runtime.msgStore.get(key.id!);
-      // Return stored content so WA can re-encrypt with fresh sender key on retry.
-      // Falling back to a stub ensures the retry fires even for messages we don't have.
-      return stored ?? { conversation: "" };
+      if (stored) return stored;
+      // Fall back to persistent store (survives restarts)
+      const persisted = await getMessageFromStore(instanceName, key.id!);
+      if (persisted) {
+        runtime.msgStore.set(key.id!, persisted);
+        return persisted;
+      }
+      // Stub ensures the retry fires even for messages we don't have.
+      return { conversation: "" };
+    },
+    cachedGroupMetadata: async (jid) => {
+      const cache = getMetaCache(instanceName);
+      const entry = cache.get(jid);
+      if (entry && entry.expiresAt > Date.now()) {
+        return entry.data;
+      }
+      cache.delete(jid);
+      return undefined;
     },
   });
 
@@ -113,6 +150,7 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     }
 
     if (connection === "open") {
+      const wasReconnect = runtime.lastConnectedAt !== null;
       runtime.state = "open";
       runtime.qr = null;
       runtime.lastConnectedAt = Date.now();
@@ -130,6 +168,14 @@ async function startSocket(instanceName: string): Promise<WASocket> {
             (await sock.profilePictureUrl(me.id, "image").catch(() => "")) || "";
         }
       } catch {}
+      // On reconnects, force sender-key redistribution so group recipients can decrypt
+      if (wasReconnect) {
+        clearSenderKeyMemory(instanceName).catch((err) =>
+          console.error(`[baileys:${instanceName}] clearSenderKeyMemory error:`, err?.message)
+        );
+        // Also drop stale group metadata cache
+        groupMetadataCache.delete(instanceName);
+      }
     }
 
     if (connection === "close") {
@@ -182,7 +228,10 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     for (const msg of m.messages || []) {
       if (msg.key?.id && msg.message) {
         runtime.msgStore.set(msg.key.id, msg.message);
-        // Keep store size bounded (max 500 messages)
+        // Persist for cross-restart retries (only outbound — inbound has fromMe=false)
+        if (msg.key.fromMe) {
+          saveMessageToStore(instanceName, msg.key.id, msg.message).catch(() => {});
+        }
         if (runtime.msgStore.size > 500) {
           const firstKey = runtime.msgStore.keys().next().value;
           if (firstKey) runtime.msgStore.delete(firstKey);
@@ -197,10 +246,24 @@ async function startSocket(instanceName: string): Promise<WASocket> {
   });
 
   sock.ev.on("groups.upsert", (groups) => {
+    const cache = getMetaCache(instanceName);
+    for (const g of groups || []) {
+      if (g?.id) cache.set(g.id, { data: g, expiresAt: Date.now() + GROUP_META_TTL_MS });
+    }
     forwardEvent(instanceName, "groups.upsert", groups).catch(() => {});
   });
 
-  sock.ev.on("group-participants.update", (g) => {
+  sock.ev.on("groups.update", (updates: any[]) => {
+    for (const u of updates || []) {
+      if (u?.id) invalidateGroupMeta(instanceName, u.id);
+    }
+    forwardEvent(instanceName, "groups.update", updates).catch(() => {});
+  });
+
+  sock.ev.on("group-participants.update", (g: any) => {
+    // Membership changed → invalidate cached metadata so Baileys
+    // re-fetches and redistributes sender keys to the new participant set.
+    if (g?.id) invalidateGroupMeta(instanceName, g.id);
     forwardEvent(instanceName, "group-participants.update", g).catch(() => {});
   });
 
