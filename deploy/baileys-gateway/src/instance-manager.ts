@@ -112,9 +112,24 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     defaultQueryTimeoutMs: 60_000,
     getMessage: async (key) => {
       const stored = runtime.msgStore.get(key.id!);
-      // Return stored content so WA can re-encrypt with fresh sender key on retry.
-      // Falling back to a stub ensures the retry fires even for messages we don't have.
-      return stored ?? { conversation: "" };
+      if (stored) return stored;
+      // Fall back to persistent store (survives restarts)
+      const persisted = await getMessageFromStore(instanceName, key.id!);
+      if (persisted) {
+        runtime.msgStore.set(key.id!, persisted);
+        return persisted;
+      }
+      // Stub ensures the retry fires even for messages we don't have.
+      return { conversation: "" };
+    },
+    cachedGroupMetadata: async (jid) => {
+      const cache = getMetaCache(instanceName);
+      const entry = cache.get(jid);
+      if (entry && entry.expiresAt > Date.now()) {
+        return entry.data;
+      }
+      cache.delete(jid);
+      return undefined;
     },
   });
 
@@ -135,6 +150,7 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     }
 
     if (connection === "open") {
+      const wasReconnect = runtime.lastConnectedAt !== null;
       runtime.state = "open";
       runtime.qr = null;
       runtime.lastConnectedAt = Date.now();
