@@ -1,36 +1,92 @@
 
 
-## Diagnóstico
+## Objetivo
 
-Nginx voltou (1/1 running, `nginx:alpine`, `index.html` montado). O 404 do `curl http://localhost` é só porque está batendo na porta 80 sem header `Host` — Traefik que roteia por domínio, então `curl` direto sem Host sempre dá 404. **A aplicação está OK agora.**
+O sintoma "Aguardando mensagem" persiste mesmo após os fixes anteriores no gateway. O usuário quer alinhar a implementação do **baileys-gateway** ao repositório de referência `jocilejr/whats-grupos` (que funciona corretamente) — sem quebrar as features atuais (multi-instância, auth state em Postgres, webhook bridge, message store, rotas REST compatíveis com o backend).
 
-Resta consertar o `update.sh` para nunca mais quebrar o nginx tentando subir uma imagem `simplificando-nginx:latest` que não existe.
+## Investigação necessária ANTES de refatorar
 
-## Causa raiz
+Preciso comparar o gateway atual com o do repo de referência para identificar exatamente o que está diferente. Sem isso, "deixar semelhante" vira chute.
 
-O loop atual em `deploy/update.sh` faz `docker service update --force --image simplificando-${svc}:latest` para todos os serviços, incluindo nginx. Mas nginx usa a imagem oficial `nginx:alpine` — não há build custom. Por isso o serviço foi rejeitado com "No such image".
+### Passo 1 — Mapear o repo de referência
 
-## Fix
+Vou ler do GitHub `jocilejr/whats-grupos`:
+- Estrutura de pastas do gateway/baileys
+- `package.json` (versão do `@whiskeysockets/baileys` e deps)
+- Inicialização do socket (`makeWASocket` config: `version`, `browser`, `printQRInTerminal`, `syncFullHistory`, `markOnlineOnConnect`, `getMessage`, `shouldIgnoreJid`, `patchMessageBeforeSending`, `cachedGroupMetadata`)
+- Implementação do `getMessage` (essencial para destravar "Aguardando mensagem")
+- Tratamento de `connection.update` (códigos de disconnect, reconexão, QR)
+- Como salva/recupera mensagens (auth state + message store)
+- Eventos `messages.upsert` (persistência antes de webhook)
 
-**`deploy/update.sh`** — separar nginx do loop:
-- Loop de imagens custom: apenas `backend` e `baileys-gateway` → build local + `docker service update --force --image simplificando-{svc}:latest`
-- Nginx tratado à parte: apenas `docker service update --force simplificando_nginx` (sem `--image`), para recarregar volumes (frontend `dist/` + template) mantendo `nginx:alpine`
+### Passo 2 — Diff conceitual com o gateway atual
 
-Manter detecção Swarm vs Compose. Manter validação de build do frontend. Continuar sem migrations SQL.
+Comparar contra:
+- `deploy/baileys-gateway/src/instance-manager.ts`
+- `deploy/baileys-gateway/src/postgres-auth-state.ts`
+- `deploy/baileys-gateway/src/db.ts`
+- `deploy/baileys-gateway/src/index.ts`
+- `deploy/baileys-gateway/package.json`
 
-## Verificação pós-fix
+Listar pontos de divergência que podem causar "Aguardando mensagem" (geralmente: `getMessage` retornando vazio, `cachedGroupMetadata` ausente, `version` desatualizada do WA, `patchMessageBeforeSending` faltando para botões/listas, ou `syncFullHistory:false` quando deveria ser `true`).
 
-Comandos prontos para rodar na VPS depois do deploy:
+### Passo 3 — Refatorar de forma cirúrgica (preserva contratos)
+
+Aplicar APENAS as mudanças que o repo de referência faz diferente, mantendo:
+- Endpoints REST atuais (`/instance/*`, `/message/*`, `/chat/*`, `/group/*`) que o backend chama
+- Auth state em Postgres (não migrar para arquivo — quebraria persistência)
+- Webhook global (`WEBHOOK_GLOBAL_URL`) para o backend
+- Message store em Postgres (auto-criação no boot, já implementada)
+- Multi-instância via `instance-manager`
+- Variáveis de ambiente atuais
+
+Provavelmente vou:
+1. Atualizar/alinhar versão do `@whiskeysockets/baileys` à do repo de referência
+2. Reescrever a config do `makeWASocket` espelhando a do repo (inclusive `getMessage`, `cachedGroupMetadata`, `shouldSyncHistoryMessage`, `browser` ID, `version` via `fetchLatestBaileysVersion`)
+3. Garantir que `messages.upsert` salva TUDO no store antes do webhook, e que `getMessage` lê primeiro do store, depois Postgres
+4. Tratar disconnect codes idêntico ao repo (badSession/restartRequired/connectionReplaced/loggedOut/multideviceMismatch/timedOut)
+5. Logs verbosos para confirmar caminho de cada mensagem
+
+### Passo 4 — Pacote pra VPS
+
+Comandos prontos pro usuário rodar:
 ```bash
-docker service inspect simplificando_nginx --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
-# deve continuar: nginx:alpine
-docker service ls | grep simplificando
-# todos 1/1
-curl -sI -H "Host: SEU_APP_DOMAIN" http://localhost | head -3
-# 200 OK ou 301
+cd /opt/simplificandoconversas
+bash deploy/update.sh
+docker service logs simplificando_baileys-gateway --tail 80
+# tentar enviar mensagem em DM e em grupo
+docker service logs simplificando_baileys-gateway --tail 30 -f
 ```
 
-## Arquivo editado
+## Arquivos que serão editados
 
-- `deploy/update.sh`
+(definidos APÓS leitura do repo de referência — sem chutar agora)
+
+Provavelmente:
+- `deploy/baileys-gateway/package.json` (alinhar versão Baileys)
+- `deploy/baileys-gateway/src/instance-manager.ts` (config do socket + getMessage + reconnect)
+- `deploy/baileys-gateway/src/postgres-auth-state.ts` (refinar persistência se divergir)
+- `deploy/baileys-gateway/src/routes/message.ts` (se o repo trata payload diferente)
+
+Não vou tocar:
+- Frontend
+- Backend (`deploy/backend/*`)
+- Tabelas / SQL
+- Nginx / stack.yml / update.sh
+
+## Garantias de não-regressão
+
+- Manter assinatura HTTP de todas as rotas existentes
+- Manter formato dos eventos enviados ao webhook (o backend depende disso)
+- Manter `BAILEYS_API_KEY` como auth header
+- Manter auto-criação de `baileys_message_store` no boot
+- Manter logs explícitos de hit/miss adicionados anteriormente
+
+## Próximo passo
+
+Confirmar este plano. Ao aprovar, vou:
+1. Buscar a estrutura do repo `jocilejr/whats-grupos` (raw GitHub)
+2. Ler os arquivos relevantes do gateway lá
+3. Apresentar o diff conceitual
+4. Refatorar
 
