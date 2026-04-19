@@ -228,7 +228,10 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     for (const msg of m.messages || []) {
       if (msg.key?.id && msg.message) {
         runtime.msgStore.set(msg.key.id, msg.message);
-        // Keep store size bounded (max 500 messages)
+        // Persist for cross-restart retries (only outbound — inbound has fromMe=false)
+        if (msg.key.fromMe) {
+          saveMessageToStore(instanceName, msg.key.id, msg.message).catch(() => {});
+        }
         if (runtime.msgStore.size > 500) {
           const firstKey = runtime.msgStore.keys().next().value;
           if (firstKey) runtime.msgStore.delete(firstKey);
@@ -243,7 +246,18 @@ async function startSocket(instanceName: string): Promise<WASocket> {
   });
 
   sock.ev.on("groups.upsert", (groups) => {
+    const cache = getMetaCache(instanceName);
+    for (const g of groups || []) {
+      if (g?.id) cache.set(g.id, { data: g, expiresAt: Date.now() + GROUP_META_TTL_MS });
+    }
     forwardEvent(instanceName, "groups.upsert", groups).catch(() => {});
+  });
+
+  sock.ev.on("groups.update", (updates: any[]) => {
+    for (const u of updates || []) {
+      if (u?.id) invalidateGroupMeta(instanceName, u.id);
+    }
+    forwardEvent(instanceName, "groups.update", updates).catch(() => {});
   });
 
   sock.ev.on("group-participants.update", (g) => {
