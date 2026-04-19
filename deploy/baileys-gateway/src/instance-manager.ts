@@ -95,7 +95,9 @@ async function startSocket(instanceName: string): Promise<WASocket> {
     logger: logger as any,
     printQRInTerminal: false,
     browser: Browsers.appropriate("Chrome"),
-    generateHighQualityLinkPreview: true,
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    generateHighQualityLinkPreview: false,
     defaultQueryTimeoutMs: 60_000,
     getMessage: async (key) => {
       // Return real sent message so WA can re-encrypt with fresh sender key on retry.
