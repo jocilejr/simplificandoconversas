@@ -746,12 +746,13 @@ router.get("/platform-key", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
   const workspaceId = await resolveWorkspaceId(userId);
+  if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
 
   const sb = getServiceClient();
   const { data } = await sb
     .from("platform_connections")
     .select("credentials, enabled, created_at")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("platform", "custom_api")
     .maybeSingle();
 
@@ -770,15 +771,16 @@ router.post("/generate-platform-key", async (req, res) => {
   const userId = await requireAuth(req, res);
   if (!userId) return;
   const workspaceId = await resolveWorkspaceId(userId);
+  if (!workspaceId) return res.status(400).json({ error: "Workspace não encontrado" });
 
   const newKey = crypto.randomBytes(32).toString("hex");
   const sb = getServiceClient();
 
-  // Check if one already exists
+  // Check if one already exists for this workspace
   const { data: existing } = await sb
     .from("platform_connections")
     .select("id")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("platform", "custom_api")
     .maybeSingle();
 
