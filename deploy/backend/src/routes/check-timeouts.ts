@@ -1,19 +1,15 @@
-import { getServiceClient } from "../lib/supabase";
+import { restGet, restUpdate } from "../lib/supabase";
 
 export async function processTimeouts() {
-  console.log(`[check-timeouts] Using URL: ${process.env.SUPABASE_URL}, key length: ${process.env.SUPABASE_SERVICE_ROLE_KEY?.length}`);
-  const supabase = getServiceClient();
-
-  const { data: pendingTimeouts, error: fetchErr } = await supabase
-    .from("flow_timeouts")
-    .select("*")
-    .eq("processed", false)
-    .lte("timeout_at", new Date().toISOString())
-    .limit(50);
-
-  if (fetchErr) {
-    const keys = Object.getOwnPropertyNames(fetchErr);
-    console.error("[check-timeouts] Fetch error — raw keys:", keys, "full:", JSON.stringify(fetchErr, keys));
+  let pendingTimeouts: any[] = [];
+  try {
+    const nowIso = new Date().toISOString();
+    pendingTimeouts = await restGet<any>(
+      "flow_timeouts",
+      `processed=eq.false&timeout_at=lte.${encodeURIComponent(nowIso)}&select=*&limit=50`
+    );
+  } catch (err: any) {
+    console.error("[check-timeouts] Fetch error:", err?.message, err?.cause?.message);
     return;
   }
 
@@ -23,27 +19,33 @@ export async function processTimeouts() {
 
   for (const timeout of pendingTimeouts) {
     try {
-      const { data: execution } = await supabase
-        .from("flow_executions")
-        .select("status, instance_name")
-        .eq("id", timeout.execution_id)
-        .single();
+      const execRows = await restGet<{ status: string; instance_name: string | null }>(
+        "flow_executions",
+        `id=eq.${encodeURIComponent(timeout.execution_id)}&select=status,instance_name&limit=1`
+      );
+      const execution = execRows[0];
 
       if (!execution || !["waiting_click", "waiting_reply"].includes(execution.status)) {
         console.log(`[check-timeouts] Skipping timeout ${timeout.id} — execution status is '${execution?.status ?? "not found"}'`);
-        await supabase.from("flow_timeouts").update({ processed: true }).eq("id", timeout.id);
+        await restUpdate("flow_timeouts", `id=eq.${encodeURIComponent(timeout.id)}`, { processed: true });
         continue;
       }
 
-      await supabase.from("flow_executions").update({ status: "completed" }).eq("id", timeout.execution_id);
-      await supabase.from("flow_timeouts").update({ processed: true }).eq("id", timeout.id);
+      await restUpdate("flow_executions", `id=eq.${encodeURIComponent(timeout.execution_id)}`, { status: "completed" });
+      await restUpdate("flow_timeouts", `id=eq.${encodeURIComponent(timeout.id)}`, { processed: true });
 
       if (timeout.timeout_node_id) {
         let resolvedConvId = timeout.conversation_id;
         if (!resolvedConvId && timeout.remote_jid && timeout.user_id) {
-          const { data: convLookup } = await supabase
-            .from("conversations").select("id").eq("user_id", timeout.user_id).eq("remote_jid", timeout.remote_jid).limit(1).single();
-          if (convLookup) resolvedConvId = convLookup.id;
+          try {
+            const convs = await restGet<{ id: string }>(
+              "conversations",
+              `user_id=eq.${encodeURIComponent(timeout.user_id)}&remote_jid=eq.${encodeURIComponent(timeout.remote_jid)}&select=id&limit=1`
+            );
+            if (convs[0]) resolvedConvId = convs[0].id;
+          } catch (e: any) {
+            console.warn(`[check-timeouts] conv lookup failed: ${e.message}`);
+          }
         }
 
         const backendUrl = `http://localhost:${process.env.PORT || 3001}`;
