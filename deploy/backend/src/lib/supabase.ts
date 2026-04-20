@@ -9,7 +9,7 @@ const ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 console.log(`[supabase-client] Using POSTGREST_URL=${POSTGREST_URL}`);
 
 // Force IPv4 to avoid Docker DNS returning IPv6 that doesn't route to postgrest
-const ipv4Agent = new Agent({ connect: { family: 4 } });
+const ipv4Agent = new Agent({ connect: { family: 4 } as any });
 
 // Custom fetch that:
 // 1. Uses IPv4-only undici agent
