@@ -851,7 +851,10 @@ async function checkAndAutoListen(
     .eq("enabled", false)
     .maybeSingle();
 
-  if (aiListenOff) return; // User explicitly disabled
+  if (aiListenOff) {
+    console.log(`[ai-listen] Skipping: opt-out for ${remoteJid}`);
+    return;
+  }
 
   // Skip if contact has active flow ON THIS INSTANCE
   const { data: activeFlows } = await supabase
@@ -875,7 +878,10 @@ async function checkAndAutoListen(
   ]);
 
   const openaiKey = profileRes.data?.openai_api_key;
-  if (!openaiKey) return;
+  if (!openaiKey) {
+    console.log(`[ai-listen] Skipping: no OpenAI key for user ${userId}`);
+    return;
+  }
 
   const listenRules = configRes.data?.listen_rules || "Detecte menções a pagamentos, datas, prazos e promessas.";
   const phone = remoteJid.split("@")[0];
@@ -960,7 +966,10 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
 
     const completion = await openaiRes.json() as any;
     const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== "create_reminder") return;
+    if (!toolCall || toolCall.function.name !== "create_reminder") {
+      console.log(`[ai-listen] No action for ${remoteJid} (tool=${toolCall?.function?.name || "none"})`);
+      return;
+    }
 
     const args = JSON.parse(toolCall.function.arguments);
 
@@ -982,7 +991,7 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
       })
       .join("\n");
 
-    await supabase.from("reminders").insert({
+    const { error: insertErr } = await supabase.from("reminders").insert({
       user_id: userId,
       workspace_id: workspaceId,
       title: args.title,
@@ -993,6 +1002,11 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
       contact_name: contactName || null,
       instance_name: instanceName,
     });
+
+    if (insertErr) {
+      console.error(`[ai-listen] Insert failed for ${remoteJid}:`, insertErr.message);
+      return;
+    }
 
     console.log(`[ai-listen] Created reminder for ${remoteJid}: ${args.title}`);
   } catch (e: any) {
