@@ -1,110 +1,84 @@
 
-## Diagnóstico fechado
 
-Os dados que você trouxe fecham bem a causa:
+## Diagnóstico final
 
-- `transactions.workspace_id` existe no PostgreSQL
-- `/rest/v1/transactions?select=workspace_id` responde `200`
-- o `nginx/default.conf.template` realmente aponta `/rest/v1/` para `postgrest:3000`
-- mesmo assim o **backend** continua logando:
-  `Could not find the 'workspace_id' column of 'transactions' in the schema cache`
+Achei a causa raiz. Os 3 sintomas batem perfeitamente:
 
-Isso indica um problema de **caminho interno / rollout / cache operacional**, não de schema faltando.
+- Bloco A: `error: {}` `data: null` — `supabase-js` não consegue falar com `http://postgrest:3000`
+- Bloco C: `[check-timeouts] Fetch error — raw keys: [] full: {}` repetindo — **mesmo erro**, em outra rota, várias vezes por minuto
+- Bloco 5 anterior (curl cru): funcionou ✅
 
-```text
-n8n -> /functions/v1/manual-payment -> backend
-backend -> SUPABASE_URL (hoje: http://nginx:80) -> postgrest
+A diferença entre o que funciona e o que falha:
+- **curl cru** → consegue resolver `postgrest:3000` no Docker
+- **node + supabase-js dentro do mesmo container** → `fetch()` falha com erro vazio `{}`
+
+Causa: o `supabase-js` v2 usa `fetch` global do Node. No container do backend, esse `fetch` está falhando ao resolver/conectar em `http://postgrest:3000` — provavelmente porque o Node não tem `undici`/DNS configurado igual ao curl, ou existe algum proxy/IPv6 atrapalhando. O erro `{}` é típico de `fetch` rejeitando sem `.message` enumerable.
+
+Comprova: `check-timeouts` (que também usa supabase-js) está quebrado **desde o deploy**, mas você só percebeu agora porque o webhook tornou explícito.
+
+## O que vou fazer
+
+### 1. Forçar `supabase-js` a usar `node-fetch` explícito
+**Arquivo:** `deploy/backend/src/lib/supabase.ts`
+
+Passar um `fetch` customizado no `createClient`, garantindo conexão limpa via IPv4 e capturando o erro real:
+```ts
+import { Agent } from "undici";
+const agent = new Agent({ connect: { family: 4 } }); // força IPv4
+// passar fetch customizado pro createClient
 ```
 
-O ponto mais frágil hoje é o backend depender do `nginx:80` para falar com o PostgREST, quando ele poderia falar **direto** com `postgrest:3000`.
+### 2. Adicionar fallback REST direto
+**Arquivo:** `deploy/backend/src/lib/supabase.ts`
 
-## O que vou alterar
+Helper `restGet(table, query)` que faz `fetch` cru no PostgREST com headers de service role. Se `supabase-js` continuar falhando por algum motivo, o webhook usa o helper.
 
-### 1. Tirar o Nginx do caminho interno do backend
-Arquivos:
-- `deploy/docker-compose.yml`
-- `deploy/portainer-stack.yml`
+### 3. Trocar busca de workspace no manual-payment
+**Arquivo:** `deploy/backend/src/routes/manual-payment-webhook.ts`
 
-Mudança:
-- trocar `SUPABASE_URL: http://nginx:80`
-- por `SUPABASE_URL: http://postgrest:3000`
+Usar o helper REST direto (que já provamos que funciona via curl) em vez do supabase-js só para o SELECT do workspace. Mantém supabase-js para os INSERTs (que o retry novo já cobre).
 
-Objetivo:
-- eliminar proxy interno desnecessário
-- fazer o backend falar direto com o PostgREST
-- reduzir chance de rota ambígua, cache antigo ou task errada no meio
+### 4. Logar erro real do supabase-js
+**Arquivo:** `deploy/backend/src/lib/supabase.ts`
 
-### 2. Fortalecer o bootstrap e update da VPS
-Arquivos:
-- `deploy/install.sh`
-- `deploy/update.sh`
+Wrapper que loga `err.cause`, `err.code`, `err.errno` quando o fetch falha — para nunca mais vermos `error: {}` mudo.
 
-Vou garantir que os scripts validem o sistema do jeito certo:
+### 5. Corrigir `check-timeouts`
+**Arquivo:** `deploy/backend/src/routes/check-timeouts.ts`
 
-- aplicar o pacote completo de SQL
-- enviar `NOTIFY pgrst, 'reload schema'`
-- forçar refresh/restart do serviço `postgrest`
-- rodar **smoke test real** usando o mesmo caminho interno do backend
+Mesmo padrão: usar helper REST ou cliente novo a cada chamada. Hoje está poluindo o log e travado.
 
-Validações finais do script:
-- tabela `api_request_logs`
-- `transactions.workspace_id`
-- `platform_connections.workspace_id`
-- teste HTTP interno no PostgREST com `workspace_id`
+### 6. Health check honesto
+**Arquivo:** `deploy/backend/src/routes/health-db.ts`
 
-### 3. Melhorar a observabilidade do backend
-Arquivos:
-- `deploy/backend/src/lib/supabase.ts`
-- `deploy/backend/src/routes/health-db.ts`
-- `deploy/backend/src/routes/manual-payment-webhook.ts`
-
-Vou deixar o backend mais explícito para depuração:
-- expor no health qual `SUPABASE_URL` real está em uso
-- logar melhor falhas do `manual-payment`
-- incluir contexto suficiente para diferenciar erro de deploy antigo vs erro atual
-
-### 4. Adicionar uma proteção no webhook manual-payment
-Arquivo:
-- `deploy/backend/src/routes/manual-payment-webhook.ts`
-
-Se o erro específico de schema cache voltar a acontecer, vou adicionar uma tentativa controlada de recuperação antes de devolver `500`:
-- recriar o client
-- repetir a operação uma vez
-- registrar erro com contexto claro
-
-Se eu identificar que isso ainda não é suficiente, deixo preparado o caminho para fallback direto por SQL em uma segunda etapa, mas a primeira correção será manter o padrão atual do projeto.
-
-## Resultado esperado
-
-Depois disso:
-
-- o backend deixa de depender do `nginx:80` para acesso interno ao banco REST
-- deploy novo não termina sem validar o schema real
-- o webhook `/manual-payment` deixa de quebrar por falso erro de cache
-- você consegue verificar na VPS exatamente qual build e qual URL interna estão ativos
+Testar **os dois caminhos** (supabase-js e fetch direto) e reportar qual funciona. Hoje retorna `ok:false` sem dizer por quê.
 
 ## Validação na VPS após implementar
 
-Vou considerar a correção pronta quando estes testes passarem:
+```bash
+cd /opt/simplificandoconversas
+bash deploy/update.sh
 
-1. `bash deploy/update.sh`
-2. health do backend mostrando o `SUPABASE_URL` novo
-3. teste interno do PostgREST com `workspace_id` retornando `200`
-4. nova execução real no n8n/manual-payment sem `500`
-5. logs do backend sem repetir `schema cache`
+# Health novo deve dizer qual caminho funciona
+curl -s https://interno.origemdavida.online/api/health/schema
+
+# Webhook deve responder 200
+curl -is -X POST "https://interno.origemdavida.online/functions/v1/manual-payment/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{"workspace_id":"e73d46a8-32ea-450b-b6a0-05402e4420fd","event":"payment_pending","type":"pix","external_id":"teste-fix-001","amount":80,"customer_phone":"89981340810"}'
+
+# Logs sem mais "[check-timeouts] Fetch error"
+docker service logs simplificando_backend --since 2m 2>&1 | grep -iE "error|workspace" | tail -20
+```
 
 ## Arquivos previstos
 
-- `deploy/docker-compose.yml`
-- `deploy/portainer-stack.yml`
-- `deploy/install.sh`
-- `deploy/update.sh`
 - `deploy/backend/src/lib/supabase.ts`
-- `deploy/backend/src/routes/health-db.ts`
 - `deploy/backend/src/routes/manual-payment-webhook.ts`
+- `deploy/backend/src/routes/check-timeouts.ts`
+- `deploy/backend/src/routes/health-db.ts`
 
 ## Risco
 
-Baixo.
+Baixo. Mudança é só na camada de transporte HTTP do backend. Não toca em SQL, RLS, schema ou regra de negócio. Resolve simultaneamente o `manual-payment` e o `check-timeouts` que está spammando log.
 
-A mudança principal é infra interna do backend, sem alterar regra de negócio de transações. O maior impacto é positivo: remover uma camada intermediária e validar melhor o deploy.
