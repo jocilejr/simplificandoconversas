@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -87,30 +87,72 @@ function PixelRow({ pixel, onUpdate, onDelete, isDeleting }: {
     </div>
   );
 }
+
+function ReadOnlyUrlField({ label, value, hint }: { label: string; value: string; hint: string }) {
+  const { toast } = useToast();
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex gap-2">
+        <Input readOnly value={value} className="font-mono text-xs bg-muted/50" />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => {
+            navigator.clipboard.writeText(value);
+            toast({ title: "URL copiada!" });
+          }}
+        >
+          <Copy className="h-4 w-4" />
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
 export function AppSection() {
   const { profile, updateProfile } = useProfile();
   const { pixels, isLoading: pixelsLoading, addPixel, updatePixel, deletePixel } = useMetaPixels();
   const { workspaceId } = useWorkspace();
-  const [appPublicUrl, setAppPublicUrl] = useState("");
-  const [apiPublicUrl, setApiPublicUrl] = useState("");
   const [showAddPixel, setShowAddPixel] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPixelId, setNewPixelId] = useState("");
   const [newAccessToken, setNewAccessToken] = useState("");
-  const { toast } = useToast();
 
+  // Auto-detected URLs (read-only)
+  const detectedAppUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const detectedApiUrl = import.meta.env.VITE_SUPABASE_URL || "";
+
+  const persistedAppRef = useRef(false);
+  const persistedApiRef = useRef(false);
+
+  // Auto-persist app_public_url in profiles (silent, idempotent)
   useEffect(() => {
-    if (profile) {
-      setAppPublicUrl(profile.app_public_url || "");
+    if (!profile || persistedAppRef.current || !detectedAppUrl) return;
+    if (profile.app_public_url !== detectedAppUrl) {
+      persistedAppRef.current = true;
+      updateProfile.mutate({ app_public_url: detectedAppUrl } as any);
+    } else {
+      persistedAppRef.current = true;
     }
-  }, [profile]);
+  }, [profile, detectedAppUrl]);
 
+  // Auto-persist api_public_url in workspaces (silent, idempotent)
   useEffect(() => {
-    if (!workspaceId) return;
-    supabase.from("workspaces").select("api_public_url").eq("id", workspaceId).single().then(({ data }) => {
-      setApiPublicUrl(data?.api_public_url || "");
-    });
-  }, [workspaceId]);
+    if (!workspaceId || persistedApiRef.current || !detectedApiUrl) return;
+    persistedApiRef.current = true;
+    (async () => {
+      const { data } = await supabase
+        .from("workspaces")
+        .select("api_public_url")
+        .eq("id", workspaceId)
+        .single();
+      if (data?.api_public_url !== detectedApiUrl) {
+        await supabase.from("workspaces").update({ api_public_url: detectedApiUrl }).eq("id", workspaceId);
+      }
+    })();
+  }, [workspaceId, detectedApiUrl]);
 
   const handleAddPixel = () => {
     if (!newPixelId.trim() || !newAccessToken.trim()) return;
@@ -131,62 +173,22 @@ export function AppSection() {
     <div className="space-y-6">
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-lg">URL Pública do App</CardTitle>
+          <CardTitle className="text-lg">Domínios da Aplicação</CardTitle>
           <CardDescription>
-            URL publicada do seu app. Usada para gerar links de rastreamento com domínio personalizado.
+            URLs detectadas automaticamente do ambiente. Usadas para gerar links de rastreamento e webhooks de integração.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>URL Publicada</Label>
-            <Input
-              placeholder="https://seuapp.lovable.app"
-              value={appPublicUrl}
-              onChange={(e) => setAppPublicUrl(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Ex: https://simplificandoconversas.lovable.app
-            </p>
-          </div>
-          <Button
-            onClick={() => updateProfile.mutate({ app_public_url: appPublicUrl })}
-            disabled={updateProfile.isPending}
-          >
-            {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Salvar
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg">URL da API (Backend)</CardTitle>
-          <CardDescription>
-            URL do backend/API. Usada para gerar URLs de webhook nas integrações (Yampi, Mercado Pago, etc).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>URL da API</Label>
-            <Input
-              placeholder="https://api.seudominio.com"
-              value={apiPublicUrl}
-              onChange={(e) => setApiPublicUrl(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Ex: https://api.chatbotsimplificado.com
-            </p>
-          </div>
-          <Button
-            onClick={async () => {
-              if (!workspaceId) return;
-              const { error } = await supabase.from("workspaces").update({ api_public_url: apiPublicUrl }).eq("id", workspaceId);
-              if (error) toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
-              else toast({ title: "URL da API salva!" });
-            }}
-          >
-            Salvar
-          </Button>
+          <ReadOnlyUrlField
+            label="URL Pública do App (frontend)"
+            value={detectedAppUrl}
+            hint="Detectado automaticamente do navegador. Usado em links rastreáveis e área de membros."
+          />
+          <ReadOnlyUrlField
+            label="URL da API (backend)"
+            value={detectedApiUrl}
+            hint="Detectado automaticamente do build da VPS. Usado em webhooks de integração (Yampi, Mercado Pago, etc)."
+          />
         </CardContent>
       </Card>
 
