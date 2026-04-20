@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getServiceClient } from "../lib/supabase";
+import { getServiceClient, getPostgrestUrl } from "../lib/supabase";
 import crypto from "crypto";
 
 const router = Router();
@@ -7,7 +7,31 @@ const BUILD_TIME = new Date().toISOString();
 
 // GET /api/health/version — identify which build is running
 router.get("/version", (_req, res) => {
-  res.json({ ok: true, build_time: BUILD_TIME, node_env: process.env.NODE_ENV || "production" });
+  res.json({
+    ok: true,
+    build_time: BUILD_TIME,
+    node_env: process.env.NODE_ENV || "production",
+    postgrest_url: getPostgrestUrl(),
+  });
+});
+
+// GET /api/health/schema — confirm backend can see workspace_id via current PostgREST URL
+router.get("/schema", async (_req, res) => {
+  try {
+    const sb = getServiceClient();
+    const { error } = await sb.from("transactions").select("workspace_id").limit(1);
+    if (error) {
+      return res.status(500).json({
+        ok: false,
+        postgrest_url: getPostgrestUrl(),
+        error: error.message,
+        code: (error as any).code || null,
+      });
+    }
+    return res.json({ ok: true, postgrest_url: getPostgrestUrl(), workspace_id_visible: true });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, postgrest_url: getPostgrestUrl(), error: err.message });
+  }
 });
 
 // POST /api/health/meta-pixel-test — isolated pixel fire test
