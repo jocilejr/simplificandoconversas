@@ -9,23 +9,15 @@ import { Copy, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiLogsPanel } from "./ApiLogsPanel";
-import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const { instances } = useWhatsAppInstances();
+  const { workspaceId, workspace } = useWorkspace();
   const apiDomain = (import.meta.env.VITE_SUPABASE_URL || "{apiDomain}").replace(/\/$/, "");
-  const [selectedInstance, setSelectedInstance] = useState<string>("");
-
-  useEffect(() => {
-    if (!selectedInstance && instances.length > 0) {
-      const active = instances.find((i: any) => i.is_active) || instances[0];
-      setSelectedInstance(active.instance_name);
-    }
-  }, [instances, selectedInstance]);
 
   useEffect(() => {
     loadKey();
@@ -149,44 +141,30 @@ export function IntegrationApiSection() {
             </p>
           </div>
 
-          {/* Instance selector for examples */}
-          {instances.length > 0 && (
+          {/* Workspace ID for external requests */}
+          {workspaceId && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs font-semibold">Instância para os exemplos abaixo</Label>
-                {instances.length > 1 ? (
-                  <Select value={selectedInstance} onValueChange={setSelectedInstance}>
-                    <SelectTrigger className="h-8 text-xs w-[220px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {instances.map((i: any) => (
-                        <SelectItem key={i.instance_name} value={i.instance_name} className="text-xs">
-                          {i.instance_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{selectedInstance}</code>
-                )}
+                <Label className="text-xs font-semibold">
+                  ID do Workspace {workspace?.name ? `(${workspace.name})` : ""}
+                </Label>
               </div>
               <div className="flex items-center gap-2">
-                <code className="text-xs flex-1 truncate font-mono">"instance": "{selectedInstance}"</code>
+                <code className="text-xs flex-1 truncate font-mono bg-muted px-2 py-1 rounded">{workspaceId}</code>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6"
                   onClick={() => {
-                    navigator.clipboard.writeText(selectedInstance);
-                    toast({ title: "Nome da instância copiado!" });
+                    navigator.clipboard.writeText(workspaceId);
+                    toast({ title: "ID do workspace copiado!" });
                   }}
                 >
                   <Copy className="h-3 w-3" />
                 </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Esse é o valor a ser enviado no campo <code className="bg-muted px-1 rounded">instance</code> dos endpoints de envio de mensagens.
+                Envie no header <code className="bg-muted px-1 rounded">X-Workspace-Id</code> (ou no campo <code className="bg-muted px-1 rounded">workspace_id</code> do payload) para identificar o workspace de destino nas requisições externas.
               </p>
             </div>
           )}
