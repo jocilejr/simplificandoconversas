@@ -125,31 +125,42 @@ router.post("/webhook", async (req, res) => {
       return res.json({ ok: true, action: "updated", id: existing.id });
     }
 
-    // Create new transaction
-    const { data: newTx, error: insertErr } = await sb
+    // Create new transaction (with one retry on schema-cache errors)
+    const insertPayload = {
+      user_id: userId,
+      workspace_id: workspaceId,
+      external_id: external_id ? `manual_${paymentType}_${external_id}` : null,
+      amount: amount !== undefined ? Number(amount) : 0,
+      type: paymentType,
+      status: txStatus,
+      source: "manual_webhook",
+      customer_name: customer_name || null,
+      customer_email: customer_email || null,
+      customer_phone: cleanPhone || null,
+      customer_document: customer_document || null,
+      description: description || null,
+      payment_url: payment_url || null,
+      paid_at: txStatus === "aprovado" ? (paid_at || new Date().toISOString()) : null,
+      metadata: metadata || null,
+    };
+
+    let { data: newTx, error: insertErr } = await sb
       .from("transactions")
-      .insert({
-        user_id: userId,
-        workspace_id: workspaceId,
-        external_id: external_id ? `manual_${paymentType}_${external_id}` : null,
-        amount: amount !== undefined ? Number(amount) : 0,
-        type: paymentType,
-        status: txStatus,
-        source: "manual_webhook",
-        customer_name: customer_name || null,
-        customer_email: customer_email || null,
-        customer_phone: cleanPhone || null,
-        customer_document: customer_document || null,
-        description: description || null,
-        payment_url: payment_url || null,
-        paid_at: txStatus === "aprovado" ? (paid_at || new Date().toISOString()) : null,
-        metadata: metadata || null,
-      })
+      .insert(insertPayload)
       .select("id")
       .single();
 
+    // Retry once on schema-cache transient error (recreate client to bust any in-process state)
+    if (insertErr && /schema cache|workspace_id/i.test(insertErr.message || "")) {
+      console.warn("[manual-payment] schema-cache hit, retrying with fresh client:", insertErr.message);
+      const sb2 = getServiceClient();
+      const retry = await sb2.from("transactions").insert(insertPayload).select("id").single();
+      newTx = retry.data as any;
+      insertErr = retry.error;
+    }
+
     if (insertErr) {
-      console.error("[manual-payment] Insert error:", insertErr.message);
+      console.error("[manual-payment] Insert error:", insertErr.message, "| payload keys:", Object.keys(insertPayload).join(","));
       return res.status(500).json({ error: insertErr.message });
     }
 
