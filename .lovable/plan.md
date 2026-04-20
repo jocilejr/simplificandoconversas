@@ -1,129 +1,110 @@
 
+## Diagnóstico fechado
 
-## Diagnóstico
+Os dados que você trouxe fecham bem a causa:
 
-O problema principal não parece ser “falta da coluna `workspace_id` em `transactions`”, porque você já confirmou na VPS que ela existe.
+- `transactions.workspace_id` existe no PostgreSQL
+- `/rest/v1/transactions?select=workspace_id` responde `200`
+- o `nginx/default.conf.template` realmente aponta `/rest/v1/` para `postgrest:3000`
+- mesmo assim o **backend** continua logando:
+  `Could not find the 'workspace_id' column of 'transactions' in the schema cache`
 
-O problema mais provável é este:
-
-1. **Instalação nova da VPS fica incompleta/inconsistente**
-   - `deploy/install.sh` sobe os containers, mas **não aplica** `migrate-workspace.sql` nem `fix-member-tables.sql`.
-   - Já o `deploy/update.sh` aplica:
-     - `init-db.sql`
-     - `migrate-workspace.sql`
-     - `fix-member-tables.sql`
-
-2. **`init-db.sql` sozinho ainda é insuficiente para a versão atual do sistema**
-   - nele, `transactions` nasce sem `workspace_id`
-   - `platform_connections` nasce sem `workspace_id`
-   - depois isso é corrigido pelo `migrate-workspace.sql`
-
-3. Resultado:
-   - numa VPS nova, a base pode subir “meio antiga”
-   - o PostgREST pode ficar com **cache de schema desatualizado**
-   - algumas telas funcionam, outras quebram com erro de coluna/tabela/cache
-   - a persistência da API key também sofre com isso
-
-4. Além disso, ainda existe um ponto de código legado:
-   - `deploy/backend/src/routes/extension-api.ts` ainda busca/salva `platform_connections` por `user_id`, e não por `workspace_id`
-   - isso pode continuar causando comportamento inconsistente mesmo após a migração
-
----
-
-## Plano
-
-### 1. Corrigir a instalação inicial da VPS
-Alterar `deploy/install.sh` para, após subir o Postgres/GoTrue, aplicar exatamente o mesmo pacote de migração do deploy normal:
+Isso indica um problema de **caminho interno / rollout / cache operacional**, não de schema faltando.
 
 ```text
-init-db.sql
-+ migrate-workspace.sql
-+ fix-member-tables.sql
+n8n -> /functions/v1/manual-payment -> backend
+backend -> SUPABASE_URL (hoje: http://nginx:80) -> postgrest
 ```
 
-Assim a VPS nova já nasce no schema correto.
+O ponto mais frágil hoje é o backend depender do `nginx:80` para falar com o PostgREST, quando ele poderia falar **direto** com `postgrest:3000`.
 
-### 2. Forçar refresh do PostgREST no fluxo de instalação
-No final da instalação inicial:
-- enviar `NOTIFY pgrst, 'reload schema'`
-- reiniciar/forçar refresh do serviço `postgrest`
+## O que vou alterar
 
-Isso evita o erro clássico de “column not found in schema cache”.
+### 1. Tirar o Nginx do caminho interno do backend
+Arquivos:
+- `deploy/docker-compose.yml`
+- `deploy/portainer-stack.yml`
 
-### 3. Adicionar uma checagem pós-instalação
-Incluir no fluxo de instalação uma validação automática das peças mínimas obrigatórias:
+Mudança:
+- trocar `SUPABASE_URL: http://nginx:80`
+- por `SUPABASE_URL: http://postgrest:3000`
 
-```text
-public.workspaces
-public.workspace_members
-public.transactions.workspace_id
-public.platform_connections.workspace_id
-public.api_request_logs
-```
+Objetivo:
+- eliminar proxy interno desnecessário
+- fazer o backend falar direto com o PostgREST
+- reduzir chance de rota ambígua, cache antigo ou task errada no meio
 
-Se algo estiver faltando, o script deve falhar com mensagem clara.
-
-### 4. Corrigir o backend legado da API key
-Atualizar `deploy/backend/src/routes/extension-api.ts` para:
-- carregar chave por `workspace_id + platform`
-- atualizar por `workspace_id + platform`
-- inserir sempre com `workspace_id`
-
-Isso alinha o backend com o frontend novo e evita recriação infinita de chave.
-
-### 5. Padronizar a recuperação de VPS já instaladas
-Manter `deploy/update.sh` como reparo completo para instalações existentes, mas garantir que ele continue:
-- aplicando os 3 SQLs
-- recarregando schema
-- validando a estrutura final
-
----
-
-## Arquivos que precisam ser ajustados
-
+### 2. Fortalecer o bootstrap e update da VPS
+Arquivos:
 - `deploy/install.sh`
-- `deploy/update.sh` (se precisar reforçar verificação/fallback)
-- `deploy/backend/src/routes/extension-api.ts`
+- `deploy/update.sh`
 
-Possivelmente também:
-- `deploy/init-db.sql` apenas se eu decidir consolidar parte do schema base para reduzir dependência do passo seguinte
+Vou garantir que os scripts validem o sistema do jeito certo:
 
----
+- aplicar o pacote completo de SQL
+- enviar `NOTIFY pgrst, 'reload schema'`
+- forçar refresh/restart do serviço `postgrest`
+- rodar **smoke test real** usando o mesmo caminho interno do backend
 
-## Validação na VPS
+Validações finais do script:
+- tabela `api_request_logs`
+- `transactions.workspace_id`
+- `platform_connections.workspace_id`
+- teste HTTP interno no PostgREST com `workspace_id`
 
-Depois da implementação, a validação deve ser feita dentro da VPS com este fluxo:
+### 3. Melhorar a observabilidade do backend
+Arquivos:
+- `deploy/backend/src/lib/supabase.ts`
+- `deploy/backend/src/routes/health-db.ts`
+- `deploy/backend/src/routes/manual-payment-webhook.ts`
 
-```bash
-cd /opt/simplificandoconversas
-bash deploy/update.sh
-```
+Vou deixar o backend mais explícito para depuração:
+- expor no health qual `SUPABASE_URL` real está em uso
+- logar melhor falhas do `manual-payment`
+- incluir contexto suficiente para diferenciar erro de deploy antigo vs erro atual
 
-E depois conferir:
+### 4. Adicionar uma proteção no webhook manual-payment
+Arquivo:
+- `deploy/backend/src/routes/manual-payment-webhook.ts`
 
-```bash
-PG=$(docker ps --format '{{.ID}} {{.Names}}' | awk '$2 ~ /^simplificando_postgres\./ {print $1; exit}')
+Se o erro específico de schema cache voltar a acontecer, vou adicionar uma tentativa controlada de recuperação antes de devolver `500`:
+- recriar o client
+- repetir a operação uma vez
+- registrar erro com contexto claro
 
-docker exec -i $PG psql -U postgres -d postgres -c "\d public.transactions"
-docker exec -i $PG psql -U postgres -d postgres -c "\d public.platform_connections"
-docker exec -i $PG psql -U postgres -d postgres -c "\d public.api_request_logs"
-docker exec -i $PG psql -U postgres -d postgres -c "\d public.workspaces"
-docker exec -i $PG psql -U postgres -d postgres -c "\d public.workspace_members"
-```
-
-E validar no app:
-- Configurações → Integração API: chave deve persistir
-- Logs de Requisições: deve abrir sem erro
-- n8n / integrações externas: transações devem voltar a funcionar sem erro de `workspace_id`
-
----
+Se eu identificar que isso ainda não é suficiente, deixo preparado o caminho para fallback direto por SQL em uma segunda etapa, mas a primeira correção será manter o padrão atual do projeto.
 
 ## Resultado esperado
 
-Depois disso, a instalação em VPS nova deixa de depender de “correção manual depois do install”, e o sistema passa a subir já com:
-- schema completo
-- cache do PostgREST coerente
-- API key persistente
-- logs funcionando
-- tabelas de workspace prontas desde o início
+Depois disso:
 
+- o backend deixa de depender do `nginx:80` para acesso interno ao banco REST
+- deploy novo não termina sem validar o schema real
+- o webhook `/manual-payment` deixa de quebrar por falso erro de cache
+- você consegue verificar na VPS exatamente qual build e qual URL interna estão ativos
+
+## Validação na VPS após implementar
+
+Vou considerar a correção pronta quando estes testes passarem:
+
+1. `bash deploy/update.sh`
+2. health do backend mostrando o `SUPABASE_URL` novo
+3. teste interno do PostgREST com `workspace_id` retornando `200`
+4. nova execução real no n8n/manual-payment sem `500`
+5. logs do backend sem repetir `schema cache`
+
+## Arquivos previstos
+
+- `deploy/docker-compose.yml`
+- `deploy/portainer-stack.yml`
+- `deploy/install.sh`
+- `deploy/update.sh`
+- `deploy/backend/src/lib/supabase.ts`
+- `deploy/backend/src/routes/health-db.ts`
+- `deploy/backend/src/routes/manual-payment-webhook.ts`
+
+## Risco
+
+Baixo.
+
+A mudança principal é infra interna do backend, sem alterar regra de negócio de transações. O maior impacto é positivo: remover uma camada intermediária e validar melhor o deploy.
