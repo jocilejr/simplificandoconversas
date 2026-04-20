@@ -273,8 +273,24 @@ if [ "$ADMIN_CREATED" = false ]; then
   echo -e "${YELLOW}  Verifique: docker compose logs gotrue${NC}"
 fi
 
-# ─── 9. Summary ───
-echo -e "${YELLOW}[9/9] Verificando serviços...${NC}"
+# ─── 9. Validar schema mínimo ───
+echo -e "${YELLOW}[9/9] Validando schema mínimo...${NC}"
+
+VALIDATE_SQL="
+SELECT 'workspaces' AS check, count(*)::text AS ok FROM information_schema.tables WHERE table_schema='public' AND table_name='workspaces'
+UNION ALL SELECT 'workspace_members', count(*)::text FROM information_schema.tables WHERE table_schema='public' AND table_name='workspace_members'
+UNION ALL SELECT 'api_request_logs', count(*)::text FROM information_schema.tables WHERE table_schema='public' AND table_name='api_request_logs'
+UNION ALL SELECT 'transactions.workspace_id', count(*)::text FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name='workspace_id'
+UNION ALL SELECT 'platform_connections.workspace_id', count(*)::text FROM information_schema.columns WHERE table_schema='public' AND table_name='platform_connections' AND column_name='workspace_id';
+"
+VALIDATION=$(echo "$VALIDATE_SQL" | docker compose exec -T postgres psql -U postgres -d postgres -tA 2>/dev/null || echo "")
+echo "$VALIDATION"
+
+if echo "$VALIDATION" | grep -E '\|0$' > /dev/null; then
+  echo -e "${RED}✗ Schema incompleto! Algum item retornou 0. Verifique migrações.${NC}"
+else
+  echo -e "${GREEN}✓ Schema mínimo OK${NC}"
+fi
 
 sleep 5
 
