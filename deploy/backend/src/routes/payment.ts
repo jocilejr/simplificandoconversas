@@ -31,7 +31,7 @@ async function getMPTokenForUser(userId: string): Promise<string> {
     .eq("user_id", userId)
     .eq("platform", "mercadopago")
     .eq("enabled", true)
-    .single();
+    .maybeSingle();
 
   const token = (data?.credentials as any)?.access_token;
   if (token) return token;
@@ -341,7 +341,7 @@ router.post("/create", async (req: Request, res: Response) => {
         paid_at: mpData.status === "approved" ? new Date().toISOString() : null,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (txError) {
       console.error("[payment] DB insert FAILED:", JSON.stringify(txError));
@@ -466,7 +466,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
         .select("metadata")
         .eq("external_id", String(paymentId))
         .eq("source", "mercadopago")
-        .single();
+        .maybeSingle();
 
       const existingMeta = (existing?.metadata as any) || {};
 
@@ -543,7 +543,7 @@ router.post("/webhook/boleto", async (req: Request, res: Response) => {
       .select("*")
       .eq("external_id", String(paymentId))
       .eq("source", "mercadopago")
-      .single();
+      .maybeSingle();
 
     let token: string | null = null;
     let mpData: any = null;
@@ -703,7 +703,7 @@ router.get("/boleto-image/:transactionId", async (req: Request, res: Response) =
       .from("transactions")
       .select("*")
       .eq("id", req.params.transactionId)
-      .single();
+      .maybeSingle();
 
     if (error || !tx) {
       return res.status(404).json({ error: "Transação não encontrada" });
@@ -767,7 +767,7 @@ router.get("/boleto-pdf/:transactionId", async (req: Request, res: Response) => 
       .from("transactions")
       .select("*")
       .eq("id", req.params.transactionId)
-      .single();
+      .maybeSingle();
 
     if (error || !tx) {
       return res.status(404).json({ error: "Transação não encontrada" });
@@ -807,7 +807,7 @@ router.get("/status/:transactionId", async (req: Request, res: Response) => {
       .from("transactions")
       .select("*")
       .eq("id", req.params.transactionId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       return res.status(404).json({ error: "Transação não encontrada" });

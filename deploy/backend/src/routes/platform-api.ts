@@ -363,7 +363,7 @@ router.post("/transactions", async (req, res) => {
       metadata: metadata || null,
     })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     logApiRequest(userId, workspaceId, req, 500, error.message);
@@ -1082,7 +1082,7 @@ router.post("/generate-payment", async (req, res) => {
       .eq("user_id", userId)
       .eq("platform", "mercadopago")
       .eq("enabled", true)
-      .single();
+      .maybeSingle();
 
     const token = (mpConn?.credentials as any)?.access_token || process.env.MERCADOPAGO_ACCESS_TOKEN || "";
     if (!token) {
@@ -1226,7 +1226,7 @@ router.post("/generate-payment", async (req, res) => {
         paid_at: mpData.status === "approved" ? new Date().toISOString() : null,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (txError) {
       logApiRequest(userId, workspaceId, req, 500, txError.message);

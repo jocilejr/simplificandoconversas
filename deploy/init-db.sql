@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   avatar_url text,
   openai_api_key text,
   app_public_url text,
+  recovery_message_boleto text,
+  recovery_message_pix text,
+  recovery_message_abandoned text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -543,6 +546,25 @@ DO $$ BEGIN
 END $$;
 CREATE INDEX IF NOT EXISTS idx_email_contacts_user_email ON public.email_contacts(user_id, email);
 GRANT ALL ON public.email_contacts TO anon, authenticated, service_role;
+
+
+-- SMTP Configuration
+CREATE TABLE IF NOT EXISTS public.smtp_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  host text NOT NULL DEFAULT '',
+  port integer NOT NULL DEFAULT 587,
+  username text NOT NULL DEFAULT '',
+  password text NOT NULL DEFAULT '',
+  from_email text NOT NULL DEFAULT '',
+  from_name text NOT NULL DEFAULT '',
+  label text NOT NULL DEFAULT 'Principal',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.smtp_config ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.smtp_config TO anon, authenticated, service_role;
 
 -- Email Queue (async processing)
 CREATE TABLE IF NOT EXISTS public.email_queue (
@@ -1078,6 +1100,79 @@ ALTER TABLE IF EXISTS group_smart_links
   ADD COLUMN IF NOT EXISTS last_sync_error text DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS last_sync_error_at timestamptz DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS last_successful_sync_at timestamptz DEFAULT NULL;
+
+-- Recovery tables
+CREATE TABLE IF NOT EXISTS public.boleto_recovery_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL DEFAULT ,
+  rule_type text NOT NULL DEFAULT days_after_generation,
+  days integer NOT NULL DEFAULT 1,
+  message text NOT NULL DEFAULT ,
+  is_active boolean NOT NULL DEFAULT true,
+  priority integer NOT NULL DEFAULT 0,
+  media_blocks jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.boleto_recovery_rules ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.boleto_recovery_rules TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.boleto_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  default_expiration_days integer NOT NULL DEFAULT 7,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.boleto_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.boleto_settings TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.boleto_recovery_contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  transaction_id uuid,
+  rule_id uuid,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.boleto_recovery_contacts ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.boleto_recovery_contacts TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.recovery_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  enabled boolean NOT NULL DEFAULT false,
+  instance_name text,
+  delay_seconds integer NOT NULL DEFAULT 0,
+  send_after_minutes integer NOT NULL DEFAULT 30,
+  instance_boleto text,
+  instance_pix text,
+  instance_yampi text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.recovery_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.recovery_settings TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.recovery_queue (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  transaction_id uuid,
+  status text NOT NULL DEFAULT pending,
+  scheduled_at timestamptz,
+  sent_at timestamptz,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.recovery_queue ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.recovery_queue TO anon, authenticated, service_role;
 
 -- Done!
 SELECT 'Database initialized successfully!' AS status;

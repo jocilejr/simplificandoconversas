@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   logo_url text,
   openai_api_key text,
   app_public_url text,
+  api_public_url text,
   created_by uuid NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS public.workspace_members (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(workspace_id, user_id)
 );
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS api_public_url text;
 ALTER TABLE public.workspace_members ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.workspace_members TO anon, authenticated, service_role;
@@ -401,3 +403,85 @@ CREATE POLICY "ws_insert" ON public.workspaces
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
+-- Add recovery columns to profiles
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS recovery_message_boleto text,
+  ADD COLUMN IF NOT EXISTS recovery_message_pix text,
+  ADD COLUMN IF NOT EXISTS recovery_message_abandoned text;
+
+-- boleto_recovery_rules
+CREATE TABLE IF NOT EXISTS public.boleto_recovery_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL DEFAULT '',
+  rule_type text NOT NULL DEFAULT 'days_after_generation',
+  days integer NOT NULL DEFAULT 1,
+  message text NOT NULL DEFAULT '',
+  is_active boolean NOT NULL DEFAULT true,
+  priority integer NOT NULL DEFAULT 0,
+  media_blocks jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.boleto_recovery_rules ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.boleto_recovery_rules TO anon, authenticated, service_role;
+
+-- boleto_settings
+CREATE TABLE IF NOT EXISTS public.boleto_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  default_expiration_days integer NOT NULL DEFAULT 7,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.boleto_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.boleto_settings TO anon, authenticated, service_role;
+
+-- boleto_recovery_contacts
+CREATE TABLE IF NOT EXISTS public.boleto_recovery_contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  transaction_id uuid,
+  rule_id uuid,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.boleto_recovery_contacts ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.boleto_recovery_contacts TO anon, authenticated, service_role;
+
+-- recovery_settings
+CREATE TABLE IF NOT EXISTS public.recovery_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  enabled boolean NOT NULL DEFAULT false,
+  instance_name text,
+  delay_seconds integer NOT NULL DEFAULT 0,
+  send_after_minutes integer NOT NULL DEFAULT 30,
+  instance_boleto text,
+  instance_pix text,
+  instance_yampi text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.recovery_settings ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.recovery_settings TO anon, authenticated, service_role;
+
+-- recovery_queue
+CREATE TABLE IF NOT EXISTS public.recovery_queue (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  transaction_id uuid,
+  status text NOT NULL DEFAULT 'pending',
+  scheduled_at timestamptz,
+  sent_at timestamptz,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.recovery_queue ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.recovery_queue TO anon, authenticated, service_role;

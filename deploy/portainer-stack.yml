@@ -151,7 +151,8 @@ services:
       - chatbot_media:/media-files
     environment:
       PORT: "3001"
-      SUPABASE_URL: http://postgrest:3000
+      SUPABASE_URL: http://nginx
+      POSTGREST_DIRECT_URL: http://postgrest:3000
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_ANON_KEY: ${ANON_KEY}
       JWT_SECRET: ${JWT_SECRET}
