@@ -141,6 +141,15 @@ if [ -n "$BACKEND_CONTAINER" ]; then
   else
     echo "⚠ Backend não respondeu. Verifique: docker service logs simplificando_backend --tail=20"
   fi
+
+  # Smoke test: backend → PostgREST → workspace_id (mesmo caminho do webhook real)
+  SCHEMA=$(docker exec -i "$BACKEND_CONTAINER" wget -qO- http://localhost:3001/api/health/schema 2>/dev/null || echo '{"ok":false}')
+  echo "   Schema: $SCHEMA"
+  if echo "$SCHEMA" | grep -q '"workspace_id_visible":true'; then
+    echo "✓ Backend enxerga transactions.workspace_id via PostgREST"
+  else
+    echo "❌ Backend NÃO enxerga workspace_id. Verifique SUPABASE_URL e cache do PostgREST."
+  fi
 else
   echo "⚠ Container do backend não encontrado ainda (pode estar iniciando)"
 fi
