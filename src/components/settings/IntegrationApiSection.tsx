@@ -3,16 +3,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Copy, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiLogsPanel } from "./ApiLogsPanel";
+import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const { instances } = useWhatsAppInstances();
+  const apiDomain = (import.meta.env.VITE_SUPABASE_URL || "{apiDomain}").replace(/\/$/, "");
+  const [selectedInstance, setSelectedInstance] = useState<string>("");
+
+  useEffect(() => {
+    if (!selectedInstance && instances.length > 0) {
+      const active = instances.find((i: any) => i.is_active) || instances[0];
+      setSelectedInstance(active.instance_name);
+    }
+  }, [instances, selectedInstance]);
 
   useEffect(() => {
     loadKey();
@@ -132,15 +145,57 @@ export function IntegrationApiSection() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Endpoints Disponíveis (VPS)</label>
             <p className="text-xs text-muted-foreground">
-              Substitua <code className="bg-muted px-1 rounded">SEU-API-DOMAIN</code> pelo domínio da sua VPS.
+              Domínio detectado: <code className="bg-muted px-1 rounded">{apiDomain}</code>
             </p>
           </div>
+
+          {/* Instance selector for examples */}
+          {instances.length > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-semibold">Instância para os exemplos abaixo</Label>
+                {instances.length > 1 ? (
+                  <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                    <SelectTrigger className="h-8 text-xs w-[220px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {instances.map((i: any) => (
+                        <SelectItem key={i.instance_name} value={i.instance_name} className="text-xs">
+                          {i.instance_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{selectedInstance}</code>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="text-xs flex-1 truncate font-mono">"instance": "{selectedInstance}"</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedInstance);
+                    toast({ title: "Nome da instância copiado!" });
+                  }}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Esse é o valor a ser enviado no campo <code className="bg-muted px-1 rounded">instance</code> dos endpoints de envio de mensagens.
+              </p>
+            </div>
+          )}
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="health">
               <AccordionTrigger className="text-sm">Health / Ping</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/ping</div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/ping</div>
                   <div className="text-muted-foreground">Retorna {"{ ok: true, service: 'platform-api' }"} — use para testar conectividade</div>
                 </div>
               </AccordionContent>
@@ -150,7 +205,7 @@ export function IntegrationApiSection() {
               <AccordionTrigger className="text-sm">Instâncias WhatsApp</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/instances</div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/instances</div>
                   <div className="text-muted-foreground">Retorna lista de instâncias com campos: <code className="bg-muted px-1 rounded">instance_name</code>, <code className="bg-muted px-1 rounded">status</code>, <code className="bg-muted px-1 rounded">is_active</code>, <code className="bg-muted px-1 rounded">connected</code> (true se número conectado)</div>
                   <div className="text-muted-foreground">Use o valor de <code className="bg-muted px-1 rounded">instance_name</code> no campo <code className="bg-muted px-1 rounded">instance</code> dos endpoints de envio</div>
                 </div>
@@ -161,9 +216,9 @@ export function IntegrationApiSection() {
               <AccordionTrigger className="text-sm">Contatos / Clientes</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/contacts<span className="text-muted-foreground ml-2">?phone=&name=&instance=&limit=&offset=</span></div>
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/contacts/:phone</div>
-                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/contacts <span className="text-muted-foreground">{"{ phone, name, instance_name }"}</span></div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/contacts<span className="text-muted-foreground ml-2">?phone=&name=&instance=&limit=&offset=</span></div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/contacts/:phone</div>
+                  <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/contacts <span className="text-muted-foreground">{"{ phone, name, instance_name }"}</span></div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -172,10 +227,10 @@ export function IntegrationApiSection() {
               <AccordionTrigger className="text-sm">Transações / Pagamentos</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/transactions<span className="text-muted-foreground ml-2">?status=&from=&to=&phone=</span></div>
-                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/transactions <span className="text-muted-foreground">{"{ amount, type, status, customer_name, customer_phone, ... }"}</span></div>
-                  <div><span className="text-yellow-500">PATCH</span> https://SEU-API-DOMAIN/api/platform/transactions/:id <span className="text-muted-foreground">{"{ status, paid_at, metadata }"}</span></div>
-                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/transactions/webhook <span className="text-muted-foreground">{"{ external_id, status, paid_at }"}</span></div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/transactions<span className="text-muted-foreground ml-2">?status=&from=&to=&phone=</span></div>
+                  <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/transactions <span className="text-muted-foreground">{"{ amount, type, status, customer_name, customer_phone, ... }"}</span></div>
+                  <div><span className="text-yellow-500">PATCH</span> {apiDomain}/api/platform/transactions/:id <span className="text-muted-foreground">{"{ status, paid_at, metadata }"}</span></div>
+                  <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/transactions/webhook <span className="text-muted-foreground">{"{ external_id, status, paid_at }"}</span></div>
                 </div>
             </AccordionContent>
             </AccordionItem>
@@ -185,7 +240,7 @@ export function IntegrationApiSection() {
               <AccordionContent>
                 <div className="space-y-3 text-xs font-mono">
                   <div>
-                    <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/generate-payment</div>
+                    <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/generate-payment</div>
                   </div>
                   <div className="text-muted-foreground">
                     <div className="font-semibold text-foreground mb-1">Campos obrigatórios:</div>
@@ -236,9 +291,9 @@ export function IntegrationApiSection() {
               <AccordionTrigger className="text-sm">Tags / Segmentação</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/tags?phone=X</div>
-                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
-                  <div><span className="text-red-500">DELETE</span> https://SEU-API-DOMAIN/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/tags?phone=X</div>
+                  <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
+                  <div><span className="text-red-500">DELETE</span> {apiDomain}/api/platform/tags <span className="text-muted-foreground">{"{ phone, tag_name }"}</span></div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -247,10 +302,10 @@ export function IntegrationApiSection() {
               <AccordionTrigger className="text-sm">Lembretes</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-green-500">GET</span> https://SEU-API-DOMAIN/api/platform/reminders<span className="text-muted-foreground ml-2">?filter=pending|overdue|today|completed&phone=</span></div>
-                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/reminders <span className="text-muted-foreground">{"{ phone, title, description, due_date }"}</span></div>
-                  <div><span className="text-yellow-500">PATCH</span> https://SEU-API-DOMAIN/api/platform/reminders/:id <span className="text-muted-foreground">{"{ completed, title, due_date }"}</span></div>
-                  <div><span className="text-red-500">DELETE</span> https://SEU-API-DOMAIN/api/platform/reminders/:id</div>
+                  <div><span className="text-green-500">GET</span> {apiDomain}/api/platform/reminders<span className="text-muted-foreground ml-2">?filter=pending|overdue|today|completed&phone=</span></div>
+                  <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/reminders <span className="text-muted-foreground">{"{ phone, title, description, due_date }"}</span></div>
+                  <div><span className="text-yellow-500">PATCH</span> {apiDomain}/api/platform/reminders/:id <span className="text-muted-foreground">{"{ completed, title, due_date }"}</span></div>
+                  <div><span className="text-red-500">DELETE</span> {apiDomain}/api/platform/reminders/:id</div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -260,18 +315,18 @@ export function IntegrationApiSection() {
               <AccordionContent>
                 <div className="space-y-3 text-xs font-mono">
                   <div>
-                    <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/send-message</div>
+                    <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/send-message</div>
                     <div className="text-muted-foreground ml-4">{"{ phone, message, instance }"} — Envia texto</div>
                     <div className="text-yellow-500 ml-4">⚠ <code className="bg-muted px-1 rounded">instance</code> é obrigatório — nome da instância WhatsApp a ser utilizada</div>
                   </div>
                   <div>
-                    <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/send-media</div>
+                    <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/send-media</div>
                     <div className="text-muted-foreground ml-4">{"{ phone, media_url, type, instance, caption? }"}</div>
                     <div className="text-muted-foreground ml-4">type: <code className="bg-muted px-1 rounded">image</code> | <code className="bg-muted px-1 rounded">video</code> | <code className="bg-muted px-1 rounded">audio</code> | <code className="bg-muted px-1 rounded">document</code></div>
                     <div className="text-yellow-500 ml-4">⚠ <code className="bg-muted px-1 rounded">instance</code> é obrigatório — nome da instância WhatsApp a ser utilizada</div>
                   </div>
                   <div>
-                    <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/platform/validate-number</div>
+                    <div><span className="text-blue-500">POST</span> {apiDomain}/api/platform/validate-number</div>
                     <div className="text-muted-foreground ml-4">{"{ phone, instance }"} — Verifica se número existe no WhatsApp</div>
                     <div className="text-yellow-500 ml-4">⚠ <code className="bg-muted px-1 rounded">instance</code> é obrigatório — nome da instância WhatsApp a ser utilizada</div>
                   </div>
@@ -283,7 +338,7 @@ export function IntegrationApiSection() {
               <AccordionTrigger className="text-sm">Webhook de Entrada</AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-xs font-mono">
-                  <div><span className="text-blue-500">POST</span> https://SEU-API-DOMAIN/api/external-messaging-webhook</div>
+                  <div><span className="text-blue-500">POST</span> {apiDomain}/api/external-messaging-webhook</div>
                   <div className="text-muted-foreground">
                     Payload: {"{ event: 'reminder_updated|payment_received|...', data: { ... } }"}
                   </div>
