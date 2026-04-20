@@ -55,10 +55,28 @@ else
   echo "✓ Todos os usuários possuem workspace"
 fi
 
-# Notify PostgREST to reload schema
+# Notify PostgREST to reload schema + force service restart (Swarm)
 docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres \
-  -c "NOTIFY pgrst, 'reload schema';" 2>/dev/null || true
-echo "✓ PostgREST schema recarregado"
+  -c "NOTIFY pgrst, 'reload schema'; NOTIFY pgrst, 'reload config';" 2>/dev/null || true
+docker service update --force simplificando_postgrest >/dev/null 2>&1 || true
+echo "✓ PostgREST schema recarregado + serviço atualizado"
+
+# Validate critical schema pieces
+echo "   → Validando schema mínimo..."
+VALIDATE_SQL="
+SELECT 'workspaces', count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='workspaces'
+UNION ALL SELECT 'workspace_members', count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='workspace_members'
+UNION ALL SELECT 'api_request_logs', count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='api_request_logs'
+UNION ALL SELECT 'transactions.workspace_id', count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name='workspace_id'
+UNION ALL SELECT 'platform_connections.workspace_id', count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='platform_connections' AND column_name='workspace_id';
+"
+VALIDATION=$(echo "$VALIDATE_SQL" | docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -d postgres -tA 2>/dev/null || echo "")
+echo "$VALIDATION" | sed 's/^/      /'
+if echo "$VALIDATION" | grep -E '\|0$' > /dev/null; then
+  echo "⚠ AVISO: schema incompleto. Algum item acima retornou 0."
+else
+  echo "✓ Schema mínimo validado"
+fi
 
 # ============================================================
 # [3/5] Rebuild frontend

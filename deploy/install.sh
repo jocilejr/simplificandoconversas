@@ -192,6 +192,22 @@ done
 echo ""
 echo -e "${GREEN}✓ PostgreSQL pronto${NC}"
 
+# ─── 6.1. Apply ALL SQL migrations (init + workspace + member fixes) ───
+echo -e "${YELLOW}[6.1/9] Aplicando schema completo (init + workspace + member)...${NC}"
+
+cat "$DEPLOY_DIR/init-db.sql" \
+    "$DEPLOY_DIR/migrate-workspace.sql" \
+    "$DEPLOY_DIR/fix-member-tables.sql" \
+  | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  || { echo -e "${RED}✗ Falha ao aplicar migrações SQL${NC}"; exit 1; }
+echo -e "${GREEN}✓ Migrações SQL aplicadas${NC}"
+
+# Force PostgREST schema reload
+docker compose exec -T postgres psql -U postgres -d postgres \
+  -c "NOTIFY pgrst, 'reload schema'; NOTIFY pgrst, 'reload config';" 2>/dev/null || true
+docker compose restart postgrest 2>/dev/null || true
+echo -e "${GREEN}✓ PostgREST schema recarregado${NC}"
+
 # ─── 7. Wait for GoTrue ───
 echo -e "${YELLOW}[7/9] Aguardando GoTrue estabilizar...${NC}"
 
@@ -257,8 +273,24 @@ if [ "$ADMIN_CREATED" = false ]; then
   echo -e "${YELLOW}  Verifique: docker compose logs gotrue${NC}"
 fi
 
-# ─── 9. Summary ───
-echo -e "${YELLOW}[9/9] Verificando serviços...${NC}"
+# ─── 9. Validar schema mínimo ───
+echo -e "${YELLOW}[9/9] Validando schema mínimo...${NC}"
+
+VALIDATE_SQL="
+SELECT 'workspaces' AS check, count(*)::text AS ok FROM information_schema.tables WHERE table_schema='public' AND table_name='workspaces'
+UNION ALL SELECT 'workspace_members', count(*)::text FROM information_schema.tables WHERE table_schema='public' AND table_name='workspace_members'
+UNION ALL SELECT 'api_request_logs', count(*)::text FROM information_schema.tables WHERE table_schema='public' AND table_name='api_request_logs'
+UNION ALL SELECT 'transactions.workspace_id', count(*)::text FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name='workspace_id'
+UNION ALL SELECT 'platform_connections.workspace_id', count(*)::text FROM information_schema.columns WHERE table_schema='public' AND table_name='platform_connections' AND column_name='workspace_id';
+"
+VALIDATION=$(echo "$VALIDATE_SQL" | docker compose exec -T postgres psql -U postgres -d postgres -tA 2>/dev/null || echo "")
+echo "$VALIDATION"
+
+if echo "$VALIDATION" | grep -E '\|0$' > /dev/null; then
+  echo -e "${RED}✗ Schema incompleto! Algum item retornou 0. Verifique migrações.${NC}"
+else
+  echo -e "${GREEN}✓ Schema mínimo OK${NC}"
+fi
 
 sleep 5
 
