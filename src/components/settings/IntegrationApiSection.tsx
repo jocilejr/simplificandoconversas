@@ -9,23 +9,15 @@ import { Copy, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiLogsPanel } from "./ApiLogsPanel";
-import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export function IntegrationApiSection() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const { instances } = useWhatsAppInstances();
+  const { workspaceId, workspace } = useWorkspace();
   const apiDomain = (import.meta.env.VITE_SUPABASE_URL || "{apiDomain}").replace(/\/$/, "");
-  const [selectedInstance, setSelectedInstance] = useState<string>("");
-
-  useEffect(() => {
-    if (!selectedInstance && instances.length > 0) {
-      const active = instances.find((i: any) => i.is_active) || instances[0];
-      setSelectedInstance(active.instance_name);
-    }
-  }, [instances, selectedInstance]);
 
   useEffect(() => {
     loadKey();
