@@ -20,20 +20,24 @@ export function IntegrationApiSection() {
   const apiDomain = (import.meta.env.VITE_SUPABASE_URL || "{apiDomain}").replace(/\/$/, "");
 
   useEffect(() => {
-    loadKey();
-  }, []);
+    if (workspaceId) loadKey();
+  }, [workspaceId]);
 
   async function loadKey() {
+    if (!workspaceId) return;
     setLoading(true);
     try {
       const { data } = await (supabase as any)
         .from("platform_connections")
         .select("credentials, enabled")
+        .eq("workspace_id", workspaceId)
         .eq("platform", "custom_api")
         .maybeSingle();
 
       if (data?.credentials?.api_key) {
         setApiKey(data.credentials.api_key);
+      } else {
+        setApiKey(null);
       }
     } catch (err) {
       console.error("Error loading API key:", err);
@@ -43,6 +47,10 @@ export function IntegrationApiSection() {
   }
 
   async function generateKey() {
+    if (!workspaceId) {
+      toast({ title: "Workspace não carregado", variant: "destructive" });
+      return;
+    }
     setGenerating(true);
     try {
       const newKey = Array.from(crypto.getRandomValues(new Uint8Array(32)))
@@ -55,23 +63,27 @@ export function IntegrationApiSection() {
       const { data: existing } = await (supabase as any)
         .from("platform_connections")
         .select("id")
+        .eq("workspace_id", workspaceId)
         .eq("platform", "custom_api")
         .maybeSingle();
 
       if (existing) {
-        await (supabase as any)
+        const { error } = await (supabase as any)
           .from("platform_connections")
           .update({ credentials: { api_key: newKey }, enabled: true })
           .eq("id", existing.id);
+        if (error) throw error;
       } else {
-        await (supabase as any)
+        const { error } = await (supabase as any)
           .from("platform_connections")
           .insert({
             user_id: user.id,
+            workspace_id: workspaceId,
             platform: "custom_api",
             credentials: { api_key: newKey },
             enabled: true,
           });
+        if (error) throw error;
       }
 
       setApiKey(newKey);

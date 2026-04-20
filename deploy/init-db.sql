@@ -36,6 +36,23 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authen
 -- PUBLIC TABLES
 -- ============================================================
 
+-- API request logs (used by ApiLogsPanel in Settings → Integration API)
+CREATE TABLE IF NOT EXISTS public.api_request_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  method text NOT NULL,
+  path text NOT NULL,
+  status_code integer NOT NULL,
+  request_body jsonb,
+  response_summary text,
+  ip_address text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_api_logs_workspace_created
+  ON public.api_request_logs(workspace_id, created_at DESC);
+ALTER TABLE public.api_request_logs ENABLE ROW LEVEL SECURITY;
+
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
