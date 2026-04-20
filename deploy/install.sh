@@ -192,6 +192,22 @@ done
 echo ""
 echo -e "${GREEN}✓ PostgreSQL pronto${NC}"
 
+# ─── 6.1. Apply ALL SQL migrations (init + workspace + member fixes) ───
+echo -e "${YELLOW}[6.1/9] Aplicando schema completo (init + workspace + member)...${NC}"
+
+cat "$DEPLOY_DIR/init-db.sql" \
+    "$DEPLOY_DIR/migrate-workspace.sql" \
+    "$DEPLOY_DIR/fix-member-tables.sql" \
+  | docker compose exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  || { echo -e "${RED}✗ Falha ao aplicar migrações SQL${NC}"; exit 1; }
+echo -e "${GREEN}✓ Migrações SQL aplicadas${NC}"
+
+# Force PostgREST schema reload
+docker compose exec -T postgres psql -U postgres -d postgres \
+  -c "NOTIFY pgrst, 'reload schema'; NOTIFY pgrst, 'reload config';" 2>/dev/null || true
+docker compose restart postgrest 2>/dev/null || true
+echo -e "${GREEN}✓ PostgREST schema recarregado${NC}"
+
 # ─── 7. Wait for GoTrue ───
 echo -e "${YELLOW}[7/9] Aguardando GoTrue estabilizar...${NC}"
 
