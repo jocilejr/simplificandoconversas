@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files with secrets
+.env
+.env.*
+deploy/.env
+deploy/.env.*
+
+# Compiled frontend build
+deploy/frontend/
+
+# Backup files
+*.bak

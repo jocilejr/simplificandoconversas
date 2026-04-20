@@ -3,14 +3,23 @@ import { getServiceClient } from "../lib/supabase";
 
 const router = Router();
 
-/** Apenas add/remove são contabilizados nesta versão. */
 const VALID_ACTIONS = new Set(["add", "remove"]);
 
-/** Extract clean phone number (10–13 digits). Returns "" if invalid (e.g., @lid without phoneNumber). */
+// Threshold: if a single webhook event has more than this many participants with
+// action=add, treat it as a reconnect/initial-sync event and discard it.
+const BULK_ADD_THRESHOLD = 20;
+
+// Dedup window: ignore events with the same (group, participant, action) within
+// this many seconds (handles Evolution API retry deliveries).
+const DEDUP_WINDOW_SECONDS = 60;
+
+/** Extract clean phone number (10–13 digits). Returns "" if invalid. */
 function extractPhone(p: any): string {
   const clean = (s: string) => s.replace(/@.*/, "").replace(/\D/g, "");
 
   if (typeof p === "string") {
+    // Always reject @lid string participants — do NOT strip the suffix first
+    if (p.includes("@lid")) return "";
     const v = clean(p);
     return v.length >= 10 && v.length <= 13 ? v : "";
   }
@@ -35,10 +44,6 @@ function normalizeAction(raw: any): "add" | "remove" | null {
   return VALID_ACTIONS.has(a) ? (a as "add" | "remove") : null;
 }
 
-/* POST /api/groups/webhook/events
-   Pipeline:
-     workspace (via instance_name) → group_smart_links (group_jid em group_links) → INSERT em group_events
-   Descarta + log se o grupo não pertence a nenhum smart link do workspace. */
 router.post("/events", async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
@@ -62,6 +67,13 @@ router.post("/events", async (req: Request, res: Response) => {
     if (!instanceName || !groupJid || participants.length === 0) {
       console.log(`[groups-webhook] discard reason=missing_payload instance=${instanceName} group=${groupJid} participants=${participants.length}`);
       return res.json({ ignored: true, reason: "missing_payload" });
+    }
+
+    // Discard bulk-add events — these are typically reconnect/initial-sync events
+    // where Evolution fires "add" for every existing member in the group.
+    if (action === "add" && participants.length > BULK_ADD_THRESHOLD) {
+      console.log(`[groups-webhook] discard reason=bulk_add_ignored instance=${instanceName} group=${groupJid} participants=${participants.length} threshold=${BULK_ADD_THRESHOLD}`);
+      return res.json({ ignored: true, reason: "bulk_add_ignored", count: participants.length });
     }
 
     const cleanParticipants = participants.map(extractPhone).filter(Boolean);
@@ -111,8 +123,32 @@ router.post("/events", async (req: Request, res: Response) => {
 
     const groupName = monitoredName || data.subject || data.groupName || null;
 
-    // 3) INSERT cru em group_events (1 linha por participante, sem dedup)
-    const rows = uniqueParticipants.map((phone) => ({
+    // 3) Dedup: remove participants that already have the same action in the last DEDUP_WINDOW_SECONDS
+    // This prevents Evolution API retry deliveries from creating duplicate rows.
+    const dedupCutoff = new Date(Date.now() - DEDUP_WINDOW_SECONDS * 1000).toISOString();
+    const { data: recentEvents } = await sb
+      .from("group_events")
+      .select("participant_jid")
+      .eq("workspace_id", inst.workspace_id)
+      .eq("group_jid", groupJid)
+      .eq("action", action)
+      .in("participant_jid", uniqueParticipants)
+      .gte("occurred_at", dedupCutoff);
+
+    const recentSet = new Set((recentEvents || []).map((e: any) => e.participant_jid));
+    const newParticipants = uniqueParticipants.filter((p) => !recentSet.has(p));
+
+    if (newParticipants.length === 0) {
+      console.log(`[groups-webhook] discard reason=dedup_window instance=${instanceName} group=${groupJid} action=${action} all_within_${DEDUP_WINDOW_SECONDS}s`);
+      return res.json({ ignored: true, reason: "dedup_window", count: uniqueParticipants.length });
+    }
+
+    if (newParticipants.length < uniqueParticipants.length) {
+      console.log(`[groups-webhook] dedup: skipping ${uniqueParticipants.length - newParticipants.length} duplicates for group=${groupJid} action=${action}`);
+    }
+
+    // 4) INSERT one row per unique new participant
+    const rows = newParticipants.map((phone) => ({
       workspace_id: inst.workspace_id,
       instance_name: instanceName,
       group_jid: groupJid,
