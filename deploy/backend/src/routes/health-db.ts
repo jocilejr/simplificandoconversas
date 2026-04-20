@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getServiceClient, getPostgrestUrl } from "../lib/supabase";
+import { getServiceClient, getPostgrestUrl, restGet } from "../lib/supabase";
 import crypto from "crypto";
 
 const router = Router();
@@ -15,23 +15,47 @@ router.get("/version", (_req, res) => {
   });
 });
 
-// GET /api/health/schema — confirm backend can see workspace_id via current PostgREST URL
+// GET /api/health/schema — test BOTH supabase-js and direct REST so we know which path works
 router.get("/schema", async (_req, res) => {
+  const result: any = {
+    postgrest_url: getPostgrestUrl(),
+    supabase_js: { ok: false },
+    rest_direct: { ok: false },
+  };
+
+  // Path 1: supabase-js
   try {
     const sb = getServiceClient();
-    const { error } = await sb.from("transactions").select("workspace_id").limit(1);
+    const { data, error } = await sb.from("transactions").select("workspace_id").limit(1);
     if (error) {
-      return res.status(500).json({
+      result.supabase_js = {
         ok: false,
-        postgrest_url: getPostgrestUrl(),
-        error: error.message,
+        error: error.message || "(empty)",
         code: (error as any).code || null,
-      });
+        details: (error as any).details || null,
+      };
+    } else {
+      result.supabase_js = { ok: true, rows: data?.length ?? 0 };
     }
-    return res.json({ ok: true, postgrest_url: getPostgrestUrl(), workspace_id_visible: true });
   } catch (err: any) {
-    return res.status(500).json({ ok: false, postgrest_url: getPostgrestUrl(), error: err.message });
+    result.supabase_js = {
+      ok: false,
+      thrown: err.message,
+      cause: err.cause?.message,
+      code: err.code || err.cause?.code,
+    };
   }
+
+  // Path 2: direct REST (bypass supabase-js)
+  try {
+    const rows = await restGet("transactions", "select=workspace_id&limit=1");
+    result.rest_direct = { ok: true, rows: rows.length };
+  } catch (err: any) {
+    result.rest_direct = { ok: false, error: err.message };
+  }
+
+  result.ok = result.supabase_js.ok || result.rest_direct.ok;
+  return res.status(result.ok ? 200 : 500).json(result);
 });
 
 // POST /api/health/meta-pixel-test — isolated pixel fire test
