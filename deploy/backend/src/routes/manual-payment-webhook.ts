@@ -57,14 +57,23 @@ router.post("/webhook", async (req, res) => {
   if (!workspaceId) return res.status(400).json({ error: "workspace_id is required" });
   if (!event) return res.status(400).json({ error: "event is required" });
 
-  // Validate workspace exists and get owner
-  const { data: ws } = await sb
-    .from("workspaces")
-    .select("id, created_by")
-    .eq("id", workspaceId)
-    .maybeSingle();
+  // Validate workspace exists and get owner — use direct PostgREST to bypass any supabase-js fetch issues
+  let ws: { id: string; created_by: string } | null = null;
+  try {
+    const rows = await restGet<{ id: string; created_by: string }>(
+      "workspaces",
+      `id=eq.${encodeURIComponent(workspaceId)}&select=id,created_by&limit=1`
+    );
+    ws = rows[0] || null;
+  } catch (e: any) {
+    console.error("[manual-payment] workspace lookup failed:", e.message);
+    return res.status(500).json({ error: "Workspace lookup failed", detail: e.message });
+  }
 
-  if (!ws) return res.status(404).json({ error: "Workspace not found" });
+  if (!ws) {
+    console.warn(`[manual-payment] workspace not found via REST: ${workspaceId}`);
+    return res.status(404).json({ error: "Workspace not found" });
+  }
 
   const userId = ws.created_by;
 
