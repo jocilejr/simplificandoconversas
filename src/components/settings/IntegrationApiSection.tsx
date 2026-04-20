@@ -144,9 +144,51 @@ export function IntegrationApiSection() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Endpoints Disponíveis (VPS)</label>
             <p className="text-xs text-muted-foreground">
-              Substitua <code className="bg-muted px-1 rounded">SEU-API-DOMAIN</code> pelo domínio da sua VPS.
+              Domínio detectado: <code className="bg-muted px-1 rounded">{apiDomain}</code>
             </p>
           </div>
+
+          {/* Instance selector for examples */}
+          {instances.length > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs font-semibold">Instância para os exemplos abaixo</Label>
+                {instances.length > 1 ? (
+                  <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+                    <SelectTrigger className="h-8 text-xs w-[220px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {instances.map((i: any) => (
+                        <SelectItem key={i.instance_name} value={i.instance_name} className="text-xs">
+                          {i.instance_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{selectedInstance}</code>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="text-xs flex-1 truncate font-mono">"instance": "{selectedInstance}"</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedInstance);
+                    toast({ title: "Nome da instância copiado!" });
+                  }}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Esse é o valor a ser enviado no campo <code className="bg-muted px-1 rounded">instance</code> dos endpoints de envio de mensagens.
+              </p>
+            </div>
+          )}
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="health">
               <AccordionTrigger className="text-sm">Health / Ping</AccordionTrigger>
