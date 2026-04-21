@@ -150,6 +150,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
             workspace_id: workspaceId,
             product_id: product.id,
             phone: phoneForUrl,
+            title: product.name,
             is_active: true,
           } as any,
           { onConflict: "product_id,phone" }
@@ -188,6 +189,7 @@ export function LinkGenerator({ open, onOpenChange, product, workspaceId, userId
             workspace_id: workspaceId,
             product_id: product.id,
             phone: phoneForUrl,
+            title: product.name,
             is_active: true,
           } as any,
           { onConflict: "product_id,phone" }

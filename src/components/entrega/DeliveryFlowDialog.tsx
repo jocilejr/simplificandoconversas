@@ -301,7 +301,7 @@ export function DeliveryFlowDialog({ open, onOpenChange, product, workspaceId, u
       const phoneForUrl = existingPhone || normalized;
 
       const { error: memberProductError } = await supabase.from("member_products").upsert(
-        { workspace_id: workspaceId, product_id: product.id, phone: phoneForUrl, is_active: true } as any,
+        { workspace_id: workspaceId, product_id: product.id, phone: phoneForUrl, title: product.name, is_active: true } as any,
         { onConflict: "product_id,phone" }
       );
       if (memberProductError) throw memberProductError;

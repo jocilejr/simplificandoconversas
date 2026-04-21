@@ -1,3 +1,11 @@
+# CORS origin map
+map $http_origin $cors_origin {
+    "https://${APP_DOMAIN}"    "https://${APP_DOMAIN}";
+    "https://${MEMBER_DOMAIN}" "https://${MEMBER_DOMAIN}";
+    ~*^chrome-extension://     $http_origin;
+    default                    "https://${APP_DOMAIN}";
+}
+
 # ─── Frontend (APP_DOMAIN) ───
 server {
     listen 80;
@@ -139,11 +147,7 @@ server {
     server_name ${API_DOMAIN} nginx localhost;
     client_max_body_size 50M;
 
-    # CORS: allow APP_DOMAIN and chrome-extension origins
-    set $cors_origin "https://${APP_DOMAIN}";
-    if ($http_origin ~* "^chrome-extension://") {
-        set $cors_origin $http_origin;
-    }
+    # cors_origin resolved by map directive
 
     # PostgREST (supabase-js compatibility)
     location /rest/v1/ {

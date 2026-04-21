@@ -207,13 +207,14 @@ function ProductContentEditor({ productId, workspaceId }: { productId: string; w
   const updateMatMutation = useMutation({
     mutationFn: async () => {
       if (!editingMaterial || !matTitle) throw new Error("Título é obrigatório");
+      console.log("[updateMat] content_url:", matUrl, "id:", editingMaterial.id);
       const { error } = await supabase.from("member_product_materials" as any).update({
         category_id: matCategoryId && matCategoryId !== "none" ? matCategoryId : null,
         title: matTitle, description: matDesc || null, content_type: matType,
         content_url: matUrl || null, content_text: matText || null,
         button_label: matType === "text" && matButtonLabel ? matButtonLabel : null,
       }).eq("id", editingMaterial.id);
-      if (error) throw error;
+      if (error) { console.error("[updateMat] error:", error); throw error; }
     },
     onSuccess: () => { toast.success("Material atualizado!"); queryClient.invalidateQueries({ queryKey: ["admin-materials", productId] }); resetMatForm(); },
     onError: (e: Error) => toast.error(e.message),
@@ -358,7 +359,7 @@ function ProductContentEditor({ productId, workspaceId }: { productId: string; w
                     )}
                   </div>
                 )}
-                <Button className="w-full" onClick={() => editingMaterial ? updateMatMutation.mutate() : addMatMutation.mutate()} disabled={addMatMutation.isPending || updateMatMutation.isPending}>
+                <Button className="w-full" onClick={() => editingMaterial ? updateMatMutation.mutate() : addMatMutation.mutate()} disabled={addMatMutation.isPending || updateMatMutation.isPending || uploading}>
                   {editingMaterial ? "Salvar Alterações" : "Adicionar Material"}
                 </Button>
               </div>

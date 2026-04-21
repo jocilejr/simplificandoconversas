@@ -140,6 +140,7 @@ function MemberProductsTab() {
           workspace_id: workspaceId,
           phone: normalizedPhone,
           product_id: newProductId,
+          title: products?.find((p: any) => p.id === newProductId)?.name || '',
           is_active: true,
         } as any,
         { onConflict: "product_id,phone" }

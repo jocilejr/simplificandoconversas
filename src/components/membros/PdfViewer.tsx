@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Loader2, ZoomIn, ZoomOut, RotateCcw } from "
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
@@ -56,6 +56,12 @@ export default function PdfViewer({ url, themeColor, preloadedPdf, phone, materi
       return;
     }
 
+    if (!url) {
+      setError("URL do PDF não configurada.");
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -68,7 +74,8 @@ export default function PdfViewer({ url, themeColor, preloadedPdf, phone, materi
         setTotalPages(doc.numPages);
         setCurrentPage(1);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[PdfViewer] load error:", err?.message || err);
         if (!cancelled) setError("Não foi possível carregar o PDF.");
       })
       .finally(() => {

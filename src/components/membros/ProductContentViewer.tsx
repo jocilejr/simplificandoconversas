@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 import MaterialCard from "./MaterialCard";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 interface Props {
   productId: string;

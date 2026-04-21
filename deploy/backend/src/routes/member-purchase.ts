@@ -192,7 +192,7 @@ router.post("/", async (req, res) => {
           amount: Number(amount),
           type: "boleto",
           status: STATUS_MAP[mpData.status] || "pendente",
-          source: "mercadopago",
+          source: "member-area",
           external_id: String(mpData.id),
           customer_name,
           customer_phone: normalizedPhone,

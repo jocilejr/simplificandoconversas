@@ -39,7 +39,10 @@ export default function MaterialCard({ material, themeColor, preloadedPdf, phone
   const Icon = config.icon;
   const videoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const hasContent = material.content_type !== "pdf" || !!material.content_url;
+
   const handleOpen = () => {
+    if (!hasContent) return;
     onOpen?.();
     if (material.content_type === "pdf") setPdfOpen(true);
     else setOpen(true);
@@ -71,7 +74,8 @@ export default function MaterialCard({ material, themeColor, preloadedPdf, phone
     <>
       <button
         onClick={handleOpen}
-        className="group relative w-full text-left rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 overflow-hidden"
+        disabled={!hasContent}
+        className={"group relative w-full text-left rounded-xl border shadow-sm overflow-hidden transition-all duration-300 " + (hasContent ? "bg-white border-gray-200 hover:shadow-lg hover:-translate-y-0.5" : "bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed")}
       >
         <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl transition-all duration-300 group-hover:w-2" style={{ backgroundColor: config.accent }} />
         <div className="pl-6 pr-5 py-5 flex items-start gap-4">
