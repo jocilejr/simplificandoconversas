@@ -25,6 +25,7 @@ export class GroupSchedulerManager {
   private timers = new Map<string, NodeJS.Timeout>();
   private diagnostics = new Map<string, SchedulerDiagnostic>();
   private processDebounce = new Map<string, NodeJS.Timeout>();
+  private firingNow = new Set<string>();
 
   /** Debounced queue/process trigger — groups multiple fires into one call */
   private triggerQueueProcess(workspaceId: string, msgId: string, batch: string): void {
@@ -335,6 +336,10 @@ export class GroupSchedulerManager {
     nextRun: Date,
     options?: { preserveDiagnostic?: boolean },
   ): void {
+    // Cancel any existing timer to prevent duplicate fires
+    const existingTimer = this.timers.get(msgId);
+    if (existingTimer) clearTimeout(existingTimer);
+
     const delayMs = Math.max(nextRun.getTime() - Date.now(), 1000); // min 1s
     
     // Node.js setTimeout max is ~24.8 days (2^31 - 1 ms). For longer delays, chain.
@@ -386,6 +391,19 @@ export class GroupSchedulerManager {
   }
 
   private async fireMessage(msgId: string, scheduleType: string, content: any, campaignId: string): Promise<void> {
+    if (this.firingNow.has(msgId)) {
+      console.log(`[scheduler] ⏭ Duplicate fire blocked for msg ${msgId.slice(0, 8)}`);
+      return;
+    }
+    this.firingNow.add(msgId);
+    try {
+      await this._fireMessageInner(msgId, scheduleType, content, campaignId);
+    } finally {
+      this.firingNow.delete(msgId);
+    }
+  }
+
+  private async _fireMessageInner(msgId: string, scheduleType: string, content: any, campaignId: string): Promise<void> {
     const sb = getServiceClient();
     const now = new Date().toISOString();
 

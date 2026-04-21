@@ -1189,10 +1189,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
         continue;
       }
 
-      let lastSendErr: any = null;
-      let sendSucceeded = false;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
+      try {
         const encoded = encodeURIComponent(item.instance_name);
         const content = item.content as any;
         const mentionsEveryOne = content.mentionsEveryOne || content.mentionAll || false;
@@ -1207,7 +1204,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
           });
-          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
+          if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "audio") {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_audio_url: ${JSON.stringify(content)}`);
@@ -1217,7 +1214,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
           });
-          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
+          if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "contact") {
           // Form salva como { contactName, contactPhone, useInstanceNumber? }. Aceitar também { fullName, phoneNumber } e array { contacts: [...] }.
           const useInstanceNumber = content.useInstanceNumber === true;
@@ -1277,7 +1274,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, contact: contacts, mentionsEveryOne }),
           });
-          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
+          if (!r.ok) throw new Error(await r.text());
         } else {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_media_url: ${JSON.stringify(content)}`);
@@ -1294,24 +1291,9 @@ router.post("/queue/process", async (req: Request, res: Response) => {
               mentionsEveryOne,
             }),
           });
-          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
+          if (!r.ok) throw new Error(await r.text());
         }
 
-          sendSucceeded = true;
-          break;
-        } catch (err: any) {
-          lastSendErr = err;
-          const isNetworkError = !err.isHttpError;
-          if (isNetworkError && attempt < 2) {
-            console.warn("[groups-queue] Network error attempt " + (attempt + 1) + "/3 for " + (item.group_name || item.group_jid) + ": " + err.message + ". Retrying in 20s...");
-            await new Promise(r => setTimeout(r, 20000));
-          } else if (!isNetworkError) {
-            break;
-          }
-        }
-      }
-
-      if (sendSucceeded) {
         await sb.from("group_message_queue").update({ status: "sent", completed_at: new Date().toISOString() }).eq("id", item.id);
         if (item.scheduled_message_id) {
           groupScheduler.recordDiagnostic(item.scheduled_message_id, {
@@ -1324,14 +1306,14 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           });
         }
         sent++;
-      } else {
+      } catch (sendErr: any) {
         if (item.scheduled_message_id) {
           groupScheduler.recordDiagnostic(item.scheduled_message_id, {
             status_code: "failed",
             status_label: "Falhou",
             reason_code: "send_api_error",
             reason_label: "Falha ao enviar pela API do WhatsApp",
-            reason_details: lastSendErr?.message || String(lastSendErr),
+            reason_details: sendErr?.message || String(sendErr),
             diagnostics: { group_jid: item.group_jid, queue_item_id: item.id },
           });
         }
@@ -1340,7 +1322,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           error_message: encodeDiagnosticMessage(
             "send_api_error",
             "Falha ao enviar pela API do WhatsApp",
-            lastSendErr?.message || String(lastSendErr),
+            sendErr?.message || String(sendErr),
           ),
           completed_at: new Date().toISOString(),
         }).eq("id", item.id);
