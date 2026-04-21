@@ -276,6 +276,42 @@ cron.schedule("*/15 * * * *", async () => {
   }
 });
 
+
+// -- Instance Reset Scheduler (every minute) --
+cron.schedule("* * * * *", async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+    const { data: configs } = await sb.from("instance_reset_config").select("*").eq("enabled", true);
+    if (!configs || configs.length === 0) return;
+    const now = new Date();
+    for (const cfg of configs) {
+      const lastReset = cfg.last_reset_at ? new Date(cfg.last_reset_at) : null;
+      const intervalMs = cfg.interval_minutes * 60 * 1000;
+      if (lastReset && (now.getTime() - lastReset.getTime()) < intervalMs) continue;
+      try {
+        const encodedName = encodeURIComponent(cfg.instance_name);
+        const evolutionUrl = process.env.EVOLUTION_URL || "";
+        const evolutionKey = process.env.EVOLUTION_API_KEY || "";
+        const resp = await fetch(evolutionUrl + "/instance/restart/" + encodedName, {
+          method: "POST",
+          headers: { apikey: evolutionKey },
+        });
+        if (resp.ok) {
+          await sb.from("instance_reset_config").update({ last_reset_at: now.toISOString(), updated_at: now.toISOString() }).eq("id", cfg.id);
+          console.log("[instance-reset] Restarted " + cfg.instance_name + " (interval: " + cfg.interval_minutes + "min)");
+        } else {
+          console.error("[instance-reset] Failed to restart " + cfg.instance_name + ": " + resp.status);
+        }
+      } catch (e) {
+        console.error("[instance-reset] Error restarting " + cfg.instance_name + ":", e.message);
+      }
+    }
+  } catch (err) {
+    console.error("[cron] instance-reset error:", err.message);
+  }
+});
+
 const PORT = parseInt(process.env.PORT || "3001");
 app.listen(PORT, async () => {
   console.log(`Backend running on port ${PORT}`);

@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -11,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { useMessageQueueConfig } from "@/hooks/useMessageQueueConfig";
+import { useInstanceResetConfig } from "@/hooks/useInstanceResetConfig";
 import { useQueueStatus, useClearQueueHistory, type QueueStatus, type QueueHistoryItem } from "@/hooks/useQueueStatus";
 import {
   Dialog,
@@ -40,6 +42,7 @@ import {
   ServerCrash,
   QrCode,
   RefreshCw,
+  RotateCw,
   RotateCcw,
   MessageSquareX,
   Settings,
@@ -91,8 +94,10 @@ export function ConnectionsSection() {
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const { configs: queueConfigs, upsertConfig } = useMessageQueueConfig();
+  const { getConfig: getResetConfig, upsertConfig: upsertResetConfig } = useInstanceResetConfig();
   const { data: queueStatuses = [] } = useQueueStatus();
   const [queueLocal, setQueueLocal] = useState<Record<string, { delay?: string; pauseSends?: string; pauseMin?: string }>>({});
+  const [resetLocal, setResetLocal] = useState<Record<string, { enabled?: boolean; value?: string; unit?: string }>>({});
   const [queueDialogInstance, setQueueDialogInstance] = useState<string | null>(null);
   const clearHistory = useClearQueueHistory();
 
@@ -500,6 +505,78 @@ export function ConnectionsSection() {
                             >
                               Salvar
                             </Button>
+
+                            {/* Reset Periodico */}
+                            {(() => {
+                              const resetCfg = getResetConfig(inst.instance_name);
+                              const resetLoc = resetLocal[inst.instance_name] || {};
+                              const currentEnabled = resetLoc.enabled !== undefined ? resetLoc.enabled : (resetCfg?.enabled ?? false);
+                              const storedMinutes = resetCfg?.interval_minutes ?? 60;
+                              const storedUnit = (storedMinutes >= 60 && storedMinutes % 60 === 0) ? "horas" : "minutos";
+                              const storedValue = storedUnit === "horas" ? String(storedMinutes / 60) : String(storedMinutes);
+                              const currentUnit = resetLoc.unit !== undefined ? resetLoc.unit : storedUnit;
+                              const currentValue = resetLoc.value !== undefined ? resetLoc.value : storedValue;
+                              return (
+                                <div className="border-t border-border/50 pt-3 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                      <RotateCw className="h-3 w-3 text-muted-foreground" />
+                                      <p className="text-xs font-medium text-foreground">Reset Periodico</p>
+                                    </div>
+                                    <Switch
+                                      checked={currentEnabled}
+                                      onCheckedChange={(v) => setResetLocal((prev) => ({ ...prev, [inst.instance_name]: { ...prev[inst.instance_name], enabled: v } }))}
+                                    />
+                                  </div>
+                                  {currentEnabled && (
+                                    <div className="space-y-1">
+                                      <Label className="text-[11px] text-muted-foreground">Reiniciar a cada</Label>
+                                      <div className="flex items-center gap-1.5">
+                                        <Input
+                                          type="number"
+                                          min={1}
+                                          max={999}
+                                          value={currentValue}
+                                          onChange={(e) => setResetLocal((prev) => ({ ...prev, [inst.instance_name]: { ...prev[inst.instance_name], value: e.target.value } }))}
+                                          className="h-8 text-sm text-center"
+                                        />
+                                        <select
+                                          value={currentUnit}
+                                          onChange={(e) => setResetLocal((prev) => ({ ...prev, [inst.instance_name]: { ...prev[inst.instance_name], unit: e.target.value } }))}
+                                          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                                        >
+                                          <option value="minutos">min</option>
+                                          <option value="horas">h</option>
+                                        </select>
+                                      </div>
+                                    </div>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    className="w-full h-7 text-xs"
+                                    variant="secondary"
+                                    disabled={upsertResetConfig.isPending}
+                                    onClick={() => {
+                                      const val = Math.max(1, parseInt(currentValue) || 1);
+                                      const intervalMin = currentUnit === "horas" ? val * 60 : val;
+                                      upsertResetConfig.mutate({
+                                        instanceName: inst.instance_name,
+                                        enabled: currentEnabled,
+                                        intervalMinutes: intervalMin,
+                                      }, {
+                                        onSuccess: () => {
+                                          toast({ title: currentEnabled ? ("Reset a cada " + val + " " + currentUnit + " ativado") : "Reset periodico desativado" });
+                                          setResetLocal((prev) => { const n = { ...prev }; delete n[inst.instance_name]; return n; });
+                                        },
+                                        onError: () => toast({ title: "Erro ao salvar reset", variant: "destructive" }),
+                                      });
+                                    }}
+                                  >
+                                    Salvar reset
+                                  </Button>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })()}
