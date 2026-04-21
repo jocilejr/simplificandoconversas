@@ -1207,7 +1207,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
           });
-          if (!r.ok) throw new Error(await r.text());
+          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
         } else if (item.message_type === "audio") {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_audio_url: ${JSON.stringify(content)}`);
@@ -1217,7 +1217,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
           });
-          if (!r.ok) throw new Error(await r.text());
+          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
         } else if (item.message_type === "contact") {
           // Form salva como { contactName, contactPhone, useInstanceNumber? }. Aceitar também { fullName, phoneNumber } e array { contacts: [...] }.
           const useInstanceNumber = content.useInstanceNumber === true;
@@ -1277,7 +1277,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, contact: contacts, mentionsEveryOne }),
           });
-          if (!r.ok) throw new Error(await r.text());
+          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
         } else {
           if (!mediaUrl || typeof mediaUrl !== "string") {
             throw new Error(`invalid_media_url: ${JSON.stringify(content)}`);
@@ -1294,16 +1294,19 @@ router.post("/queue/process", async (req: Request, res: Response) => {
               mentionsEveryOne,
             }),
           });
-          if (!r.ok) throw new Error(await r.text());
+          if (!r.ok) { const _e = new Error(await r.text()); (_e as any).isHttpError = true; throw _e; }
         }
 
           sendSucceeded = true;
           break;
         } catch (err: any) {
           lastSendErr = err;
-          if (attempt < 2) {
-            console.warn(`[groups-queue] Attempt ${attempt + 1}/3 failed for ${item.group_name || item.group_jid}: ${err.message}. Retrying in 20s...`);
+          const isNetworkError = !err.isHttpError;
+          if (isNetworkError && attempt < 2) {
+            console.warn("[groups-queue] Network error attempt " + (attempt + 1) + "/3 for " + (item.group_name || item.group_jid) + ": " + err.message + ". Retrying in 20s...");
             await new Promise(r => setTimeout(r, 20000));
+          } else if (!isNetworkError) {
+            break;
           }
         }
       }
@@ -1341,15 +1344,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           ),
           completed_at: new Date().toISOString(),
         }).eq("id", item.id);
-        await sb.from("group_message_queue").update({
-          status: "failed",
-          error_message: encodeDiagnosticMessage(
-            "send_api_error",
-            "Falha ao enviar pela API do WhatsApp",
-            lastSendErr?.message || String(lastSendErr),
-          ),
-          completed_at: new Date().toISOString(),
-        }).eq("id", item.id);
+
         failed++;
       }
 
