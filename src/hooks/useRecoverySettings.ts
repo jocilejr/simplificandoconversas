@@ -31,6 +31,8 @@ export function useRecoverySettings() {
       instance_boleto?: string | null;
       instance_pix?: string | null;
       instance_yampi?: string | null;
+      recovery_message_pix?: string | null;
+      recovery_message_abandoned?: string | null;
     }) => {
       if (!workspaceId || !user?.id) throw new Error("No workspace");
 

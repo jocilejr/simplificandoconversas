@@ -319,21 +319,24 @@ export async function dispatchRecovery(opts: {
       ? "recovery_message_abandoned"
       : "recovery_message_pix";
 
-    const { data: profile, error: profileError } = await sb
-      .from("profiles")
-      .select("recovery_message_pix, recovery_message_abandoned")
-      .eq("user_id", opts.userId)
-      .maybeSingle();
+    // Read from recovery_settings (workspace-level) so all operators share one template.
+    // Fallback to workspace owner profile for rows that predate this migration.
+    let message: string | null = (settings as any)?.[fieldKey] || null;
 
-    if (profileError) {
-      console.error(`[recovery-dispatch] Profile query error for user ${opts.userId}: ${profileError.message}`);
+    if (!message) {
+      const { data: profile } = await sb
+        .from("profiles")
+        .select("recovery_message_pix, recovery_message_abandoned")
+        .eq("user_id", opts.userId)
+        .maybeSingle();
+      message = (profile as any)?.[fieldKey] || null;
+      console.log(`[recovery-dispatch] Fallback to profile for user ${opts.userId}: field=${fieldKey}, hasMessage=${!!message}`);
+    } else {
+      console.log(`[recovery-dispatch] Message from recovery_settings: workspace=${opts.workspaceId}, field=${fieldKey}, length=${message.length}`);
     }
 
-    const message = (profile as any)?.[fieldKey];
-    console.log(`[recovery-dispatch] Profile loaded for user ${opts.userId}: field=${fieldKey}, hasMessage=${!!message}, messageLength=${message?.length || 0}`);
-
     if (!message || !message.trim()) {
-      console.log(`[recovery-dispatch] FAIL — No ${fieldKey} message configured for user ${opts.userId}. Configure via modal.`);
+      console.log(`[recovery-dispatch] FAIL -- No ${fieldKey} configured for workspace ${opts.workspaceId}. Configure via modal.`);
       await sb.from("recovery_queue").insert({
         workspace_id: opts.workspaceId,
         user_id: opts.userId,
@@ -343,13 +346,13 @@ export async function dispatchRecovery(opts: {
         amount: opts.amount,
         transaction_type: txType,
         status: "failed",
-        error_message: `Nenhuma mensagem de recuperação configurada para ${fieldKey}. Configure no modal de configuração.`,
+        error_message: `Nenhuma mensagem de recuperacao configurada para ${fieldKey}. Configure no modal.`,
         scheduled_at: new Date().toISOString(),
       });
       return;
     }
 
-    blocks = [{ id: "profile-text", type: "text", content: message }];
+    blocks = [{ id: "workspace-text", type: "text", content: message }];
   }
 
   console.log(`[recovery-dispatch] Template loaded: ${blocks.length} block(s) [${blocks.map(b => b.type).join(", ")}]`);

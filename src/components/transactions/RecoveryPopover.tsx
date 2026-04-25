@@ -67,10 +67,11 @@ export function RecoveryPopover({
       toast.error("Telefone não disponível");
       return;
     }
+    navigator.clipboard.writeText(formattedMessage);
     onSendWhatsApp(transaction.customer_phone!, formattedMessage);
     onRecoveryClick();
     setOpen(false);
-    toast.success("Mensagem enviada via extensão!");
+    toast.success("Mensagem copiada! Abrindo WhatsApp...");
   };
 
   return (

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Settings2, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
-import { useProfile } from "@/hooks/useProfile";
+import { useRecoverySettings } from "@/hooks/useRecoverySettings";
 import {
   Tooltip,
   TooltipContent,
@@ -32,30 +32,30 @@ const DEFAULT_ABANDONED_MSG = `{saudação}, {primeiro_nome}! 😊\n\nVi que voc
 export function RecoverySettingsDialog({ type }: RecoverySettingsDialogProps) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
-  const { profile, updateProfile } = useProfile();
+  const { settings, upsert } = useRecoverySettings();
 
   const fieldKey = type === "boleto" ? "recovery_message_boleto" : type === "pix" ? "recovery_message_pix" : "recovery_message_abandoned";
   const defaultMsg = type === "boleto" ? DEFAULT_BOLETO_MSG : type === "pix" ? DEFAULT_PIX_MSG : DEFAULT_ABANDONED_MSG;
   const title = type === "boleto" ? "Mensagem de Recuperação - Boletos" : type === "pix" ? "Mensagem de Recuperação - PIX/Cartão" : "Mensagem de Recuperação - Rejeitados/Abandonados";
 
   useEffect(() => {
-    if (open && profile) {
-      setMessage((profile as any)?.[fieldKey] || defaultMsg);
+    if (open) {
+      setMessage((settings as any)?.[fieldKey] || defaultMsg);
     }
-  }, [open, profile]);
+  }, [open, settings]);
 
   const handleSave = async () => {
     if (!message.trim()) {
       toast.error("Digite uma mensagem");
       return;
     }
-    try {
-      await updateProfile.mutateAsync({ [fieldKey]: message.trim() } as any);
-      toast.success("Mensagem atualizada!");
-      setOpen(false);
-    } catch {
-      toast.error("Erro ao atualizar");
-    }
+    upsert.mutate({ [fieldKey]: message.trim() } as any, {
+      onSuccess: () => {
+        toast.success("Mensagem atualizada!");
+        setOpen(false);
+      },
+      onError: () => toast.error("Erro ao atualizar"),
+    });
   };
 
   return (
@@ -113,8 +113,8 @@ export function RecoverySettingsDialog({ type }: RecoverySettingsDialogProps) {
             <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={updateProfile.isPending}>
-              {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            <Button size="sm" onClick={handleSave} disabled={upsert.isPending}>
+              {upsert.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Salvar
             </Button>
           </div>

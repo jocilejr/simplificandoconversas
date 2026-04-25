@@ -31,7 +31,7 @@ import { TransactionDetailDialog } from "./TransactionDetailDialog";
 import { RecoveryPopover } from "./RecoveryPopover";
 import { useWhatsAppExtension } from "@/hooks/useWhatsAppExtension";
 import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
-import { useProfile } from "@/hooks/useProfile";
+import { useRecoverySettings } from "@/hooks/useRecoverySettings";
 import { RecoverySettingsDialog } from "./RecoverySettingsDialog";
 import { BoletoRecoveryModal } from "./BoletoRecoveryModal";
 import { BoletoQuickRecovery } from "./BoletoQuickRecovery";
@@ -115,8 +115,8 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const queryClient = useQueryClient();
   const { hasUnseen, markSeen, markTabSeen } = useUnseenTransactions();
   // Recovery hooks
-  const { profile } = useProfile();
-  const { sendText, isConnected: isExtensionConnected } = useWhatsAppExtension();
+  const { settings: recoverySettings } = useRecoverySettings();
+  const { openChat, isConnected: isExtensionConnected } = useWhatsAppExtension();
 
   // Get pending transaction IDs for recovery clicks
   const pendingTxIds = useMemo(() =>
@@ -131,12 +131,13 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
 
   const getRecoveryMessage = (tab: TabKey) => {
     if (tab === "boletos-gerados") {
-      return (profile as any)?.recovery_message_boleto || DEFAULT_BOLETO_MSG;
+      // Boleto uses its own template system (boleto_recovery_templates), no workspace-level text
+      return DEFAULT_BOLETO_MSG;
     }
     if (tab === "pix-cartao-pendentes") {
-      return (profile as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
+      return (recoverySettings as any)?.recovery_message_pix || DEFAULT_PIX_MSG;
     }
-    return (profile as any)?.recovery_message_abandoned || DEFAULT_ABANDONED_MSG;
+    return (recoverySettings as any)?.recovery_message_abandoned || DEFAULT_ABANDONED_MSG;
   };
 
   const handleRowClick = (tx: Transaction) => {
@@ -538,7 +539,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                   transaction={tx}
                   recoveryMessage={getRecoveryMessage(activeTab)}
                   clickCount={getClickCount(tx.id)}
-                  onSendWhatsApp={sendText}
+                  onSendWhatsApp={(phone) => openChat(phone)}
                   onRecoveryClick={() => addClick.mutate({
                     transactionId: tx.id,
                     recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,
@@ -719,7 +720,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                             transaction={tx}
                             recoveryMessage={getRecoveryMessage(activeTab)}
                             clickCount={getClickCount(tx.id)}
-                            onSendWhatsApp={sendText}
+                            onSendWhatsApp={(phone) => openChat(phone)}
                             onRecoveryClick={() => addClick.mutate({
                               transactionId: tx.id,
                               recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,
