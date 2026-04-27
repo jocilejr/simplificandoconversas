@@ -89,55 +89,6 @@ services:
       placement:
         constraints: [node.role == manager]
 
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - sc_redis:/data
-    networks:
-      - internal
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [node.role == manager]
-
-  evolution:
-    image: evoapicloud/evolution-api:v2.3.7
-    environment:
-      SERVER_URL: ${API_URL}
-      SERVER_PORT: "8080"
-      AUTHENTICATION_TYPE: apikey
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/evolution
-      DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
-      DATABASE_SAVE_DATA_LABELS: "false"
-      DATABASE_SAVE_DATA_HISTORIC: "true"
-      WEBHOOK_GLOBAL_URL: http://backend:3001/api/webhook
-      WEBHOOK_GLOBAL_ENABLED: "true"
-      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "true"
-      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
-      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
-      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
-      WEBHOOK_EVENTS_SEND_MESSAGE: "true"
-      CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://redis:6379
-      CACHE_REDIS_PREFIX_KEY: evolution
-    volumes:
-      - sc_evolution_instances:/evolution/instances
-      - sc_evolution_store:/evolution/store
-    networks:
-      - internal
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [node.role == manager]
-
-
   baileys-gateway:
     image: simplificando-baileys:latest
     environment:
@@ -146,6 +97,7 @@ services:
       BAILEYS_API_KEY: ${BAILEYS_API_KEY}
       WEBHOOK_GLOBAL_URL: http://backend:3001/api/webhook
       GROUPS_WEBHOOK_URL: http://backend:3001/api/groups/webhook/events
+      API_URL: ${API_URL}
       LOG_LEVEL: info
     networks:
       - internal
@@ -164,8 +116,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       GOTRUE_URL: http://gotrue:9999
       STORAGE_URL: http://storage:5000
-      EVOLUTION_URL: http://evolution:8080
-      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      BAILEYS_URL: http://baileys-gateway:8080
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY}
       APP_URL: ${APP_URL}
       API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
@@ -202,19 +154,15 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.docker.network=PrincipalNet"
-        # Frontend
         - "traefik.http.routers.sc-app.rule=Host(`${APP_DOMAIN}`)"
         - "traefik.http.routers.sc-app.entrypoints=websecure"
         - "traefik.http.routers.sc-app.tls.certresolver=letsencryptresolver"
-        # API
         - "traefik.http.routers.sc-api.rule=Host(`${API_DOMAIN}`)"
         - "traefik.http.routers.sc-api.entrypoints=websecure"
         - "traefik.http.routers.sc-api.tls.certresolver=letsencryptresolver"
-        # Membros
         - "traefik.http.routers.sc-membros.rule=Host(`${MEMBER_DOMAIN}`)"
         - "traefik.http.routers.sc-membros.entrypoints=websecure"
         - "traefik.http.routers.sc-membros.tls.certresolver=letsencryptresolver"
-        # Service port
         - "traefik.http.services.sc-nginx.loadbalancer.server.port=80"
 
 networks:
@@ -230,15 +178,6 @@ volumes:
   sc_storagedata:
     external: true
     name: simplificando_chatbot_storagedata
-  sc_evolution_instances:
-    external: true
-    name: simplificando_chatbot_evolution_instances
-  sc_evolution_store:
-    external: true
-    name: simplificando_chatbot_evolution_store
-  sc_redis:
-    external: true
-    name: simplificando_chatbot_redis
   sc_media:
     external: true
     name: simplificando_chatbot_media
