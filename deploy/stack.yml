@@ -137,6 +137,23 @@ services:
       placement:
         constraints: [node.role == manager]
 
+
+  baileys-gateway:
+    image: simplificando-baileys:latest
+    environment:
+      PORT: '8080'
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY}
+      WEBHOOK_GLOBAL_URL: http://backend:3001/api/webhook
+      GROUPS_WEBHOOK_URL: http://backend:3001/api/groups/webhook/events
+      LOG_LEVEL: info
+    networks:
+      - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
   backend:
     image: simplificando-backend
     environment:
