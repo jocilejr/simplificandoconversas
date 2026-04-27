@@ -31,7 +31,7 @@ import memberPurchaseRouter from "./routes/member-purchase";
 import { getAllQueuesStatus, clearQueueHistory } from "./lib/message-queue";
 import mediaManagerRouter from "./routes/media-manager";
 import { groupScheduler } from "./lib/group-scheduler";
-import { cleanBaileysKeys } from "./lib/redis-cleanup";
+import { baileysRequest } from "./lib/baileys-config";
 import syncMetaAdsRouter from "./routes/sync-meta-ads";
 
 
@@ -294,25 +294,12 @@ cron.schedule("* * * * *", async () => {
       if (lastReset && (now.getTime() - lastReset.getTime()) < intervalMs) continue;
       try {
         const encodedName = encodeURIComponent(cfg.instance_name);
-        const evolutionUrl = process.env.EVOLUTION_URL || "";
-        const evolutionKey = process.env.EVOLUTION_API_KEY || "";
-        // Pre-restart: clean Baileys Redis keys
-        await cleanBaileysKeys(" pre-restart:" + cfg.instance_name);
-
-        const resp = await fetch(evolutionUrl + "/instance/restart/" + encodedName, {
-          method: "POST",
-          headers: { apikey: evolutionKey },
-        });
-        if (resp.ok) {
+        try {
+          await baileysRequest("/instance/restart/" + encodedName, "PUT");
           await sb.from("instance_reset_config").update({ last_reset_at: now.toISOString(), updated_at: now.toISOString() }).eq("id", cfg.id);
           console.log("[instance-reset] Restarted " + cfg.instance_name + " (interval: " + cfg.interval_minutes + "min)");
-          // Post-reconnect cleanup: Baileys gera novas protocol_* keys ao reconectar
-          setTimeout(() => {
-            cleanBaileysKeys(" post-reconnect:" + cfg.instance_name)
-              .catch((e: any) => console.error("[instance-reset] post-reconnect cleanup error:", e.message));
-          }, 90000);
-        } else {
-          console.error("[instance-reset] Failed to restart " + cfg.instance_name + ": " + resp.status);
+        } catch (e: any) {
+          console.error("[instance-reset] Failed to restart " + cfg.instance_name + ": " + e.message);
         }
       } catch (e) {
         console.error("[instance-reset] Error restarting " + cfg.instance_name + ":", e.message);
