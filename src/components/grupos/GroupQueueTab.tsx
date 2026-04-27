@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   XCircle, Clock, Loader2, CheckCircle2, AlertCircle,
   Settings2, Save, Inbox, MessageSquare, Image, FileText,
-  Music, Video, Ban, Trash2,
+  Music, Video, Ban, Trash2, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -118,12 +118,18 @@ function SpamConfigDialog() {
 }
 
 export default function GroupQueueTab() {
-  const { queueItems, isLoading, cancelBatch, clearQueue, stats } = useGroupQueue();
+  const { queueItems, isLoading, cancelBatch, retryBatch, clearQueue, stats } = useGroupQueue();
   const [clearFilter, setClearFilter] = useState<"sent_failed" | "all" | null>(null);
 
-  const batches = [...new Set(
+  const cancelBatches = [...new Set(
     queueItems
       .filter((i: any) => i.execution_batch && i.status === "pending")
+      .map((i: any) => i.execution_batch)
+  )];
+
+  const retryBatches = [...new Set(
+    queueItems
+      .filter((i: any) => i.execution_batch && (i.status === "failed" || i.status === "cancelled"))
       .map((i: any) => i.execution_batch)
   )];
 
@@ -144,7 +150,7 @@ export default function GroupQueueTab() {
           {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </div>
         <div className="flex items-center gap-2">
-          {batches.map((b: string) => (
+          {cancelBatches.map((b: string) => (
             <Button
               key={b}
               variant="ghost"
@@ -153,6 +159,19 @@ export default function GroupQueueTab() {
               onClick={() => cancelBatch.mutate(b)}
             >
               <Ban className="h-3 w-3" /> Cancelar batch
+            </Button>
+          ))}
+
+          {retryBatches.map((b: string) => (
+            <Button
+              key={b}
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 text-xs"
+              onClick={() => retryBatch.mutate(b)}
+              disabled={retryBatch.isPending}
+            >
+              <RotateCcw className="h-3 w-3" /> Tentar novamente
             </Button>
           ))}
 
@@ -231,6 +250,7 @@ export default function GroupQueueTab() {
                 const cfg = statusConfig[item.status] || statusConfig.pending;
                 const TypeIcon = typeIcon[item.message_type] || MessageSquare;
                 const isProcessing = item.status === "processing";
+                const isRetryable = (item.status === "failed" || item.status === "cancelled") && item.execution_batch;
 
                 return (
                   <div key={item.id} className="relative group hover:bg-muted/20 transition-colors">
@@ -256,6 +276,20 @@ export default function GroupQueueTab() {
                         <span className="text-[10px] text-destructive truncate max-w-[180px] hidden lg:block">
                           {item.error_message}
                         </span>
+                      )}
+
+                      {/* Retry button (visible on hover for failed/cancelled) */}
+                      {isRetryable && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:text-primary hover:bg-primary/10"
+                          onClick={() => retryBatch.mutate(item.execution_batch)}
+                          disabled={retryBatch.isPending}
+                          title="Tentar novamente"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </Button>
                       )}
 
                       {/* Status badge */}

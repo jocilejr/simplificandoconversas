@@ -37,6 +37,25 @@ export function useGroupQueue() {
     },
   });
 
+  const retryBatch = useMutation({
+    mutationFn: async (batch: string) => {
+      const resp = await fetch(apiUrl("groups/queue/retry-batch"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch, workspaceId }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      return resp.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["group-queue"] });
+      toast({ title: `${data?.retried ?? 0} item(s) reenviado(s) para fila!` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao reenviar", description: err.message, variant: "destructive" });
+    },
+  });
+
   const clearQueue = useMutation({
     mutationFn: async (filter: "sent" | "failed" | "sent_failed" | "all") => {
       const resp = await fetch(apiUrl("groups/queue/clear"), {
@@ -63,7 +82,7 @@ export function useGroupQueue() {
     cancelled: queueItems.filter((i: any) => i.status === "cancelled").length,
   };
 
-  return { queueItems, isLoading, cancelBatch, clearQueue, stats };
+  return { queueItems, isLoading, cancelBatch, retryBatch, clearQueue, stats };
 }
 
 export function useSpamConfig() {

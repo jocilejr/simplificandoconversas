@@ -1352,6 +1352,28 @@ router.post("/queue/process", async (req: Request, res: Response) => {
   }
 });
 
+
+/* ─── POST /queue/retry-batch ─── */
+router.post("/queue/retry-batch", async (req: Request, res: Response) => {
+  try {
+    const { batch, workspaceId } = req.body;
+    if (!batch || !workspaceId) return res.status(400).json({ error: "batch and workspaceId required" });
+
+    const sb = getServiceClient();
+    const { data, error } = await sb
+      .from("group_message_queue")
+      .update({ status: "pending", started_at: null, error_message: null, completed_at: null })
+      .eq("execution_batch", batch)
+      .eq("workspace_id", workspaceId)
+      .in("status", ["failed", "cancelled"])
+      .select("id");
+    if (error) throw error;
+    res.json({ ok: true, retried: data?.length ?? 0 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ─── POST /queue/cancel-batch ─── */
 router.post("/queue/cancel-batch", async (req: Request, res: Response) => {
   try {
