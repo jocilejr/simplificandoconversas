@@ -20,6 +20,20 @@ async function ensureSock(req: any, res: any) {
   return inst.sock;
 }
 
+async function fetchThumbnailBuffer(imageUrl: string): Promise<Buffer | null> {
+  try {
+    const resp = await fetch(imageUrl, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "WhatsApp/2.24.6.77 A" },
+    });
+    if (!resp.ok) return null;
+    const ab = await resp.arrayBuffer();
+    return Buffer.from(ab);
+  } catch {
+    return null;
+  }
+}
+
 router.post("/sendText/:name", async (req, res) => {
   const sock = await ensureSock(req, res);
   if (!sock) return;
@@ -43,10 +57,23 @@ router.post("/sendText/:name", async (req, res) => {
         const url = extractUrlFromText(String(text));
         if (url) {
           const info = await getUrlInfo(url, {
-            thumbnailWidth: 480,
-            fetchOpts: { timeout: 8000 },
-          });
-          if (info) payload.linkPreview = info;
+            thumbnailWidth: 800,
+            fetchOpts: { timeout: 10000 },
+            uploadImage: (sock as any).waUploadToServer,
+          }) as any;
+          if (info) {
+            if (!info.jpegThumbnail && !info.thumbnailDirectPath) {
+              const thumbUrl: string | undefined =
+                info.originalThumbnailUrl ||
+                (Array.isArray(info.images) && info.images[0]) ||
+                undefined;
+              if (thumbUrl) {
+                const buf = await fetchThumbnailBuffer(thumbUrl);
+                if (buf) info.jpegThumbnail = buf;
+              }
+            }
+            payload.linkPreview = info;
+          }
         }
       } catch (previewErr: any) {
         console.warn("[sendText] linkPreview fetch failed:", previewErr.message);

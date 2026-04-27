@@ -362,25 +362,4 @@ server {
         add_header 'Access-Control-Allow-Origin' '*' always;
     }
 
-    # Evolution API
-    location /evolution/ {
-        if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' $cors_origin always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'authorization, x-client-info, apikey, content-type, accept, accept-profile, content-profile, x-supabase-api-version, prefer, range' always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Max-Age' 86400;
-            add_header 'Content-Length' 0;
-            return 204;
-        }
-        proxy_hide_header 'Access-Control-Allow-Origin';
-        proxy_hide_header 'Access-Control-Allow-Methods';
-        proxy_hide_header 'Access-Control-Allow-Headers';
-        proxy_hide_header 'Access-Control-Allow-Credentials';
-        add_header 'Access-Control-Allow-Origin' $cors_origin always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        proxy_pass http://evolution:8080/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
 }
