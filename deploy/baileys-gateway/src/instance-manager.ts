@@ -109,6 +109,7 @@ export async function startInstance(name: string): Promise<InstanceState> {
     browser: Browsers.ubuntu("Chrome"),
     syncFullHistory: false,
     markOnlineOnConnect: false,
+    generateHighQualityLinkPreview: true,
     getMessage: async (key) => {
       const msg = inst.msgStore.get(key.id!);
       return msg?.message ?? undefined;

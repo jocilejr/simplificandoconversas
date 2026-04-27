@@ -1,12 +1,11 @@
 import { Router } from "express";
 import { getInstance } from "../instance-manager";
-import { getUrlInfo, extractUrlFromText } from "@whiskeysockets/baileys";
 
 const router = Router();
 
 function jidFromNumber(num: string): string {
   const s = String(num).trim();
-  if (s.includes("@")) return s; // already a JID (group @g.us or personal @s.whatsapp.net)
+  if (s.includes("@")) return s;
   const digits = s.replace(/\D/g, "");
   return `${digits}@s.whatsapp.net`;
 }
@@ -18,20 +17,6 @@ async function ensureSock(req: any, res: any) {
     return null;
   }
   return inst.sock;
-}
-
-async function fetchThumbnailBuffer(imageUrl: string): Promise<Buffer | null> {
-  try {
-    const resp = await fetch(imageUrl, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "WhatsApp/2.24.6.77 A" },
-    });
-    if (!resp.ok) return null;
-    const ab = await resp.arrayBuffer();
-    return Buffer.from(ab);
-  } catch {
-    return null;
-  }
 }
 
 router.post("/sendText/:name", async (req, res) => {
@@ -52,32 +37,11 @@ router.post("/sendText/:name", async (req, res) => {
     const payload: any = { text: String(text) };
     if (mentionList.length > 0) payload.mentions = mentionList;
 
-    if (forceLinkPreview) {
-      try {
-        const url = extractUrlFromText(String(text));
-        if (url) {
-          const info = await getUrlInfo(url, {
-            thumbnailWidth: 800,
-            fetchOpts: { timeout: 10000 },
-            uploadImage: (sock as any).waUploadToServer,
-          }) as any;
-          if (info) {
-            if (!info.jpegThumbnail && !info.thumbnailDirectPath) {
-              const thumbUrl: string | undefined =
-                info.originalThumbnailUrl ||
-                (Array.isArray(info.images) && info.images[0]) ||
-                undefined;
-              if (thumbUrl) {
-                const buf = await fetchThumbnailBuffer(thumbUrl);
-                if (buf) info.jpegThumbnail = buf;
-              }
-            }
-            payload.linkPreview = info;
-          }
-        }
-      } catch (previewErr: any) {
-        console.warn("[sendText] linkPreview fetch failed:", previewErr.message);
-      }
+    // When forceLinkPreview=true: leave linkPreview undefined so Baileys
+    // auto-generates high-quality preview via waUploadToServer (large format).
+    // When false: set null to suppress the auto-generated preview.
+    if (!forceLinkPreview) {
+      payload.linkPreview = null;
     }
 
     const r = await sock.sendMessage(jid, payload);
@@ -124,15 +88,12 @@ router.post("/sendMedia/:name", async (req, res) => {
   }
 });
 
-// Compat com chamadas antigas /message/sendMediaPDF/:name
 router.post("/sendMediaPDF/:name", async (req, res) => {
   req.body = { ...req.body, mediatype: "document", mimetype: "application/pdf" };
   // @ts-ignore
   return router.handle({ ...req, url: `/sendMedia/${req.params.name}`, method: "POST" }, res, () => {});
 });
 
-
-// Compat Evolution sendWhatsAppAudio — audio via URL
 router.post("/sendWhatsAppAudio/:name", async (req, res) => {
   const sock = await ensureSock(req, res);
   if (!sock) return;
@@ -148,7 +109,6 @@ router.post("/sendWhatsAppAudio/:name", async (req, res) => {
   }
 });
 
-// Typing/presence indicator
 router.post("/sendPresence/:name", async (req, res) => {
   const sock = await ensureSock(req, res);
   if (!sock) return;
