@@ -15,8 +15,6 @@ async function getBaileysConfig(_workspaceId: string) {
   // o gateway é centralizado, então proxy_url do whatsapp_instances é ignorado.
   return { baseUrl: BAILEYS_URL, apiKey: BAILEYS_API_KEY };
 }
-// Compat alias — chamadores ainda usam getBaileysConfig.
-const getBaileysConfig = getBaileysConfig;
 
 async function validateInstanceOwnership(instanceName: string, workspaceId: string): Promise<boolean> {
   const sb = getServiceClient();
