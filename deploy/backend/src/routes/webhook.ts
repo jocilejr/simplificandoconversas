@@ -795,7 +795,7 @@ async function checkAndAutoReply(
       return;
     }
 
-    // Send via Evolution API
+    // Send via Baileys gateway
     await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {
       number: remoteJid.replace("@s.whatsapp.net", "").replace("@lid", ""),
       text: reply,
