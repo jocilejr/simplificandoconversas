@@ -8,19 +8,15 @@ import crypto from "crypto";
 const router = Router();
 
 /* ─── helpers ─── */
-async function getEvolutionConfig(workspaceId: string) {
-  const sb = getServiceClient();
-  const { data } = await sb
-    .from("whatsapp_instances")
-    .select("proxy_url")
-    .eq("workspace_id", workspaceId)
-    .limit(1)
-    .maybeSingle();
+import { BAILEYS_API_KEY, BAILEYS_URL } from "../lib/baileys-config";
 
-  const baseUrl = data?.proxy_url || process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const apiKey = process.env.EVOLUTION_API_KEY || "";
-  return { baseUrl, apiKey };
+async function getBaileysConfig(_workspaceId: string) {
+  // Mantemos a assinatura para compat com os 7+ callers;
+  // o gateway é centralizado, então proxy_url do whatsapp_instances é ignorado.
+  return { baseUrl: BAILEYS_URL, apiKey: BAILEYS_API_KEY };
 }
+// Compat alias — chamadores ainda usam getEvolutionConfig.
+const getEvolutionConfig = getBaileysConfig;
 
 async function validateInstanceOwnership(instanceName: string, workspaceId: string): Promise<boolean> {
   const sb = getServiceClient();
@@ -33,7 +29,7 @@ async function validateInstanceOwnership(instanceName: string, workspaceId: stri
   return !!data;
 }
 
-type EvolutionGroupPayload = {
+type BaileysGroupPayload = {
   id?: string;
   jid?: string;
   groupJid?: string;
@@ -43,7 +39,7 @@ type EvolutionGroupPayload = {
   participants?: unknown[];
 };
 
-function normalizeEvolutionGroupsPayload(payload: unknown) {
+function normalizeBaileysGroupsPayload(payload: unknown) {
   const rawGroups = Array.isArray(payload)
     ? payload
     : Array.isArray((payload as { groups?: unknown[] } | null)?.groups)
@@ -52,9 +48,8 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
 
   return rawGroups
     .map((raw) => {
-      const group = raw as EvolutionGroupPayload;
+      const group = raw as BaileysGroupPayload;
       const jid = group.id || group.jid || group.groupJid || "";
-      // Prefer real total from `size` (Evolution sometimes omits participants in bulk)
       const participantsLen = Array.isArray(group.participants) ? group.participants.length : 0;
       const sizeNum = typeof group.size === "number" ? group.size : 0;
       const memberCount = Math.max(participantsLen, sizeNum);
@@ -70,6 +65,8 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
     })
     .filter((group) => group.jid.endsWith("@g.us"));
 }
+// Compat alias para chamadores existentes.
+const normalizeEvolutionGroupsPayload = normalizeBaileysGroupsPayload;
 
 /* ─── helpers: normalização de JID ─── */
 const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
