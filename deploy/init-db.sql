@@ -1176,3 +1176,14 @@ GRANT ALL ON public.recovery_queue TO anon, authenticated, service_role;
 
 -- Done!
 SELECT 'Database initialized successfully!' AS status;
+
+-- ============================================================
+-- Baileys gateway: auth state persisted in Postgres
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.baileys_auth_state (
+  instance_name text PRIMARY KEY,
+  creds jsonb,
+  keys jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT ALL ON public.baileys_auth_state TO service_role;
