@@ -15,8 +15,8 @@ async function getBaileysConfig(_workspaceId: string) {
   // o gateway é centralizado, então proxy_url do whatsapp_instances é ignorado.
   return { baseUrl: BAILEYS_URL, apiKey: BAILEYS_API_KEY };
 }
-// Compat alias — chamadores ainda usam getEvolutionConfig.
-const getEvolutionConfig = getBaileysConfig;
+// Compat alias — chamadores ainda usam getBaileysConfig.
+const getBaileysConfig = getBaileysConfig;
 
 async function validateInstanceOwnership(instanceName: string, workspaceId: string): Promise<boolean> {
   const sb = getServiceClient();
@@ -66,7 +66,7 @@ function normalizeBaileysGroupsPayload(payload: unknown) {
     .filter((group) => group.jid.endsWith("@g.us"));
 }
 // Compat alias para chamadores existentes.
-const normalizeEvolutionGroupsPayload = normalizeBaileysGroupsPayload;
+const normalizeBaileysGroupsPayload = normalizeBaileysGroupsPayload;
 
 /* ─── helpers: normalização de JID ─── */
 const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
@@ -643,7 +643,7 @@ router.post("/debug-groups", async (req: Request, res: Response) => {
     const { instanceName, workspaceId } = req.body;
     if (!instanceName || !workspaceId) return res.status(400).json({ error: "instanceName and workspaceId required" });
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
     const result: any = { instanceName, baseUrl };
 
@@ -695,7 +695,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     const valid = await validateInstanceOwnership(instanceName, workspaceId);
     if (!valid) return res.status(403).json({ error: "Instance does not belong to workspace" });
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
 
     const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=true`, {
@@ -708,7 +708,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     }
 
     const raw = await resp.json();
-    const groups = normalizeEvolutionGroupsPayload(raw);
+    const groups = normalizeBaileysGroupsPayload(raw);
 
     console.log(`[groups-api] Total groups returned: ${groups.length}`);
     res.json(groups);
@@ -1141,7 +1141,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
       .update({ status: "processing", started_at: new Date().toISOString() })
       .in("id", pendingIds);
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     let sent = 0;
     let failed = 0;
     let skipped = 0;
@@ -1565,7 +1565,7 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     }
     if (!instanceName) return res.status(400).json({ error: "No instance linked" });
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
     const groupLinks = (sl.group_links as any[]) || [];
     let synced = 0;
@@ -1803,7 +1803,7 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
       }
 
       try {
-        const { baseUrl, apiKey } = await getEvolutionConfig(sl.workspace_id);
+        const { baseUrl, apiKey } = await getBaileysConfig(sl.workspace_id);
         const encoded = encodeURIComponent(instanceName);
         const groupLinks = (sl.group_links as any[]) || [];
         let synced = 0;
@@ -2700,6 +2700,6 @@ router.get("/events-live", async (req: Request, res: Response) => {
 });
 
 /* ─── Exportar helpers para uso no cron ─── */
-export { getEvolutionConfig };
+export { getBaileysConfig };
 
 export default router;
