@@ -53,8 +53,5 @@ EOSQL
 
 echo "Supabase internal roles and permissions created/updated successfully"
 
-# Create dedicated database for Evolution API (Prisma needs empty schema)
-psql -v ON_ERROR_STOP=0 --username "$POSTGRES_USER" <<-EOSQL
-  CREATE DATABASE evolution;
-EOSQL
-echo "Evolution database created (or already exists)"
+# Baileys gateway uses public.baileys_auth_state (no separate DB needed).
+

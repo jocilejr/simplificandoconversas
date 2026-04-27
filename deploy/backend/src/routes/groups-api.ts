@@ -8,18 +8,12 @@ import crypto from "crypto";
 const router = Router();
 
 /* ─── helpers ─── */
-async function getEvolutionConfig(workspaceId: string) {
-  const sb = getServiceClient();
-  const { data } = await sb
-    .from("whatsapp_instances")
-    .select("proxy_url")
-    .eq("workspace_id", workspaceId)
-    .limit(1)
-    .maybeSingle();
+import { BAILEYS_API_KEY, BAILEYS_URL } from "../lib/baileys-config";
 
-  const baseUrl = data?.proxy_url || process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const apiKey = process.env.EVOLUTION_API_KEY || "";
-  return { baseUrl, apiKey };
+async function getBaileysConfig(_workspaceId: string) {
+  // Mantemos a assinatura para compat com os 7+ callers;
+  // o gateway é centralizado, então proxy_url do whatsapp_instances é ignorado.
+  return { baseUrl: BAILEYS_URL, apiKey: BAILEYS_API_KEY };
 }
 
 async function validateInstanceOwnership(instanceName: string, workspaceId: string): Promise<boolean> {
@@ -33,7 +27,7 @@ async function validateInstanceOwnership(instanceName: string, workspaceId: stri
   return !!data;
 }
 
-type EvolutionGroupPayload = {
+type BaileysGroupPayload = {
   id?: string;
   jid?: string;
   groupJid?: string;
@@ -43,7 +37,7 @@ type EvolutionGroupPayload = {
   participants?: unknown[];
 };
 
-function normalizeEvolutionGroupsPayload(payload: unknown) {
+function normalizeBaileysGroupsPayload(payload: unknown) {
   const rawGroups = Array.isArray(payload)
     ? payload
     : Array.isArray((payload as { groups?: unknown[] } | null)?.groups)
@@ -52,9 +46,8 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
 
   return rawGroups
     .map((raw) => {
-      const group = raw as EvolutionGroupPayload;
+      const group = raw as BaileysGroupPayload;
       const jid = group.id || group.jid || group.groupJid || "";
-      // Prefer real total from `size` (Evolution sometimes omits participants in bulk)
       const participantsLen = Array.isArray(group.participants) ? group.participants.length : 0;
       const sizeNum = typeof group.size === "number" ? group.size : 0;
       const memberCount = Math.max(participantsLen, sizeNum);
@@ -70,7 +63,6 @@ function normalizeEvolutionGroupsPayload(payload: unknown) {
     })
     .filter((group) => group.jid.endsWith("@g.us"));
 }
-
 /* ─── helpers: normalização de JID ─── */
 const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
 
@@ -646,7 +638,7 @@ router.post("/debug-groups", async (req: Request, res: Response) => {
     const { instanceName, workspaceId } = req.body;
     if (!instanceName || !workspaceId) return res.status(400).json({ error: "instanceName and workspaceId required" });
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
     const result: any = { instanceName, baseUrl };
 
@@ -698,7 +690,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     const valid = await validateInstanceOwnership(instanceName, workspaceId);
     if (!valid) return res.status(403).json({ error: "Instance does not belong to workspace" });
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
 
     const resp = await fetch(`${baseUrl}/group/fetchAllGroups/${encoded}?getParticipants=true`, {
@@ -711,7 +703,7 @@ router.post("/fetch-groups", async (req: Request, res: Response) => {
     }
 
     const raw = await resp.json();
-    const groups = normalizeEvolutionGroupsPayload(raw);
+    const groups = normalizeBaileysGroupsPayload(raw);
 
     console.log(`[groups-api] Total groups returned: ${groups.length}`);
     res.json(groups);
@@ -1144,7 +1136,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
       .update({ status: "processing", started_at: new Date().toISOString() })
       .in("id", pendingIds);
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     let sent = 0;
     let failed = 0;
     let skipped = 0;
@@ -1550,7 +1542,7 @@ router.delete("/smart-links/:id", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /smart-links/sync-invite — busca invite codes via Evolution API ─── */
+/* ─── POST /smart-links/sync-invite — busca invite codes via Baileys gateway ─── */
 router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
   try {
     const { smartLinkId, workspaceId } = req.body;
@@ -1568,7 +1560,7 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
     }
     if (!instanceName) return res.status(400).json({ error: "No instance linked" });
 
-    const { baseUrl, apiKey } = await getEvolutionConfig(workspaceId);
+    const { baseUrl, apiKey } = await getBaileysConfig(workspaceId);
     const encoded = encodeURIComponent(instanceName);
     const groupLinks = (sl.group_links as any[]) || [];
     let synced = 0;
@@ -1581,7 +1573,7 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
         sync_progress: { current: i + 1, total: groupLinks.length, currentJid: gl.group_jid },
       }).eq("id", smartLinkId);
 
-      // Delay de 5s entre chamadas para evitar rate-limit da Evolution API
+      // Delay de 5s entre chamadas para evitar rate-limit do gateway
       if (i > 0) await new Promise(r => setTimeout(r, 5000));
 
       // Buscar member_count real via findGroupInfos (com retry)
@@ -1806,7 +1798,7 @@ router.post("/smart-links/sync-all", async (req: Request, res: Response) => {
       }
 
       try {
-        const { baseUrl, apiKey } = await getEvolutionConfig(sl.workspace_id);
+        const { baseUrl, apiKey } = await getBaileysConfig(sl.workspace_id);
         const encoded = encodeURIComponent(instanceName);
         const groupLinks = (sl.group_links as any[]) || [];
         let synced = 0;
@@ -2703,6 +2695,6 @@ router.get("/events-live", async (req: Request, res: Response) => {
 });
 
 /* ─── Exportar helpers para uso no cron ─── */
-export { getEvolutionConfig };
+export { getBaileysConfig };
 
 export default router;

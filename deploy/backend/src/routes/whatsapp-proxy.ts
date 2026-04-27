@@ -8,17 +8,10 @@ import path from "path";
 
 const router = Router();
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
+import { baileysRequest } from "../lib/baileys-config";
 
-async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
-    method,
-    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return resp.json() as Promise<any>;
-}
+// Compat alias — paths são idênticos aos da Evolution v2 (gateway próprio).
+const evolutionRequest = baileysRequest;
 
 async function downloadAndUploadMedia(
   storageClient: any, instanceName: string, messageData: any, messageType: string, userId: string
@@ -237,9 +230,9 @@ router.post("/", async (req, res) => {
         
         try {
           await evolutionRequest(`/instance/delete/${encodeURIComponent(delInstName)}`, "DELETE");
-          console.log(`[delete-instance] Evolution delete OK for ${delInstName}`);
+          console.log(`[delete-instance] gateway delete OK for ${delInstName}`);
         } catch (e: any) {
-          console.log(`[delete-instance] Evolution delete failed: ${e.message}`);
+          console.log(`[delete-instance] gateway delete failed: ${e.message}`);
         }
         
         const { data: deleted, error: deleteErr } = await serviceClient
@@ -254,17 +247,17 @@ router.post("/", async (req, res) => {
       }
 
       case "set-proxy": {
-        result = { ok: true, message: "Proxy not applicable with Evolution API" };
+        result = { ok: true, message: "Proxy not applicable with Baileys gateway" };
         break;
       }
 
       case "set-webhook": {
-        result = { ok: true, message: "Webhook auto-configured via Evolution global webhook" };
+        result = { ok: true, message: "Webhook auto-configured via Baileys gateway" };
         break;
       }
 
       case "sync-webhooks": {
-        result = { synced: 0, message: "Webhooks auto-configured in Evolution API" };
+        result = { synced: 0, message: "Webhooks auto-configured in Baileys gateway" };
         break;
       }
 
@@ -292,7 +285,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
 
         console.log(`[send-message] Sending ${messageType} to ${remoteJid} via ${instanceName}`);
         result = await evolutionRequest(`/message/${endpoint}/${encodeURIComponent(instanceName)}`, "POST", payload);
-        console.log(`[send-message] Evolution result:`, JSON.stringify(result)?.substring(0, 300));
+        console.log(`[send-message] Baileys result:`, JSON.stringify(result)?.substring(0, 300));
 
         if (result?.key) {
           const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
@@ -500,7 +493,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
               if (!convData) continue;
 
               // Step 2: Fetch all messages for this contact with pagination
-              // Use rawJid for API query (Evolution needs the original format), but resolvedJid for DB
+              // Use rawJid for API query (Baileys needs the original format), but resolvedJid for DB
               let page = 1;
               let contactMsgsSynced = 0;
               while (true) {

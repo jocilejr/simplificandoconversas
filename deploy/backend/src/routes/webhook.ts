@@ -7,17 +7,11 @@ import path from "path";
 
 const router = Router();
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
+import { baileysRequest } from "../lib/baileys-config";
 
-async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
-    method,
-    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return resp.json() as Promise<any>;
-}
+// Compat alias — todo o webhook.ts já chamava evolutionRequest com paths Evolution v2,
+// que o Baileys gateway expõe com o mesmo contrato.
+const evolutionRequest = baileysRequest;
 
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text;
@@ -801,7 +795,7 @@ async function checkAndAutoReply(
       return;
     }
 
-    // Send via Evolution API
+    // Send via Baileys gateway
     await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {
       number: remoteJid.replace("@s.whatsapp.net", "").replace("@lid", ""),
       text: reply,
