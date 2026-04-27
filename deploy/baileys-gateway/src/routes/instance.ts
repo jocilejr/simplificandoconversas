@@ -60,8 +60,11 @@ router.put("/restart/:name", async (req, res) => {
   res.json({ status: "SUCCESS" });
 });
 
-router.get("/fetchInstances", (_req, res) => {
-  res.json(listInstances());
+router.get("/fetchInstances", (req, res) => {
+  const filter = req.query.instanceName as string | undefined;
+  let result = listInstances();
+  if (filter) result = result.filter(i => i.instanceName === filter);
+  res.json(result);
 });
 
 export default router;

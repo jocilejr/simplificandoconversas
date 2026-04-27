@@ -21,6 +21,7 @@ type InstanceState = {
   qr: string | null; // data url png
   qrRaw: string | null;
   ownerJid: string | null;
+  profilePicUrl: string | null;
   startedAt: number;
   reconnectTimer: NodeJS.Timeout | null;
 };
@@ -38,6 +39,7 @@ function getOrCreate(name: string): InstanceState {
       qr: null,
       qrRaw: null,
       ownerJid: null,
+      profilePicUrl: null,
       startedAt: 0,
       reconnectTimer: null,
     };
@@ -51,6 +53,8 @@ export function listInstances() {
     instanceName: i.name,
     status: i.status === "open" ? "open" : i.status === "connecting" ? "connecting" : "close",
     ownerJid: i.ownerJid,
+    profileName: null,
+    profilePicUrl: i.profilePicUrl || null,
     integration: "WHATSAPP-BAILEYS",
   }));
 }
@@ -126,7 +130,14 @@ export async function startInstance(name: string): Promise<InstanceState> {
       inst.status = "open";
       inst.qr = null;
       inst.qrRaw = null;
-      inst.ownerJid = sock.user?.id || null;
+      const rawJid = sock.user?.id || null;
+      inst.ownerJid = rawJid ? jidToPhone(rawJid) : null;
+      // Fetch profile picture
+      try {
+        inst.profilePicUrl = await sock.profilePictureUrl(rawJid!, "image");
+      } catch {
+        inst.profilePicUrl = null;
+      }
       await emitWebhook("connection.update", name, {
         instance: name,
         state: "open",
@@ -236,6 +247,7 @@ export async function logoutInstance(name: string): Promise<void> {
     inst.qr = null;
     inst.qrRaw = null;
     inst.ownerJid = null;
+    inst.profilePicUrl = null;
   }
   await deleteAuthState(name).catch(() => {});
 }
@@ -272,7 +284,7 @@ export async function bootstrapInstances(): Promise<void> {
   }
 }
 
-export async function downloadMedia(name: string, msg: proto.IWebMessageInfo) {
+export async function downloadMedia(name: string, msg: proto.IWebMessageInfo | any) {
   const inst = instances.get(name);
   if (!inst?.sock) throw new Error("instance not connected");
   const buffer = (await downloadMediaMessage(msg, "buffer", {}, {

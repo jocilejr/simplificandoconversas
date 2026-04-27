@@ -4,8 +4,9 @@ import { getInstance } from "../instance-manager";
 const router = Router();
 
 function jidFromNumber(num: string): string {
-  const digits = String(num).replace(/\D/g, "");
-  if (digits.includes("@")) return num;
+  const s = String(num).trim();
+  if (s.includes("@")) return s; // already a JID (group @g.us or personal @s.whatsapp.net)
+  const digits = s.replace(/\D/g, "");
   return `${digits}@s.whatsapp.net`;
 }
 
@@ -21,11 +22,25 @@ async function ensureSock(req: any, res: any) {
 router.post("/sendText/:name", async (req, res) => {
   const sock = await ensureSock(req, res);
   if (!sock) return;
-  const { number, text, delay } = req.body || {};
+  const { number, text, delay, mentionsEveryOne } = req.body || {};
   if (!number || !text) return res.status(400).json({ error: "number and text required" });
   if (delay) await new Promise((r) => setTimeout(r, Math.min(Number(delay), 15000)));
-  const r = await sock.sendMessage(jidFromNumber(number), { text: String(text) });
-  res.json({ key: r?.key, status: "SUCCESS" });
+  try {
+    const jid = jidFromNumber(number);
+    let mentionList: string[] = [];
+    if (mentionsEveryOne && jid.endsWith("@g.us")) {
+      try {
+        const meta = await sock.groupMetadata(jid);
+        mentionList = meta.participants.map((p) => p.id);
+      } catch {}
+    }
+    const payload: any = { text: String(text) };
+    if (mentionList.length > 0) payload.mentions = mentionList;
+    const r = await sock.sendMessage(jid, payload);
+    res.json({ key: r?.key, status: "SUCCESS" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post("/sendMedia/:name", async (req, res) => {
@@ -56,8 +71,12 @@ router.post("/sendMedia/:name", async (req, res) => {
       };
       break;
   }
-  const r = await sock.sendMessage(jid, payload);
-  res.json({ key: r?.key, status: "SUCCESS" });
+  try {
+    const r = await sock.sendMessage(jid, payload);
+    res.json({ key: r?.key, status: "SUCCESS" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Compat com chamadas antigas /message/sendMediaPDF/:name
