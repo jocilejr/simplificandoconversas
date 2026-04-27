@@ -23,7 +23,7 @@ interface RecoveryBlock {
 
 /**
  * Strip data URI prefix and whitespace from base64 strings.
- * Evolution API expects raw base64, not data URIs.
+ * Baileys gateway expects raw base64, not data URIs.
  */
 function cleanBase64(input: string): string {
   let cleaned = input.trim();
@@ -58,7 +58,7 @@ function replaceVariables(template: string, vars: { name: string | null; amount:
 import { normalizePhone } from "./normalize-phone";
 
 /**
- * Send a single block via Evolution API.
+ * Send a single block via Baileys gateway.
  */
 async function sendBlock(
   block: RecoveryBlock,
@@ -80,8 +80,8 @@ async function sendBlock(
     });
     if (!resp.ok) {
       const errText = await resp.text();
-      console.error(`[recovery-dispatch] Evolution sendText error ${resp.status}: ${errText}`);
-      throw new Error(`Evolution API ${resp.status}: ${errText}`);
+      console.error(`[recovery-dispatch] Baileys sendText error ${resp.status}: ${errText}`);
+      throw new Error(`Baileys gateway ${resp.status}: ${errText}`);
     }
   } else if (block.type === "pdf") {
     // Send the actual PDF document via local file + base64
@@ -129,8 +129,8 @@ async function sendBlock(
     });
     if (!resp.ok) {
       const errText = await resp.text();
-      console.error(`[recovery-dispatch] Evolution sendMedia/PDF error ${resp.status}: ${errText}`);
-      throw new Error(`Evolution API PDF ${resp.status}: ${errText}`);
+      console.error(`[recovery-dispatch] Baileys sendMedia/PDF error ${resp.status}: ${errText}`);
+      throw new Error(`Baileys gateway PDF ${resp.status}: ${errText}`);
     }
   } else if (block.type === "image") {
     // Convert boleto PDF to JPG locally and send as base64
@@ -178,8 +178,8 @@ async function sendBlock(
     });
     if (!resp.ok) {
       const errText = await resp.text();
-      console.error(`[recovery-dispatch] Evolution sendMedia/image error ${resp.status}: ${errText}`);
-      throw new Error(`Evolution API Image ${resp.status}: ${errText}`);
+      console.error(`[recovery-dispatch] Baileys sendMedia/image error ${resp.status}: ${errText}`);
+      throw new Error(`Baileys gateway Image ${resp.status}: ${errText}`);
     }
   }
 }
@@ -412,8 +412,8 @@ export async function dispatchRecovery(opts: {
 
   // 9. Enqueue into the universal instance queue — ONE TIME, the queue handles everything
   const queue = getMessageQueue(instanceName, delayMs, configPauseAfterSends, configPauseMinutes);
-  const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const evoApiKey = process.env.EVOLUTION_API_KEY || "";
+  const evoBaseUrl = process.env.BAILEYS_URL || "http://baileys-gateway:8080";
+  const evoApiKey = process.env.BAILEYS_API_KEY || "";
   const vars = { name: opts.customerName, amount: opts.amount };
   const label = `tx:${txType}:${normalizedPhone}`;
 
@@ -464,15 +464,15 @@ export async function dispatchRecovery(opts: {
 }
 
 /**
- * Check if a phone number exists on WhatsApp via Evolution API.
+ * Check if a phone number exists on WhatsApp via Baileys gateway.
  * Returns true/false or null if check fails.
  */
 export async function checkWhatsAppNumber(
   phone: string,
   instanceName: string,
 ): Promise<boolean | null> {
-  const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const evoApiKey = process.env.EVOLUTION_API_KEY || "";
+  const evoBaseUrl = process.env.BAILEYS_URL || "http://baileys-gateway:8080";
+  const evoApiKey = process.env.BAILEYS_API_KEY || "";
 
   if (!phone || !instanceName || !evoApiKey) return null;
 
@@ -487,12 +487,12 @@ export async function checkWhatsAppNumber(
     );
 
     if (!resp.ok) {
-      console.warn(`[whatsapp-check] Evolution API ${resp.status} for ${phone}`);
+      console.warn(`[whatsapp-check] Baileys gateway ${resp.status} for ${phone}`);
       return null;
     }
 
     const result: any = await resp.json();
-    // Evolution v2 returns array: [{ exists: true, jid: "..." }]
+    // Baileys gateway returns array: [{ exists: true, jid: "..." }]
     if (Array.isArray(result) && result.length > 0) {
       return !!result[0].exists;
     }
