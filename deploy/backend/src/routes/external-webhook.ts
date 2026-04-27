@@ -195,19 +195,13 @@ router.post("/", async (req, res) => {
         .limit(1);
 
       if (instances && instances.length > 0) {
-        const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-        const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
-
+        const { baileysRequest } = await import("../lib/baileys-config");
         try {
-          const sendResult = await fetch(
-            `${EVOLUTION_URL}/message/sendText/${encodeURIComponent(instances[0].instance_name)}`,
-            {
-              method: "POST",
-              headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
-              body: JSON.stringify({ number: cleanedPhone, text: message }),
-            }
+          const sendData = await baileysRequest(
+            `/message/sendText/${encodeURIComponent(instances[0].instance_name)}`,
+            "POST",
+            { number: cleanedPhone, text: message }
           );
-          const sendData: any = await sendResult.json();
           results.actions.push({ type: "message_sent", message_id: sendData?.key?.id || null });
         } catch (msgErr: any) {
           results.actions.push({ type: "message_failed", error: msgErr.message });

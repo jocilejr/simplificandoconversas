@@ -48,23 +48,24 @@ router.post("/sendMedia/:name", async (req, res) => {
   if (!sock) return;
   const { number, mediatype, media, caption, fileName, mimetype } = req.body || {};
   if (!number || !media) return res.status(400).json({ error: "number and media required" });
-  const buffer = Buffer.from(String(media), "base64");
+  const isUrl = typeof media === "string" && /^https?:\/\//i.test(media);
+  const mediaContent = isUrl ? { url: media } : Buffer.from(String(media), "base64");
   const jid = jidFromNumber(number);
   let payload: any;
   switch ((mediatype || "image").toLowerCase()) {
     case "image":
-      payload = { image: buffer, caption: caption || undefined, mimetype: mimetype || "image/jpeg" };
+      payload = { image: mediaContent as any, caption: caption || undefined, mimetype: mimetype || "image/jpeg" };
       break;
     case "video":
-      payload = { video: buffer, caption: caption || undefined, mimetype: mimetype || "video/mp4" };
+      payload = { video: mediaContent as any, caption: caption || undefined, mimetype: mimetype || "video/mp4" };
       break;
     case "audio":
-      payload = { audio: buffer, mimetype: mimetype || "audio/ogg; codecs=opus", ptt: true };
+      payload = { audio: mediaContent as any, mimetype: mimetype || "audio/ogg; codecs=opus", ptt: true };
       break;
     case "document":
     default:
       payload = {
-        document: buffer,
+        document: mediaContent as any,
         mimetype: mimetype || "application/pdf",
         fileName: fileName || "document.pdf",
         caption: caption || undefined,
@@ -84,6 +85,39 @@ router.post("/sendMediaPDF/:name", async (req, res) => {
   req.body = { ...req.body, mediatype: "document", mimetype: "application/pdf" };
   // @ts-ignore
   return router.handle({ ...req, url: `/sendMedia/${req.params.name}`, method: "POST" }, res, () => {});
+});
+
+
+// Compat Evolution sendWhatsAppAudio — audio via URL
+router.post("/sendWhatsAppAudio/:name", async (req, res) => {
+  const sock = await ensureSock(req, res);
+  if (!sock) return;
+  const { number, audio } = req.body || {};
+  if (!number || !audio) return res.status(400).json({ error: "number and audio required" });
+  const jid = jidFromNumber(number);
+  try {
+    const audioContent = /^https?:\/\//i.test(String(audio)) ? { url: audio } : Buffer.from(String(audio), "base64");
+    const r = await sock.sendMessage(jid, { audio: audioContent as any, mimetype: "audio/ogg; codecs=opus", ptt: true });
+    res.json({ key: r?.key, status: "SUCCESS" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Typing/presence indicator
+router.post("/sendPresence/:name", async (req, res) => {
+  const sock = await ensureSock(req, res);
+  if (!sock) return;
+  const { number, presence } = req.body || {};
+  if (!number) return res.status(400).json({ error: "number required" });
+  const jid = jidFromNumber(number);
+  const presenceType = presence === "paused" ? "paused" : "composing";
+  try {
+    await sock.sendPresenceUpdate(presenceType as any, jid);
+    res.json({ status: "SUCCESS" });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 export default router;

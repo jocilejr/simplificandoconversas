@@ -26,6 +26,7 @@ type InstanceState = {
   startedAt: number;
   msgStore: Map<string, proto.IWebMessageInfo>;
   reconnectTimer: NodeJS.Timeout | null;
+  lidMap: Map<string, string>; // @lid -> @s.whatsapp.net
 };
 
 const instances = new Map<string, InstanceState>();
@@ -45,6 +46,7 @@ function getOrCreate(name: string): InstanceState {
       startedAt: 0,
       msgStore: new Map(),
       reconnectTimer: null,
+      lidMap: new Map(),
     };
     instances.set(name, inst);
   }
@@ -209,8 +211,32 @@ export async function startInstance(name: string): Promise<InstanceState> {
     }
   });
 
+  sock.ev.on("contacts.upsert", (contacts) => {
+    for (const c of contacts) {
+      // Build LID -> phone JID mapping
+      if (c.lid && c.phoneNumber) {
+        inst.lidMap.set(c.lid, c.phoneNumber);
+      } else if (c.id.includes("@lid") && c.phoneNumber) {
+        inst.lidMap.set(c.id, c.phoneNumber);
+      }
+    }
+  });
+
   sock.ev.on("group-participants.update", async (ev) => {
-    await emitWebhook("group-participants.update", name, ev);
+    // Resolve @lid participant IDs to @s.whatsapp.net JIDs where possible
+    const resolvedParticipants = ev.participants.map((p) => {
+      const jid = p.id;
+      if (jid.includes("@lid")) {
+        return inst.lidMap.get(jid) || p.phoneNumber || jid;
+      }
+      return jid;
+    });
+    await emitWebhook("group-participants.update", name, {
+      id: ev.id,
+      action: ev.action,
+      participants: resolvedParticipants,
+      participantsRaw: ev.participants.map((p) => p.id),
+    });
   });
 
   return inst;

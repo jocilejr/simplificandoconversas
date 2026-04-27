@@ -351,8 +351,7 @@ export async function prepareFollowUpDaily(workspaceIds?: string[]) {
 // ════════════════════════════════════════════════════════════════════
 
 async function dispatchJob(job: FollowUpQueueRow, delayMs: number) {
-  const evoBaseUrl = process.env.EVOLUTION_API_URL || "http://evolution:8080";
-  const evoApiKey = process.env.EVOLUTION_API_KEY || "";
+  const { BAILEYS_URL: evoBaseUrl, BAILEYS_API_KEY: evoApiKey } = await import("../lib/baileys-config");
   const blocks = Array.isArray(job.blocks_snapshot) ? job.blocks_snapshot : [];
   const vars = { name: job.customer_name, amount: Number(job.amount) || 0, dueDate: job.due_date, barcode: job.barcode };
 

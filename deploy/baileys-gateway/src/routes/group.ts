@@ -27,4 +27,31 @@ router.get("/inviteCode/:name", async (req, res) => {
   }
 });
 
+
+router.get("/findGroupInfos/:name", async (req, res) => {
+  const inst = getInstance(req.params.name);
+  if (!inst?.sock) return res.status(409).json({ error: "instance not connected" });
+  const groupJid = String(req.query.groupJid || "");
+  if (!groupJid) return res.status(400).json({ error: "groupJid required" });
+  try {
+    const metadata = await inst.sock.groupMetadata(groupJid);
+    res.json(metadata);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get("/fetchGroupParticipants/:name", async (req, res) => {
+  const inst = getInstance(req.params.name);
+  if (!inst?.sock) return res.status(409).json({ error: "instance not connected" });
+  const groupJid = String(req.query.groupJid || "");
+  if (!groupJid) return res.status(400).json({ error: "groupJid required" });
+  try {
+    const metadata = await inst.sock.groupMetadata(groupJid);
+    res.json({ participants: metadata.participants, size: metadata.participants.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

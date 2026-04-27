@@ -33,17 +33,7 @@ interface StepData {
   [key: string]: unknown;
 }
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
-
-async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
-    method,
-    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return resp.json() as Promise<any>;
-}
+import { baileysRequest as evolutionRequest } from "../lib/baileys-config";
 
 async function executeStep(
   stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string, workspaceId?: string

@@ -712,17 +712,7 @@ router.delete("/reminders/:id", async (req, res) => {
 // MESSAGING / ENVIO DE MENSAGENS
 // ═══════════════════════════════════════════════════
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://evolution:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
-
-async function evolutionRequest(path: string, method: string = "POST", body?: any) {
-  const resp = await fetch(`${EVOLUTION_URL}${path}`, {
-    method,
-    headers: { apikey: EVOLUTION_API_KEY, "Content-Type": "application/json" },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return resp.json() as Promise<any>;
-}
+import { baileysRequest as evolutionRequest } from "../lib/baileys-config";
 
 // POST /api/platform/send-message
 router.post("/send-message", async (req, res) => {
