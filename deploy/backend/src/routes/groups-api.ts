@@ -1547,7 +1547,7 @@ router.delete("/smart-links/:id", async (req: Request, res: Response) => {
   }
 });
 
-/* ─── POST /smart-links/sync-invite — busca invite codes via Evolution API ─── */
+/* ─── POST /smart-links/sync-invite — busca invite codes via Baileys gateway ─── */
 router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
   try {
     const { smartLinkId, workspaceId } = req.body;
@@ -1578,7 +1578,7 @@ router.post("/smart-links/sync-invite", async (req: Request, res: Response) => {
         sync_progress: { current: i + 1, total: groupLinks.length, currentJid: gl.group_jid },
       }).eq("id", smartLinkId);
 
-      // Delay de 5s entre chamadas para evitar rate-limit da Evolution API
+      // Delay de 5s entre chamadas para evitar rate-limit do gateway
       if (i > 0) await new Promise(r => setTimeout(r, 5000));
 
       // Buscar member_count real via findGroupInfos (com retry)
