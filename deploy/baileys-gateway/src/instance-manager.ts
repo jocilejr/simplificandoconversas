@@ -23,6 +23,7 @@ type InstanceState = {
   ownerJid: string | null;
   profilePicUrl: string | null;
   startedAt: number;
+  msgStore: Map<string, proto.IWebMessageInfo>;
   reconnectTimer: NodeJS.Timeout | null;
 };
 
@@ -41,6 +42,7 @@ function getOrCreate(name: string): InstanceState {
       ownerJid: null,
       profilePicUrl: null,
       startedAt: 0,
+      msgStore: new Map(),
       reconnectTimer: null,
     };
     instances.set(name, inst);
@@ -101,6 +103,10 @@ export async function startInstance(name: string): Promise<InstanceState> {
     browser: Browsers.ubuntu("Chrome"),
     syncFullHistory: false,
     markOnlineOnConnect: false,
+    getMessage: async (key) => {
+      const msg = inst.msgStore.get(key.id!);
+      return msg?.message ?? undefined;
+    },
   });
 
   inst.sock = sock;
@@ -157,6 +163,15 @@ export async function startInstance(name: string): Promise<InstanceState> {
 
   sock.ev.on("messages.upsert", async (m) => {
     for (const msg of m.messages) {
+      // Cache message for retry/decrypt requests
+      if (msg.key?.id) {
+        inst.msgStore.set(msg.key.id, msg);
+        // Limit cache size to avoid memory bloat
+        if (inst.msgStore.size > 1000) {
+          const firstKey = inst.msgStore.keys().next().value;
+          if (firstKey) inst.msgStore.delete(firstKey);
+        }
+      }
       try {
         const data = serializeMessage(name, msg);
         if (data) await emitWebhook("messages.upsert", name, data);
@@ -248,6 +263,7 @@ export async function logoutInstance(name: string): Promise<void> {
     inst.qrRaw = null;
     inst.ownerJid = null;
     inst.profilePicUrl = null;
+    inst.msgStore.clear();
   }
   await deleteAuthState(name).catch(() => {});
 }
