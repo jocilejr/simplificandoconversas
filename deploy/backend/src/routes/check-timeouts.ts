@@ -19,6 +19,7 @@ export async function processTimeouts() {
 
   for (const timeout of pendingTimeouts) {
     try {
+if (timeout.remote_jid?.includes("@g.us")) { console.log("[check-timeouts] Skipping group JID: " + timeout.id); await restUpdate("flow_timeouts", "id=eq." + encodeURIComponent(timeout.id), { processed: true }); continue; }
       const execRows = await restGet<{ status: string; instance_name: string | null }>(
         "flow_executions",
         `id=eq.${encodeURIComponent(timeout.execution_id)}&select=status,instance_name&limit=1`

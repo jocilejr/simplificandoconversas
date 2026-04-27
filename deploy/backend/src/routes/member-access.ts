@@ -36,7 +36,7 @@ router.get("/:phone", async (req, res) => {
     // Step 1: fetch member_products
     const { data: accessRows, error: accessError } = await sb
       .from("member_products")
-      .select("workspace_id, product_id, phone, is_active")
+      .select("workspace_id, product_id, phone, is_active, granted_at")
       .eq("is_active", true)
       .in("phone", phoneCandidates);
 
@@ -61,7 +61,7 @@ router.get("/:phone", async (req, res) => {
 
     // Step 3: fetch settings, categories, materials, offers in parallel
     const last8 = normalized.slice(-8);
-    const [settingsRes, categoriesRes, materialsRes, offersRes] = await Promise.all([
+    const [settingsRes, categoriesRes, materialsRes, offersRes, pixelsRes] = await Promise.all([
       sb.from("member_area_settings")
         .select("title, logo_url, welcome_message, theme_color, ai_persona_prompt, greeting_prompt, offer_prompt, ai_model")
         .eq("workspace_id", workspaceId)
@@ -72,15 +72,18 @@ router.get("/:phone", async (req, res) => {
         .in("product_id", productIds)
         .order("sort_order", { ascending: true }),
       sb.from("member_product_materials")
-        .select("id, product_id, category_id, title, description, content_type, content_url, content_text, button_label, sort_order, is_preview")
+        .select("id, product_id, category_id, title, description, content_type, content_url, content_text, button_label, sort_order, is_preview, created_at")
         .eq("workspace_id", workspaceId)
         .in("product_id", productIds)
-        .order("sort_order", { ascending: true }),
+        .order("created_at", { ascending: false }),
       sb.from("member_area_offers")
         .select("*")
         .eq("workspace_id", workspaceId)
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
+      sb.from("meta_pixels")
+        .select("pixel_id, access_token, name")
+        .eq("workspace_id", workspaceId),
     ]);
 
     // Step 4: Resolve customer data from transactions (primary) + conversations (fallback)
@@ -186,6 +189,7 @@ router.get("/:phone", async (req, res) => {
         member_description: product.member_description,
         page_logo: product.page_logo,
         value: product.value || null,
+        granted_at: row.granted_at || null,
         categories: categoriesByProduct.get(product.id) || [],
         materials: materialsByProduct.get(product.id) || [],
       });
@@ -205,12 +209,19 @@ router.get("/:phone", async (req, res) => {
         }
       : null;
 
+    const pixelList = (pixelsRes.data || []).map((p: any) => ({
+      pixel_id: p.pixel_id,
+      access_token: p.access_token,
+      name: p.name,
+    }));
+
     return res.json({
       phone: normalized,
       workspace_id: workspaceId,
       settings,
       products: Array.from(productMap.values()),
       offers: (offersRes.data || []).map((o: any) => ({ ...o, name: o.name || o.title || "Oferta" })),
+      pixels: pixelList,
       customer: customerName
         ? {
             name: customerName,

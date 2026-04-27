@@ -223,6 +223,7 @@ router.post("/", async (req, res) => {
     }
 
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
+if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JID: " + jid);      return res.status(400).json({ error: "Flow execution not supported for group chats" });    }
 
     // Resolve sendNumber: if jid is @lid, use phone_number for Evolution API calls
     let sendNumber = jid;

@@ -4,14 +4,21 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function useMetaAdSpend(startDate?: Date, endDate?: Date) {
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
   const syncedRef = useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const startStr = startDate?.toISOString().split("T")[0];
-  const endStr = endDate?.toISOString().split("T")[0];
+  const startStr = startDate ? toLocalDateStr(startDate) : undefined;
+  const endStr = endDate ? toLocalDateStr(endDate) : undefined;
   const syncKey = `${workspaceId}-${startStr}-${endStr}`;
 
   // Auto-sync when dates/workspace change
@@ -40,6 +47,7 @@ export function useMetaAdSpend(startDate?: Date, endDate?: Date) {
         queryClient.invalidateQueries({ queryKey: ["meta-ad-spend"] });
       } catch (e) {
         console.warn("Meta Ads sync failed:", e);
+        syncedRef.current = null;
       } finally {
         setIsSyncing(false);
       }

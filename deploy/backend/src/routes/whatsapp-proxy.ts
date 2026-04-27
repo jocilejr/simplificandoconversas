@@ -275,6 +275,7 @@ router.post("/", async (req, res) => {
 
       case "send-message": {
         const { remoteJid, message, messageType = "text", mediaUrl } = params;
+if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send blank text message" }; break; } if (remoteJid?.includes("@g.us")) { result = { error: "Cannot send to group chats" }; break; }
         let endpoint = "sendText";
         let payload: Record<string, unknown> = { number: remoteJid, text: message };
 

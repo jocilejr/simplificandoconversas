@@ -1,5 +1,6 @@
+version: "3.8"
+
 services:
-  # ─── PostgreSQL ───
   postgres:
     image: supabase/postgres:15.8.1.085
     restart: always
@@ -8,29 +9,18 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - chatbot_pgdata:/var/lib/postgresql/data
-      - ./init-roles.sh:/docker-entrypoint-initdb.d/00-init-roles.sh
-      - ./init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - sc_pgdata:/var/lib/postgresql/data
+      - /opt/simplificandoconversas/deploy/init-roles.sh:/docker-entrypoint-initdb.d/00-init-roles.sh
+      - /opt/simplificandoconversas/deploy/init-db.sql:/docker-entrypoint-initdb.d/99-init.sql
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── GoTrue (Auth) ───
   gotrue:
     image: supabase/gotrue:v2.186.0
-    restart: always
-    depends_on:
-      - postgres
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
     environment:
       GOTRUE_API_HOST: "0.0.0.0"
       GOTRUE_API_PORT: "9999"
@@ -53,13 +43,13 @@ services:
       GOTRUE_SMTP_PASS: "unused"
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── PostgREST ───
   postgrest:
     image: postgrest/postgrest:v12.2.3
-    restart: always
-    depends_on:
-      - postgres
     environment:
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       PGRST_DB_SCHEMAS: public,storage
@@ -68,17 +58,17 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: "false"
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── Supabase Storage ───
   storage:
     image: supabase/storage-api:v1.11.13
-    restart: always
-    depends_on:
-      - postgres
     environment:
       ANON_KEY: ${ANON_KEY}
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
-      POSTGREST_URL: http://simplificando_postgrest:3000
+      POSTGREST_URL: http://postgrest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       FILE_SIZE_LIMIT: "52428800"
@@ -91,23 +81,27 @@ services:
       AUTH_JWT_SECRET: ${JWT_SECRET}
       AUTH_JWT_ALGORITHM: HS256
     volumes:
-      - chatbot_storagedata:/var/lib/storage
+      - sc_storagedata:/var/lib/storage
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── Redis (cache para Evolution API) ───
   redis:
     image: redis:7-alpine
-    restart: always
     volumes:
-      - chatbot_redis:/data
+      - sc_redis:/data
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── Evolution API (WhatsApp) ───
   evolution:
     image: evoapicloud/evolution-api:v2.3.7
-    restart: always
     environment:
       SERVER_URL: ${API_URL}
       SERVER_PORT: "8080"
@@ -134,25 +128,20 @@ services:
       CACHE_REDIS_URI: redis://redis:6379
       CACHE_REDIS_PREFIX_KEY: evolution
     volumes:
-      - chatbot_evolution_instances:/evolution/instances
-      - chatbot_evolution_store:/evolution/store
+      - sc_evolution_instances:/evolution/instances
+      - sc_evolution_store:/evolution/store
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── Backend Express ───
   backend:
-    build: ./backend
-    image: simplificando-backend:latest
-    restart: always
-    depends_on:
-      - postgres
-      - gotrue
-    volumes:
-      - chatbot_media:/media-files
+    image: simplificando-backend
     environment:
       PORT: "3001"
-      SUPABASE_URL: http://nginx
-      POSTGREST_DIRECT_URL: http://simplificando_postgrest:3000
+      SUPABASE_URL: http://nginx:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_ANON_KEY: ${ANON_KEY}
       JWT_SECRET: ${JWT_SECRET}
@@ -164,53 +153,75 @@ services:
       API_URL: ${API_URL}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CSV_ANALYZER_MODE: heuristic
       APP_PUBLIC_URL: ${APP_URL}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+    volumes:
+      - sc_media:/media-files
     networks:
       - internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
 
-  # ─── Nginx (roteamento interno) ───
   nginx:
     image: nginx:alpine
-    restart: always
-    depends_on:
-      - postgrest
-      - gotrue
-      - storage
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
-      MEMBER_DOMAIN: ${MEMBER_DOMAIN:-}
+      MEMBER_DOMAIN: ${MEMBER_DOMAIN:-membros.origemdavida.online}
     volumes:
-      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./frontend:/usr/share/nginx/html:ro
-      - chatbot_media:/usr/share/nginx/media:ro
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.chatbot-app.rule=Host(`${APP_DOMAIN}`)"
-      - "traefik.http.routers.chatbot-app.entrypoints=websecure"
-      - "traefik.http.routers.chatbot-app.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.chatbot-api.rule=Host(`${API_DOMAIN}`)"
-      - "traefik.http.routers.chatbot-api.entrypoints=websecure"
-      - "traefik.http.routers.chatbot-api.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.chatbot-membros.rule=Host(`${MEMBER_DOMAIN}`)"
-      - "traefik.http.routers.chatbot-membros.entrypoints=websecure"
-      - "traefik.http.routers.chatbot-membros.tls.certresolver=letsencrypt"
-      - "traefik.http.services.chatbot-nginx.loadbalancer.server.port=80"
+      - /opt/simplificandoconversas/deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - /opt/simplificandoconversas/deploy/frontend:/usr/share/nginx/html:ro
+      - sc_media:/usr/share/nginx/media:ro
     networks:
       - internal
       - PrincipalNet
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=PrincipalNet"
+        # Frontend
+        - "traefik.http.routers.sc-app.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.sc-app.entrypoints=websecure"
+        - "traefik.http.routers.sc-app.tls.certresolver=letsencryptresolver"
+        # API
+        - "traefik.http.routers.sc-api.rule=Host(`${API_DOMAIN}`)"
+        - "traefik.http.routers.sc-api.entrypoints=websecure"
+        - "traefik.http.routers.sc-api.tls.certresolver=letsencryptresolver"
+        # Membros
+        - "traefik.http.routers.sc-membros.rule=Host(`${MEMBER_DOMAIN}`)"
+        - "traefik.http.routers.sc-membros.entrypoints=websecure"
+        - "traefik.http.routers.sc-membros.tls.certresolver=letsencryptresolver"
+        # Service port
+        - "traefik.http.services.sc-nginx.loadbalancer.server.port=80"
 
 networks:
   internal:
     driver: overlay
-    attachable: true
   PrincipalNet:
     external: true
 
 volumes:
-  chatbot_pgdata:
-  chatbot_storagedata:
-  chatbot_evolution_instances:
-  chatbot_evolution_store:
-  chatbot_redis:
-  chatbot_media:
+  sc_pgdata:
+    external: true
+    name: simplificando_chatbot_pgdata
+  sc_storagedata:
+    external: true
+    name: simplificando_chatbot_storagedata
+  sc_evolution_instances:
+    external: true
+    name: simplificando_chatbot_evolution_instances
+  sc_evolution_store:
+    external: true
+    name: simplificando_chatbot_evolution_store
+  sc_redis:
+    external: true
+    name: simplificando_chatbot_redis
+  sc_media:
+    external: true
+    name: simplificando_chatbot_media

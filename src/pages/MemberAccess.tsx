@@ -83,6 +83,7 @@ interface BackendProduct {
   value?: number | null;
   categories: any[];
   materials: any[];
+  granted_at?: string | null;
 }
 
 interface BackendResponse {
@@ -91,6 +92,7 @@ interface BackendResponse {
   settings: MemberSettings | null;
   products: BackendProduct[];
   offers?: any[];
+  pixels?: { pixel_id: string; access_token: string; name: string }[];
   customer?: { name: string | null; document?: string | null; first_seen_at?: string; total_paid?: number; total_transactions?: number } | null;
 }
 
@@ -107,6 +109,7 @@ export default function MemberAccess() {
   const [customerDocument, setCustomerDocument] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
+  const [metaPixels, setMetaPixels] = useState<{ pixel_id: string; access_token: string; name: string }[]>([]);
   const [aiContext, setAiContext] = useState<AiContext | null>(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [visibleMessages, setVisibleMessages] = useState(0);
@@ -173,7 +176,7 @@ export default function MemberAccess() {
         id: `mp-${p.id}-${idx}`,
         product_id: p.id,
         is_active: true,
-        granted_at: new Date().toISOString(), // Backend doesn't return this yet
+        granted_at: (p as any).granted_at || new Date().toISOString(),
         delivery_products: {
           name: p.name,
           slug: p.slug,
@@ -188,6 +191,7 @@ export default function MemberAccess() {
       const memberOffers = payload.offers || [];
       setProducts(memberProds);
       setOffers(memberOffers);
+      setMetaPixels(payload.pixels || []);
       setSettings(
         payload.settings
           ? { ...payload.settings, theme_color: (payload.settings as any).theme_color || "#8B5CF6" }
@@ -407,23 +411,27 @@ export default function MemberAccess() {
     const firePendingPixelFrames = async () => {
       const variations = generatePhoneVariations(normalizedPhone);
       if (variations.length === 0) return;
-      const [framesRes, pixelsRes, customerRes] = await Promise.all([
-        supabase.from("member_pixel_frames").select("id, product_name, product_value").in("normalized_phone", variations).eq("fired", false),
-        supabase.from("global_delivery_pixels").select("platform, pixel_id, event_name, access_token").eq("is_active", true),
-        supabase.from("customers" as any).select("name, email").in("normalized_phone", variations).limit(1).maybeSingle(),
-      ]);
+      const framesRes = await supabase
+        .from("member_pixel_frames")
+        .select("id, product_name, product_value")
+        .in("normalized_phone", variations)
+        .eq("fired", false);
       const frames = framesRes.data || [];
-      const globalPixels = (pixelsRes.data || []) as PixelInfo[];
-      if (frames.length === 0 || globalPixels.length === 0) return;
-      const customer = customerRes.data as any;
-      const nameParts = customer?.name?.trim().split(/\s+/) || [];
-      const userData = { email: customer?.email || null, firstName: nameParts[0] || null, lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : null };
-      for (const frame of frames) { firePixels(globalPixels, Number((frame as any).product_value) || 0, normalizedPhone, userData); }
+      if (frames.length === 0 || metaPixels.length === 0) return;
+      const pixelInfos: PixelInfo[] = metaPixels.map(p => ({
+        platform: "meta",
+        pixel_id: p.pixel_id,
+        event_name: "Purchase",
+        access_token: p.access_token,
+      }));
+      const nameParts = (customerName || "").trim().split(/\s+/);
+      const userData = { email: null, firstName: nameParts[0] || null, lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : null };
+      for (const frame of frames) { firePixels(pixelInfos, Number((frame as any).product_value) || 0, normalizedPhone, userData); }
       const frameIds = frames.map((f: any) => f.id);
       await supabase.from("member_pixel_frames").update({ fired: true, fired_at: new Date().toISOString() } as any).in("id", frameIds);
     };
     firePendingPixelFrames();
-  }, [normalizedPhone, loading, notFound]);
+  }, [normalizedPhone, loading, notFound, metaPixels]);
 
   const sortedProducts = useMemo(() => [...products].sort((a, b) => new Date(b.granted_at).getTime() - new Date(a.granted_at).getTime()), [products]);
   const ownedProductNames = useMemo(() => products.filter(p => p.delivery_products).map(p => p.delivery_products!.name), [products]);
@@ -463,15 +471,17 @@ export default function MemberAccess() {
   const themeColor = settings?.theme_color || "#8B5CF6";
   const greetingText = aiContext?.greeting || settings?.welcome_message || "Boas-vindas à sua área exclusiva!";
 
-  const isRecent = (grantedAt: string) => {
-    const diffDays = (Date.now() - new Date(grantedAt).getTime()) / (1000 * 60 * 60 * 24);
-    return diffDays <= 3;
+  const getReleaseLabel = (dateStr: string) => {
+    const diffDays = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Liberado hoje";
+    if (diffDays === 1) return "Liberado há 1 dia";
+    return `Liberado há ${diffDays} dias`;
   };
 
   const renderProductCard = (mp: MemberProduct) => {
     const product = mp.delivery_products;
     if (!product) return null;
-    const recent = isRecent(mp.granted_at);
+    const releaseLabel = getReleaseLabel(mp.granted_at);
     const progress = getProductProgress(mp.product_id);
     const mats = materialsByProduct[mp.product_id] || [];
     const progressLabel = getProgressLabel(progress.latestProgress, mp.product_id);
@@ -490,7 +500,7 @@ export default function MemberAccess() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white mb-2 bg-emerald-500/90">
-                <Check className="h-3 w-3" strokeWidth={3} />{recent ? "Novo" : "Liberado"}
+                <Check className="h-3 w-3" strokeWidth={3} />{releaseLabel}
               </span>
               <h3 className="font-bold text-white text-lg leading-tight line-clamp-2" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.3)' }}>{product.name}</h3>
             </div>
@@ -505,7 +515,7 @@ export default function MemberAccess() {
               <ShoppingBag className="absolute top-3 right-3 h-8 w-8 opacity-[0.08]" style={{ color: themeColor }} />
             )}
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white w-fit mb-2 bg-emerald-500/90">
-              <Check className="h-3 w-3" strokeWidth={3} />{recent ? "Novo" : "Liberado"}
+              <Check className="h-3 w-3" strokeWidth={3} />{releaseLabel}
             </span>
             <h3 className="font-bold text-gray-800 text-lg leading-tight line-clamp-2">{product.name}</h3>
           </div>
@@ -633,6 +643,7 @@ export default function MemberAccess() {
                   productDescription={openProduct.delivery_products.member_description}
                   initialCategories={categoriesByProduct[openProduct.product_id] || []}
                   initialMaterials={materialsByProduct[openProduct.product_id] || []}
+                  grantedAt={openProduct.granted_at}
                   onActivityChange={handleActivityChange}
                 />
               </div>

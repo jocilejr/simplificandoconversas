@@ -33,7 +33,7 @@ function MemberProductsTab() {
   const { data: products } = useQuery({
     queryKey: ["delivery-products-names", workspaceId],
     queryFn: async () => {
-      const { data } = await supabase.from("delivery_products" as any).select("id, name").eq("workspace_id", workspaceId!).eq("is_active", true);
+      const { data } = await supabase.from("delivery_products" as any).select("id, name, value").eq("workspace_id", workspaceId!).eq("is_active", true);
       return data || [];
     },
     enabled: !!workspaceId,
@@ -135,18 +135,29 @@ function MemberProductsTab() {
         throw new Error("Telefone inválido");
       }
 
+      const selectedProduct = products?.find((p: any) => p.id === newProductId);
+
       const { error } = await supabase.from("member_products" as any).upsert(
         {
           workspace_id: workspaceId,
           phone: normalizedPhone,
           product_id: newProductId,
-          title: products?.find((p: any) => p.id === newProductId)?.name || '',
+          title: selectedProduct?.name || '',
           is_active: true,
         } as any,
         { onConflict: "product_id,phone" }
       );
 
       if (error) throw error;
+
+      // Create pixel frame so the member fires the pixel on next page access
+      const { error: pixelErr } = await supabase.from("member_pixel_frames" as any).insert({
+        workspace_id: workspaceId,
+        normalized_phone: normalizedPhone,
+        product_name: selectedProduct?.name || '',
+        product_value: selectedProduct?.value || 0,
+      } as any);
+      if (pixelErr) console.error("[AreaMembros] pixel_frame insert error:", pixelErr);
     },
     onSuccess: () => { toast.success("Produto liberado!"); queryClient.invalidateQueries({ queryKey: ["member-products"] }); setNewPhone(""); setNewProductId(""); setDialogOpen(false); },
     onError: (err: any) => { console.error("[AreaMembros] addMutation error:", JSON.stringify(err)); toast.error(err.message || "Erro ao liberar produto"); },

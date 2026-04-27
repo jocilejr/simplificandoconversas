@@ -1,5 +1,5 @@
 import { useProfile } from "@/hooks/useProfile";
-import { User, Plug, AppWindow, Puzzle, Users, Percent, Crown, Package, HardDrive } from "lucide-react";
+import { User, Plug, AppWindow, Puzzle, Users, Percent, Crown, Package, HardDrive, Building2 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ProfileSection } from "@/components/settings/ProfileSection";
@@ -11,10 +11,12 @@ import { FeesSection } from "@/components/settings/FeesSection";
 import { MemberAreaSettingsSection } from "@/components/settings/MemberAreaSettingsSection";
 import { DeliverySettingsSection } from "@/components/settings/DeliverySettingsSection";
 import { MediaManagerSection } from "@/components/settings/MediaManagerSection";
+import { WorkspaceSection } from "@/components/settings/WorkspaceSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
 const allSections = [
   { key: "profile", label: "Perfil", icon: User, minRole: "viewer" },
+  { key: "workspace", label: "Configuração do Workspace", icon: Building2, minRole: "admin" },
   { key: "team", label: "Equipe", icon: Users, minRole: "admin" },
   { key: "connections", label: "Conexões", icon: Plug, minRole: "admin" },
   { key: "integrations", label: "Integrações", icon: Puzzle, minRole: "admin" },
@@ -23,7 +25,6 @@ const allSections = [
   { key: "delivery", label: "Ajustes Entrega", icon: Package, minRole: "admin" },
   { key: "media", label: "Arquivos", icon: HardDrive, minRole: "admin" },
   { key: "app", label: "Aplicação", icon: AppWindow, minRole: "admin" },
-
 ];
 
 const SettingsPage = () => {
@@ -35,20 +36,18 @@ const SettingsPage = () => {
   const userLevel = isSuperAdmin ? 99 : roleLevel(role || "viewer");
   const sections = allSections.filter((s) => userLevel >= roleLevel(s.minRole));
 
-
   const renderContent = () => {
     switch (active) {
       case "profile": return <ProfileSection />;
+      case "workspace": return <WorkspaceSection />;
       case "team": return <TeamSection />;
       case "connections": return <ConnectionsSection />;
       case "integrations": return <IntegrationsSection />;
-      
       case "fees": return <FeesSection />;
       case "member_area": return <MemberAreaSettingsSection />;
       case "delivery": return <DeliverySettingsSection />;
       case "media": return <MediaManagerSection />;
       case "app": return <AppSection />;
-
       default: return null;
     }
   };
@@ -61,7 +60,6 @@ const SettingsPage = () => {
       </div>
 
       <div className="flex gap-6">
-        {/* Navegação lateral */}
         <nav className="w-48 shrink-0 space-y-0.5">
           {sections.map((s) => (
             <button
@@ -80,7 +78,6 @@ const SettingsPage = () => {
           ))}
         </nav>
 
-        {/* Conteúdo */}
         <div className="flex-1 min-w-0">
           {renderContent()}
         </div>

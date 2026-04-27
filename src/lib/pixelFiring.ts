@@ -57,6 +57,12 @@ const ensureMetaSdk = () => {
   })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
 };
 
+
+const sha256 = async (value: string): Promise<string> => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value.toLowerCase().trim()));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 const fireMetaCAPI = async (
   pixels: { pixel_id: string; access_token: string; event_name: string }[],
   value: number,
@@ -67,37 +73,48 @@ const fireMetaCAPI = async (
   if (pixels.length === 0) return;
 
   try {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const userDataHashed: Record<string, string[]> = {};
+    const formattedPhone = formatPhoneForMeta(userData.phone);
+    if (formattedPhone) {
+      const hashed = await sha256(formattedPhone);
+      userDataHashed.ph = [hashed];
+      userDataHashed.external_id = [hashed];
+    }
+    if (userData.email) userDataHashed.em = [await sha256(userData.email)];
+    if (userData.firstName) userDataHashed.fn = [await sha256(userData.firstName)];
+    if (userData.lastName) userDataHashed.ln = [await sha256(userData.lastName)];
+    userDataHashed.country = ['4b84b15bff6ee5796152495a230e45e3d7e947d9ac212f19a4e1de0a5d9f4f16'];
 
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/meta-conversions-api`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': anonKey,
-        },
-        body: JSON.stringify({
-          pixels: pixels.map(p => ({
-            pixel_id: p.pixel_id,
-            access_token: p.access_token,
-            event_name: p.event_name,
-          })),
-          event_id: eventId,
-          value,
-          phone: userData.phone,
-          email: userData.email || null,
-          first_name: userData.firstName || null,
-          last_name: userData.lastName || null,
-          source_url: sourceUrl,
-        }),
+    const eventPayload = {
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: eventId,
+      action_source: 'website',
+      event_source_url: sourceUrl,
+      user_data: {
+        ...userDataHashed,
+        client_user_agent: navigator.userAgent,
+      },
+      custom_data: { value, currency: 'BRL' },
+    };
+
+    await Promise.all(pixels.map(async (p) => {
+      try {
+        const resp = await fetch(
+          'https://graph.facebook.com/v18.0/' + p.pixel_id + '/events?access_token=' + p.access_token,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: [{ ...eventPayload, event_name: p.event_name || 'Purchase' }] }),
+          }
+        );
+        const result = await resp.json();
+        console.log('[CAPI] pixel=', p.pixel_id, 'response:', result);
+      } catch (err) {
+        console.error('[CAPI] pixel=', p.pixel_id, 'error:', err);
       }
-    );
-    const result = await response.json();
-    console.log(`[CAPI] Server-side response:`, result);
+    }));
   } catch (err) {
-    console.error(`[CAPI] Error calling server-side API:`, err);
+    console.error('[CAPI] Error:', err);
   }
 };
 

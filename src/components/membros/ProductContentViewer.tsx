@@ -15,6 +15,7 @@ interface Props {
   productDescription?: string | null;
   initialCategories?: any[];
   initialMaterials?: any[];
+  grantedAt?: string;
   onActivityChange?: (activity: string, productName?: string, materialName?: string) => void;
 }
 
@@ -26,6 +27,7 @@ export default function ProductContentViewer({
   productDescription,
   initialCategories,
   initialMaterials,
+  grantedAt,
   onActivityChange,
 }: Props) {
   const [preloadedPdf, setPreloadedPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -55,7 +57,7 @@ export default function ProductContentViewer({
   const { data: materialsData, isLoading: loadingMats } = useQuery({
     queryKey: ["member-materials", productId],
     queryFn: async () => {
-      const { data } = await supabase.from("member_product_materials").select("*").eq("product_id", productId).order("sort_order");
+      const { data } = await supabase.from("member_product_materials").select("*").eq("product_id", productId).order("created_at", { ascending: false });
       return data || [];
     },
     enabled: shouldLoadMaterials,
@@ -83,7 +85,7 @@ export default function ProductContentViewer({
 
   const renderMaterialCard = (mat: any) => {
     const activityType = mat.content_type === "pdf" ? "reading_pdf" : mat.content_type === "video" ? "watching_video" : "viewing_product";
-    return <MaterialCard key={mat.id} material={mat} themeColor={themeColor} preloadedPdf={mostRecentPdf?.id === mat.id ? preloadedPdf : undefined} phone={phone} onOpen={() => onActivityChange?.(activityType, productName, mat.title)} />;
+    return <MaterialCard key={mat.id} material={mat} themeColor={themeColor} preloadedPdf={mostRecentPdf?.id === mat.id ? preloadedPdf : undefined} phone={phone} grantedAt={grantedAt} onOpen={() => onActivityChange?.(activityType, productName, mat.title)} />;
   };
 
   return (

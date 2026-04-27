@@ -14,6 +14,7 @@ interface Material {
   content_url: string | null;
   content_text: string | null;
   button_label?: string | null;
+  created_at?: string | null;
 }
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   themeColor: string;
   preloadedPdf?: pdfjsLib.PDFDocumentProxy | null;
   phone?: string;
+  grantedAt?: string;
   onOpen?: () => void;
 }
 
@@ -32,7 +34,7 @@ const typeConfig: Record<string, { icon: typeof FileText; label: string; accent:
   audio: { icon: Music, label: "Áudio", accent: "#f59e0b" },
 };
 
-export default function MaterialCard({ material, themeColor, preloadedPdf, phone, onOpen }: Props) {
+export default function MaterialCard({ material, themeColor, preloadedPdf, phone, grantedAt, onOpen }: Props) {
   const [open, setOpen] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const config = typeConfig[material.content_type] || typeConfig.text;
@@ -85,7 +87,15 @@ export default function MaterialCard({ material, themeColor, preloadedPdf, phone
           <div className="flex-1 min-w-0 space-y-1.5">
             <p className="font-bold text-base text-gray-800 leading-snug line-clamp-2 group-hover:text-gray-600 transition-colors uppercase tracking-wide">{material.title}</p>
             {material.description && <p className="text-sm text-gray-500 line-clamp-2">{material.description}</p>}
-            <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full" style={{ backgroundColor: `${config.accent}12`, color: config.accent }}>{config.label}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full" style={{ backgroundColor: `${config.accent}12`, color: config.accent }}>{config.label}</span>
+              {(grantedAt || material.created_at) && (() => {
+                const dateToUse = grantedAt || material.created_at!;
+                const diffDays = Math.floor((Date.now() - new Date(dateToUse).getTime()) / (1000 * 60 * 60 * 24));
+                const label = diffDays === 0 ? "Liberado hoje" : diffDays === 1 ? "Liberado há 1 dia" : `Liberado há ${diffDays} dias`;
+                return <span className="inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">{label}</span>;
+              })()}
+            </div>
           </div>
         </div>
       </button>
