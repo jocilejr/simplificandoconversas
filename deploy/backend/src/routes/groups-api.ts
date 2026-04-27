@@ -1118,13 +1118,19 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     const perMinutes = spamConfig?.per_minutes ?? 60;
     const delayMs = spamConfig?.delay_between_sends_ms ?? 3000;
 
-    // Reset stale "processing" items older than 5 minutes back to pending
-    const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // Reset stale processing: items stuck >2min -> pending; >15min -> failed
+    const staleResetCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const staleFailCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    await sb.from("group_message_queue")
+      .update({ status: "failed", error_message: "Timeout||Timeout de processamento||Item ficou mais de 15 minutos em processamento", completed_at: new Date().toISOString() })
+      .eq("workspace_id", workspaceId)
+      .eq("status", "processing")
+      .lt("started_at", staleFailCutoff);
     await sb.from("group_message_queue")
       .update({ status: "pending", started_at: null })
       .eq("workspace_id", workspaceId)
       .eq("status", "processing")
-      .lt("started_at", staleCutoff);
+      .lt("started_at", staleResetCutoff);
 
     const { data: pending, error } = await sb
       .from("group_message_queue")
@@ -1199,11 +1205,12 @@ router.post("/queue/process", async (req: Request, res: Response) => {
           content.image || content.video || content.document || "";
 
         if (item.message_type === "text") {
+          const forceLinkPreview = !!(content.forceLinkPreview || content.linkPreview);
           const r = await fetch(`${baseUrl}/message/sendText/${encoded}`, {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
-            body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
-            signal: AbortSignal.timeout(30000),
+            body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne, forceLinkPreview }),
+            signal: AbortSignal.timeout(45000),
           });
           if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "audio") {

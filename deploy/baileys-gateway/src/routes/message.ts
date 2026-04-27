@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getInstance } from "../instance-manager";
+import { getUrlInfo, extractUrlFromText } from "@whiskeysockets/baileys";
 
 const router = Router();
 
@@ -22,7 +23,7 @@ async function ensureSock(req: any, res: any) {
 router.post("/sendText/:name", async (req, res) => {
   const sock = await ensureSock(req, res);
   if (!sock) return;
-  const { number, text, delay, mentionsEveryOne } = req.body || {};
+  const { number, text, delay, mentionsEveryOne, forceLinkPreview } = req.body || {};
   if (!number || !text) return res.status(400).json({ error: "number and text required" });
   if (delay) await new Promise((r) => setTimeout(r, Math.min(Number(delay), 15000)));
   try {
@@ -36,6 +37,22 @@ router.post("/sendText/:name", async (req, res) => {
     }
     const payload: any = { text: String(text) };
     if (mentionList.length > 0) payload.mentions = mentionList;
+
+    if (forceLinkPreview) {
+      try {
+        const url = extractUrlFromText(String(text));
+        if (url) {
+          const info = await getUrlInfo(url, {
+            thumbnailWidth: 480,
+            fetchOpts: { timeout: 8000 },
+          });
+          if (info) payload.linkPreview = info;
+        }
+      } catch (previewErr: any) {
+        console.warn("[sendText] linkPreview fetch failed:", previewErr.message);
+      }
+    }
+
     const r = await sock.sendMessage(jid, payload);
     res.json({ key: r?.key, status: "SUCCESS" });
   } catch (e: any) {
