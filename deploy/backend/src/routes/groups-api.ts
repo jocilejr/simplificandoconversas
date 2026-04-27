@@ -1118,6 +1118,14 @@ router.post("/queue/process", async (req: Request, res: Response) => {
     const perMinutes = spamConfig?.per_minutes ?? 60;
     const delayMs = spamConfig?.delay_between_sends_ms ?? 3000;
 
+    // Reset stale "processing" items older than 5 minutes back to pending
+    const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    await sb.from("group_message_queue")
+      .update({ status: "pending", started_at: null })
+      .eq("workspace_id", workspaceId)
+      .eq("status", "processing")
+      .lt("started_at", staleCutoff);
+
     const { data: pending, error } = await sb
       .from("group_message_queue")
       .select("*")
@@ -1195,6 +1203,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, text: content.text || content.caption || "", mentionsEveryOne }),
+            signal: AbortSignal.timeout(30000),
           });
           if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "audio") {
@@ -1205,6 +1214,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, audio: mediaUrl, mentionsEveryOne }),
+            signal: AbortSignal.timeout(30000),
           });
           if (!r.ok) throw new Error(await r.text());
         } else if (item.message_type === "contact") {
@@ -1265,6 +1275,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: apiKey },
             body: JSON.stringify({ number: item.group_jid, contact: contacts, mentionsEveryOne }),
+            signal: AbortSignal.timeout(30000),
           });
           if (!r.ok) throw new Error(await r.text());
         } else {
@@ -1282,6 +1293,7 @@ router.post("/queue/process", async (req: Request, res: Response) => {
               fileName: content.fileName || "",
               mentionsEveryOne,
             }),
+            signal: AbortSignal.timeout(30000),
           });
           if (!r.ok) throw new Error(await r.text());
         }

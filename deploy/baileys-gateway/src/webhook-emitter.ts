@@ -26,7 +26,8 @@ export async function emitWebhook(
 ): Promise<void> {
   const isGroup = GROUP_EVENTS.has(event);
   const baseUrl = isGroup ? GROUPS_WEBHOOK_URL : WEBHOOK_GLOBAL_URL;
-  const url = `${baseUrl}/${pathFromEvent(event)}`;
+  // Group events go to GROUPS_WEBHOOK_URL as-is (no suffix); regular events get Evolution-style suffix
+  const url = isGroup ? baseUrl : `${baseUrl}/${pathFromEvent(event)}`;
 
   const body = {
     event,
