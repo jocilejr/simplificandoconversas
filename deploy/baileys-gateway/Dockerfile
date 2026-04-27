@@ -12,6 +12,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y python3 make g++ git && rm -rf /var/lib/apt/lists/*
 COPY package.json ./
 RUN npm install --omit=dev --legacy-peer-deps
+# increase Baileys link preview fetch timeout from 3s to 15s
+RUN sed -i 's/timeout: 3000/timeout: 15000/g' node_modules/@whiskeysockets/baileys/lib/Socket/messages-send.js
 COPY --from=builder /app/dist ./dist
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

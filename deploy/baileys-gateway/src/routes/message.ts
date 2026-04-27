@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getInstance } from "../instance-manager";
+import { extractUrlFromText } from "@whiskeysockets/baileys";
 
 const router = Router();
 
@@ -37,10 +38,13 @@ router.post("/sendText/:name", async (req, res) => {
     const payload: any = { text: String(text) };
     if (mentionList.length > 0) payload.mentions = mentionList;
 
-    // When forceLinkPreview=true: leave linkPreview undefined so Baileys
-    // auto-generates high-quality preview via waUploadToServer (large format).
-    // When false: set null to suppress the auto-generated preview.
-    if (!forceLinkPreview) {
+    if (forceLinkPreview) {
+      const detectedUrl = extractUrlFromText(String(text));
+      console.log(`[sendText] forceLinkPreview=true, detectedUrl=${detectedUrl}`);
+      // leave linkPreview undefined — Baileys auto-generates high-quality preview
+      // via generateHighQualityLinkPreview:true + waUploadToServer
+    } else {
+      // suppress auto-preview when not requested
       payload.linkPreview = null;
     }
 

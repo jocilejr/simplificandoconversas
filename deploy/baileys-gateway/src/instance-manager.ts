@@ -110,6 +110,7 @@ export async function startInstance(name: string): Promise<InstanceState> {
     syncFullHistory: false,
     markOnlineOnConnect: false,
     generateHighQualityLinkPreview: true,
+    linkPreviewImageThumbnailWidth: 800,
     getMessage: async (key) => {
       const msg = inst.msgStore.get(key.id!);
       return msg?.message ?? undefined;
