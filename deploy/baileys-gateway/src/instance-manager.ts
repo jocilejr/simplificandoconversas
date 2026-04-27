@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
   WASocket,
   proto,
 } from "@whiskeysockets/baileys";
@@ -97,7 +98,10 @@ export async function startInstance(name: string): Promise<InstanceState> {
 
   const sock = makeWASocket({
     version,
-    auth: state,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, baseLogger as any),
+    },
     logger: baseLogger as any,
     printQRInTerminal: false,
     browser: Browsers.ubuntu("Chrome"),
