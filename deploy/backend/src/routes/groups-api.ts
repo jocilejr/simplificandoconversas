@@ -63,9 +63,6 @@ function normalizeBaileysGroupsPayload(payload: unknown) {
     })
     .filter((group) => group.jid.endsWith("@g.us"));
 }
-// Compat alias para chamadores existentes.
-const normalizeBaileysGroupsPayload = normalizeBaileysGroupsPayload;
-
 /* ─── helpers: normalização de JID ─── */
 const normalizeJid = (jid: string) => (jid || "").replace(/\+/g, "").split(":")[0].split("@")[0].replace(/\D/g, "");
 
