@@ -1,28 +1,35 @@
-import { useState } from "react";
 import { ChatConversation } from "@/hooks/useConversationsLive";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LabelManager } from "./LabelManager";
-import { NotesList } from "./NotesList";
+import { CrossInstanceHistory } from "./CrossInstanceHistory";
 import { ContactReminders } from "./ContactReminders";
-import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { Zap, Phone, Cpu } from "lucide-react";
+import { Phone, Cpu } from "lucide-react";
 
-export function ContactPanel({ conversation }: { conversation: ChatConversation }) {
-  const { hasPermission } = useWorkspace();
-  const canTriggerFlow = hasPermission("disparar_fluxo");
-  const [flowOpen, setFlowOpen] = useState(false);
+interface Props {
+  conversation: ChatConversation;
+  onSelectConversation?: (conversationId: string) => void;
+}
 
+const INSTANCE_HUES = [210, 280, 150, 25, 340, 190, 55, 320];
+function instanceColor(name: string | null | undefined): string {
+  if (!name) return "hsl(215 10% 50%)";
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  const hue = INSTANCE_HUES[Math.abs(hash) % INSTANCE_HUES.length];
+  return `hsl(${hue} 65% 55%)`;
+}
+
+export function ContactPanel({ conversation, onSelectConversation }: Props) {
   const display = conversation.contact_name || conversation.phone_number || conversation.remote_jid;
   const initials = display.slice(0, 2).toUpperCase();
+  const instColor = instanceColor(conversation.instance_name);
 
   return (
     <div className="h-full flex flex-col border-l border-border bg-card/30">
       <div className="p-4 border-b border-border flex flex-col items-center text-center space-y-2">
-        <Avatar className="h-16 w-16">
+        <Avatar className="h-16 w-16 ring-2 ring-border">
           <AvatarFallback className="bg-primary/15 text-primary text-lg font-semibold">
             {initials}
           </AvatarFallback>
@@ -36,34 +43,31 @@ export function ContactPanel({ conversation }: { conversation: ChatConversation 
             </p>
           )}
           {conversation.instance_name && (
-            <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-1 mt-0.5">
-              <Cpu className="h-3 w-3" />
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold mt-1.5"
+              style={{
+                background: instColor.replace("55%)", "15%)"),
+                color: instColor,
+              }}
+            >
+              <Cpu className="h-2.5 w-2.5" strokeWidth={2.5} />
               {conversation.instance_name}
-            </p>
+            </span>
           )}
         </div>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-5">
-          {canTriggerFlow && (
-            <Button
-              size="sm"
-              className="w-full h-8 text-xs"
-              onClick={() => setFlowOpen(true)}
-            >
-              <Zap className="h-3.5 w-3.5 mr-1" />
-              Disparar Fluxo
-            </Button>
-          )}
-
-          <Separator />
           <LabelManager conversationId={conversation.id} />
 
           <Separator />
-          <NotesList
-            conversationId={conversation.id}
+          <CrossInstanceHistory
+            currentConversationId={conversation.id}
+            currentInstance={conversation.instance_name}
             remoteJid={conversation.remote_jid}
+            phoneNumber={conversation.phone_number}
+            onSelectConversation={onSelectConversation}
           />
 
           <Separator />
@@ -76,13 +80,6 @@ export function ContactPanel({ conversation }: { conversation: ChatConversation 
           />
         </div>
       </ScrollArea>
-
-      <ManualFlowTrigger
-        open={flowOpen}
-        onOpenChange={setFlowOpen}
-        defaultPhone={conversation.phone_number || conversation.remote_jid.replace(/@.*/, "")}
-        defaultInstance={conversation.instance_name || undefined}
-      />
     </div>
   );
 }
