@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export function AppLayout() {
   const location = useLocation();
-  const isFullscreen = location.pathname === "/conversations";
+  const isFullscreen = location.pathname === "/conversations" || location.pathname === "/chat";
   const { notifications, dismissAll, dismissOne } = useTransactionNotifications();
 
   return (

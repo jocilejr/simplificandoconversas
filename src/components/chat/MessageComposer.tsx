@@ -84,10 +84,13 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
   };
 
   return (
-    <div className="border-t border-border bg-card/50 p-3">
+    <div className="border-t border-border bg-card/40 px-3 py-2.5 shrink-0">
       {mediaUrl && (
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-2 rounded-md bg-muted text-xs">
-          <span className="truncate">📎 {mediaName}</span>
+        <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 mb-2 rounded-md bg-muted/70 text-xs border border-border">
+          <span className="truncate flex items-center gap-1.5">
+            <Paperclip className="h-3 w-3 shrink-0" />
+            {mediaName}
+          </span>
           <Button
             variant="ghost"
             size="icon"
@@ -102,7 +105,7 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
           </Button>
         </div>
       )}
-      <div className="flex items-end gap-2">
+      <div className="flex items-center gap-1.5">
         <input
           ref={fileRef}
           type="file"
@@ -113,7 +116,7 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="h-10 w-10 shrink-0 rounded-full hover:bg-accent"
           onClick={handleAttach}
           disabled={disabled || sending}
           title="Anexar arquivo"
@@ -124,7 +127,7 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 text-primary hover:text-primary hover:bg-primary/10"
+            className="h-10 w-10 shrink-0 rounded-full text-primary hover:text-primary hover:bg-primary/10"
             onClick={() => setFlowOpen(true)}
             disabled={disabled}
             title="Disparar fluxo automatizado"
@@ -142,16 +145,18 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
             }
           }}
           placeholder={disabled ? "Selecione uma conversa" : "Digite uma mensagem..."}
-          className="min-h-[40px] max-h-[120px] text-xs resize-none flex-1"
+          rows={1}
+          className="min-h-10 h-10 max-h-32 text-sm resize-none flex-1 py-2.5 px-3 rounded-full bg-background border-border focus-visible:ring-1 focus-visible:ring-primary/40 leading-tight"
           disabled={disabled || sending}
         />
         <Button
           onClick={handleSend}
           disabled={!canSend}
-          className="h-9 shrink-0"
-          size="sm"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-full"
+          title="Enviar"
         >
-          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
 
