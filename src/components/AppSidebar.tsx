@@ -64,6 +64,7 @@ const financeItems: MenuItem[] = [
 ];
 
 const operationalItems: MenuItem[] = [
+  { title: "Chat ao Vivo", url: "/chat", icon: MessagesSquare, permKey: "chat" },
   { title: "Fluxos", url: "/chatbot", icon: Workflow, permKey: "chatbot" },
   { title: "E-mail", url: "/email", icon: Mail, permKey: "email" },
   { title: "Lembretes", url: "/reminders", icon: Bell, permKey: "reminders" },
