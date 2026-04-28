@@ -162,15 +162,13 @@ export function ConversationList({
                     <div className="flex items-center gap-1.5 mt-1">
                       {c.instance_name && (
                         <span
-                          className="inline-flex items-center gap-1 px-1.5 py-[1px] rounded text-[9px] font-semibold shrink-0 max-w-[110px] truncate"
+                          className="inline-flex items-center px-1.5 py-[1px] rounded text-[9px] font-semibold shrink-0 max-w-[110px] truncate"
                           style={{
                             background: instColor.replace("55%)", "18%)"),
                             color: instColor,
-                            borderLeft: `2px solid ${instColor}`,
                           }}
                           title={`Instância: ${c.instance_name}`}
                         >
-                          <Cpu className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
                           <span className="truncate">{c.instance_name}</span>
                         </span>
                       )}
