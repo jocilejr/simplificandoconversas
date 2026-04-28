@@ -364,7 +364,7 @@ lidValue = remoteJid;
     else if (message.stickerMessage) messageType = "sticker";
 
     // Detect empty inbound messages (undecrypted) and apply placeholder
-    const isEmptyInbound = !fromMe && !messageContent.trim() && messageType === "text";
+    const isEmptyInbound = !fromMe && !messageContent.trim() && (messageType === "text" || messageType === "encryptedMessage" || Object.keys(message).length === 0);
     const finalContent = isEmptyInbound
       ? "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar"
       : messageContent;
@@ -376,7 +376,6 @@ lidValue = remoteJid;
         // Update existing conv (found by lid or phone_number)
         const updateData: Record<string, unknown> = {
           last_message: lastMessagePreview,
-          last_message_at: new Date().toISOString(),
         };
         if (resolvedPhone) updateData.phone_number = resolvedPhone;
         if (lidValue) updateData.lid = lidValue;
@@ -387,7 +386,6 @@ lidValue = remoteJid;
           workspace_id: workspaceId,
           remote_jid: remoteJid,
           last_message: lastMessagePreview,
-          last_message_at: new Date().toISOString(),
           instance_name: instance,
         };
         if (resolvedPhone) sendUpsert.phone_number = resolvedPhone;
@@ -411,6 +409,27 @@ lidValue = remoteJid;
       }
     }
 
+    // Dedup inbound: if this message was already saved (e.g., initial stub was stored),
+    // update content if it was a placeholder and is now decrypted.
+    if (!fromMe && externalId) {
+      const PLACEHOLDER = "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar";
+      const { data: existingInbound } = await supabase
+        .from("messages")
+        .select("id, content")
+        .eq("external_id", externalId)
+        .maybeSingle();
+      if (existingInbound) {
+        if (existingInbound.content === PLACEHOLDER && finalContent && finalContent !== PLACEHOLDER) {
+          await supabase
+            .from("messages")
+            .update({ content: finalContent, message_type: messageType })
+            .eq("id", existingInbound.id);
+          console.log();
+        }
+        return res.json({ ok: true, skipped: "already_saved" });
+      }
+    }
+
     let mediaUrl: string | null = null;
     if (messageType !== "text") {
       mediaUrl = await downloadAndUploadMedia(instance, data, messageType, userId);
@@ -426,8 +445,8 @@ lidValue = remoteJid;
       // Update existing conv found by lid or phone_number
       const updateData: Record<string, unknown> = {
         last_message: lastMessagePreview,
-        last_message_at: new Date().toISOString(),
       };
+      if (!fromMe) updateData.last_message_at = new Date().toISOString();
       if (contactName) updateData.contact_name = contactName;
       if (resolvedPhone) updateData.phone_number = resolvedPhone;
       if (lidValue) updateData.lid = lidValue;
@@ -442,9 +461,9 @@ lidValue = remoteJid;
         workspace_id: workspaceId,
         remote_jid: remoteJid,
         last_message: lastMessagePreview,
-        last_message_at: new Date().toISOString(),
         instance_name: instance,
       };
+      if (!fromMe) upsertData.last_message_at = new Date().toISOString();
       if (contactName) upsertData.contact_name = contactName;
       if (resolvedPhone) upsertData.phone_number = resolvedPhone;
       if (lidValue) upsertData.lid = lidValue;
@@ -452,7 +471,7 @@ lidValue = remoteJid;
       const { data: upserted, error } = await supabase
         .from("conversations")
         .upsert(upsertData, { onConflict: "user_id,remote_jid,instance_name" })
-        .select("id")
+        .select("id, profile_pic_url")
         .single();
       conv = upserted;
       convError = error;
@@ -463,6 +482,14 @@ lidValue = remoteJid;
       return res.status(500).json({ error: "Failed to save conversation" });
     }
 
+    // Background: cache profile pic on first encounter
+    if (conv && !(conv as any).profile_pic_url && resolvedPhone && instance) {
+      baileysRequest(`/chat/fetchProfilePictureUrl/${instance}`, "POST", { number: resolvedPhone })
+        .then((r: any) => {
+          if (r?.profilePictureUrl) supabase.from("conversations").update({ profile_pic_url: r.profilePictureUrl }).eq("id", conv!.id).then(() => {});
+        })
+        .catch(() => {});
+    }
     if (!fromMe) {
       await supabase.rpc("increment_unread", { conv_id: conv.id });
     }

@@ -273,11 +273,20 @@ export async function startInstance(name: string): Promise<InstanceState> {
 }
 
 function serializeMessage(instance: string, msg: proto.IWebMessageInfo) {
-  if (!msg.key || !msg.message) return null;
+  if (!msg.key) return null;
+  // Allow stub-type messages (e.g. CIPHERTEXT/encrypted) through even without message content
+  const hasMessage = !!msg.message && Object.keys(msg.message).length > 0;
+  const hasStub = !!msg.messageStubType;
   const remoteJid = normalizeJid(msg.key.remoteJid);
-  const message = msg.message;
-  const messageType =
-    Object.keys(message).find((k) => k !== "messageContextInfo") || "unknown";
+  const isInboundIndividual = !msg.key.fromMe && remoteJid && !remoteJid.includes("@g.us");
+  // Drop only if no content, no stub, AND not an inbound individual message
+  // Inbound individual with no content = encrypted/undecryptable, still need to create conversation
+  if (!hasMessage && !hasStub && !isInboundIndividual) return null;
+
+  const message = msg.message || {};
+  const messageType = hasMessage
+    ? (Object.keys(message).find((k) => k !== "messageContextInfo") || "unknown")
+    : hasStub ? "unknown" : "encryptedMessage";
 
   const senderPn = (msg.key as any).senderPn || undefined;
   return {
@@ -292,6 +301,8 @@ function serializeMessage(instance: string, msg: proto.IWebMessageInfo) {
     message,
     messageType,
     messageTimestamp: Number(msg.messageTimestamp || 0),
+    messageStubType: msg.messageStubType ?? undefined,
+    messageStubParameters: (msg.messageStubParameters ?? undefined) as string[] | undefined,
     instanceId: instance,
     source: "baileys",
   };
