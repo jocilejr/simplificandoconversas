@@ -135,7 +135,7 @@ function MemberProductsTab() {
         throw new Error("Telefone inválido");
       }
 
-      const selectedProduct = products?.find((p: any) => p.id === newProductId);
+      const selectedProduct: any = (products as any[] | undefined)?.find((p: any) => p.id === newProductId);
 
       const { error } = await supabase.from("member_products" as any).upsert(
         {

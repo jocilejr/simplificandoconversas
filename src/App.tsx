@@ -27,6 +27,7 @@ import EntregaDigital from "./pages/EntregaDigital";
 import LinksUteis from "./pages/LinksUteis";
 import FollowUp from "./pages/FollowUp";
 import RespostasRapidas from "./pages/RespostasRapidas";
+import ChatLive from "./pages/ChatLive";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,6 +80,7 @@ const App = () => (
                 <Route path="/links-uteis" element={<PermissionGate permission="links_uteis" redirect><LinksUteis /></PermissionGate>} />
                 <Route path="/follow-up" element={<PermissionGate permission="recuperacao" redirect><FollowUp /></PermissionGate>} />
                 <Route path="/respostas-rapidas" element={<PermissionGate permission="respostas_rapidas" redirect><RespostasRapidas /></PermissionGate>} />
+                <Route path="/chat" element={<PermissionGate permission="chat" redirect><ChatLive /></PermissionGate>} />
                 <Route path="/dashboard" element={<Navigate to="/" replace />} />
               </Route>
             </Route>

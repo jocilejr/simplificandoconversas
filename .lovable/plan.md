@@ -1,104 +1,133 @@
-## Estado atual (verificado)
 
-A memória diz que o Baileys já substituiu o Evolution, mas **na prática o código não foi migrado**:
+# Chat ao Vivo — Central de Conversas
 
-- `deploy/baileys-gateway/` só tem `Dockerfile` + `package.json`. Sem `src/`, sem `dist/`, sem servidor implementado.
-- O helper `deploy/backend/src/lib/baileys-config.ts` citado na memória **não existe**.
-- O backend continua 100% acoplado ao Evolution: `webhook.ts`, `whatsapp-proxy.ts`, `groups-api.ts`, `recovery-dispatch.ts`, `index.ts` usam `EVOLUTION_URL` / `EVOLUTION_API_KEY` e a função `evolutionRequest()`.
-- `docker-compose.yml`, `portainer-stack.yml`, `stack.yml`, `install.sh`, `update.sh`, `init-roles.sh`, `nginx/default.conf.template`, `sanitize-storage.sh`, `evolution-msg-cleanup.sh` ainda contém a stack Evolution + Redis.
-- Edge Function stub (`supabase/functions/whatsapp-proxy/index.ts`) e UI (`ConnectionsSection.tsx`) mencionam Evolution.
+Nova página `/chat` que consolida todas as conversas de todas as instâncias do workspace em tempo real, com ferramentas de atendimento no painel lateral: etiquetas, notas, lembretes e disparo de fluxos.
 
-Ou seja: precisamos **construir o gateway Baileys do zero** e **reescrever toda a camada de envio/recebimento** do backend para falar com ele, mantendo o contrato externo (rotas e payloads de webhook idênticos) para não quebrar fluxos, follow-ups, recuperação, grupos e UI.
+## O que o usuário verá
 
-## Objetivo
-
-Eliminar 100% do Evolution: imagem, container, Redis, env vars, código, nginx, scripts, stubs e textos. Tudo passa a operar via gateway Baileys próprio, com auth state em Postgres (`public.baileys_auth_state`) e webhooks compatíveis com o formato Evolution v2 que o `webhook.ts` já entende (preserva contrato).
-
-## Plano
-
-### 1. Construir o `baileys-gateway` (Node + TypeScript + Baileys)
-
-Estrutura nova:
+Layout de 3 colunas no padrão inbox (estilo ManyChat/Intercom):
 
 ```text
-deploy/baileys-gateway/
-├── Dockerfile           (atualizar para build TS)
-├── package.json         (adicionar typescript, tsx, @types)
-├── tsconfig.json
-└── src/
-    ├── index.ts             # bootstrap Express + auth API key
-    ├── auth-state.ts        # useAuthState custom em Postgres (public.baileys_auth_state)
-    ├── instance-manager.ts  # cria/remove/restart instância Baileys, gerencia sockets
-    ├── routes/
-    │   ├── instance.ts      # /instance/create, /connect, /connectionState, /logout, /delete, /restart, /fetchInstances
-    │   ├── message.ts       # /message/sendText, /sendMedia, /sendMediaPDF (compat Evolution)
-    │   ├── chat.ts          # /chat/findChats, /findContacts, /fetchProfilePictureUrl, /getBase64FromMediaMessage, /findMessages, /whatsappNumbers
-    │   └── group.ts         # /group/* equivalentes ao que groups-api.ts consome
-    ├── webhook-emitter.ts   # POST WEBHOOK_GLOBAL_URL com {event, instance, data} (formato Evolution v2)
-    └── lid-resolver.ts      # mantém política de @lid (mem://tech/lid-management-comprehensive)
+┌─────────────────────────────────────────────────────────────────┐
+│  Filtros: [Todas instâncias ▼] [Etiqueta ▼] [🔍 buscar]         │
+├──────────────┬────────────────────────────┬────────────────────┤
+│ CONVERSAS    │ MENSAGENS                  │ PAINEL CONTATO     │
+│              │                            │                    │
+│ • João   2   │ ← Oi, bom dia              │ 📞 5588...         │
+│   "Oi"  now  │    08:14                   │ Instância: vendas  │
+│ • Maria      │                            │                    │
+│   "ok"  5m   │ Beleza, pode enviar →      │ 🏷 Etiquetas       │
+│ • Pedro      │           08:15 ✓✓         │ [Lead Quente] [x]  │
+│              │                            │ + adicionar        │
+│              │                            │                    │
+│              │                            │ 📝 Notas (3)       │
+│              │                            │                    │
+│              │                            │ ⏰ Lembretes (1)   │
+│              │                            │                    │
+│              │                            │ ⚡ Disparar Fluxo   │
+│              ├────────────────────────────┤                    │
+│              │ [digite...] [📎] [Enviar]  │                    │
+└──────────────┴────────────────────────────┴────────────────────┘
 ```
 
-Pontos-chave:
-- **Auth state em Postgres**: tabela `public.baileys_auth_state (instance_name text pk, creds jsonb, keys jsonb, updated_at timestamptz)`. Substitui filesystem do Baileys e elimina dependência de Redis.
-- **Eventos emitidos** com nomes/payloads idênticos aos eventos Evolution já consumidos por `webhook.ts` e `groups-webhook.ts`: `messages.upsert`, `messages.update`, `connection.update`, `send.message`, `groups.upsert`, `groups.update`, `group-participants.update`. Assim `webhook.ts` permanece intacto na ponta.
-- **API Key** no header `apikey` (mesmo nome) lendo `BAILEYS_API_KEY`.
-- **Endpoints REST** com mesmas rotas/paths que `evolutionRequest()` chama hoje, retornando JSON no mesmo formato. Isso permite que o backend só troque a base URL.
+- **Coluna 1** — lista de conversas ordenadas por `last_message_at`, badge de não lidas, avatar (usa `contact_photos`), filtro por instância e etiqueta, busca por nome/telefone.
+- **Coluna 2** — timeline de mensagens (in/out), grupos por dia, indicador de status (✓/✓✓), suporte a imagem/áudio/documento via `media_url`. Campo de envio manual com emoji + anexo de mídia (reutiliza `uploadMedia`).
+- **Coluna 3** — painel do contato ativo com abas: Etiquetas, Notas, Lembretes, Ações (Disparar Fluxo, marcar como lida, limpar contador).
 
-### 2. Reescrever camada do backend
+Tudo **em tempo real** via Supabase Realtime — a publication `supabase_realtime` já inclui `messages`.
 
-Criar `deploy/backend/src/lib/baileys-config.ts`:
+## Tabelas existentes reutilizadas
 
-```ts
-export const BAILEYS_URL = process.env.BAILEYS_URL || "http://baileys-gateway:8080";
-export const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || "";
-export async function baileysRequest(path, method = "POST", body?) { ... }
+Nenhuma tabela nova é obrigatória além de **notas** (não existe ainda).
+
+- `conversations` — já tem `remote_jid`, `instance_name`, `contact_name`, `phone_number`, `last_message`, `last_message_at`, `unread_count`, `workspace_id`.
+- `messages` — já persiste entrada/saída (webhook + `send-message`), com realtime habilitado.
+- `labels` + `conversation_labels` — já existem com RLS por workspace.
+- `reminders` — já existe; vamos apenas reutilizar `useReminders` filtrado por `remote_jid`.
+- `contact_photos` — avatar.
+- `whatsapp_instances` — filtro de instâncias.
+
+## O que precisa ser criado no banco
+
+**Única tabela nova: `conversation_notes`**
+
+```sql
+create table public.conversation_notes (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces(id) on delete cascade,
+  user_id uuid not null,
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  remote_jid text not null,
+  content text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.conversation_notes enable row level security;
+
+create policy ws_select on public.conversation_notes for select to authenticated
+  using (is_workspace_member(auth.uid(), workspace_id));
+create policy ws_insert on public.conversation_notes for insert to authenticated
+  with check (can_write_workspace(auth.uid(), workspace_id));
+create policy ws_update on public.conversation_notes for update to authenticated
+  using (can_write_workspace(auth.uid(), workspace_id));
+create policy ws_delete on public.conversation_notes for delete to authenticated
+  using (has_workspace_role(auth.uid(), workspace_id, 'admin'));
+
+create index on public.conversation_notes (conversation_id, created_at desc);
+alter publication supabase_realtime add table public.conversation_notes;
 ```
 
-Substituir em **todos** os arquivos:
+Registrar `conversation_notes` no array de tabelas multi-tenant em `deploy/migrate-workspace.sql` (regra já documentada na memória).
 
-- `deploy/backend/src/routes/webhook.ts` — trocar `EVOLUTION_URL`, `evolutionRequest()` por `baileysRequest()`.
-- `deploy/backend/src/routes/whatsapp-proxy.ts` — reescrever o proxy inteiro contra Baileys (manter mesmas operações expostas à UI: create-instance, connect, qr, logout, delete, send-message, find-chats, find-contacts, profile-pic, find-messages, set-presence, etc.). Remover textos "Evolution".
-- `deploy/backend/src/routes/groups-api.ts` — trocar `getEvolutionConfig()` por `getBaileysConfig()`, atualizar exports e `normalizeEvolutionGroupsPayload` → `normalizeBaileysGroupsPayload`. Atualizar todos os 7 callers internos (linhas 649, 701, 1147, 1571, 1809…).
-- `deploy/backend/src/lib/recovery-dispatch.ts` — substituir os 3 caminhos (sendText, sendMediaPDF, sendMediaImage) e o `whatsappNumberExists()` para Baileys. Remover comentários sobre "Evolution API expects raw base64".
-- `deploy/backend/src/index.ts` — endpoint de restart (linhas 297-304) passa a chamar Baileys.
-- `deploy/backend/src/lib/redis-cleanup.ts` — **deletar arquivo inteiro** e remover `import`/init em `index.ts`. Sem Redis, sem cleanup.
+## Arquivos a criar / editar
 
-### 3. Limpar infraestrutura
+**Novos:**
+- `src/pages/ChatLive.tsx` — container 3 colunas.
+- `src/components/chat/ConversationList.tsx` — coluna 1 com filtros e realtime em `conversations`.
+- `src/components/chat/MessageThread.tsx` — coluna 2 com realtime em `messages`, scroll infinito, renderização por tipo de mídia.
+- `src/components/chat/MessageComposer.tsx` — input + upload + envio via `whatsapp-proxy` action `send-message`.
+- `src/components/chat/ContactPanel.tsx` — coluna 3 com tabs.
+- `src/components/chat/LabelManager.tsx` — chips de etiquetas + popover para criar/atribuir/remover.
+- `src/components/chat/NotesList.tsx` — lista + editor inline de notas.
+- `src/components/chat/ContactReminders.tsx` — lista filtrada por `remote_jid` + botão "novo lembrete" (reutiliza `useCreateReminder`).
+- `src/hooks/useConversations.ts` — query + subscribe realtime, filtros por instância/label/busca.
+- `src/hooks/useMessages.ts` — query paginada + subscribe realtime por `conversation_id`.
+- `src/hooks/useLabels.ts` — CRUD de `labels` e `conversation_labels`.
+- `src/hooks/useConversationNotes.ts` — CRUD de notas.
 
-- `deploy/stack.yml`, `deploy/portainer-stack.yml`, `deploy/docker-compose.yml`: remover serviços `evolution` e `redis`, volumes `*_evolution_instances`, `*_evolution_store`, `*_redis`. Remover env `EVOLUTION_*` e `CACHE_REDIS_*` do backend. Garantir que `baileys-gateway` esteja em todos com env `BAILEYS_API_KEY`, `DATABASE_URL`, `WEBHOOK_GLOBAL_URL=http://backend:3001/api/webhook`, `GROUPS_WEBHOOK_URL=http://backend:3001/api/groups/webhook/events`. Backend recebe `BAILEYS_URL=http://baileys-gateway:8080` e `BAILEYS_API_KEY`.
-- `deploy/init-db.sql`: criar tabela `public.baileys_auth_state` + grants para `service_role`. Remover criação do database `evolution`.
-- `deploy/init-roles.sh`: remover qualquer criação de role/db do Evolution.
-- `deploy/install.sh` e `deploy/update.sh`: remover passos referentes a Evolution/Redis, adicionar build do `baileys-gateway` (npm run build no contexto do Dockerfile).
-- `deploy/nginx/default.conf.template`: remover qualquer `proxy_pass` que aponte para `evolution:8080` (se houver).
-- **Excluir arquivos**: `deploy/evolution-msg-cleanup.sh`, `deploy/sanitize-storage.sh` (revisar — só remover blocos Evolution se houver), `deploy/backend/src/lib/redis-cleanup.ts`.
-- `deploy/.env.example`: remover `EVOLUTION_API_KEY`, adicionar `BAILEYS_API_KEY`.
-- `deploy/PORTAINER.md`: atualizar instruções.
-
-### 4. Frontend e Edge Functions
-
-- `src/components/settings/ConnectionsSection.tsx`: substituir todas as menções textuais a "Evolution" por "WhatsApp" / "gateway" e badges relacionadas (sem mudança funcional — segue chamando `/api/whatsapp-proxy`).
-- `supabase/functions/whatsapp-proxy/index.ts`: atualizar mensagem do stub (remover "Evolution API").
-- `supabase/functions/execute-flow/index.ts`: remover textos Evolution se houver (apenas comentários/strings).
-- Migrações antigas (`supabase/migrations/2026030*`) **não serão tocadas** — são histórico imutável.
-
-### 5. Memória
-
-Atualizar `mem://tech/baileys-infrastructure` confirmando que migração foi de fato concluída e remover do índice qualquer referência residual a Evolution.
+**Editados:**
+- `src/App.tsx` — adicionar rota `/chat` dentro do `AppLayout`/`ProtectedRoute`.
+- `src/components/AppSidebar.tsx` — item de menu "Chat ao Vivo" (ícone `MessagesSquare`).
+- `src/components/ManualFlowTrigger.tsx` — aceitar `defaultPhone` e `defaultInstance` como props para ser acionado já preenchido pelo painel do contato.
 
 ## Detalhes técnicos
 
-- **Compat de payload**: os webhooks emitidos pelo gateway devem espelhar exatamente `{event: "messages.upsert", instance: "<name>", data: {key, message, messageType, pushName}}` — é o que `webhook.ts` já parsea. O mapeamento Baileys→Evolution v2 é feito dentro de `webhook-emitter.ts`.
-- **`getBase64FromMediaMessage`**: implementar usando `downloadMediaMessage` do Baileys, retornando `{ base64 }`.
-- **`whatsappNumbers` / check de existência**: usar `sock.onWhatsApp([phone])` e responder no formato `[{ exists, jid }]` que `recovery-dispatch.ts` espera.
-- **QR code**: emitir base64 PNG via `qrcode` ao receber evento `connection.update` com `qr`, expondo em `/instance/connect/:name`.
-- **Persistência**: `useAuthState` custom grava creds/keys em `baileys_auth_state` a cada update. Sem volume Docker para Baileys.
-- **Política de @lid**: manter `mem://tech/lid-management-comprehensive` — `lid-resolver.ts` traduz `@lid` para `@s.whatsapp.net` antes de emitir webhook.
-- **Sem Redis**: cache Evolution era só para o próprio Evolution; o backend já não dependia dele para lógica de negócio (apenas `redis-cleanup.ts` operacional, que será removido).
+- **Envio de mensagem:** chamada a `supabase.functions.invoke("whatsapp-proxy", { body: { action: "send-message", instanceName, remoteJid, text | mediaUrl, messageType, workspaceId } })`. O backend já insere na tabela `messages` (linha 303 do whatsapp-proxy) — a thread atualiza sozinha via realtime.
+- **Realtime (3 canais):**
+  - `conversations` — `postgres_changes event=*` filtrado por `workspace_id` para reordenar a lista e atualizar `unread_count`/`last_message`.
+  - `messages` — filtrado por `conversation_id` da conversa aberta.
+  - `conversation_notes` — filtrado por `conversation_id`.
+- **Filtro por instância:** dropdown popula com `useWhatsAppInstances().instances`; quando "Todas" → sem filtro; quando específica → `.eq("instance_name", …)` em conversations.
+- **Marcar como lida:** ao abrir conversa, `update conversations set unread_count = 0 where id = …`.
+- **Permissões:** respeitar `can_write_workspace` — usuários sem permissão de escrita veem mas não enviam/editam (componentes checam `hasPermission` do `useWorkspace`, padrão já usado no projeto).
+- **Mobile:** telas <768px mostram uma coluna por vez com navegação (lista → thread → painel), usando estado local.
+- **Design:** segue paleta azul HSL 210 75% 52% sobre fundo HSL 215 28% 7%, ícones lucide, sem emojis hardcoded, modais com contenção horizontal estrita (memória `modal-layout-containment`).
 
-## Observações importantes
+## Fora do escopo (ficará para depois)
 
-- Como você usa **apenas a VPS**, a edge function stub permanece como stub — só atualizamos o texto.
-- Após o deploy, instâncias atuais do Evolution **não migram automaticamente**: cada instância precisará reconectar via QR code novo (Baileys gera credenciais próprias). Isso é inevitável — não há export/import de auth state Evolution↔Baileys puro porque o Evolution v2 já encapsula o Baileys mas em formato proprietário no Postgres dele.
-- Vou te enviar, ao final, instruções de deploy passo-a-passo para rodar dentro da VPS (build da imagem `simplificando-baileys`, migration SQL `baileys_auth_state`, redeploy da stack via Portainer, reconexão das instâncias).
+- Respostas rápidas dentro do chat (tabela `quick_replies` já existe — seria trivial adicionar depois como botão no composer).
+- Transferir conversa entre operadores.
+- Indicador "digitando..." (Baileys suporta mas exige mudança no gateway).
+- Grupos do WhatsApp (removido da app, regra de memória).
 
-Quer que eu prossiga exatamente nesse plano?
+## Pós-deploy
+
+Rodar na VPS após o merge:
+
+```bash
+cd ~/simplificandoconversas && ./deploy/update.sh
+docker exec -i deploy-postgres-1 psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';"
+```
+
+Nenhuma nova variável de ambiente, nenhuma mudança no Baileys gateway.
