@@ -51,7 +51,7 @@ export default function ChatLive() {
   };
 
   return (
-    <div className="h-[calc(100vh-0px)] flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden min-h-0">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card/30">
         <MessageCircle className="h-4 w-4 text-primary" />
         <h1 className="text-sm font-semibold">Chat ao Vivo</h1>
