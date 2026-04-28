@@ -10,6 +10,7 @@ export interface ChatMessage {
   direction: "inbound" | "outbound";
   status: string;
   media_url: string | null;
+  transcription: string | null;
   created_at: string;
   external_id: string | null;
 }
