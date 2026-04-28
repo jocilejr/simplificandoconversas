@@ -45,6 +45,11 @@ export default function ChatLive() {
 
   const contactName = selectedLive?.contact_name || selectedLive?.phone_number || selectedLive?.remote_jid || "";
 
+  const handleSelectFromPanel = (conversationId: string) => {
+    const found = conversations.find((c) => c.id === conversationId);
+    if (found) setSelected(found);
+  };
+
   return (
     <div className="h-[calc(100vh-0px)] flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card/30">
@@ -55,7 +60,7 @@ export default function ChatLive() {
         </span>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-[320px_1fr_320px] overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-[340px_1fr_320px] overflow-hidden">
         <ConversationList
           conversations={conversations}
           loading={isLoading}
@@ -74,11 +79,14 @@ export default function ChatLive() {
         <div className="flex flex-col overflow-hidden bg-background">
           {selectedLive ? (
             <>
-              <div className="px-4 py-2.5 border-b border-border bg-card/30 flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{contactName}</p>
+              <div className="px-4 py-2.5 border-b border-border bg-card/30 flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-primary/15 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
+                  {contactName.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold truncate leading-tight">{contactName}</p>
                   {selectedLive.instance_name && (
-                    <p className="text-[10px] text-muted-foreground truncate">
+                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                       via {selectedLive.instance_name}
                     </p>
                   )}
@@ -104,7 +112,12 @@ export default function ChatLive() {
         </div>
 
         <div className="hidden md:block overflow-hidden">
-          {selectedLive && <ContactPanel conversation={selectedLive} />}
+          {selectedLive && (
+            <ContactPanel
+              conversation={selectedLive}
+              onSelectConversation={handleSelectFromPanel}
+            />
+          )}
         </div>
       </div>
     </div>
