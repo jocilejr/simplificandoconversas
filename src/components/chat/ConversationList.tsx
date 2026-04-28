@@ -139,31 +139,17 @@ export function ConversationList({
                   key={c.id}
                   onClick={() => onSelect(c)}
                   className={cn(
-                    "w-full text-left px-3 py-2.5 flex gap-3 items-start transition-colors relative group",
+                    "w-full text-left px-3 py-2.5 flex gap-2.5 items-start transition-colors relative group border-l-2",
                     isActive
-                      ? "bg-primary/10"
-                      : "hover:bg-accent/40"
+                      ? "bg-primary/10 border-l-primary"
+                      : "border-l-transparent hover:bg-accent/40"
                   )}
                 >
-                  {isActive && (
-                    <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-primary" />
-                  )}
-                  <div className="relative shrink-0">
-                    <Avatar className="h-10 w-10 ring-1 ring-border">
-                      <AvatarFallback className="bg-primary/15 text-primary text-[11px] font-semibold">
-                        {initials(c.contact_name, c.phone_number)}
-                      </AvatarFallback>
-                    </Avatar>
-                    {c.instance_name && (
-                      <span
-                        className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card flex items-center justify-center"
-                        style={{ background: instColor }}
-                        title={c.instance_name}
-                      >
-                        <Cpu className="h-2 w-2 text-white" strokeWidth={3} />
-                      </span>
-                    )}
-                  </div>
+                  <Avatar className="h-10 w-10 ring-1 ring-border shrink-0">
+                    <AvatarFallback className="bg-primary/15 text-primary text-[11px] font-semibold">
+                      {initials(c.contact_name, c.phone_number)}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn("text-xs truncate", isActive ? "font-semibold" : "font-medium")}>
@@ -173,29 +159,30 @@ export function ConversationList({
                         {timeAgo}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-2 mt-0.5">
-                      <span className="text-[11px] text-muted-foreground truncate">
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {c.instance_name && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-[1px] rounded text-[9px] font-semibold shrink-0 max-w-[110px] truncate"
+                          style={{
+                            background: instColor.replace("55%)", "18%)"),
+                            color: instColor,
+                            borderLeft: `2px solid ${instColor}`,
+                          }}
+                          title={`Instância: ${c.instance_name}`}
+                        >
+                          <Cpu className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
+                          <span className="truncate">{c.instance_name}</span>
+                        </span>
+                      )}
+                      <span className="text-[11px] text-muted-foreground truncate flex-1">
                         {c.last_message || "—"}
                       </span>
                       {c.unread_count > 0 && (
-                        <Badge className="h-[18px] min-w-[18px] px-1.5 text-[9px] bg-primary text-primary-foreground rounded-full flex items-center justify-center">
+                        <Badge className="h-[18px] min-w-[18px] px-1.5 text-[9px] bg-primary text-primary-foreground rounded-full flex items-center justify-center shrink-0">
                           {c.unread_count}
                         </Badge>
                       )}
                     </div>
-                    {c.instance_name && (
-                      <div className="mt-1">
-                        <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
-                          style={{
-                            background: `${instColor.replace("55%)", "15%)")}`,
-                            color: instColor,
-                          }}
-                        >
-                          {c.instance_name}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </button>
               );
