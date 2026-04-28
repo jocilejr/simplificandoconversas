@@ -15,11 +15,10 @@ interface Props {
 }
 
 export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
-  const { hasPermission } = useWorkspace();
+  const { workspaceId, hasPermission } = useWorkspace();
   const canTriggerFlow = hasPermission("disparar_fluxo");
   const [flowOpen, setFlowOpen] = useState(false);
   const { toast } = useToast();
-  const { workspaceId } = useWorkspace();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
