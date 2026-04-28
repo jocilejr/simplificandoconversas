@@ -27,6 +27,7 @@ import EntregaDigital from "./pages/EntregaDigital";
 import LinksUteis from "./pages/LinksUteis";
 import FollowUp from "./pages/FollowUp";
 import RespostasRapidas from "./pages/RespostasRapidas";
+import ChatLive from "./pages/ChatLive";
 
 const queryClient = new QueryClient({
   defaultOptions: {
