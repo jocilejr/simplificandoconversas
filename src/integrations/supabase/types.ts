@@ -2832,6 +2832,7 @@ export type Database = {
           message_type: string
           remote_jid: string
           status: string
+          transcription: string | null
           user_id: string
           workspace_id: string
         }
@@ -2846,6 +2847,7 @@ export type Database = {
           message_type?: string
           remote_jid: string
           status?: string
+          transcription?: string | null
           user_id: string
           workspace_id: string
         }
@@ -2860,6 +2862,7 @@ export type Database = {
           message_type?: string
           remote_jid?: string
           status?: string
+          transcription?: string | null
           user_id?: string
           workspace_id?: string
         }
