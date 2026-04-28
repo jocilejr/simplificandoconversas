@@ -5,6 +5,7 @@ import { useAuth } from "./useAuth";
 
 export const ALL_PERMISSIONS = [
   
+  { key: "chat", label: "Chat ao Vivo" },
   { key: "chatbot", label: "Fluxos" },
   { key: "email", label: "E-mail" },
   { key: "reminders", label: "Lembretes" },
