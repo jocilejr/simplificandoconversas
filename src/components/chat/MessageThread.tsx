@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Check, CheckCheck, FileText, Mic, Image as ImageIcon, Video, Sticker, Download } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { AudioPlayer } from "./AudioPlayer";
 
 interface Props {
   messages: ChatMessage[];
