@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Check, CheckCheck, FileText, Mic, Image as ImageIcon, Video, Sticker, Download } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { AudioPlayer } from "./AudioPlayer";
 
 interface Props {
   messages: ChatMessage[];
@@ -64,12 +65,7 @@ function MessageBody({ m, mine }: { m: ChatMessage; mine: boolean }) {
   }
 
   if (type === "audio" && url) {
-    return (
-      <div className="flex items-center gap-2 min-w-[240px]">
-        <Mic className={cn("h-4 w-4 shrink-0", mine ? "opacity-80" : "text-primary")} />
-        <audio controls src={url} className="h-9 flex-1 max-w-[260px]" />
-      </div>
-    );
+    return <AudioPlayer src={url} mine={mine} transcription={m.transcription} />;
   }
 
   if (type === "video" && url) {

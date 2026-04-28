@@ -10,6 +10,7 @@ export interface ChatMessage {
   direction: "inbound" | "outbound";
   status: string;
   media_url: string | null;
+  transcription: string | null;
   created_at: string;
   external_id: string | null;
 }
@@ -23,7 +24,7 @@ export function useMessagesLive(conversationId: string | null) {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("messages")
-        .select("id, conversation_id, content, message_type, direction, status, media_url, created_at, external_id")
+        .select("id, conversation_id, content, message_type, direction, status, media_url, transcription, created_at, external_id")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
         .limit(500);

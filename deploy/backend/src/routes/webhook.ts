@@ -467,6 +467,28 @@ lidValue = remoteJid;
       await supabase.rpc("increment_unread", { conv_id: conv.id });
     }
 
+    // Transcrever áudios recebidos (inbound) para exibir no chat sem precisar reproduzir.
+    // Feito antes do insert pra já persistir junto. Reutilizado depois pelo AI listen.
+    let audioTranscription: string | null = null;
+    if (!fromMe && messageType === "audio" && mediaUrl) {
+      try {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("openai_api_key")
+          .eq("user_id", userId)
+          .single();
+        const openaiKey = prof?.openai_api_key;
+        if (openaiKey) {
+          audioTranscription = await transcribeAudio(mediaUrl, openaiKey);
+          if (audioTranscription) {
+            console.log(`[transcribe] stored for ${remoteJid}: ${audioTranscription.substring(0, 80)}...`);
+          }
+        }
+      } catch (tErr: any) {
+        console.error("[transcribe] pre-insert error (non-fatal):", tErr?.message);
+      }
+    }
+
     console.log("Inserting message:", { remoteJid, direction: fromMe ? "outbound" : "inbound", content: messageContent?.substring(0, 50), mediaUrl });
     const { error: insertError } = await supabase.from("messages").insert({
       conversation_id: conv.id,
@@ -479,6 +501,7 @@ lidValue = remoteJid;
       status: "received",
       external_id: externalId,
       media_url: mediaUrl,
+      transcription: audioTranscription,
     });
     if (insertError) {
       console.error("Message insert error:", insertError.message, insertError);
@@ -517,20 +540,10 @@ lidValue = remoteJid;
         let listenContent = messageContent;
         let isTranscription = false;
 
-        // If it's an audio message, transcribe it first
-        if (messageType === "audio" && mediaUrl && !messageContent) {
-          const [profileRes2] = await Promise.all([
-            supabase.from("profiles").select("openai_api_key").eq("user_id", userId).single(),
-          ]);
-          const openaiKey = profileRes2.data?.openai_api_key;
-          if (openaiKey) {
-            const transcribed = await transcribeAudio(mediaUrl, openaiKey);
-            if (transcribed) {
-              listenContent = transcribed;
-              isTranscription = true;
-              console.log(`[ai-listen] Audio transcribed for ${remoteJid}: ${transcribed.substring(0, 80)}...`);
-            }
-          }
+        // Reuse transcription already captured at insert time (avoids duplicate Whisper calls)
+        if (messageType === "audio" && mediaUrl && !messageContent && audioTranscription) {
+          listenContent = audioTranscription;
+          isTranscription = true;
         }
 
         if (listenContent) {
