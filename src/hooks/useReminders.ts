@@ -84,6 +84,7 @@ export function useCreateReminder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      qc.invalidateQueries({ queryKey: ["contact-reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
     },
     onError: (err: any) => {
@@ -106,6 +107,7 @@ export function useToggleReminder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      qc.invalidateQueries({ queryKey: ["contact-reminders"] });
     },
   });
 }
@@ -120,6 +122,7 @@ export function useDeleteReminder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      qc.invalidateQueries({ queryKey: ["contact-reminders"] });
       toast({ title: "Lembrete removido" });
     },
   });
