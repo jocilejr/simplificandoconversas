@@ -13,17 +13,27 @@ import { Loader2 } from "lucide-react";
 interface ManualFlowTriggerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultPhone?: string;
+  defaultInstance?: string;
 }
 
-export function ManualFlowTrigger({ open, onOpenChange }: ManualFlowTriggerProps) {
+export function ManualFlowTrigger({ open, onOpenChange, defaultPhone, defaultInstance }: ManualFlowTriggerProps) {
   const { toast } = useToast();
   const { data: flows = [] } = useChatbotFlows();
   const { instances = [] } = useWhatsAppInstances();
 
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(defaultPhone || "");
   const [flowId, setFlowId] = useState("");
-  const [instanceName, setInstanceName] = useState("");
+  const [instanceName, setInstanceName] = useState(defaultInstance || "");
   const [loading, setLoading] = useState(false);
+
+  // Sync defaults whenever the dialog is reopened with new values
+  useEffect(() => {
+    if (open) {
+      if (defaultPhone) setPhone(defaultPhone);
+      if (defaultInstance) setInstanceName(defaultInstance);
+    }
+  }, [open, defaultPhone, defaultInstance]);
 
   const activeFlows = (flows || []).filter((f) => f.active);
 
