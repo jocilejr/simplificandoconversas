@@ -540,20 +540,10 @@ lidValue = remoteJid;
         let listenContent = messageContent;
         let isTranscription = false;
 
-        // If it's an audio message, transcribe it first
-        if (messageType === "audio" && mediaUrl && !messageContent) {
-          const [profileRes2] = await Promise.all([
-            supabase.from("profiles").select("openai_api_key").eq("user_id", userId).single(),
-          ]);
-          const openaiKey = profileRes2.data?.openai_api_key;
-          if (openaiKey) {
-            const transcribed = await transcribeAudio(mediaUrl, openaiKey);
-            if (transcribed) {
-              listenContent = transcribed;
-              isTranscription = true;
-              console.log(`[ai-listen] Audio transcribed for ${remoteJid}: ${transcribed.substring(0, 80)}...`);
-            }
-          }
+        // Reuse transcription already captured at insert time (avoids duplicate Whisper calls)
+        if (messageType === "audio" && mediaUrl && !messageContent && audioTranscription) {
+          listenContent = audioTranscription;
+          isTranscription = true;
         }
 
         if (listenContent) {
