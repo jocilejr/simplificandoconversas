@@ -13,6 +13,7 @@ import QRCode from "qrcode";
 import { deleteAuthState, usePostgresAuthState } from "./auth-state";
 import { pool } from "./db";
 import { emitWebhook } from "./webhook-emitter";
+import { upsertLidPhone } from "./db";
 import { jidToPhone, normalizeJid } from "./lid-resolver";
 
 type InstanceState = {
@@ -182,7 +183,30 @@ export async function startInstance(name: string): Promise<InstanceState> {
       }
       try {
         const data = serializeMessage(name, msg);
-        if (data) await emitWebhook("messages.upsert", name, data);
+        if (data) {
+          // Resolve @lid -> real phone number
+          if (data.key.remoteJid.includes("@lid") && !(data.key as any).senderPn) {
+            const lidJid = data.key.remoteJid;
+            // 1. Try in-memory lidMap first
+            const cached = inst.lidMap.get(lidJid);
+            if (cached) {
+              (data.key as any).senderPn = cached.split("@")[0];
+            } else {
+              // 2. Ask WhatsApp to resolve @lid -> @s.whatsapp.net
+              try {
+                const results = await sock.onWhatsApp(lidJid);
+                if (results && results.length > 0 && results[0].jid) {
+                  const realJid = results[0].jid;
+                  const phone = realJid.split("@")[0];
+                  (data.key as any).senderPn = phone;
+                  inst.lidMap.set(lidJid, realJid);
+                  upsertLidPhone(lidJid, phone).catch(() => {});
+                }
+              } catch (_) {}
+            }
+          }
+          await emitWebhook("messages.upsert", name, data);
+        }
       } catch (e: any) {
         console.warn(`[messages.upsert] ${e.message}`);
       }
@@ -215,11 +239,15 @@ export async function startInstance(name: string): Promise<InstanceState> {
 
   sock.ev.on("contacts.upsert", (contacts) => {
     for (const c of contacts) {
-      // Build LID -> phone JID mapping
+      // Build LID -> phone JID mapping and persist to DB
       if (c.lid && c.phoneNumber) {
         inst.lidMap.set(c.lid, c.phoneNumber);
+        const phone = c.phoneNumber.split("@")[0];
+        upsertLidPhone(c.lid, phone).catch(() => {});
       } else if (c.id.includes("@lid") && c.phoneNumber) {
         inst.lidMap.set(c.id, c.phoneNumber);
+        const phone = c.phoneNumber.split("@")[0];
+        upsertLidPhone(c.id, phone).catch(() => {});
       }
     }
   });
@@ -251,12 +279,14 @@ function serializeMessage(instance: string, msg: proto.IWebMessageInfo) {
   const messageType =
     Object.keys(message).find((k) => k !== "messageContextInfo") || "unknown";
 
+  const senderPn = (msg.key as any).senderPn || undefined;
   return {
     key: {
       id: msg.key.id,
       remoteJid,
       fromMe: !!msg.key.fromMe,
       participant: msg.key.participant ? normalizeJid(msg.key.participant) : undefined,
+      ...(senderPn ? { senderPn } : {}),
     },
     pushName: msg.pushName || "",
     message,

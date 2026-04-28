@@ -712,7 +712,7 @@ router.delete("/reminders/:id", async (req, res) => {
 // MESSAGING / ENVIO DE MENSAGENS
 // ═══════════════════════════════════════════════════
 
-import { baileysRequest as evolutionRequest } from "../lib/baileys-config";
+import { baileysRequest } from "../lib/baileys-config";
 
 // POST /api/platform/send-message
 router.post("/send-message", async (req, res) => {
@@ -733,8 +733,7 @@ router.post("/send-message", async (req, res) => {
   const instanceName = instance;
 
   try {
-    // Send via Evolution API
-    const result = await evolutionRequest(
+    const result = await baileysRequest(
       `/message/sendText/${encodeURIComponent(instanceName)}`,
       "POST",
       {
@@ -882,7 +881,7 @@ router.post("/send-media", async (req, res) => {
       body = { number: cleaned, mediatype: "document", media: media_url, caption: caption || "", fileName };
     }
 
-    const result = await evolutionRequest(endpoint, "POST", body);
+    const result = await baileysRequest(endpoint, "POST", body);
 
     // Ensure conversation & save message
     const { data: conv } = await sb
@@ -957,7 +956,7 @@ router.post("/validate-number", async (req, res) => {
   const instanceName = instance;
 
   try {
-    const result = await evolutionRequest(
+    const result = await baileysRequest(
       `/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`,
       "POST",
       { numbers: [cleaned] }

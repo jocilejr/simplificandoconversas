@@ -45,7 +45,6 @@ echo ""
 
 # ── 1. Imagens não utilizadas (remoção cirúrgica) ──
 UNUSED_IMAGES=(
-  "atendai/evolution-api:v2.2.3"
   "joseluisq/static-web-server:2-alpine"
 )
 

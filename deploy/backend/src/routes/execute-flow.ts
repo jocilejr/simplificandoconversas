@@ -33,7 +33,7 @@ interface StepData {
   [key: string]: unknown;
 }
 
-import { baileysRequest as evolutionRequest } from "../lib/baileys-config";
+import { baileysRequest } from "../lib/baileys-config";
 
 async function executeStep(
   stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string, workspaceId?: string
@@ -46,7 +46,7 @@ async function executeStep(
   if (nodeType === "sendText" && stepData.textContent) {
     const resolvedText = resolveVariables(stepData.textContent);
     const queue = getMessageQueue(instanceName);
-    const r = await queue.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText }), `sendText→${num}`);
+    const r = await queue.enqueue(() => baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText }), `sendText→${num}`);
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -63,9 +63,9 @@ async function executeStep(
 
   if (nodeType === "sendImage" && stepData.mediaUrl) {
     const queue = getMessageQueue(instanceName);
-    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendImage→${num}`);
+    const r = await queue.enqueue(() => baileysRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "image", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendImage→${num}`);
     console.log(`[execute-flow] sendImage response:`, JSON.stringify(r));
-    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Imagem:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Imagem:`, JSON.stringify(r));
     
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -82,9 +82,9 @@ async function executeStep(
 
   if (nodeType === "sendAudio" && stepData.audioUrl) {
     const queue = getMessageQueue(instanceName);
-    const r = await queue.enqueue(() => evolutionRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl }), `sendAudio→${num}`);
+    const r = await queue.enqueue(() => baileysRequest(`/message/sendWhatsAppAudio/${instanceName}`, "POST", { number: num, audio: stepData.audioUrl }), `sendAudio→${num}`);
     console.log(`[execute-flow] sendAudio response:`, JSON.stringify(r));
-    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Áudio:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Áudio:`, JSON.stringify(r));
     
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -101,9 +101,9 @@ async function executeStep(
 
   if (nodeType === "sendVideo" && stepData.mediaUrl) {
     const queue = getMessageQueue(instanceName);
-    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendVideo→${num}`);
+    const r = await queue.enqueue(() => baileysRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "video", media: stepData.mediaUrl, caption: stepData.caption || "" }), `sendVideo→${num}`);
     console.log(`[execute-flow] sendVideo response:`, JSON.stringify(r));
-    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Vídeo:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Vídeo:`, JSON.stringify(r));
     
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -122,9 +122,9 @@ async function executeStep(
     let fileName = (stepData as any).fileName || "documento.pdf";
     if (!fileName.toLowerCase().endsWith(".pdf")) fileName += ".pdf";
     const queue = getMessageQueue(instanceName);
-    const r = await queue.enqueue(() => evolutionRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" }), `sendFile→${num}`);
+    const r = await queue.enqueue(() => baileysRequest(`/message/sendMedia/${instanceName}`, "POST", { number: num, mediatype: "document", media: (stepData as any).fileUrl, fileName, mimetype: "application/pdf" }), `sendFile→${num}`);
     console.log(`[execute-flow] sendFile response:`, JSON.stringify(r));
-    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro na Evolution ao enviar Arquivo:`, JSON.stringify(r));
+    if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Arquivo:`, JSON.stringify(r));
     
     const { data: conv } = await serviceClient
       .from("conversations")
@@ -151,7 +151,7 @@ async function executeStep(
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       const presence = presenceType === "recording" ? "recording" : "composing";
       try {
-        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence });
+        await baileysRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence error:`, e);
       }
@@ -161,7 +161,7 @@ async function executeStep(
 
     if (presenceType === "composing" || presenceType === "recording" || (stepData as any).simulateTyping) {
       try {
-        await evolutionRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence: "paused" });
+        await baileysRequest(`/message/sendPresence/${instanceName}`, "POST", { number: num, presence: "paused" });
       } catch (e: any) {
         console.log(`[execute-flow] sendPresence paused error:`, e);
       }
@@ -215,7 +215,7 @@ router.post("/", async (req, res) => {
     const jid = remoteJid.includes("@") ? remoteJid : `${remoteJid}@s.whatsapp.net`;
 if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JID: " + jid);      return res.status(400).json({ error: "Flow execution not supported for group chats" });    }
 
-    // Resolve sendNumber: if jid is @lid, use phone_number for Evolution API calls
+    // Resolve sendNumber: if jid is @lid, use phone_number for Baileys calls
     let sendNumber = jid;
     if (jid.includes("@lid")) {
       if (bodyResolvedPhone) {
@@ -584,7 +584,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
 
             if (data.aiAutoSend !== false && aiResponse) {
               const queue = getMessageQueue(instanceName);
-              const sendResult = await queue.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: aiResponse }), `aiAgent→${sendNumber}`);
+              const sendResult = await queue.enqueue(() => baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: aiResponse }), `aiAgent→${sendNumber}`);
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: aiResponse.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: aiResponse, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -613,7 +613,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
             const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
             const queueWfc = getMessageQueue(instanceName);
-            const sendResult = await queueWfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `waitForClick→${sendNumber}`);
+            const sendResult = await queueWfc.enqueue(() => baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `waitForClick→${sendNumber}`);
             const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
             if (conv) {
               await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });
@@ -679,7 +679,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
               const messageText = resolveVariables(messageTemplate.replace(/\{\{link\}\}/gi, trackingUrl));
 
               const queueGwfc = getMessageQueue(instanceName);
-              const sendResult = await queueGwfc.enqueue(() => evolutionRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `group.waitForClick→${sendNumber}`);
+              const sendResult = await queueGwfc.enqueue(() => baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: sendNumber, text: messageText }), `group.waitForClick→${sendNumber}`);
               const { data: conv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: messageText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
               if (conv) {
                 await serviceClient.from("messages").insert({ conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: messageText, message_type: "text", direction: "outbound", status: "sent", external_id: sendResult?.key?.id || null });

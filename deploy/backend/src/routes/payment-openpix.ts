@@ -39,7 +39,14 @@ router.post("/create", async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ error: "Não autenticado" });
     }
-    const workspaceId = await resolveWorkspaceFromPhone(userId, req.body?.customer_phone);
+    const { data: pcConn } = await supabase
+      .from("platform_connections")
+      .select("workspace_id")
+      .eq("user_id", userId)
+      .eq("platform", "openpix")
+      .eq("enabled", true)
+      .maybeSingle();
+    const workspaceId = pcConn?.workspace_id || await resolveWorkspaceFromPhone(userId, req.body?.customer_phone);
 
     const appId = await getOpenpixAppId(userId);
     if (!appId) {
@@ -179,27 +186,36 @@ function extractCustomer(body: any, tx: any, charge: any) {
 }
 
 // ─── Helper: resolve user_id from correlationID or platform_connections ───
-async function resolveUserId(correlationID: string, supabase: any): Promise<string | null> {
-  // Try extracting from correlationID format: {userId}-{timestamp}-{random}
+// Resolve user_id + workspace_id using platform_connections to avoid multi-workspace mismatch.
+async function resolveUserAndWorkspace(
+  correlationID: string,
+  supabase: any
+): Promise<{ userId: string; workspaceId: string | null } | null> {
   const parts = correlationID.split("-");
   if (parts.length >= 6) {
-    // UUID has 5 parts (8-4-4-4-12), so userId occupies first 5 segments
     const candidateId = parts.slice(0, 5).join("-");
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId)) {
-      return candidateId;
+      const { data } = await supabase
+        .from("platform_connections")
+        .select("user_id, workspace_id")
+        .eq("user_id", candidateId)
+        .eq("platform", "openpix")
+        .eq("enabled", true)
+        .maybeSingle();
+      if (data) return { userId: data.user_id, workspaceId: data.workspace_id };
+      const wkId = await resolveWorkspaceId(candidateId);
+      return { userId: candidateId, workspaceId: wkId };
     }
   }
-
-  // Fallback: find first user with active openpix connection
   const { data } = await supabase
     .from("platform_connections")
-    .select("user_id")
+    .select("user_id, workspace_id")
     .eq("platform", "openpix")
     .eq("enabled", true)
     .limit(1)
     .maybeSingle();
-
-  return data?.user_id || null;
+  if (!data) return null;
+  return { userId: data.user_id, workspaceId: data.workspace_id };
 }
 
 // ─── POST /webhook ─── Recebe webhooks da OpenPix (sem JWT)
@@ -217,7 +233,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     if (event === "OPENPIX:TRANSACTION_RECEIVED") {
       const tx = body.transaction || body.pix || {};
       const charge = tx.charge || body.charge || {};
-      const corrId = charge.correlationID || tx.endToEndId || tx.globalID || `openpix-${Date.now()}`;
+      const corrId = charge.correlationID || tx.payer?.correlationID || tx.endToEndId || tx.globalID || `openpix-${Date.now()}`;
       const valueCents = tx.value || charge.value || 0;
       const customer = extractCustomer(body, tx, charge);
 
@@ -233,8 +249,8 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       if (existing) {
         // Resolve userId + workspaceId for the update path too
-        const userIdForUpdate = await resolveUserId(corrId, supabase);
-        const wkIdForUpdate = userIdForUpdate ? await resolveWorkspaceId(userIdForUpdate) : "";
+        const _uw_upd = await resolveUserAndWorkspace(corrId, supabase);
+        const wkIdForUpdate = _uw_upd?.workspaceId || "";
 
         await supabase
           .from("transactions")
@@ -263,12 +279,12 @@ router.post("/webhook", async (req: Request, res: Response) => {
           }
         }
       } else {
-        const userId = await resolveUserId(corrId, supabase);
-        if (!userId) {
+        const _uw_ins = await resolveUserAndWorkspace(corrId, supabase);
+        if (!_uw_ins) {
           console.warn("[openpix webhook] Could not resolve user_id for TRANSACTION_RECEIVED, skipping");
           return res.sendStatus(200);
         }
-        const workspaceId = await resolveWorkspaceId(userId);
+        const { userId, workspaceId } = _uw_ins;
 
         await supabase.from("transactions").insert({
           user_id: userId,
@@ -324,7 +340,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
         pix_e2e: pix?.endToEndId || null,
       };
 
-      const { count } = await supabase
+      const { data: updatedRows } = await supabase
         .from("transactions")
         .update({
           status: "aprovado",
@@ -336,18 +352,17 @@ router.post("/webhook", async (req: Request, res: Response) => {
           metadata: updateMeta,
         })
         .eq("external_id", correlationID)
-        .eq("source", "openpix");
+        .eq("source", "openpix")
+        .select("id");
 
-      if (count === 0) {
-        const userId = await resolveUserId(correlationID, supabase);
-        if (!userId) {
+      if (!updatedRows || updatedRows.length === 0) {
+        const _uw_cc = await resolveUserAndWorkspace(correlationID, supabase);
+        if (!_uw_cc) {
           console.warn("[openpix webhook] Could not resolve user_id, skipping insert");
           return res.sendStatus(200);
         }
-
+        const { userId, workspaceId: wkId } = _uw_cc;
         const valueCents = charge.value || 0;
-
-        const wkId = await resolveWorkspaceId(userId);
         await supabase.from("transactions").insert({
           user_id: userId,
           workspace_id: wkId,
@@ -381,22 +396,21 @@ router.post("/webhook", async (req: Request, res: Response) => {
     } else if (event === "OPENPIX:CHARGE_EXPIRED") {
       const customer = extractCustomer(body, {}, charge);
 
-      const { count } = await supabase
+      const { data: expiredRows } = await supabase
         .from("transactions")
         .update({ status: "cancelado" })
         .eq("external_id", correlationID)
-        .eq("source", "openpix");
+        .eq("source", "openpix")
+        .select("id");
 
-      if (count === 0) {
-        const userId = await resolveUserId(correlationID, supabase);
-        if (!userId) {
+      if (!expiredRows || expiredRows.length === 0) {
+        const _uw_exp = await resolveUserAndWorkspace(correlationID, supabase);
+        if (!_uw_exp) {
           console.warn("[openpix webhook] Could not resolve user_id for expired, skipping");
           return res.sendStatus(200);
         }
-
+        const { userId, workspaceId: wkId2 } = _uw_exp;
         const valueCents = charge.value || 0;
-
-        const wkId2 = await resolveWorkspaceId(userId);
         await supabase.from("transactions").insert({
           user_id: userId,
           workspace_id: wkId2,

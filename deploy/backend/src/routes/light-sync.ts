@@ -1,7 +1,7 @@
 import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
 
-import { baileysRequest as evolutionRequest } from "../lib/baileys-config";
+import { baileysRequest } from "../lib/baileys-config";
 
 /**
  * Light sync: calls findChats for each connected instance and upserts conversations
@@ -11,7 +11,7 @@ export async function lightSync() {
   console.log("[light-sync] Starting sync for all instances...");
   const supabase = getServiceClient();
 
-  // Get ALL instances (no is_active filter — check connection via Evolution API instead)
+  // Get ALL instances (no is_active filter — check connection state instead))
   const { data: instances, error: instErr } = await supabase
     .from("whatsapp_instances")
     .select("instance_name, user_id");
@@ -31,8 +31,8 @@ export async function lightSync() {
   for (const inst of instances) {
     const instWorkspaceId = (inst as any).workspace_id || await resolveWorkspaceId(inst.user_id);
     try {
-      // Check connection state via Evolution API
-      const stateResult = await evolutionRequest(
+      // Check connection state via Baileys gateway
+      const stateResult = await baileysRequest(
         `/instance/connectionState/${encodeURIComponent(inst.instance_name)}`, "GET"
       );
       const state = stateResult?.instance?.state || "close";
@@ -41,7 +41,7 @@ export async function lightSync() {
         continue;
       }
 
-      const chatsResponse = await evolutionRequest(
+      const chatsResponse = await baileysRequest(
         `/chat/findChats/${encodeURIComponent(inst.instance_name)}`, "POST", {}
       );
       const chatList = Array.isArray(chatsResponse) ? chatsResponse : [];
@@ -130,7 +130,7 @@ export async function lightSync() {
       // === Phase 2: findContacts fallback ===
       let contactNewCount = 0;
       try {
-        const contactsResponse = await evolutionRequest(
+        const contactsResponse = await baileysRequest(
           `/chat/findContacts/${encodeURIComponent(inst.instance_name)}`, "POST", {}
         );
         const contactList = Array.isArray(contactsResponse) ? contactsResponse : [];

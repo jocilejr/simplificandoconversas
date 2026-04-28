@@ -10,8 +10,6 @@ const router = Router();
 
 import { baileysRequest } from "../lib/baileys-config";
 
-// Compat alias — paths são idênticos aos da Evolution v2 (gateway próprio).
-const evolutionRequest = baileysRequest;
 
 async function downloadAndUploadMedia(
   storageClient: any, instanceName: string, messageData: any, messageType: string, userId: string
@@ -22,7 +20,7 @@ async function downloadAndUploadMedia(
 
     if (!base64 && mediaMessage) {
       try {
-        const result = await evolutionRequest(`/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, "POST", { message: messageData, convertToMp4: messageType === "audio" });
+        const result = await baileysRequest(`/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, "POST", { message: messageData, convertToMp4: messageType === "audio" });
         base64 = result?.base64;
       } catch (e: any) {
         console.error("getBase64 error:", e.message);
@@ -141,7 +139,7 @@ router.post("/", async (req, res) => {
           ? await Promise.all(
               names.map(async (name) => {
                 try {
-                  const stateResult = await evolutionRequest(`/instance/connectionState/${encodeURIComponent(name)}`, "GET");
+                  const stateResult = await baileysRequest(`/instance/connectionState/${encodeURIComponent(name)}`, "GET");
                   const status = stateResult?.instance?.state || stateResult?.state || "close";
                   await serviceClient
                     .from("whatsapp_instances")
@@ -154,7 +152,7 @@ router.post("/", async (req, res) => {
                   let profileName = "";
                   let profilePicUrl = "";
                   try {
-                    const fetchResult = await evolutionRequest(
+                    const fetchResult = await baileysRequest(
                       `/instance/fetchInstances?instanceName=${encodeURIComponent(name)}`, "GET"
                     );
                     const instData = Array.isArray(fetchResult) ? fetchResult[0] : fetchResult;
@@ -180,7 +178,7 @@ router.post("/", async (req, res) => {
       case "create-instance": {
         const customName = params.instanceName || `sc-${Date.now().toString(36)}`;
         console.log("[create-instance] Creating instance:", customName);
-        const createResult = await evolutionRequest("/instance/create", "POST", {
+        const createResult = await baileysRequest("/instance/create", "POST", {
           instanceName: customName,
           integration: "WHATSAPP-BAILEYS",
           qrcode: true,
@@ -201,7 +199,7 @@ router.post("/", async (req, res) => {
       case "get-qrcode": {
         const { instanceName: qrInstName } = params;
         if (!qrInstName) return res.status(400).json({ error: "instanceName required" });
-        result = await evolutionRequest(`/instance/connect/${encodeURIComponent(qrInstName)}`, "GET");
+        result = await baileysRequest(`/instance/connect/${encodeURIComponent(qrInstName)}`, "GET");
         break;
       }
 
@@ -209,9 +207,9 @@ router.post("/", async (req, res) => {
         const { instanceName: logoutInstName } = params;
         if (!logoutInstName) return res.status(400).json({ error: "instanceName required" });
         console.log("[logout-instance] Logging out:", logoutInstName);
-        await evolutionRequest(`/instance/logout/${encodeURIComponent(logoutInstName)}`, "DELETE");
+        await baileysRequest(`/instance/logout/${encodeURIComponent(logoutInstName)}`, "DELETE");
         await new Promise(resolve => setTimeout(resolve, 1500));
-        result = await evolutionRequest(`/instance/connect/${encodeURIComponent(logoutInstName)}`, "GET");
+        result = await baileysRequest(`/instance/connect/${encodeURIComponent(logoutInstName)}`, "GET");
         console.log("[logout-instance] New QR result:", JSON.stringify(result));
         break;
       }
@@ -219,7 +217,7 @@ router.post("/", async (req, res) => {
       case "connect-instance": {
         const { instanceName: connInstName } = params;
         if (!connInstName) return res.status(400).json({ error: "instanceName required" });
-        result = await evolutionRequest(`/instance/connect/${encodeURIComponent(connInstName)}`, "GET");
+        result = await baileysRequest(`/instance/connect/${encodeURIComponent(connInstName)}`, "GET");
         break;
       }
 
@@ -229,7 +227,7 @@ router.post("/", async (req, res) => {
         console.log(`[delete-instance] Deleting: ${delInstName} for user ${userId}`);
         
         try {
-          await evolutionRequest(`/instance/delete/${encodeURIComponent(delInstName)}`, "DELETE");
+          await baileysRequest(`/instance/delete/${encodeURIComponent(delInstName)}`, "DELETE");
           console.log(`[delete-instance] gateway delete OK for ${delInstName}`);
         } catch (e: any) {
           console.log(`[delete-instance] gateway delete failed: ${e.message}`);
@@ -262,7 +260,7 @@ router.post("/", async (req, res) => {
       }
 
       case "test-connection": {
-        result = await evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
+        result = await baileysRequest(`/instance/connectionState/${encodeURIComponent(instanceName)}`, "GET");
         break;
       }
 
@@ -284,7 +282,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
         }
 
         console.log(`[send-message] Sending ${messageType} to ${remoteJid} via ${instanceName}`);
-        result = await evolutionRequest(`/message/${endpoint}/${encodeURIComponent(instanceName)}`, "POST", payload);
+        result = await baileysRequest(`/message/${endpoint}/${encodeURIComponent(instanceName)}`, "POST", payload);
         console.log(`[send-message] Baileys result:`, JSON.stringify(result)?.substring(0, 300));
 
         if (result?.key) {
@@ -310,7 +308,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
       }
 
       case "fetch-chats": {
-        result = await evolutionRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
+        result = await baileysRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
         break;
       }
 
@@ -334,7 +332,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
         const instanceStatuses: any[] = [];
 
         for (const instName of instancesToSync) {
-          const stateResult = await evolutionRequest(
+          const stateResult = await baileysRequest(
             `/instance/connectionState/${encodeURIComponent(instName)}`, "GET"
           );
           const connectionState = stateResult?.instance?.state || "close";
@@ -350,7 +348,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
 
           try {
             // Step 1: Use findChats to get all contacts
-            const chatsResponse = await evolutionRequest(
+            const chatsResponse = await baileysRequest(
               `/chat/findChats/${encodeURIComponent(instName)}`, "POST", {}
             );
             const chatList = Array.isArray(chatsResponse) ? chatsResponse : [];
@@ -497,7 +495,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
               let page = 1;
               let contactMsgsSynced = 0;
               while (true) {
-                const msgResponse = await evolutionRequest(
+                const msgResponse = await baileysRequest(
                   `/chat/findMessages/${encodeURIComponent(instName)}`, "POST",
                   { where: { key: { remoteJid: rawJid } }, page }
                 );
@@ -585,7 +583,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
             for (const instName of instancesToSync) {
               // findContacts returns contacts with their phone numbers
               try {
-                const contacts = await evolutionRequest(
+                const contacts = await baileysRequest(
                   `/chat/findContacts/${encodeURIComponent(instName)}`, "POST", {}
                 );
                 const contactList = Array.isArray(contacts) ? contacts : [];
@@ -651,7 +649,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
             if (stateCheck?.connectionState !== "open") continue;
 
             try {
-              const contacts = await evolutionRequest(
+              const contacts = await baileysRequest(
                 `/chat/findContacts/${encodeURIComponent(instName)}`, "POST", {}
               );
               const contactList = Array.isArray(contacts) ? contacts : [];
@@ -751,7 +749,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
                     numberToQuery = conv.phone_number;
                   }
 
-                  const d = await evolutionRequest(
+                  const d = await baileysRequest(
                     `/chat/fetchProfilePictureUrl/${encodeURIComponent(photoInstName)}`,
                     "POST",
                     { number: numberToQuery }
@@ -801,7 +799,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
           if (convForPic?.phone_number) picNumber = convForPic.phone_number;
         }
 
-        result = await evolutionRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: picNumber });
+        result = await baileysRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: picNumber });
         break;
       }
 
@@ -830,7 +828,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
             try {
               let num = jid.split("@")[0];
               if (jid.includes("@lid") && phoneMap[jid]) num = phoneMap[jid];
-              const d = await evolutionRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: num });
+              const d = await baileysRequest(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, "POST", { number: num });
               const url = d?.profilePictureUrl;
               if (url) photos[jid] = url;
             } catch {}
@@ -841,7 +839,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
       }
 
       case "fetch-contact-names": {
-        result = await evolutionRequest(`/chat/findContacts/${encodeURIComponent(instanceName)}`, "POST", {});
+        result = await baileysRequest(`/chat/findContacts/${encodeURIComponent(instanceName)}`, "POST", {});
         break;
       }
 
@@ -854,7 +852,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
 
       case "debug-findchats": {
         if (!instanceName) return res.status(400).json({ error: "No active instance" });
-        const rawChats = await evolutionRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
+        const rawChats = await baileysRequest(`/chat/findChats/${encodeURIComponent(instanceName)}`, "POST", {});
         const rawList = Array.isArray(rawChats) ? rawChats : [];
         // Return first 5 chats with truncated data for debugging
         result = rawList.slice(0, 5).map((c: any, i: number) => ({
@@ -867,7 +865,7 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
 
       case "debug-findcontacts": {
         if (!instanceName) return res.status(400).json({ error: "No active instance" });
-        const rawContacts = await evolutionRequest(`/chat/findContacts/${encodeURIComponent(instanceName)}`, "POST", {});
+        const rawContacts = await baileysRequest(`/chat/findContacts/${encodeURIComponent(instanceName)}`, "POST", {});
         const contactList = Array.isArray(rawContacts) ? rawContacts : [];
         const individual = contactList.filter((c: any) => {
           const jid = c.id || c.remoteJid || c.jid || "";

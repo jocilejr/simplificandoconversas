@@ -10,7 +10,7 @@ const VALID_ACTIONS = new Set(["add", "remove"]);
 const BULK_ADD_THRESHOLD = 20;
 
 // Dedup window: ignore events with the same (group, participant, action) within
-// this many seconds (handles Evolution API retry deliveries).
+// this many seconds (handles webhook retry deliveries).
 const DEDUP_WINDOW_SECONDS = 60;
 
 /** Extract clean phone number (10–13 digits). Returns "" if invalid. */
@@ -70,7 +70,7 @@ router.post("/events", async (req: Request, res: Response) => {
     }
 
     // Discard bulk-add events — these are typically reconnect/initial-sync events
-    // where Evolution fires "add" for every existing member in the group.
+    // where the gateway fires "add" for every existing member in the group.
     if (action === "add" && participants.length > BULK_ADD_THRESHOLD) {
       console.log(`[groups-webhook] discard reason=bulk_add_ignored instance=${instanceName} group=${groupJid} participants=${participants.length} threshold=${BULK_ADD_THRESHOLD}`);
       return res.json({ ignored: true, reason: "bulk_add_ignored", count: participants.length });
@@ -124,7 +124,7 @@ router.post("/events", async (req: Request, res: Response) => {
     const groupName = monitoredName || data.subject || data.groupName || null;
 
     // 3) Dedup: remove participants that already have the same action in the last DEDUP_WINDOW_SECONDS
-    // This prevents Evolution API retry deliveries from creating duplicate rows.
+    // This prevents webhook retry deliveries from creating duplicate rows.
     const dedupCutoff = new Date(Date.now() - DEDUP_WINDOW_SECONDS * 1000).toISOString();
     const { data: recentEvents } = await sb
       .from("group_events")

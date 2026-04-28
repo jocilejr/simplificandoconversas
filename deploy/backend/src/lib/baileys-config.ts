@@ -1,6 +1,5 @@
 /**
  * Helper centralizado para conversar com o Baileys gateway.
- * Substitui completamente o antigo evolutionRequest().
  */
 export const BAILEYS_URL = process.env.BAILEYS_URL || "http://baileys-gateway:8080";
 export const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || "";

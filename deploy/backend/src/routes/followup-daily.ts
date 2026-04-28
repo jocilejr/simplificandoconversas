@@ -364,7 +364,7 @@ async function dispatchJob(job: FollowUpQueueRow, delayMs: number) {
         `${evoBaseUrl}/message/sendText/${encodeURIComponent(job.instance_name)}`,
         { method: "POST", headers: { "Content-Type": "application/json", apikey: evoApiKey }, body: JSON.stringify({ number: job.normalized_phone, text }) },
       );
-      if (!resp.ok) throw new Error(`Evolution sendText ${resp.status}: ${await resp.text()}`);
+      if (!resp.ok) throw new Error(`Baileys sendText ${resp.status}: ${await resp.text()}`);
     } else if (block.type === "pdf") {
       if (!job.boleto_file) continue;
       const fsModule = await import("fs/promises");
@@ -376,7 +376,7 @@ async function dispatchJob(job: FollowUpQueueRow, delayMs: number) {
         `${evoBaseUrl}/message/sendMedia/${encodeURIComponent(job.instance_name)}`,
         { method: "POST", headers: { "Content-Type": "application/json", apikey: evoApiKey }, body: JSON.stringify({ number: job.normalized_phone, mediatype: "document", media: pdfBase64, fileName: `boleto-${firstName}.pdf`, mimetype: "application/pdf" }) },
       );
-      if (!resp.ok) throw new Error(`Evolution PDF ${resp.status}: ${await resp.text()}`);
+      if (!resp.ok) throw new Error(`Baileys PDF ${resp.status}: ${await resp.text()}`);
     } else if (block.type === "image") {
       if (!job.boleto_file) continue;
       const fsModule = await import("fs/promises");
@@ -391,7 +391,7 @@ async function dispatchJob(job: FollowUpQueueRow, delayMs: number) {
         `${evoBaseUrl}/message/sendMedia/${encodeURIComponent(job.instance_name)}`,
         { method: "POST", headers: { "Content-Type": "application/json", apikey: evoApiKey }, body: JSON.stringify({ number: job.normalized_phone, mediatype: "image", media: imageBase64, caption: "" }) },
       );
-      if (!resp.ok) throw new Error(`Evolution Image ${resp.status}: ${await resp.text()}`);
+      if (!resp.ok) throw new Error(`Baileys Image ${resp.status}: ${await resp.text()}`);
     }
 
     if (i < blocks.length - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));

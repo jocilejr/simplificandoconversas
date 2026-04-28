@@ -9,9 +9,6 @@ const router = Router();
 
 import { baileysRequest } from "../lib/baileys-config";
 
-// Compat alias — todo o webhook.ts já chamava evolutionRequest com paths Evolution v2,
-// que o Baileys gateway expõe com o mesmo contrato.
-const evolutionRequest = baileysRequest;
 
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text;
@@ -30,7 +27,7 @@ async function downloadAndUploadMedia(
 
     if (!base64 && mediaMessage) {
       try {
-        const result = await evolutionRequest(
+        const result = await baileysRequest(
           `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
           "POST",
           { message: messageData, convertToMp4: messageType === "audio" }
@@ -228,7 +225,7 @@ router.post("/*", async (req, res) => {
     let lidValue: string | null = null;
 
     if (remoteJid && remoteJid.includes("@lid")) {
-      lidValue = remoteJid;
+lidValue = remoteJid;
       const senderPn = key.senderPn || data.senderPn;
       if (senderPn) {
         resolvedPhone = senderPn;
@@ -240,7 +237,32 @@ router.post("/*", async (req, res) => {
         resolvedPhone = key.participantAlt.split("@")[0];
         console.log(`[webhook] Resolved phone via participantAlt for @lid: ${resolvedPhone}`);
       } else {
-        console.log(`[webhook] Could not resolve phone for @lid ${remoteJid}`);
+        // Fall back to lid-mapping in baileys_auth_state (stored by Baileys)
+        const lidNum = remoteJid.split("@")[0]; // e.g. "201099109757160"
+        const { data: authRow } = await getServiceClient()
+          .from("baileys_auth_state")
+          .select("keys")
+          .eq("instance_name", instance)
+          .maybeSingle();
+        const lidMapping = authRow?.keys?.["lid-mapping"] as Record<string, string> | undefined;
+        const phoneFromMap = lidMapping?.[`${lidNum}_reverse`];
+        if (phoneFromMap) {
+          resolvedPhone = phoneFromMap;
+          console.log(`[webhook] Resolved phone via baileys lid-mapping for @lid: ${resolvedPhone}`);
+        } else {
+          // Last resort: lid_phone_map table (populated from contacts.upsert)
+          const { data: lidRow } = await getServiceClient()
+            .from("lid_phone_map")
+            .select("phone_number")
+            .eq("lid", remoteJid)
+            .maybeSingle();
+          if (lidRow?.phone_number) {
+            resolvedPhone = lidRow.phone_number;
+            console.log(`[webhook] Resolved phone via lid_phone_map for @lid: ${resolvedPhone}`);
+          } else {
+            console.log(`[webhook] Could not resolve phone for @lid ${remoteJid}`);
+          }
+        }
       }
     } else if (remoteJid && remoteJid.includes("@s.whatsapp.net")) {
       resolvedPhone = remoteJid.split("@")[0];
@@ -512,7 +534,7 @@ router.post("/*", async (req, res) => {
         }
 
         if (listenContent) {
-          await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, listenContent, contactName, isTranscription);
+          await checkAndAutoListen(supabase, userId, remoteJid, conv.id, instance, listenContent, contactName, isTranscription, resolvedPhone);
         }
       } catch (listenErr: any) {
         console.error("AI listen error (non-fatal):", listenErr);
@@ -796,7 +818,7 @@ async function checkAndAutoReply(
     }
 
     // Send via Baileys gateway
-    await evolutionRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {
+    await baileysRequest(`/message/sendText/${encodeURIComponent(instanceName)}`, "POST", {
       number: remoteJid.replace("@s.whatsapp.net", "").replace("@lid", ""),
       text: reply,
     });
@@ -827,7 +849,7 @@ async function checkAndAutoReply(
 
 // ── AI Listen (auto-create reminders) ──
 async function checkAndAutoListen(
-  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null, isTranscription: boolean = false
+  supabase: any, userId: string, remoteJid: string, conversationId: string, instanceName: string, messageContent: string, contactName: string | null, isTranscription: boolean = false, resolvedPhone: string | null = null
 ) {
   const wsInfo = await resolveWorkspaceFromInstance(instanceName);
   const workspaceId = wsInfo?.workspaceId || (await resolveWorkspaceId(userId));
@@ -878,24 +900,42 @@ async function checkAndAutoListen(
   }
 
   const listenRules = configRes.data?.listen_rules || "Detecte menções a pagamentos, datas, prazos e promessas.";
-  const phone = remoteJid.split("@")[0];
+  const phone = resolvedPhone || (remoteJid.includes("@lid") ? null : remoteJid.split("@")[0]);
   const brasiliaDate = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const diasSemana = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
   const now = brasiliaDate.toISOString().replace("T", " ").slice(0, 16);
   const diaSemanaAtual = diasSemana[brasiliaDate.getUTCDay()];
+  // Build calendar grouped by week with explicit labels
+  const diasAbrev = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+  const weekLabels = ["Semana atual", "Próxima semana", "Semana +2", "Semana +3", "Semana +4", "Semana +5", "Semana +6", "Semana +7", "Semana +8", "Semana +9", "Semana +10", "Semana +11", "Semana +12", "Semana +13", "Semana +14", "Semana +15", "Semana +16"];
+  // Find start of current week (Monday)
+  const todayUTCDay = brasiliaDate.getUTCDay(); // 0=sun (Brazil week starts Sunday)
+  const daysToSunday = -todayUTCDay; // 0 if today is Sun, -1 if Mon, etc.
+  const weekStart = new Date(brasiliaDate.getTime() + daysToSunday * 24 * 60 * 60 * 1000);
+  const calendarLines: string[] = [];
+  for (let w = 0; w <= 16; w++) {
+    const label = weekLabels[w] || `Semana +${w}`;
+    calendarLines.push(`${label}:`);
+    for (let d2 = 0; d2 < 7; d2++) {
+      const day = new Date(weekStart.getTime() + (w * 7 + d2) * 24 * 60 * 60 * 1000);
+      calendarLines.push(`  ${day.toISOString().slice(0, 10)} (${diasAbrev[day.getUTCDay()]})`);
+    }
+  }
+  const nextDaysTable = calendarLines.join("\n");
 
   const systemPrompt = `Você é um analisador de mensagens de WhatsApp. Sua ÚNICA tarefa é verificar se a mensagem se encaixa ESTRITAMENTE nas regras definidas abaixo.
 
 REGRAS DE DETECÇÃO (definidas pelo usuário — siga ESTRITAMENTE, NÃO crie lembretes sobre outros assuntos):
 ${listenRules}
 
-IMPORTANTE: Você deve criar um lembrete SOMENTE se a mensagem se encaixar claramente nas regras acima. Se a mensagem falar sobre qualquer outro assunto que NÃO esteja nas regras, use a ferramenta no_action. Na dúvida, SEMPRE use no_action.
+IMPORTANTE: Crie um lembrete se a mensagem se encaixar nas regras acima. Se a mensagem mencionar claramente pagamento (pix, boleto, transferência, cartão, etc.) E uma data ou prazo, SEMPRE crie o lembrete. Use no_action apenas se a mensagem claramente NÃO mencionar nada relacionado às regras.
 
 REGRAS DE DATA E HORÁRIO:
 - Agora é ${diaSemanaAtual}, ${now} (horário de Brasília, UTC-3).
-- Quando o contato mencionar "dia X" (ex: "dia 12", "dia 5"): se o dia X do mês atual já passou, agende para o dia X do PRÓXIMO mês. Se ainda não passou, use o mês atual.
-- Quando mencionar um dia da semana (ex: "segunda", "quarta", "sexta"): se esse dia da semana já passou nesta semana, agende para o mesmo dia da PRÓXIMA semana. Se ainda não passou, use esta semana.
-- "semana que vem" = próxima semana.
+- Quando o contato mencionar dia E mês explicitamente (ex: "14 de maio", "3 de junho", "dia 20 de julho"): use EXATAMENTE essa data. NÃO aplique a regra de próximo mês.
+- Quando o contato mencionar apenas "dia X" sem especificar o mês (ex: "dia 12", "dia 5"): se o dia X do mês atual já passou, agende para o dia X do PRÓXIMO mês. Se ainda não passou, use o mês atual.
+- Para qualquer referência temporal, use o calendário abaixo (agrupado por semana) — NÃO faça aritmética de datas. Regras: "quinta" = próxima quinta na "Semana atual"; "quinta da próxima semana" ou "quinta que vem" = quinta em "Próxima semana"; "metade da semana" = quarta-feira da semana atual; "metade da próxima semana" = quarta-feira de "Próxima semana"; "fim do mês" = último dia do mês corrente no calendário.
+${nextDaysTable}
 - "mês que vem" = próximo mês.
 - "amanhã" = dia seguinte ao atual.
 - "hoje" = dia atual.
@@ -908,7 +948,7 @@ REGRAS DE DATA E HORÁRIO:
 Se a mensagem se encaixar nas REGRAS DE DETECÇÃO acima, responda usando a ferramenta create_reminder.
 Se NÃO se encaixar, responda usando a ferramenta no_action.
 
-Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}.`;
+Contexto: Contato ${contactName || phone || remoteJid}, instância ${instanceName}.`;
 
   try {
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -918,7 +958,7 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
         Authorization: `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4.1-nano",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: isTranscription ? `[Áudio transcrito]: ${messageContent}` : messageContent },
@@ -992,7 +1032,7 @@ Contexto: Contato ${contactName || phone} (${phone}), instância ${instanceName}
       description: contextLines || null,
       due_date: args.due_date,
       remote_jid: remoteJid,
-      phone_number: phone,
+      phone_number: phone || null,
       contact_name: contactName || null,
       instance_name: instanceName,
     });

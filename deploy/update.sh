@@ -31,11 +31,7 @@ if [ -z "$POSTGRES_CONTAINER" ]; then
 fi
 echo "   → Postgres container: $POSTGRES_CONTAINER"
 
-# Ensure evolution database exists (required by Evolution API)
-echo "   → Criando banco 'evolution' se não existir..."
 docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -tc \
-  "SELECT 1 FROM pg_database WHERE datname='evolution'" | grep -q 1 || \
-  docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -c "CREATE DATABASE evolution;"
 
 # Apply SQL migrations
 echo "   → Aplicando migrações SQL..."
