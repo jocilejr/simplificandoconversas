@@ -21,6 +21,7 @@ export function useMessagesLive(conversationId: string | null) {
   const query = useQuery({
     queryKey: ["chat-messages", conversationId],
     enabled: !!conversationId,
+    refetchInterval: 30000,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("messages")
@@ -39,9 +40,25 @@ export function useMessagesLive(conversationId: string | null) {
       .channel(`chat-messages-${conversationId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
-        () => {
-          qc.invalidateQueries({ queryKey: ["chat-messages", conversationId] });
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        (payload) => {
+          qc.setQueryData(["chat-messages", conversationId], (old: ChatMessage[] = []) => {
+            const msg = payload.new as ChatMessage;
+            if (old.some((m) => m.id === msg.id)) return old;
+            const withoutOptimistic = old.filter((m) => !m.id.startsWith("optimistic-"));
+            return [...withoutOptimistic, msg].sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        (payload) => {
+          qc.setQueryData(["chat-messages", conversationId], (old: ChatMessage[] = []) =>
+            old.map((m) => (m.id === payload.new.id ? ({ ...m, ...payload.new } as ChatMessage) : m))
+          );
         }
       )
       .subscribe();

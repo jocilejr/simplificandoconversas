@@ -1,23 +1,32 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useChatbotFlows } from "@/hooks/useChatbotFlows";
+import { useQueryClient } from "@tanstack/react-query";
+import { ChatMessage } from "@/hooks/useMessagesLive";
 import { Paperclip, Send, Loader2, X, Bot } from "lucide-react";
 import { uploadMediaFile } from "@/lib/uploadMedia";
-import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
 
 interface Props {
   remoteJid: string;
   instanceName: string;
+  conversationId?: string;
   disabled?: boolean;
 }
 
-export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
+export function MessageComposer({ remoteJid, instanceName, conversationId, disabled }: Props) {
   const { workspaceId, hasPermission } = useWorkspace();
   const canTriggerFlow = hasPermission("disparar_fluxo");
-  const [flowOpen, setFlowOpen] = useState(false);
+  const { data: flows = [] } = useChatbotFlows();
+  const activeFlows = (flows || []).filter((f: any) => f.active);
+  const qc = useQueryClient();
+
+  const [flowPopoverOpen, setFlowPopoverOpen] = useState(false);
+  const [triggeringFlowId, setTriggeringFlowId] = useState<string | null>(null);
   const { toast } = useToast();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -50,6 +59,43 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
+
+    const currentText = text;
+    const currentMediaUrl = mediaUrl;
+    const currentMediaKind = mediaKind;
+    const currentMediaName = mediaName;
+
+    // Clear form immediately
+    setText("");
+    setMediaUrl(null);
+    setMediaKind(null);
+    setMediaName("");
+
+    // Optimistic message insert
+    const optimisticId = `optimistic-${Date.now()}`;
+    if (conversationId) {
+      const optimisticMsg: ChatMessage = {
+        id: optimisticId,
+        conversation_id: conversationId,
+        content: currentMediaUrl ? (currentText || null) : currentText,
+        message_type: currentMediaUrl
+          ? currentMediaKind === "image"
+            ? "image"
+            : "document"
+          : "text",
+        direction: "outbound",
+        status: "sending",
+        media_url: currentMediaUrl,
+        transcription: null,
+        created_at: new Date().toISOString(),
+        external_id: null,
+      };
+      qc.setQueryData(
+        ["chat-messages", conversationId],
+        (old: ChatMessage[] = []) => [...old, optimisticMsg]
+      );
+    }
+
     try {
       const body: any = {
         action: "send-message",
@@ -58,28 +104,54 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
         workspaceId,
       };
 
-      if (mediaUrl) {
-        body.messageType = mediaKind === "image" ? "image" : "document";
-        body.mediaUrl = mediaUrl;
-        body.caption = text || undefined;
-        body.fileName = mediaName;
+      if (currentMediaUrl) {
+        body.messageType = currentMediaKind === "image" ? "image" : "document";
+        body.mediaUrl = currentMediaUrl;
+        body.message = currentText || undefined;
+        body.fileName = currentMediaName;
       } else {
         body.messageType = "text";
-        body.text = text;
+        body.message = currentText;
       }
 
       const { error, data } = await supabase.functions.invoke("whatsapp-proxy", { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-
-      setText("");
-      setMediaUrl(null);
-      setMediaKind(null);
-      setMediaName("");
     } catch (err: any) {
+      // Rollback optimistic message and restore form
+      if (conversationId) {
+        qc.setQueryData(
+          ["chat-messages", conversationId],
+          (old: ChatMessage[] = []) => old.filter((m) => m.id !== optimisticId)
+        );
+      }
+      setText(currentText);
+      setMediaUrl(currentMediaUrl);
+      setMediaKind(currentMediaKind);
+      setMediaName(currentMediaName);
       toast({ title: "Erro ao enviar", description: err.message, variant: "destructive" });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleTriggerFlow = async (flowId: string) => {
+    if (!remoteJid || !instanceName) {
+      toast({ title: "Nenhum chat aberto", variant: "destructive" });
+      return;
+    }
+    setTriggeringFlowId(flowId);
+    setFlowPopoverOpen(false);
+    try {
+      const { error } = await supabase.functions.invoke("execute-flow", {
+        body: { flowId, remoteJid, instanceName },
+      });
+      if (error) throw error;
+      toast({ title: "Fluxo disparado!" });
+    } catch (err: any) {
+      toast({ title: "Erro ao disparar fluxo", description: err.message, variant: "destructive" });
+    } finally {
+      setTriggeringFlowId(null);
     }
   };
 
@@ -124,16 +196,49 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
           <Paperclip className="h-4 w-4" />
         </Button>
         {canTriggerFlow && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0 rounded-full text-primary hover:text-primary hover:bg-primary/10"
-            onClick={() => setFlowOpen(true)}
-            disabled={disabled}
-            title="Disparar fluxo automatizado"
-          >
-            <Bot className="h-4 w-4" />
-          </Button>
+          <Popover open={flowPopoverOpen} onOpenChange={setFlowPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-full text-primary hover:text-primary hover:bg-primary/10"
+                disabled={disabled || !!triggeringFlowId}
+                title="Disparar fluxo automatizado"
+              >
+                {triggeringFlowId ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Bot className="h-4 w-4" />
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-56 p-1"
+              sideOffset={6}
+            >
+              {activeFlows.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-2 py-2">Nenhum fluxo ativo</p>
+              ) : (
+                <div className="space-y-0.5">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-2 py-1">
+                    Disparar fluxo
+                  </p>
+                  {activeFlows.map((f: any) => (
+                    <button
+                      key={f.id}
+                      onClick={() => handleTriggerFlow(f.id)}
+                      className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors flex items-center gap-2"
+                    >
+                      <Bot className="h-3 w-3 shrink-0 text-primary" />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
         )}
         <Textarea
           value={text}
@@ -159,13 +264,6 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
-
-      <ManualFlowTrigger
-        open={flowOpen}
-        onOpenChange={setFlowOpen}
-        defaultPhone={remoteJid?.replace(/@.*/, "")}
-        defaultInstance={instanceName || undefined}
-      />
     </div>
   );
 }
