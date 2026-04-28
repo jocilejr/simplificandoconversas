@@ -116,9 +116,22 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
           className="h-9 w-9 shrink-0"
           onClick={handleAttach}
           disabled={disabled || sending}
+          title="Anexar arquivo"
         >
           <Paperclip className="h-4 w-4" />
         </Button>
+        {canTriggerFlow && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0 text-primary hover:text-primary hover:bg-primary/10"
+            onClick={() => setFlowOpen(true)}
+            disabled={disabled}
+            title="Disparar fluxo automatizado"
+          >
+            <Bot className="h-4 w-4" />
+          </Button>
+        )}
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -141,6 +154,13 @@ export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         </Button>
       </div>
+
+      <ManualFlowTrigger
+        open={flowOpen}
+        onOpenChange={setFlowOpen}
+        defaultPhone={remoteJid?.replace(/@.*/, "")}
+        defaultInstance={instanceName || undefined}
+      />
     </div>
   );
 }
