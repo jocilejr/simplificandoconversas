@@ -62,21 +62,21 @@ export function ContactPanel({ conversation, onSelectConversation }: Props) {
           <LabelManager conversationId={conversation.id} />
 
           <Separator />
-          <CrossInstanceHistory
-            currentConversationId={conversation.id}
-            currentInstance={conversation.instance_name}
-            remoteJid={conversation.remote_jid}
-            phoneNumber={conversation.phone_number}
-            onSelectConversation={onSelectConversation}
-          />
-
-          <Separator />
           <ContactReminders
             conversationId={conversation.id}
             remoteJid={conversation.remote_jid}
             instanceName={conversation.instance_name}
             contactName={conversation.contact_name}
             phone={conversation.phone_number}
+          />
+
+          <Separator />
+          <CrossInstanceHistory
+            currentConversationId={conversation.id}
+            currentInstance={conversation.instance_name}
+            remoteJid={conversation.remote_jid}
+            phoneNumber={conversation.phone_number}
+            onSelectConversation={onSelectConversation}
           />
         </div>
       </ScrollArea>
