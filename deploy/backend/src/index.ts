@@ -322,6 +322,40 @@ app.listen(PORT, async () => {
     console.error("[scheduler] Initialization error:", err.message);
   }
 
+  // ─── Stale processing recovery: cancel any items stuck as "processing" on startup ───
+  try {
+    const { createClient: _createClient } = await import("@supabase/supabase-js");
+    const sb = _createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+    const { data: stale, error: staleErr } = await sb
+      .from("group_message_queue")
+      .update({ status: "cancelled", error_message: "Envio interrompido: serviço reiniciado" })
+      .eq("status", "processing")
+      .select("id");
+    if (!staleErr && stale && stale.length > 0) {
+      console.log(`[queue-recovery] Startup: cancelled ${stale.length} stale processing item(s)`);
+    }
+  } catch (recErr: any) {
+    console.error("[queue-recovery] Startup recovery error:", recErr.message);
+  }
+
   // Group monitoring agora depende exclusivamente do sync de Smart Links
   // (rota POST /api/groups/smart-links/sync-all, agendada externamente).
 });
+
+// ─── Periodic stale processing recovery (every 15 min) ───
+setInterval(async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const sb = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: stale } = await sb
+      .from("group_message_queue")
+      .update({ status: "cancelled", error_message: "Envio interrompido: tempo máximo excedido (30min)" })
+      .eq("status", "processing")
+      .lt("started_at", cutoff)
+      .select("id");
+    if (stale && stale.length > 0) {
+      console.log(`[queue-recovery] Periodic: cancelled ${stale.length} stale processing item(s)`);
+    }
+  } catch {}
+}, 15 * 60 * 1000);

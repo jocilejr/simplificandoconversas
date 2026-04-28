@@ -41,8 +41,7 @@ export function FinancialReport() {
     }
     return Object.entries(map)
       .map(([name, spend]) => ({ name, spend }))
-      .sort((a, b) => b.spend - a.spend)
-      .slice(0, 5);
+      .sort((a, b) => b.spend - a.spend);
   }, [metaRows]);
 
   const stats = useMemo(() => {
@@ -190,7 +189,8 @@ export function FinancialReport() {
 
         {metaByCampaign.length > 0 ? (
           <div className="space-y-2 mt-3 pt-3 border-t border-border/20">
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Top campanhas</p>
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Campanhas ({metaByCampaign.length})</p>
+            <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
             {metaByCampaign.map((c) => (
               <div key={c.name} className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
@@ -207,6 +207,7 @@ export function FinancialReport() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center py-4 text-[11px] text-muted-foreground">

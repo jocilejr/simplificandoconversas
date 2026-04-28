@@ -345,11 +345,18 @@ router.get("/contact-status", async (req, res) => {
   const enriched = executions.map((ex: any) => ({ ...ex, flow_name: flowMap.get(ex.flow_id) || "Fluxo" }));
   const enrichedHistory = historyExecs.map((ex: any) => ({ ...ex, flow_name: flowMap.get(ex.flow_id) || "Fluxo" }));
 
-  const { data: tags } = await sb
+  // Query tags by both resolved jid AND phone jid (LID contacts may store tags under phone jid)
+  const phoneJid = phone ? `${phone}@s.whatsapp.net` : null;
+  const tagJidFilter = phoneJid && phoneJid !== jid
+    ? `remote_jid.eq.${jid},remote_jid.eq.${phoneJid}`
+    : `remote_jid.eq.${jid}`;
+  const { data: rawTags } = await sb
     .from("contact_tags")
     .select("tag_name")
     .eq("user_id", userId)
-    .eq("remote_jid", jid);
+    .or(tagJidFilter);
+  const seen = new Set<string>();
+  const tags = (rawTags || []).filter((t: any) => { if (seen.has(t.tag_name)) return false; seen.add(t.tag_name); return true; });
 
   const { data: instances } = await sb
     .from("whatsapp_instances")
@@ -448,11 +455,17 @@ router.delete("/remove-tag", async (req, res) => {
   if (!remoteJid || !tagName) return res.status(400).json({ error: "remoteJid and tagName required" });
 
   const sb = getServiceClient();
+  // Build OR filter to handle both phone JID and LID JID variants
+  const phoneDigits = remoteJid.replace(/[^0-9]/g, "");
+  const phoneJid = phoneDigits ? `${phoneDigits}@s.whatsapp.net` : null;
+  const jidFilter = phoneJid && phoneJid !== remoteJid
+    ? `remote_jid.eq.${remoteJid},remote_jid.eq.${phoneJid}`
+    : `remote_jid.eq.${remoteJid}`;
   const { error } = await sb
     .from("contact_tags")
     .delete()
     .eq("user_id", userId)
-    .eq("remote_jid", remoteJid)
+    .or(jidFilter)
     .eq("tag_name", tagName);
 
   if (error) return res.status(500).json({ error: error.message });

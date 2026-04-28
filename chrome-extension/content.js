@@ -566,7 +566,7 @@
 
     // Tags
     if (tags.length > 0) {
-      const remoteJid = contact?.remote_jid || '';
+      const remoteJid = resolvedPhone ? `${resolvedPhone}@s.whatsapp.net` : (contact?.remote_jid || '');
       html += `<div class="sc-section"><div class="sc-section-header"><div class="sc-section-title">${ICONS.tag} Tags</div></div><div class="sc-tags">`;
       tags.forEach((t) => { html += `<span class="sc-tag">${t.tag_name}<button class="sc-tag-remove" data-jid="${remoteJid}" data-tag="${t.tag_name}" title="Remover tag">&times;</button></span>`; });
       html += '</div></div>';

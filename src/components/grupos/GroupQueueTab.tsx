@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   XCircle, Clock, Loader2, CheckCircle2, AlertCircle,
   Settings2, Save, Inbox, MessageSquare, Image, FileText,
-  Music, Video, Ban, Trash2, RotateCcw,
+  Music, Video, Ban, Trash2, RotateCcw, Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -266,9 +266,10 @@ export default function GroupQueueTab() {
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{item.group_name || item.group_jid}</p>
-                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          {item.instance_name}
-                        </p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Smartphone className="h-3 w-3 text-primary/60 shrink-0" />
+                          <p className="text-[11px] text-primary/70 font-medium truncate">{item.instance_name}</p>
+                        </div>
                       </div>
 
                       {/* Error */}
