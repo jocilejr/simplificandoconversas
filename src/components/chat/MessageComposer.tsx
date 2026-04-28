@@ -4,8 +4,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { Paperclip, Send, Loader2, X } from "lucide-react";
+import { Paperclip, Send, Loader2, X, Bot } from "lucide-react";
 import { uploadMediaFile } from "@/lib/uploadMedia";
+import { ManualFlowTrigger } from "@/components/ManualFlowTrigger";
 
 interface Props {
   remoteJid: string;
@@ -14,6 +15,9 @@ interface Props {
 }
 
 export function MessageComposer({ remoteJid, instanceName, disabled }: Props) {
+  const { hasPermission } = useWorkspace();
+  const canTriggerFlow = hasPermission("disparar_fluxo");
+  const [flowOpen, setFlowOpen] = useState(false);
   const { toast } = useToast();
   const { workspaceId } = useWorkspace();
   const [text, setText] = useState("");
