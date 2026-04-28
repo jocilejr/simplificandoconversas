@@ -84,6 +84,7 @@ export function useCreateReminder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      qc.invalidateQueries({ queryKey: ["contact-reminders"] });
       toast({ title: "Lembrete criado com sucesso" });
     },
     onError: (err: any) => {
@@ -120,6 +121,7 @@ export function useDeleteReminder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      qc.invalidateQueries({ queryKey: ["contact-reminders"] });
       toast({ title: "Lembrete removido" });
     },
   });
