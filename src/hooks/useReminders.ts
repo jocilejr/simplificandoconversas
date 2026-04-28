@@ -107,6 +107,7 @@ export function useToggleReminder() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reminders"] });
+      qc.invalidateQueries({ queryKey: ["contact-reminders"] });
     },
   });
 }
