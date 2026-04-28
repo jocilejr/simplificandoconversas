@@ -156,6 +156,7 @@ export function MessageThread({ messages, loading, contactName }: Props) {
             </div>
             {g.items.map((m) => {
               const mine = m.direction === "outbound";
+              const isSticker = normalizeType(m.message_type) === "sticker" && !!m.media_url;
               return (
                 <div
                   key={m.id}
@@ -163,19 +164,34 @@ export function MessageThread({ messages, loading, contactName }: Props) {
                 >
                   <div
                     className={cn(
-                      "max-w-[75%] rounded-lg px-3 py-2 shadow-sm",
-                      mine
-                        ? "bg-primary/90 text-primary-foreground"
-                        : "bg-card border border-border"
+                      "max-w-[75%] rounded-lg shadow-sm",
+                      isSticker
+                        ? "bg-transparent p-0 shadow-none"
+                        : mine
+                        ? "bg-primary/90 text-primary-foreground px-3 py-2"
+                        : "bg-card border border-border px-3 py-2"
                     )}
                   >
-                    <MessageBody m={m} />
-                    <div className="flex items-center justify-end gap-1 mt-1">
-                      <span className="text-[9px] opacity-70">
-                        {format(new Date(m.created_at), "HH:mm")}
-                      </span>
-                      {mine && <StatusIcon status={m.status} />}
-                    </div>
+                    <MessageBody m={m} mine={mine} />
+                    {!isSticker && (
+                      <div className="flex items-center justify-end gap-1 mt-1">
+                        <span className="text-[9px] opacity-70">
+                          {format(new Date(m.created_at), "HH:mm")}
+                        </span>
+                        {mine && <StatusIcon status={m.status} />}
+                      </div>
+                    )}
+                    {isSticker && (
+                      <div className={cn(
+                        "flex items-center gap-1 mt-0.5",
+                        mine ? "justify-end" : "justify-start"
+                      )}>
+                        <span className="text-[9px] text-muted-foreground">
+                          {format(new Date(m.created_at), "HH:mm")}
+                        </span>
+                        {mine && <StatusIcon status={m.status} />}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
