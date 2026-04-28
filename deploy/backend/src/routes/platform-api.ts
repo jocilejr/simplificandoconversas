@@ -1224,12 +1224,31 @@ router.post("/generate-payment", async (req, res) => {
 
     // Upsert conversation
     if (customer_phone) {
-      const phone = customer_phone.replace(/\D/g, "");
-      await sb.from("conversations").upsert(
-        { user_id: userId, workspace_id: workspaceId, remote_jid: `${phone}@s.whatsapp.net`,
-          contact_name: customer_name, phone_number: phone, email: resolvedEmail, instance_name: null },
-        { onConflict: "user_id,remote_jid,instance_name" }
-      );
+      const { normalizePhone } = await import("../lib/normalize-phone");
+      const phone = normalizePhone(customer_phone) || customer_phone.replace(/\D/g, "");
+      // Find existing conversation with instance_name to preserve it
+      const { data: existingConv } = await sb
+        .from("conversations")
+        .select("id, instance_name")
+        .eq("user_id", userId)
+        .eq("phone_number", phone)
+        .not("instance_name", "is", null)
+        .order("last_message_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existingConv) {
+        // Update existing with correct data, preserve instance_name
+        await sb.from("conversations").update(
+          { contact_name: customer_name, phone_number: phone, remote_jid: `${phone}@s.whatsapp.net` }
+        ).eq("id", existingConv.id);
+      } else {
+        // No existing conv — create without instance (assigned on first message)
+        await sb.from("conversations").upsert(
+          { user_id: userId, workspace_id: workspaceId, remote_jid: `${phone}@s.whatsapp.net`,
+            contact_name: customer_name, phone_number: phone, instance_name: null },
+          { onConflict: "user_id,remote_jid,instance_name" }
+        );
+      }
     }
 
     const result = {

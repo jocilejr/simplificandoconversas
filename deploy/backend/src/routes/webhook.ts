@@ -446,7 +446,7 @@ lidValue = remoteJid;
       const updateData: Record<string, unknown> = {
         last_message: lastMessagePreview,
       };
-      if (!fromMe) updateData.last_message_at = new Date().toISOString();
+      updateData.last_message_at = new Date().toISOString();
       if (contactName) updateData.contact_name = contactName;
       if (resolvedPhone) updateData.phone_number = resolvedPhone;
       if (lidValue) updateData.lid = lidValue;
@@ -463,7 +463,7 @@ lidValue = remoteJid;
         last_message: lastMessagePreview,
         instance_name: instance,
       };
-      if (!fromMe) upsertData.last_message_at = new Date().toISOString();
+      upsertData.last_message_at = new Date().toISOString();
       if (contactName) upsertData.contact_name = contactName;
       if (resolvedPhone) upsertData.phone_number = resolvedPhone;
       if (lidValue) upsertData.lid = lidValue;
