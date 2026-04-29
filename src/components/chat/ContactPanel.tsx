@@ -1,5 +1,5 @@
 import { ChatConversation } from "@/hooks/useConversationsLive";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LabelManager } from "./LabelManager";
@@ -27,9 +27,11 @@ export function ContactPanel({ conversation, onSelectConversation }: Props) {
   const instColor = instanceColor(conversation.instance_name);
 
   return (
-    <div className="h-full flex flex-col border-l border-border bg-card/30">
-      <div className="p-4 border-b border-border flex flex-col items-center text-center space-y-2">
+    <div className="h-full flex flex-col min-h-0 border-l border-border bg-card/30 overflow-hidden">
+      {/* Fixed header */}
+      <div className="shrink-0 p-4 border-b border-border flex flex-col items-center text-center space-y-2">
         <Avatar className="h-16 w-16 ring-2 ring-border">
+          {conversation.profile_pic_url && <AvatarImage src={conversation.profile_pic_url} alt={display} />}
           <AvatarFallback className="bg-primary/15 text-primary text-lg font-semibold">
             {initials}
           </AvatarFallback>
@@ -57,8 +59,9 @@ export function ContactPanel({ conversation, onSelectConversation }: Props) {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-5">
+      {/* Scrollable body */}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-4 space-y-5 overflow-hidden">
           <LabelManager conversationId={conversation.id} />
 
           <Separator />

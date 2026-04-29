@@ -117,11 +117,11 @@ export function ContactReminders({ remoteJid, instanceName, contactName, phone }
       {reminders.length === 0 && !expanded ? (
         <p className="text-[11px] text-muted-foreground italic">Nenhum lembrete</p>
       ) : (
-        <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+        <div className="space-y-1.5 overflow-hidden">
           {reminders.map((r) => (
             <div
               key={r.id}
-              className="flex items-start gap-2 p-2 rounded-md bg-muted/50 text-xs group"
+              className="flex items-start gap-2 p-1.5 rounded-md bg-muted/50 text-xs group overflow-hidden"
             >
               <Checkbox
                 checked={r.completed}
@@ -130,7 +130,7 @@ export function ContactReminders({ remoteJid, instanceName, contactName, phone }
               />
               <div className="flex-1 min-w-0">
                 <p className={`font-medium truncate ${r.completed ? "line-through text-muted-foreground" : ""}`}>
-                  {r.title}
+                  {r.title.length > 30 ? r.title.slice(0, 30) + "…" : r.title}
                 </p>
                 <span className="text-[9px] text-muted-foreground">
                   {format(new Date(r.due_date), "dd/MM HH:mm", { locale: ptBR })}

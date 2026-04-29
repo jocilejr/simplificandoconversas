@@ -1,61 +1,64 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useChatbotFlows } from "@/hooks/useChatbotFlows";
-import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, Cpu, Phone } from "lucide-react";
 
 interface ManualFlowTriggerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultPhone?: string;
   defaultInstance?: string;
+  /** Full remoteJid of the open conversation (e.g. 55119...@s.whatsapp.net or @lid) */
+  remoteJid?: string;
 }
 
-export function ManualFlowTrigger({ open, onOpenChange, defaultPhone, defaultInstance }: ManualFlowTriggerProps) {
+export function ManualFlowTrigger({ open, onOpenChange, defaultPhone, defaultInstance, remoteJid }: ManualFlowTriggerProps) {
   const { toast } = useToast();
   const { data: flows = [] } = useChatbotFlows();
-  const { instances = [] } = useWhatsAppInstances();
-
-  const [phone, setPhone] = useState(defaultPhone || "");
   const [flowId, setFlowId] = useState("");
-  const [instanceName, setInstanceName] = useState(defaultInstance || "");
   const [loading, setLoading] = useState(false);
 
-  // Sync defaults whenever the dialog is reopened with new values
+  // Reset flow selection when dialog opens
   useEffect(() => {
-    if (open) {
-      if (defaultPhone) setPhone(defaultPhone);
-      if (defaultInstance) setInstanceName(defaultInstance);
-    }
-  }, [open, defaultPhone, defaultInstance]);
+    if (open) setFlowId("");
+  }, [open]);
 
   const activeFlows = (flows || []).filter((f) => f.active);
 
+  // Determine the target JID for dispatch
+  const targetJid = remoteJid?.includes("@s.whatsapp.net")
+    ? remoteJid
+    : defaultPhone
+    ? `${defaultPhone.replace(/\D/g, "")}@s.whatsapp.net`
+    : null;
+
+  const isContextLocked = !!(defaultPhone && defaultInstance);
+
   const handleSubmit = async () => {
-    const cleaned = phone.replace(/\D/g, "");
-    if (!cleaned || !flowId || !instanceName) {
-      toast({ title: "Preencha todos os campos", variant: "destructive" });
+    if (!flowId) {
+      toast({ title: "Selecione um fluxo", variant: "destructive" });
+      return;
+    }
+    if (!targetJid || !defaultInstance) {
+      toast({ title: "Nenhum chat aberto para disparar o fluxo", variant: "destructive" });
       return;
     }
 
     setLoading(true);
     try {
-      const remoteJid = `${cleaned}@s.whatsapp.net`;
       const { error } = await supabase.functions.invoke("execute-flow", {
-        body: { flowId, remoteJid, instanceName },
+        body: { flowId, remoteJid: targetJid, instanceName: defaultInstance },
       });
       if (error) throw error;
       toast({ title: "Fluxo disparado com sucesso!" });
       onOpenChange(false);
-      setPhone("");
       setFlowId("");
-      setInstanceName("");
     } catch (err: any) {
       toast({ title: "Erro ao disparar fluxo", description: err.message, variant: "destructive" });
     } finally {
@@ -71,14 +74,25 @@ export function ManualFlowTrigger({ open, onOpenChange, defaultPhone, defaultIns
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Número (com DDD)</Label>
-            <Input
-              placeholder="5588999999999"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
+          {isContextLocked && (
+            <div className="rounded-md border border-border bg-muted/40 p-3 space-y-1.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Enviando para</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {defaultPhone && (
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    <Phone className="h-3 w-3" />
+                    {defaultPhone}
+                  </Badge>
+                )}
+                {defaultInstance && (
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    <Cpu className="h-3 w-3" />
+                    {defaultInstance}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Fluxo</Label>
@@ -95,27 +109,11 @@ export function ManualFlowTrigger({ open, onOpenChange, defaultPhone, defaultIns
               </SelectContent>
             </Select>
           </div>
-
-          <div className="space-y-2">
-            <Label>Instância</Label>
-            <Select value={instanceName} onValueChange={setInstanceName}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione uma instância" />
-              </SelectTrigger>
-              <SelectContent>
-                {instances.map((i) => (
-                  <SelectItem key={i.id} value={i.instance_name}>
-                    {i.instance_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         <DialogFooter>
-          <Button onClick={handleSubmit} disabled={loading}>
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          <Button onClick={handleSubmit} disabled={loading || !flowId}>
+            {loading && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
             Disparar
           </Button>
         </DialogFooter>

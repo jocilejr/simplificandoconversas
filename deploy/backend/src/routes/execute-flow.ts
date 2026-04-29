@@ -5,6 +5,13 @@ import { resolveWorkspaceId } from "../lib/workspace";
 import crypto from "crypto";
 
 const router = Router();
+function decodeJwtPayload(token: string): { sub: string; exp: number } | null {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    return payload && payload.sub ? payload : null;
+  } catch { return null; }
+}
+
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -194,15 +201,11 @@ router.post("/", async (req, res) => {
     if (isServiceRole && bodyUserId) {
       userId = bodyUserId;
     } else {
-      const gotrueUrl = process.env.GOTRUE_URL || "http://gotrue:9999";
-      const userResp = await fetch(`${gotrueUrl}/user`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!userResp.ok) {
+      const decoded = decodeJwtPayload(token);
+      if (!decoded || decoded.exp * 1000 < Date.now()) {
         return res.status(401).json({ error: "Unauthorized" });
       }
-      const userData: any = await userResp.json();
-      userId = userData.id;
+      userId = decoded.sub;
     }
 
     const workspaceId = await resolveWorkspaceId(userId);
@@ -337,6 +340,9 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
 
     if (execErr || !execution) return res.status(500).json({ error: "Failed to start execution tracking" });
     executionId = execution.id;
+
+    // Respond immediately — execution runs in the background
+    res.json({ ok: true, executionId, queued: true });
 
     const nodes = (flow.nodes || []) as any[];
     const edges = (flow.edges || []) as any[];
@@ -831,7 +837,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
       await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify(results) } as any).eq("id", executionId);
     }
 
-    return res.json({ ok: true, executed: results, executionId });
+    // Response already sent above
   } catch (err: any) {
     console.error("execute-flow error:", err);
     if (executionId) {
@@ -843,7 +849,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
         await serviceClient.from("flow_executions").update({ status: "completed", results: JSON.stringify([`error: ${err.message}`]) } as any).eq("id", executionId);
       }
     }
-    return res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
 

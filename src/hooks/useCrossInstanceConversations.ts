@@ -16,10 +16,11 @@ export interface CrossInstanceConversation {
 
 /**
  * Finds the same contact (by phone/remote_jid) across OTHER instances in the workspace,
- * excluding the currently open conversation.
+ * excluding the currently open conversation AND any conversation from the same instance.
  */
 export function useCrossInstanceConversations(params: {
   currentConversationId: string | null;
+  currentInstance: string | null;
   remoteJid: string | null;
   phoneNumber: string | null;
 }) {
@@ -30,6 +31,7 @@ export function useCrossInstanceConversations(params: {
       "cross-instance-conversations",
       workspaceId,
       params.currentConversationId,
+      params.currentInstance,
       params.remoteJid,
       params.phoneNumber,
     ],
@@ -53,8 +55,11 @@ export function useCrossInstanceConversations(params: {
         .order("last_message_at", { ascending: false, nullsFirst: false });
 
       if (error) throw error;
+
       return ((data || []) as CrossInstanceConversation[]).filter(
-        (c) => c.id !== params.currentConversationId
+        (c) =>
+          c.id !== params.currentConversationId &&
+          c.instance_name !== params.currentInstance
       );
     },
   });
