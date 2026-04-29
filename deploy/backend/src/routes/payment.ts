@@ -399,24 +399,7 @@ router.post("/create", async (req: Request, res: Response) => {
       }
     }
 
-    // Upsert conversation if phone provided
-    if (customer_phone) {
-      const phone = customer_phone.replace(/\D/g, "");
-      const remoteJid = `${phone}@s.whatsapp.net`;
 
-      await supabase.from("conversations").upsert(
-        {
-          user_id: userId,
-          workspace_id: workspaceId,
-          remote_jid: remoteJid,
-          contact_name: customer_name,
-          phone_number: phone,
-          email: resolvedEmail || null,
-          instance_name: null,
-        },
-        { onConflict: "user_id,remote_jid,instance_name" }
-      );
-    }
 
     return res.json({
       success: true,
