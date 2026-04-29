@@ -7,6 +7,13 @@ import fs from "fs";
 import path from "path";
 
 const router = Router();
+function decodeJwtPayload(token: string): { sub: string; exp: number } | null {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    return payload && payload.sub ? payload : null;
+  } catch { return null; }
+}
+
 
 import { baileysRequest } from "../lib/baileys-config";
 
@@ -62,13 +69,11 @@ router.post("/", async (req, res) => {
 
     const token = authHeader.replace("Bearer ", "");
 
-    const gotrueUrl = process.env.GOTRUE_URL || "http://gotrue:9999";
-    const userResp = await fetch(`${gotrueUrl}/user`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!userResp.ok) return res.status(401).json({ error: "Unauthorized" });
-    const userData: any = await userResp.json();
-    const userId = userData.id;
+    const decoded = decodeJwtPayload(token);
+    if (!decoded || decoded.exp * 1000 < Date.now()) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const userId = decoded.sub;
     const body = req.body;
     const workspaceId = await resolveWorkspaceIdFromRequest(body, userId);
     if (!workspaceId) {
@@ -304,6 +309,78 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
             else console.log("[send-message] Message inserted OK");
           }
         }
+        break;
+      }
+
+      case "fetch-profile-pic": {
+        // Fetch and cache profile pic for a single conversation
+        const { conversationId, number: picNumber, targetInstance } = params;
+        if (!picNumber || !targetInstance || !conversationId) {
+          result = { error: "conversationId, number, targetInstance required" };
+          break;
+        }
+        try {
+          const picResp = await baileysRequest<{ profilePictureUrl: string | null }>(
+            `/chat/fetchProfilePictureUrl/${encodeURIComponent(targetInstance)}`,
+            "POST",
+            { number: picNumber }
+          );
+          const picUrl = picResp?.profilePictureUrl || null;
+          if (picUrl) {
+            await serviceClient.from("conversations").update({ profile_pic_url: picUrl }).eq("id", conversationId);
+          }
+          result = { profilePictureUrl: picUrl };
+        } catch (e: any) {
+          result = { profilePictureUrl: null };
+        }
+        break;
+      }
+
+      case "fetch-missing-profile-pics": {
+        // Bulk-fetch profile pics for all conversations missing them, grouped by instance
+        const { data: convsMissing } = await serviceClient
+          .from("conversations")
+          .select("id, remote_jid, phone_number, instance_name")
+          .eq("workspace_id", workspaceId)
+          .is("profile_pic_url", null)
+          .not("instance_name", "is", null)
+          .limit(300);
+
+        const picMap: Record<string, string> = {};
+        if (!convsMissing || convsMissing.length === 0) {
+          result = { updated: 0, map: picMap };
+          break;
+        }
+
+        // Group by instance_name
+        const byInstance: Record<string, typeof convsMissing> = {};
+        for (const c of convsMissing) {
+          if (!byInstance[c.instance_name]) byInstance[c.instance_name] = [];
+          byInstance[c.instance_name].push(c);
+        }
+
+        for (const [instName, convs] of Object.entries(byInstance)) {
+          for (let i = 0; i < convs.length; i += 10) {
+            const batch = convs.slice(i, i + 10);
+            await Promise.allSettled(batch.map(async (conv: any) => {
+              try {
+                const num = conv.phone_number || conv.remote_jid.split("@")[0];
+                const d = await baileysRequest<{ profilePictureUrl: string | null }>(
+                  `/chat/fetchProfilePictureUrl/${encodeURIComponent(instName)}`,
+                  "POST",
+                  { number: num }
+                );
+                const url = d?.profilePictureUrl;
+                if (url) {
+                  picMap[conv.id] = url;
+                  await serviceClient.from("conversations").update({ profile_pic_url: url }).eq("id", conv.id);
+                }
+              } catch {}
+            }));
+          }
+        }
+
+        result = { updated: Object.keys(picMap).length, map: picMap };
         break;
       }
 
