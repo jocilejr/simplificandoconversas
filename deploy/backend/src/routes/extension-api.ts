@@ -250,13 +250,17 @@ router.get("/contact-cross", async (req, res) => {
       .from("conversations")
       .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
       .eq("user_id", userId)
-      .eq("phone_number", phone);
+      .eq("phone_number", phone)
+      .not("instance_name", "is", null)
+      .neq("instance_name", "");
   } else {
     query = sb
       .from("conversations")
       .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, lid")
       .eq("user_id", userId)
-      .ilike("contact_name", name);
+      .ilike("contact_name", name)
+      .not("instance_name", "is", null)
+      .neq("instance_name", "");
   }
 
   if (excludeInstance) {

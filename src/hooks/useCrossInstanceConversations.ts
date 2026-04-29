@@ -51,6 +51,9 @@ export function useCrossInstanceConversations(params: {
           "id, remote_jid, instance_name, contact_name, phone_number, last_message, last_message_at, unread_count"
         )
         .eq("workspace_id", workspaceId)
+        // Defensive filter: ignore orphan conversations without instance
+        .not("instance_name", "is", null)
+        .neq("instance_name", "")
         .or(filters.join(","))
         .order("last_message_at", { ascending: false, nullsFirst: false });
 
