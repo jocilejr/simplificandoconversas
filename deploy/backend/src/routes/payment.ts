@@ -399,6 +399,11 @@ router.post("/create", async (req: Request, res: Response) => {
       }
     }
 
+    // ⚠️ DO NOT upsert into `conversations` here.
+    // Conversations must be created ONLY when a real WhatsApp message is sent
+    // (via whatsapp-proxy.ts / execute-flow.ts) or received (via webhook.ts).
+    // Creating a conversation on transaction creation produces orphan cards
+    // in the Live Chat with empty instance_name.
 
 
     return res.json({
