@@ -1,80 +1,80 @@
+## Diagnóstico (confirmado pelo grep do container)
 
-## Causa raiz (confirmada)
+O container **continua com a versão antiga** do `payment.ts`:
 
-`deploy/backend/src/routes/payment.ts` — endpoint `POST /api/payment` que **gera boleto/PIX no Mercado Pago** — faz, ao final, um `upsert` em `conversations` com `instance_name: null`:
-
-```ts
-// Upsert conversation if phone provided
-if (customer_phone) {
-  const phone = customer_phone.replace(/\D/g, "");
-  const remoteJid = `${phone}@s.whatsapp.net`;
-  await supabase.from("conversations").upsert(
-    { user_id, workspace_id, remote_jid, contact_name, phone_number, email, instance_name: null },
-    { onConflict: "user_id,remote_jid,instance_name" }
-  );
-}
+```
+/app/src/routes/payment.ts:407:  await supabase.from("conversations").upsert(
 ```
 
-Por isso a conversa da **Rosemeri** nasceu 20ms depois da transação, com `instance_name = ''`. Esse upsert é o gerador das 282 órfãs.
+Mas o repo já tem só o comentário de aviso (`payment.ts:402`). Conclusão: **o `update.sh` rodado anteriormente NÃO rebuildou a imagem** (Docker Swarm + cache de layer não invalidaram). Por isso o boleto continua criando card vazio — a transação `d567ef0a` da Rosemeri criou conversa 20ms depois, exatamente o padrão do upsert antigo.
 
-> Observação: o repo do Lovable (`deploy/backend/src/routes/payment.ts`) atualmente só tem o `select` (linha 184). O container em produção tem uma versão divergente que ainda contém o `upsert`. O plano abaixo deixa o repo coerente e remove o upsert independente do estado atual do arquivo.
+PIX parou de criar card só porque, por coincidência, os PIX recentes vieram de telefones que já tinham conversa real. O bug do payment.ts atinge boleto e PIX igual — só não vimos PIX órfão nessa janela.
 
-## Plano
+Além disso, identifiquei **outro ponto que cria conversas com instância correta** mas em massa, sem mensagem real: `light-sync.ts:117` e `:186`. Não é o causador das órfãs de boleto (ele preenche `instance_name`), mas é o que polui o Chat ao Vivo com contatos sem conversa real do `findChats`/`findContacts`. Vou tratar à parte (opcional, depende do que você quer).
 
-### 1. Remover o upsert em `conversations` no `payment.ts`
+## O que fazer
 
-Editar `deploy/backend/src/routes/payment.ts` e **deletar o bloco inteiro** "Upsert conversation if phone provided" que vem após `dispatchRecovery`. Conversas devem nascer apenas via:
-- `whatsapp-proxy.ts` (mensagem enviada manualmente pelo Chat ao Vivo)
-- webhook do Baileys em `webhook.ts` (mensagem recebida)
-- `execute-flow.ts` (envio automático do chatbot)
+### 1. Deletar fisicamente o bloco upsert no container (hot patch via sed)
 
-Esses três já fazem upsert com `instance_name` correto. Nenhuma criação a partir de transação.
+O repo já está correto — o problema é só o container. Patch direto no `/app/src/routes/payment.ts` dentro do container, depois reinício do serviço, sem depender de build:
 
-### 2. Verificar se há o mesmo padrão em outros webhooks
+```bash
+BK=$(docker ps --format '{{.Names}}' | grep '^simplificando_backend\.' | head -1)
 
-Inspecionar dentro do container e remover, se encontrado, o mesmo padrão em:
-- `yampi-webhook.ts`
-- `manual-payment-webhook.ts`
-- `payment-openpix.ts`
+# Confirmar antes
+docker exec $BK sed -n '400,420p' /app/src/routes/payment.ts
 
-(Pelo grep anterior no repo, eles só inserem em `transactions`, mas o container pode estar divergente. Vou rodar o mesmo `grep` no container antes de editar.)
+# Patch: remove o bloco "await supabase.from('conversations').upsert(...)" (linhas 405-413 aprox)
+docker exec $BK sh -c "sed -i '/await supabase\.from(\"conversations\")\.upsert(/,/);/d' /app/src/routes/payment.ts"
 
-### 3. Filtro defensivo no Chat ao Vivo
+# Confirmar depois
+docker exec $BK grep -n 'conversations' /app/src/routes/payment.ts
+```
 
-Atualizar três queries para ignorar conversas sem instância:
-- `src/hooks/useConversationsLive.ts`
-- `src/hooks/useCrossInstanceConversations.ts`
-- `deploy/backend/src/routes/extension-api.ts`
+Esperado: só restar `payment.ts:178` (comentário) e `:184` (select de email). Sem mais `upsert`.
 
-Adicionar `.not('instance_name', 'is', null).neq('instance_name', '')`.
+> **Importante:** o backend roda com `tsx` ou compila no start? Preciso confirmar com você. Se rodar com `tsx`/`ts-node` (lê o `.ts` direto), reiniciar o container já aplica. Se rodar `dist/` compilado, o sed também precisa rodar em `/app/dist/routes/payment.js` — vou te dar os dois comandos.
 
-Isso protege a UI mesmo se algum código novo voltar a inserir órfãs.
+### 2. Reiniciar o serviço para o patch ter efeito
 
-### 4. Cleanup das 282 órfãs (executado pelo usuário na VPS)
+```bash
+docker service update --force simplificando_backend
+```
+
+### 3. Resolver o root cause: rebuild de verdade
+
+O `update.sh` provavelmente está só fazendo `docker service update` sem `--build` ou sem invalidar cache. Vou inspecionar `deploy/update.sh` e ajustar para forçar:
+
+```bash
+docker compose -f deploy/docker-compose.yml build --no-cache backend
+docker service update --force --image <nova-tag> simplificando_backend
+```
+
+(ou equivalente em Swarm — depende do fluxo atual do seu `update.sh`).
+
+### 4. Cleanup das órfãs novas (4 da última hora)
 
 ```sql
 DELETE FROM public.conversations c
 WHERE (c.instance_name IS NULL OR c.instance_name = '')
-  AND NOT EXISTS (
-    SELECT 1 FROM public.messages m WHERE m.conversation_id = c.id
-  );
+  AND NOT EXISTS (SELECT 1 FROM public.messages m WHERE m.conversation_id = c.id)
+  AND c.created_at > now() - interval '6 hours';
 ```
 
-(Já confirmamos: 282 sem mensagens, 0 com mensagens — então o DELETE é seguro.)
+### 5. (Opcional) Decisão sobre `light-sync.ts`
 
-### 5. Deploy
+O `light-sync` puxa **todos** os chats/contatos do Baileys e cria conversas em massa, mesmo que o usuário nunca tenha conversado com aquele contato no app. Isso enche o Chat ao Vivo de "contatos fantasma" do telefone do cliente. Se você quiser, posso:
+- (a) Desativar o `light-sync` por completo (recomendado se você não usa).
+- (b) Mantê-lo, mas só upsertar quando `lastMessage` existir de verdade.
 
-Após eu editar o repo, você roda na VPS:
-```bash
-cd /opt/simplificandoconversas && ./update.sh
-```
-O `update.sh` rebuilda o `simplificando_backend` e o novo `payment.ts` para de criar conversas.
+Me diga qual.
 
 ## Resumo executivo
 
-- **Antes:** boleto/PIX gerado pelo app → cria transação → cria card vazio no Chat ao Vivo.
-- **Depois:** boleto/PIX gerado pelo app → cria só transação. Card só aparece quando uma mensagem real for enviada (recuperação) ou recebida.
-- **Importação CSV de leads:** preservada — continua acessível pela página de Leads.
-- **Funcionalidade de recuperação automática (`dispatchRecovery`):** preservada — quando a recuperação realmente disparar a mensagem, o `whatsapp-proxy` cria a conversa com `instance_name` correto.
+1. Hot patch no container (`sed -i`) remove o upsert imediatamente, sem esperar build.
+2. Reinício do service aplica.
+3. Conserto do `update.sh` evita que isso volte no próximo deploy.
+4. Cleanup das 4 órfãs recentes.
+5. Decisão pendente sobre `light-sync`.
 
-Aprova para eu aplicar?
+Aprova pra eu te entregar os comandos finais já com confirmação se é `tsx` ou `dist/`?
