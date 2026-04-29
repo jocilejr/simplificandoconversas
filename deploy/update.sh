@@ -31,7 +31,6 @@ if [ -z "$POSTGRES_CONTAINER" ]; then
 fi
 echo "   → Postgres container: $POSTGRES_CONTAINER"
 
-docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -tc \
 
 # Apply SQL migrations
 echo "   → Aplicando migrações SQL..."
