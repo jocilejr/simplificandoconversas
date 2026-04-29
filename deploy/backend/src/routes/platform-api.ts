@@ -3,6 +3,7 @@ import { getServiceClient } from "../lib/supabase";
 import { resolveWorkspaceId } from "../lib/workspace";
 import { dispatchRecovery, checkWhatsAppNumber } from "../lib/recovery-dispatch";
 import { getRandomCep } from "../lib/random-ceps";
+import { normalizePhone } from "../lib/normalize-phone";
 import { lookupCep } from "../lib/cep-lookup";
 import fs from "fs/promises";
 import path from "path";
@@ -725,8 +726,9 @@ router.post("/send-message", async (req, res) => {
     return res.status(400).json({ error: "phone, message and instance are required" });
   }
 
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+  const rawCleaned = phone.replace(/\D/g, "");
+  if (rawCleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+  const cleaned = normalizePhone(phone) || rawCleaned;
 
   const remoteJid = `${cleaned}@s.whatsapp.net`;
   const sb = getServiceClient();
@@ -742,12 +744,13 @@ router.post("/send-message", async (req, res) => {
       }
     );
 
-    // Ensure conversation exists
+    // Ensure conversation exists (scoped to instance)
     const { data: conv } = await sb
       .from("conversations")
       .select("id")
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
+      .eq("instance_name", instanceName)
       .maybeSingle();
 
     let conversationId = conv?.id;
@@ -755,15 +758,19 @@ router.post("/send-message", async (req, res) => {
     if (!conversationId) {
       const { data: newConv } = await sb
         .from("conversations")
-        .insert({
-          user_id: userId,
-          workspace_id: workspaceId,
-          remote_jid: remoteJid,
-          phone_number: cleaned,
-          contact_name: customer_name || null,
-          last_message: message.substring(0, 200),
-          last_message_at: new Date().toISOString(),
-        })
+        .upsert(
+          {
+            user_id: userId,
+            workspace_id: workspaceId,
+            remote_jid: remoteJid,
+            phone_number: cleaned,
+            instance_name: instanceName,
+            contact_name: customer_name || null,
+            last_message: message.substring(0, 200),
+            last_message_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,remote_jid,instance_name" }
+        )
         .select("id")
         .single();
       conversationId = newConv?.id;
@@ -850,8 +857,9 @@ router.post("/send-media", async (req, res) => {
     return res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
   }
 
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+  const rawCleaned2 = phone.replace(/\D/g, "");
+  if (rawCleaned2.length < 8) return res.status(400).json({ error: "Invalid phone number" });
+  const cleaned = normalizePhone(phone) || rawCleaned2;
 
   const remoteJid = `${cleaned}@s.whatsapp.net`;
   const sb = getServiceClient();
@@ -883,12 +891,13 @@ router.post("/send-media", async (req, res) => {
 
     const result = await baileysRequest(endpoint, "POST", body);
 
-    // Ensure conversation & save message
+    // Ensure conversation & save message (scoped to instance)
     const { data: conv } = await sb
       .from("conversations")
       .select("id")
       .eq("user_id", userId)
       .eq("remote_jid", remoteJid)
+      .eq("instance_name", instanceName)
       .maybeSingle();
 
     let conversationId = conv?.id;
@@ -897,14 +906,18 @@ router.post("/send-media", async (req, res) => {
     if (!conversationId) {
       const { data: newConv } = await sb
         .from("conversations")
-        .insert({
-          user_id: userId,
-          workspace_id: workspaceId,
-          remote_jid: remoteJid,
-          phone_number: cleaned,
-          last_message: msgPreview,
-          last_message_at: new Date().toISOString(),
-        })
+        .upsert(
+          {
+            user_id: userId,
+            workspace_id: workspaceId,
+            remote_jid: remoteJid,
+            phone_number: cleaned,
+            instance_name: instanceName,
+            last_message: msgPreview,
+            last_message_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,remote_jid,instance_name" }
+        )
         .select("id")
         .single();
       conversationId = newConv?.id;
