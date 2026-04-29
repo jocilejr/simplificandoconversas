@@ -36,6 +36,9 @@ export function useConversationsLive(opts: {
         .from("conversations")
         .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, unread_count, workspace_id, profile_pic_url")
         .eq("workspace_id", workspaceId)
+        // Defensive filter: hide orphan conversations (no instance + no real messages)
+        .not("instance_name", "is", null)
+        .neq("instance_name", "")
         .order("last_message_at", { ascending: false, nullsFirst: false })
         .limit(limit);
 
@@ -96,6 +99,8 @@ export function useConversationsLive(opts: {
               (old: ChatConversation[] | undefined) => {
                 if (!old) return old;
                 const newConv = payload.new as ChatConversation;
+                // Skip orphan conversations injected without an instance
+                if (!newConv.instance_name) return old;
                 if (old.some((c) => c.id === newConv.id)) return old;
                 return [newConv, ...old].sort((a, b) => {
                   const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
