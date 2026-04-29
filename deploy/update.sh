@@ -102,19 +102,28 @@ cp -r "$REPO_ROOT/dist/"* "$DEPLOY_DIR/frontend/"
 echo "✓ Frontend copiado com sucesso"
 
 # ============================================================
-# [4/5] Rebuild backend image
+# [4/5] Rebuild backend image (no-cache + unique tag para Swarm detectar)
 # ============================================================
 echo "[4/5] Rebuilding backend image..."
 cd "$DEPLOY_DIR"
-docker build -t simplificando-backend:latest ./backend
-echo "✓ Imagem backend construída"
+BACKEND_TAG="simplificando-backend:$(date +%s)"
+docker build --no-cache -t "$BACKEND_TAG" -t simplificando-backend:latest ./backend
+echo "✓ Imagem backend construída: $BACKEND_TAG"
 
 # ============================================================
-# [5/5] Deploy stack
+# [5/5] Deploy stack + force backend service to use the new tag
 # ============================================================
 echo "[5/5] Deploying stack..."
 cd "$DEPLOY_DIR"
 docker stack deploy -c portainer-stack.yml simplificando --with-registry-auth
+
+# Swarm não detecta mudança em :latest sem digest novo. Força com tag única.
+if docker service ls --format '{{.Name}}' | grep -q '^simplificando_backend$'; then
+  echo "   → Forçando backend a usar imagem nova ($BACKEND_TAG)..."
+  docker service update --force --image "$BACKEND_TAG" simplificando_backend >/dev/null
+  echo "✓ Backend atualizado para $BACKEND_TAG"
+fi
+
 echo "   → Aguardando serviços iniciarem..."
 sleep 10
 
