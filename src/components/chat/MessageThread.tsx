@@ -12,6 +12,7 @@ interface Props {
   messages: ChatMessage[];
   loading: boolean;
   contactName: string;
+  conversationId?: string;
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -59,7 +60,7 @@ function MessageBody({ m, mine }: { m: ChatMessage; mine: boolean }) {
             loading="lazy"
           />
         </a>
-        {m.content && <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>}
+        {m.content && <p className="text-sm whitespace-pre-wrap break-all">{m.content}</p>}
       </div>
     );
   }
@@ -76,7 +77,7 @@ function MessageBody({ m, mine }: { m: ChatMessage; mine: boolean }) {
           src={url}
           className="max-w-[280px] max-h-[320px] rounded-md bg-black"
         />
-        {m.content && <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>}
+        {m.content && <p className="text-sm whitespace-pre-wrap break-all">{m.content}</p>}
       </div>
     );
   }
@@ -111,15 +112,21 @@ function MessageBody({ m, mine }: { m: ChatMessage; mine: boolean }) {
     );
   }
 
-  return <p className="text-sm whitespace-pre-wrap break-words">{m.content || ""}</p>;
+  return <p className="text-sm whitespace-pre-wrap break-all">{m.content || ""}</p>;
 }
 
-export function MessageThread({ messages, loading, contactName }: Props) {
+export function MessageThread({ messages, loading, contactName, conversationId }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    const el = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "instant" });
+    }
+  }, [messages.length, conversationId]);
 
   if (loading) {
     return (
@@ -141,7 +148,8 @@ export function MessageThread({ messages, loading, contactName }: Props) {
   }
 
   return (
-    <ScrollArea className="flex-1 h-full">
+    <div ref={scrollAreaRef} className="flex-1 h-full min-h-0">
+    <ScrollArea className="h-full">
       <div className="p-4 space-y-4">
         {groups.map((g) => (
           <div key={g.day} className="space-y-2">
@@ -156,11 +164,11 @@ export function MessageThread({ messages, loading, contactName }: Props) {
               return (
                 <div
                   key={m.id}
-                  className={cn("flex", mine ? "justify-end" : "justify-start")}
+                  className={cn("flex w-full", mine ? "justify-end" : "justify-start")}
                 >
                   <div
                     className={cn(
-                      "max-w-[75%] rounded-lg shadow-sm",
+                      "max-w-[75%] min-w-0 rounded-lg shadow-sm",
                       isSticker
                         ? "bg-transparent p-0 shadow-none"
                         : mine
@@ -202,5 +210,6 @@ export function MessageThread({ messages, loading, contactName }: Props) {
         <div ref={bottomRef} />
       </div>
     </ScrollArea>
+    </div>
   );
 }

@@ -21,17 +21,23 @@ export default function ChatLive() {
   const { canWrite, workspaceId } = useWorkspace();
   const qc = useQueryClient();
 
-  const [instanceFilter, setInstanceFilter] = useState<string>("__all__");
+  const [instanceFilter, setInstanceFilter] = useState<string[]>([]);
   const [labelFilter, setLabelFilter] = useState<string>("__all__");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<ChatConversation | null>(null);
   const [mobileShowThread, setMobileShowThread] = useState(false);
-  const [convLimit, setConvLimit] = useState(100);
+  const [convLimit, setConvLimit] = useState(500);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data: conversations = [], isLoading } = useConversationsLive({
-    instanceName: instanceFilter === "__all__" ? null : instanceFilter,
+    instanceNames: instanceFilter,
     labelId: labelFilter === "__all__" ? null : labelFilter,
-    search,
+    search: debouncedSearch,
     limit: convLimit,
   });
 
@@ -81,7 +87,7 @@ export default function ChatLive() {
         .eq("id", conversationId)
         .maybeSingle();
       if (data) {
-        setInstanceFilter("__all__");
+        setInstanceFilter([]);
         setSelected(data as ChatConversation);
         setMobileShowThread(true);
       }
@@ -158,6 +164,7 @@ export default function ChatLive() {
                 messages={messages}
                 loading={loadingMessages}
                 contactName={contactName}
+                conversationId={selectedLive?.id}
               />
               <MessageComposer
                 remoteJid={selectedLive.remote_jid}

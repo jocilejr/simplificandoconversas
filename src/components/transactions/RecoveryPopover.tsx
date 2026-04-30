@@ -140,7 +140,7 @@ export function RecoveryPopover({
             size="sm"
             className="flex-1 gap-1.5 bg-green-600 hover:bg-green-700 text-white"
             onClick={handleSendWhatsApp}
-            disabled={!hasPhone || !isExtensionConnected}
+            disabled={!hasPhone}
           >
             <Send className="h-3.5 w-3.5" />
             WhatsApp

@@ -5,6 +5,20 @@ import { extractUrlFromText } from "@whiskeysockets/baileys";
 
 const router = Router();
 
+function inferAudioMeta(src: string): { mimetype: string; ptt: boolean } {
+  const url = String(src).split('?')[0].toLowerCase();
+  const ext = url.split('.').pop() || '';
+  switch (ext) {
+    case 'ogg':  return { mimetype: 'audio/ogg; codecs=opus', ptt: true };
+    case 'webm': return { mimetype: 'audio/webm; codecs=opus', ptt: true };
+    case 'mp3':  return { mimetype: 'audio/mpeg', ptt: false };
+    case 'm4a':
+    case 'mp4':  return { mimetype: 'audio/mp4', ptt: false };
+    case 'aac':  return { mimetype: 'audio/aac', ptt: false };
+    case 'wav':  return { mimetype: 'audio/wav', ptt: false };
+    default:     return { mimetype: 'audio/ogg; codecs=opus', ptt: true };
+  }
+}
 function jidFromNumber(num: string): string {
   const s = String(num).trim();
   if (s.includes("@")) return s;
@@ -111,9 +125,12 @@ router.post("/sendMedia/:name", async (req, res) => {
     case "video":
       payload = { video: mediaContent as any, caption: caption || undefined, mimetype: mimetype || "video/mp4" };
       break;
-    case "audio":
-      payload = { audio: mediaContent as any, mimetype: mimetype || "audio/ogg; codecs=opus", ptt: true };
+    case "audio": {
+      const isUrlMedia = typeof media === "string" && /^https?:\/\//i.test(media);
+      const { mimetype: detMime, ptt: detPtt } = isUrlMedia ? inferAudioMeta(media) : { mimetype: "audio/ogg; codecs=opus", ptt: true };
+      payload = { audio: mediaContent as any, mimetype: mimetype || detMime, ptt: detPtt };
       break;
+    }
     case "document":
     default:
       payload = {
@@ -141,12 +158,20 @@ router.post("/sendMediaPDF/:name", async (req, res) => {
 router.post("/sendWhatsAppAudio/:name", async (req, res) => {
   const sock = await ensureSock(req, res);
   if (!sock) return;
-  const { number, audio } = req.body || {};
+  const { number, audio, mentionsEveryOne } = req.body || {};
   if (!number || !audio) return res.status(400).json({ error: "number and audio required" });
   const jid = await resolveJid(sock, number);
   try {
-    const audioContent = /^https?:\/\//i.test(String(audio)) ? { url: audio } : Buffer.from(String(audio), "base64");
-    const r = await sock.sendMessage(jid, { audio: audioContent as any, mimetype: "audio/ogg; codecs=opus", ptt: true });
+    const isUrl = /^https?:\/\//i.test(String(audio));
+    const audioContent = isUrl ? { url: audio } : Buffer.from(String(audio), "base64");
+    const { mimetype, ptt } = isUrl ? inferAudioMeta(String(audio)) : { mimetype: "audio/ogg; codecs=opus", ptt: true };
+    let mentionList: string[] = [];
+    if (mentionsEveryOne && jid.endsWith("@g.us")) {
+      try { const meta = await sock.groupMetadata(jid); mentionList = meta.participants.map((p: any) => p.id); } catch {}
+    }
+    const payload: any = { audio: audioContent as any, mimetype, ptt };
+    if (mentionList.length > 0) payload.mentions = mentionList;
+    const r = await sock.sendMessage(jid, payload);
     res.json({ key: r?.key, status: "SUCCESS" });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

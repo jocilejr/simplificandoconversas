@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { ChatConversation } from "@/hooks/useConversationsLive";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, MessageCircle, Users, MessagesSquare, BellDot } from "lucide-react";
+import { Search, MessageCircle, Users, MessagesSquare, BellDot, ChevronDown, Check } from "lucide-react";
 import { formatDistanceToNowStrict, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ interface Props {
   selectedId: string | null;
   onSelect: (c: ChatConversation) => void;
   instances: Array<{ instance_name: string }>;
-  instanceFilter: string;
-  onInstanceFilterChange: (v: string) => void;
+  instanceFilter: string[];
+  onInstanceFilterChange: (v: string[]) => void;
   labels: LabelType[];
   labelFilter: string;
   onLabelFilterChange: (v: string) => void;
@@ -46,13 +46,86 @@ function instanceColor(name: string | null | undefined): string {
 }
 
 function truncateMessage(text: string | null | undefined, max?: number): string {
-  const m = max || 20;
+  const m = max || 15;
   if (!text) return String.fromCharCode(8212);
   const flat = text.split(String.fromCharCode(10)).join(" ").trim();
   return flat.length > m ? flat.slice(0, m) + String.fromCharCode(8230) : flat;
 }
 
 type Tab = "conversas" | "grupos";
+
+
+function InstanceMultiSelect({
+  instances,
+  selected,
+  onChange,
+}: {
+  instances: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  function toggle(name: string) {
+    if (selected.includes(name)) {
+      onChange(selected.filter((n) => n !== name));
+    } else {
+      onChange([...selected, name]);
+    }
+  }
+
+  const label =
+    selected.length === 0
+      ? "Todas instancias"
+      : selected.length === 1
+      ? selected[0]
+      : `${selected.length} instancias`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full h-8 flex items-center justify-between gap-1 px-2 rounded border border-input bg-background/60 text-[11px] text-left hover:bg-accent/40 transition-colors"
+      >
+        <span className="truncate flex-1 min-w-0">{label}</span>
+        <ChevronDown className={cn("h-3 w-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-1 w-full min-w-[160px] max-h-64 overflow-y-auto rounded border border-border bg-popover shadow-md py-0.5">
+          <button
+            type="button"
+            onClick={() => { onChange([]); }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] hover:bg-accent/50 transition-colors"
+          >
+            <Check className={cn("h-3 w-3 shrink-0", selected.length === 0 ? "opacity-100 text-primary" : "opacity-0")} />
+            Todas instancias
+          </button>
+          {instances.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => toggle(name)}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] hover:bg-accent/50 transition-colors"
+            >
+              <Check className={cn("h-3 w-3 shrink-0", selected.includes(name) ? "opacity-100 text-primary" : "opacity-0")} />
+              <span className="truncate">{name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ConversationList({
   conversations,
@@ -142,17 +215,11 @@ export function ConversationList({
           />
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Select value={instanceFilter} onValueChange={onInstanceFilterChange}>
-            <SelectTrigger className="h-8 text-[11px] bg-background/60">
-              <SelectValue placeholder="Instancia" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todas instancias</SelectItem>
-              {uniqueInstances.map((n) => (
-                <SelectItem key={n} value={n}>{n}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <InstanceMultiSelect
+            instances={uniqueInstances}
+            selected={instanceFilter}
+            onChange={onInstanceFilterChange}
+          />
           <Select value={labelFilter} onValueChange={onLabelFilterChange}>
             <SelectTrigger className="h-8 text-[11px] bg-background/60">
               <SelectValue placeholder="Etiqueta" />

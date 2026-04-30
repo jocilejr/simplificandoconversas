@@ -23,6 +23,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { apiUrl } from "@/lib/api";
 import type { Transaction } from "@/hooks/useTransactions";
 import { normalizePhone } from "@/lib/normalizePhone";
+import { useRecoveryClicks } from "@/hooks/useRecoveryClicks";
 
 interface BoletoQuickRecoveryProps {
   open: boolean;
@@ -60,7 +61,9 @@ export function BoletoQuickRecovery({ open, onOpenChange, transaction }: BoletoQ
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
 
-  const { openChat } = useWhatsAppExtension();
+  const { openChat, fallbackOpenWhatsApp, isConnected: isExtensionConnected } = useWhatsAppExtension();
+  const txIds = transaction ? [transaction.id] : [];
+  const { addClick } = useRecoveryClicks(txIds);
   const { workspace } = useWorkspace();
 
   useEffect(() => {
@@ -397,11 +400,13 @@ export function BoletoQuickRecovery({ open, onOpenChange, transaction }: BoletoQ
                 <Button
                   className="w-full gap-2 h-11 mt-4 bg-green-600 hover:bg-green-700 text-white font-medium shadow-lg"
                   onClick={async () => {
-                    const success = await openChat(transaction.customer_phone!);
-                    if (success) {
+                    addClick.mutate({ transactionId: transaction!.id, recoveryType: "boleto" });
+                    if (isExtensionConnected) {
+                      openChat(transaction!.customer_phone!);
                       toast.success("Chat aberto! Cole a mensagem com Ctrl+V");
                     } else {
-                      toast.error("Não foi possível abrir o chat. Verifique a extensão.");
+                      fallbackOpenWhatsApp(transaction!.customer_phone!);
+                      toast.success("Abrindo WhatsApp...");
                     }
                   }}
                 >

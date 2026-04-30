@@ -65,4 +65,35 @@ router.post("/findMessages/:name", async (_req, res) => {
   res.json([]);
 });
 
+// Expose in-memory lidMap for an instance (populated by contacts.upsert)
+router.get("/lidMap/:name", async (req, res) => {
+  const inst = getInstance(req.params.name);
+  if (!inst) return res.status(404).json({ error: "instance not found" });
+  const map: Record<string, string> = {};
+  inst.lidMap.forEach((val, key) => { map[key] = val; });
+  res.json({ count: inst.lidMap.size, map });
+});
+
+// Resolve @lid JIDs to real phone JIDs via sock.onWhatsApp
+router.post("/resolveLids/:name", async (req, res) => {
+  const inst = getInstance(req.params.name);
+  if (!inst?.sock) return res.status(409).json({ error: "instance not connected" });
+  const lids: string[] = req.body?.lids || [];
+  const out: any[] = [];
+  for (const lid of lids) {
+    try {
+      const r = await inst.sock.onWhatsApp(lid);
+      if (r && r.length > 0 && r[0].jid) {
+        const phone = r[0].jid.split("@")[0];
+        out.push({ lid, phone, jid: r[0].jid, resolved: true });
+      } else {
+        out.push({ lid, phone: null, jid: null, resolved: false });
+      }
+    } catch {
+      out.push({ lid, phone: null, jid: null, resolved: false });
+    }
+  }
+  res.json(out);
+});
+
 export default router;

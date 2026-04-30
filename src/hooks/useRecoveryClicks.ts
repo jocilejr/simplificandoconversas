@@ -54,6 +54,9 @@ export function useRecoveryClicks(transactionIds: string[]) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recovery-clicks"] });
     },
+    onError: (err: any) => {
+      console.error("[recovery_clicks] insert error:", err?.message || err);
+    },
   });
 
   const getClickCount = (transactionId: string) => {

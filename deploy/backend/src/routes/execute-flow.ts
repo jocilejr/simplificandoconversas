@@ -43,9 +43,19 @@ interface StepData {
 import { baileysRequest } from "../lib/baileys-config";
 
 async function executeStep(
-  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string, workspaceId?: string
+  stepData: StepData, instanceName: string, jid: string, serviceClient: any, userId: string, sendNumber?: string, workspaceId?: string, convId?: string
 ): Promise<string> {
   const num = sendNumber || jid;
+  async function applyConvAndInsert(lastMessage: string, insertData: Record<string, unknown>) {
+    let cid = convId;
+    if (cid) {
+      await serviceClient.from("conversations").update({ last_message: lastMessage, last_message_at: new Date().toISOString() }).eq("id", cid);
+    } else {
+      const { data: cv } = await serviceClient.from("conversations").upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: lastMessage, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" }).select("id").single();
+      cid = cv?.id;
+    }
+    if (cid) await serviceClient.from("messages").insert({ conversation_id: cid, ...insertData });
+  }
   const nodeType = stepData.type;
 
   if (nodeType === "trigger") return "trigger: skipped";
@@ -55,16 +65,7 @@ async function executeStep(
     const queue = getMessageQueue(instanceName);
     const r = await queue.enqueue(() => baileysRequest(`/message/sendText/${instanceName}`, "POST", { number: num, text: resolvedText }), `sendText→${num}`);
     console.log(`[execute-flow] sendText response:`, JSON.stringify(r));
-    const { data: conv } = await serviceClient
-      .from("conversations")
-      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: resolvedText.substring(0, 50), last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
-      .select("id").single();
-    if (conv) {
-      await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: resolvedText,
-        message_type: "text", direction: "outbound", status: "sent", external_id: r?.key?.id || null,
-      });
-    }
+    await applyConvAndInsert(resolvedText.substring(0, 50), { user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: resolvedText, message_type: "text", direction: "outbound", status: "sent", external_id: r?.key?.id || null });
     return "sendText: ok";
   }
 
@@ -74,16 +75,7 @@ async function executeStep(
     console.log(`[execute-flow] sendImage response:`, JSON.stringify(r));
     if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Imagem:`, JSON.stringify(r));
     
-    const { data: conv } = await serviceClient
-      .from("conversations")
-      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: stepData.caption || "[imagem]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
-      .select("id").single();
-    if (conv) {
-      await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: stepData.caption || "",
-        message_type: "image", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.mediaUrl,
-      });
-    }
+    await applyConvAndInsert(stepData.caption || "[imagem]", { user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: stepData.caption || "", message_type: "image", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.mediaUrl });
     return "sendImage: ok";
   }
 
@@ -93,16 +85,7 @@ async function executeStep(
     console.log(`[execute-flow] sendAudio response:`, JSON.stringify(r));
     if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Áudio:`, JSON.stringify(r));
     
-    const { data: conv } = await serviceClient
-      .from("conversations")
-      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: "[áudio]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
-      .select("id").single();
-    if (conv) {
-      await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: "",
-        message_type: "audio", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.audioUrl,
-      });
-    }
+    await applyConvAndInsert("[áudio]", { user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: "", message_type: "audio", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.audioUrl });
     return "sendAudio: ok";
   }
 
@@ -112,16 +95,7 @@ async function executeStep(
     console.log(`[execute-flow] sendVideo response:`, JSON.stringify(r));
     if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Vídeo:`, JSON.stringify(r));
     
-    const { data: conv } = await serviceClient
-      .from("conversations")
-      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: stepData.caption || "[vídeo]", last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
-      .select("id").single();
-    if (conv) {
-      await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: stepData.caption || "",
-        message_type: "video", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.mediaUrl,
-      });
-    }
+    await applyConvAndInsert(stepData.caption || "[vídeo]", { user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: stepData.caption || "", message_type: "video", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: stepData.mediaUrl });
     return "sendVideo: ok";
   }
 
@@ -133,16 +107,7 @@ async function executeStep(
     console.log(`[execute-flow] sendFile response:`, JSON.stringify(r));
     if (r && (r.error || r.status >= 400)) console.error(`[execute-flow] ALERTA: Erro ao enviar Arquivo:`, JSON.stringify(r));
     
-    const { data: conv } = await serviceClient
-      .from("conversations")
-      .upsert({ user_id: userId, workspace_id: workspaceId, remote_jid: jid, last_message: `[${fileName}]`, last_message_at: new Date().toISOString(), instance_name: instanceName }, { onConflict: "user_id,remote_jid,instance_name" })
-      .select("id").single();
-    if (conv) {
-      await serviceClient.from("messages").insert({
-        conversation_id: conv.id, user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: fileName,
-        message_type: "document", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: (stepData as any).fileUrl,
-      });
-    }
+    await applyConvAndInsert(`[${fileName}]`, { user_id: userId, workspace_id: workspaceId, remote_jid: jid, content: fileName, message_type: "document", direction: "outbound", status: "sent", external_id: r?.key?.id || null, media_url: (stepData as any).fileUrl });
     return "sendFile: ok";
   }
 
@@ -800,7 +765,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
                 }
               }
             } else {
-              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId);
+              const stepResult = await executeStep(step.data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId, resolvedConversationId || undefined);
               results.push(`group.${step.id}: ${stepResult}`);
             }
             } catch (stepErr: any) {
@@ -810,7 +775,7 @@ if (jid.includes("@g.us")) {      console.log("[execute-flow] Rejecting group JI
           }
           if (groupPaused) break;
         } else {
-          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId);
+          const result = await executeStep(data, instanceName, jid, serviceClient, userId, sendNumber, workspaceId, resolvedConversationId || undefined);
           results.push(result);
         }
       } catch (err: any) {

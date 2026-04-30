@@ -18,7 +18,7 @@ export interface ChatConversation {
 }
 
 export function useConversationsLive(opts: {
-  instanceName?: string | null;
+  instanceNames?: string[] | null;
   labelId?: string | null;
   search?: string;
   limit?: number;
@@ -28,21 +28,22 @@ export function useConversationsLive(opts: {
   const qc = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["chat-conversations", workspaceId, opts.instanceName, opts.labelId, opts.search, limit],
+    queryKey: ["chat-conversations", workspaceId, opts.instanceNames?.join(",") ?? "", opts.labelId, opts.search, limit],
     enabled: !!workspaceId,
-    refetchInterval: 30000,
+    refetchInterval: 1000,
     queryFn: async () => {
       let q = (supabase as any)
         .from("conversations")
         .select("id, remote_jid, contact_name, phone_number, instance_name, last_message, last_message_at, unread_count, workspace_id, profile_pic_url")
         .eq("workspace_id", workspaceId)
-        // Defensive filter: hide orphan conversations (no instance + no real messages)
         .not("instance_name", "is", null)
         .neq("instance_name", "")
-        .order("last_message_at", { ascending: false, nullsFirst: false })
-        .limit(limit);
+        .order("last_message_at", { ascending: false, nullsFirst: false });
+      if (!opts.search?.trim()) q = q.limit(limit);
 
-      if (opts.instanceName) q = q.eq("instance_name", opts.instanceName);
+      if (opts.instanceNames && opts.instanceNames.length > 0) {
+        q = q.in("instance_name", opts.instanceNames);
+      }
 
       if (opts.search && opts.search.trim()) {
         const s = opts.search.trim().replace(/[%,]/g, "");
@@ -99,7 +100,6 @@ export function useConversationsLive(opts: {
               (old: ChatConversation[] | undefined) => {
                 if (!old) return old;
                 const newConv = payload.new as ChatConversation;
-                // Skip orphan conversations injected without an instance
                 if (!newConv.instance_name) return old;
                 if (old.some((c) => c.id === newConv.id)) return old;
                 return [newConv, ...old].sort((a, b) => {

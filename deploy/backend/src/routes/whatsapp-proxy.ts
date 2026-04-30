@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getServiceClient } from "../lib/supabase";
-import { resolveWorkspaceId, resolveWorkspaceIdFromRequest } from "../lib/workspace";
+import { resolveWorkspaceId, resolveWorkspaceIdFromRequest, resolveWorkspaceFromInstance } from "../lib/workspace";
 import { lightSync } from "./light-sync";
 import crypto from "crypto";
 import fs from "fs";
@@ -75,12 +75,6 @@ router.post("/", async (req, res) => {
     }
     const userId = decoded.sub;
     const body = req.body;
-    const workspaceId = await resolveWorkspaceIdFromRequest(body, userId);
-    if (!workspaceId) {
-      return res.status(403).json({ error: "Workspace não autorizado" });
-    }
-    console.log(`[whatsapp-proxy] Authenticated userId: ${userId}, workspaceId: ${workspaceId}`);
-
     const supabase = getServiceClient();
 
     const { action, ...params } = body;
@@ -88,6 +82,20 @@ router.post("/", async (req, res) => {
     if (!action) return res.status(400).json({ error: "action required" });
 
     let instanceName = params.instanceName;
+
+    // Resolve workspace: prefer instance-based (avoids wrong workspace when user has multiple)
+    let workspaceId: string | null = null;
+    if (instanceName) {
+      const wsFromInst = await resolveWorkspaceFromInstance(instanceName);
+      workspaceId = wsFromInst?.workspaceId || null;
+    }
+    if (!workspaceId) {
+      workspaceId = await resolveWorkspaceIdFromRequest(body, userId);
+    }
+    if (!workspaceId) {
+      return res.status(403).json({ error: "Workspace não autorizado" });
+    }
+    console.log(`[whatsapp-proxy] Authenticated userId: ${userId}, workspaceId: ${workspaceId}, instance: ${instanceName}`);
     if (!instanceName) {
       const { data: activeInst, error: activeInstErr } = await supabase
         .from("whatsapp_instances")
@@ -1007,6 +1015,13 @@ if (messageType === "text" && !message?.trim()) { result = { error: "Cannot send
     return res.json(result);
   } catch (err: any) {
     console.error("[whatsapp-proxy] Unhandled error:", err.message, err.stack);
+    const msg: string = err.message || "";
+    if (msg.includes("not connected") || msg.includes("409")) {
+      return res.status(400).json({ error: "Instância não conectada. Reconecte no painel de configurações." });
+    }
+    if (msg.includes("not found") || msg.includes("404")) {
+      return res.status(400).json({ error: "Instância não encontrada. Verifique as configurações." });
+    }
     return res.status(500).json({ error: err.message });
   }
 });

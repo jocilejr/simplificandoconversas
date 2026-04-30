@@ -115,7 +115,12 @@ export function MessageComposer({ remoteJid, instanceName, conversationId, disab
       }
 
       const { error, data } = await supabase.functions.invoke("whatsapp-proxy", { body });
-      if (error) throw error;
+      if (error) {
+        // Extract real error message from response body
+        let msg = error.message || "Erro ao enviar mensagem";
+        try { const body = await (error as any).context?.json?.(); if (body?.error) msg = body.error; } catch {}
+        throw new Error(msg);
+      }
       if (data?.error) throw new Error(data.error);
     } catch (err: any) {
       // Rollback optimistic message and restore form

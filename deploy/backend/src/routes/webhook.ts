@@ -211,8 +211,24 @@ router.post("/*", async (req, res) => {
     const hasNoMessage = !data.message || Object.keys(data.message).length === 0;
     const isStubOnly = hasStubType && hasNoMessage;
     
+    // Pure system notification stubs: no conversation create/update, no message insert
+    const IGNORED_STUB_TYPES = new Set([
+      4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, // VERIFIED_TRANSITION_*
+      37, // GENERIC_NOTIFICATION
+      38, // E2E_IDENTITY_CHANGED
+      39, // E2E_ENCRYPTED
+      42, // INDIVIDUAL_CHANGE_NUMBER
+      72, // CHANGE_EPHEMERAL_SETTING (disappearing messages toggle)
+      73, // E2E_DEVICE_CHANGED
+      75, // E2E_ENCRYPTED_NOW
+    ]);
+    if (isStubOnly && IGNORED_STUB_TYPES.has(data.messageStubType)) {
+      console.log("[webhook] Ignoring system stub " + data.messageStubType + " -- not a real message");
+      return res.json({ ok: true, skipped: "system_stub" });
+    }
+
     if (isStubOnly) {
-      console.log(`[webhook] Stub-only message (stubType=${data.messageStubType}), ensuring conversation exists`);
+      console.log("[webhook] Stub-only message (stubType=" + data.messageStubType + "), ensuring conversation exists");
     }
 
     const key = data.key || {};
@@ -282,7 +298,7 @@ lidValue = remoteJid;
 
       if (instRec) {
         if (remoteJid.includes("@lid")) {
-          // Message is @lid: find existing conv by lid
+          // 1. Find existing conv by lid column
           const { data: lidConv } = await supabaseLookup
             .from("conversations")
             .select("id")
@@ -295,6 +311,21 @@ lidValue = remoteJid;
           if (lidConv) {
             existingConvId = lidConv.id;
             console.log(`[webhook] Found existing conv by lid=${remoteJid}, conv=${lidConv.id}`);
+          } else if (resolvedPhone) {
+            // 2. Fallback: conv may have been created first with @s.whatsapp.net
+            const { data: phoneConv } = await supabaseLookup
+              .from("conversations")
+              .select("id")
+              .eq("user_id", instRec.user_id)
+              .eq("phone_number", resolvedPhone)
+              .eq("instance_name", instance)
+              .limit(1)
+              .maybeSingle();
+
+            if (phoneConv) {
+              existingConvId = phoneConv.id;
+              console.log(`[webhook] Found existing conv by phone fallback for @lid=${remoteJid}, conv=${phoneConv.id}`);
+            }
           }
         } else if (resolvedPhone) {
           // Message is @s.whatsapp.net: find existing conv by phone_number (may be @lid conv)
@@ -310,6 +341,30 @@ lidValue = remoteJid;
           if (phoneConv) {
             existingConvId = phoneConv.id;
             console.log(`[webhook] Found existing conv by phone=${resolvedPhone}, conv=${phoneConv.id} (remote_jid=${phoneConv.remote_jid})`);
+          } else {
+            // Fallback: @lid conv may have been created without phone_number (lid unresolved at sync time)
+            // Use lid_phone_map to bridge the gap: find which lid maps to this phone
+            const { data: lidMapRow } = await supabaseLookup
+              .from("lid_phone_map")
+              .select("lid")
+              .eq("phone_number", resolvedPhone)
+              .maybeSingle();
+
+            if (lidMapRow?.lid) {
+              const { data: lidConv } = await supabaseLookup
+                .from("conversations")
+                .select("id")
+                .eq("user_id", instRec.user_id)
+                .eq("lid", lidMapRow.lid)
+                .eq("instance_name", instance)
+                .limit(1)
+                .maybeSingle();
+
+              if (lidConv) {
+                existingConvId = lidConv.id;
+                console.log(`[webhook] Found existing conv via lid_phone_map for phone=${resolvedPhone}, lid=${lidMapRow.lid}, conv=${lidConv.id}`);
+              }
+            }
           }
         }
       }
@@ -352,8 +407,16 @@ lidValue = remoteJid;
       || message.imageMessage?.caption
       || message.videoMessage?.caption
       || message.documentMessage?.caption
+      || message.buttonsResponseMessage?.selectedDisplayText
+      || message.templateButtonReplyMessage?.selectedDisplayText
+      || message.listResponseMessage?.title
+      || message.listResponseMessage?.singleSelectReply?.selectedRowId
+      || message.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson
+      || (message.interactiveResponseMessage?.body?.text)
       || "";
     const externalId = data.key?.id || data.messageId || null;
+    const msgTs = data.messageTimestamp ? Number(data.messageTimestamp) : null;
+    const msgCreatedAt = msgTs && msgTs > 0 ? new Date(msgTs * 1000).toISOString() : undefined;
 
     // Determine message type
     let messageType = "text";
@@ -364,7 +427,7 @@ lidValue = remoteJid;
     else if (message.stickerMessage) messageType = "sticker";
 
     // Detect empty inbound messages (undecrypted) and apply placeholder
-    const isEmptyInbound = !fromMe && !messageContent.trim() && (messageType === "text" || messageType === "encryptedMessage" || Object.keys(message).length === 0);
+    const isEmptyInbound = !fromMe && !messageContent.trim() && (messageType === "text" || messageType === "encryptedMessage" || messageType === "unknown" || Object.keys(message).length === 0);
     const finalContent = isEmptyInbound
       ? "Não foi possível visualizar a mensagem, abra seu smartphone para sincronizar"
       : messageContent;
@@ -376,6 +439,7 @@ lidValue = remoteJid;
         // Update existing conv (found by lid or phone_number)
         const updateData: Record<string, unknown> = {
           last_message: lastMessagePreview,
+          last_message_at: new Date().toISOString(),
         };
         if (resolvedPhone) updateData.phone_number = resolvedPhone;
         if (lidValue) updateData.lid = lidValue;
@@ -387,6 +451,7 @@ lidValue = remoteJid;
           remote_jid: remoteJid,
           last_message: lastMessagePreview,
           instance_name: instance,
+          last_message_at: new Date().toISOString(),
         };
         if (resolvedPhone) sendUpsert.phone_number = resolvedPhone;
         if (lidValue) sendUpsert.lid = lidValue;
@@ -405,6 +470,9 @@ lidValue = remoteJid;
         .limit(1);
       if (existing && existing.length > 0) {
         console.log("Outbound message already saved by proxy, skipping:", externalId);
+        if (existingConvId) {
+          await supabase.from("conversations").update({ last_message: lastMessagePreview, last_message_at: new Date().toISOString() }).eq("id", existingConvId);
+        }
         return res.json({ ok: true, skipped: "already_saved" });
       }
     }
@@ -529,6 +597,7 @@ lidValue = remoteJid;
       external_id: externalId,
       media_url: mediaUrl,
       transcription: audioTranscription,
+      ...(msgCreatedAt ? { created_at: msgCreatedAt } : {}),
     });
     if (insertError) {
       console.error("Message insert error:", insertError.message, insertError);

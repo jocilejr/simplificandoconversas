@@ -116,11 +116,11 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
   const { hasUnseen, markSeen, markTabSeen } = useUnseenTransactions();
   // Recovery hooks
   const { settings: recoverySettings } = useRecoverySettings();
-  const { openChat, isConnected: isExtensionConnected } = useWhatsAppExtension();
+  const { openChat, fallbackOpenWhatsApp, isConnected: isExtensionConnected } = useWhatsAppExtension();
 
-  // Get pending transaction IDs for recovery clicks
+  // Get non-approved transaction IDs for recovery clicks (includes boleto, pix, cartao pending/rejected)
   const pendingTxIds = useMemo(() =>
-    transactions.filter((t) => t.status === "pendente").map((t) => t.id),
+    transactions.filter((t) => t.status !== "aprovado").map((t) => t.id),
     [transactions]
   );
   const { addClick, getClickCount } = useRecoveryClicks(pendingTxIds);
@@ -539,7 +539,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                   transaction={tx}
                   recoveryMessage={getRecoveryMessage(activeTab)}
                   clickCount={getClickCount(tx.id)}
-                  onSendWhatsApp={(phone) => openChat(phone)}
+                  onSendWhatsApp={(phone) => isExtensionConnected ? openChat(phone) : fallbackOpenWhatsApp(phone)}
                   onRecoveryClick={() => addClick.mutate({
                     transactionId: tx.id,
                     recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,
@@ -720,7 +720,7 @@ export function TransactionsTable({ transactions, isLoading, onDateFilterChange,
                             transaction={tx}
                             recoveryMessage={getRecoveryMessage(activeTab)}
                             clickCount={getClickCount(tx.id)}
-                            onSendWhatsApp={(phone) => openChat(phone)}
+                            onSendWhatsApp={(phone) => isExtensionConnected ? openChat(phone) : fallbackOpenWhatsApp(phone)}
                             onRecoveryClick={() => addClick.mutate({
                               transactionId: tx.id,
                               recoveryType: activeTab === "boletos-gerados" ? "boleto" : tx.type,

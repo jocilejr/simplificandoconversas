@@ -21,7 +21,8 @@ export function useMessagesLive(conversationId: string | null) {
   const query = useQuery({
     queryKey: ["chat-messages", conversationId],
     enabled: !!conversationId,
-    refetchInterval: 30000,
+    refetchInterval: 1000,
+    staleTime: 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("messages")
@@ -30,7 +31,30 @@ export function useMessagesLive(conversationId: string | null) {
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
-      return (data || []) as ChatMessage[];
+      const fresh = (data || []) as ChatMessage[];
+
+      // Preserve pending optimistic messages not yet confirmed in DB
+      const current = qc.getQueryData<ChatMessage[]>(["chat-messages", conversationId]) || [];
+      const optimistics = current.filter((m) => m.id.startsWith("optimistic-"));
+      if (!optimistics.length) return fresh;
+
+      const now = Date.now();
+      const freshOutbound = fresh.filter((m) => m.direction === "outbound");
+      const stillPending = optimistics.filter((o) => {
+        // Drop optimistics older than 15s (failed silently)
+        if (now - new Date(o.created_at).getTime() > 15000) return false;
+        // Drop if a real outbound message with same content already appeared
+        return !freshOutbound.some(
+          (m) =>
+            m.content === o.content &&
+            Math.abs(new Date(m.created_at).getTime() - new Date(o.created_at).getTime()) < 30000
+        );
+      });
+
+      if (!stillPending.length) return fresh;
+      return [...fresh, ...stillPending].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
     },
   });
 

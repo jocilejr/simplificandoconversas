@@ -33,6 +33,50 @@ type InstanceState = {
 const instances = new Map<string, InstanceState>();
 const baseLogger = pino({ level: process.env.LOG_LEVEL || "warn" });
 
+async function handleDecryptFailure(name: string, key: any): Promise<void> {
+  const remoteJid = normalizeJid(key?.remoteJid);
+  if (!remoteJid || remoteJid.includes("@g.us")) return;
+  try {
+    await emitWebhook("messages.upsert", name, {
+      key: {
+        id: key.id,
+        remoteJid,
+        fromMe: false,
+        ...(key.participant ? { participant: normalizeJid(key.participant) } : {}),
+        ...(key.senderPn ? { senderPn: key.senderPn } : {}),
+      },
+      pushName: "",
+      message: {},
+      messageType: "encryptedMessage",
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      source: "baileys",
+      instanceId: name,
+    });
+  } catch (_) {}
+}
+
+function makeInterceptLogger(name: string): any {
+  const base = baseLogger;
+  const errorFn = base.error.bind(base);
+  return {
+    level: base.level,
+    trace:  base.trace.bind(base),
+    debug:  base.debug.bind(base),
+    info:   base.info.bind(base),
+    warn:   base.warn.bind(base),
+    fatal:  base.fatal.bind(base),
+    isLevelEnabled: (base as any).isLevelEnabled?.bind(base) ?? (() => false),
+    child: () => makeInterceptLogger(name),
+    error(obj: any, msg?: string) {
+      const message = typeof obj === "string" ? obj : msg;
+      if (message === "failed to decrypt message" && obj?.key) {
+        handleDecryptFailure(name, obj.key).catch(() => {});
+      }
+      return errorFn(obj, msg as any);
+    },
+  };
+}
+
 function getOrCreate(name: string): InstanceState {
   let inst = instances.get(name);
   if (!inst) {
@@ -105,10 +149,10 @@ export async function startInstance(name: string): Promise<InstanceState> {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, baseLogger as any),
     },
-    logger: baseLogger as any,
+    logger: makeInterceptLogger(name) as any,
     printQRInTerminal: false,
     browser: Browsers.ubuntu("Chrome"),
-    syncFullHistory: false,
+    syncFullHistory: true,
     markOnlineOnConnect: false,
     generateHighQualityLinkPreview: true,
     linkPreviewImageThumbnailWidth: 800,
@@ -225,6 +269,46 @@ export async function startInstance(name: string): Promise<InstanceState> {
     }
   });
 
+  sock.ev.on("messaging-history.set", async ({ messages: histMsgs }) => {
+    if (!histMsgs?.length) return;
+    console.log(`[messaging-history.set] ${name}: ${histMsgs.length} historical msgs`);
+    for (const msg of histMsgs) {
+      if (msg.key?.id) {
+        inst.msgStore.set(msg.key.id, msg);
+        if (inst.msgStore.size > 1000) {
+          const firstKey = inst.msgStore.keys().next().value;
+          if (firstKey) inst.msgStore.delete(firstKey);
+        }
+      }
+      try {
+        const data = serializeMessage(name, msg);
+        if (data) {
+          if (data.key.remoteJid.includes("@lid") && !(data.key as any).senderPn) {
+            const lidJid = data.key.remoteJid;
+            const cached = inst.lidMap.get(lidJid);
+            if (cached) {
+              (data.key as any).senderPn = cached.split("@")[0];
+            } else {
+              try {
+                const results = await sock.onWhatsApp(lidJid);
+                if (results && results.length > 0 && results[0].jid) {
+                  const realJid = results[0].jid;
+                  const phone = realJid.split("@")[0];
+                  (data.key as any).senderPn = phone;
+                  inst.lidMap.set(lidJid, realJid);
+                  upsertLidPhone(lidJid, phone).catch(() => {});
+                }
+              } catch (_) {}
+            }
+          }
+          await emitWebhook("messages.upsert", name, data);
+        }
+      } catch (e: any) {
+        console.warn(`[messaging-history.set] ${e.message}`);
+      }
+    }
+  });
+
   sock.ev.on("groups.upsert", async (groups) => {
     for (const g of groups) {
       await emitWebhook("groups.upsert", name, normalizeGroup(g));
@@ -240,6 +324,7 @@ export async function startInstance(name: string): Promise<InstanceState> {
   sock.ev.on("contacts.upsert", (contacts) => {
     for (const c of contacts) {
       // Build LID -> phone JID mapping and persist to DB
+      // Case 1: c.lid set and c.phoneNumber provided
       if (c.lid && c.phoneNumber) {
         inst.lidMap.set(c.lid, c.phoneNumber);
         const phone = c.phoneNumber.split("@")[0];
@@ -248,6 +333,12 @@ export async function startInstance(name: string): Promise<InstanceState> {
         inst.lidMap.set(c.id, c.phoneNumber);
         const phone = c.phoneNumber.split("@")[0];
         upsertLidPhone(c.id, phone).catch(() => {});
+      }
+      // Case 2: c.id is @s.whatsapp.net AND c.lid is set — extract phone from id
+      if (c.lid && c.id && c.id.includes("@s.whatsapp.net")) {
+        const phone = c.id.split("@")[0];
+        inst.lidMap.set(c.lid, c.id);
+        upsertLidPhone(c.lid, phone).catch(() => {});
       }
     }
   });
@@ -377,7 +468,7 @@ export async function downloadMedia(name: string, msg: proto.IWebMessageInfo | a
   const inst = instances.get(name);
   if (!inst?.sock) throw new Error("instance not connected");
   const buffer = (await downloadMediaMessage(msg, "buffer", {}, {
-    logger: baseLogger as any,
+    logger: makeInterceptLogger(name) as any,
     reuploadRequest: inst.sock.updateMediaMessage,
   })) as Buffer;
   return buffer;
